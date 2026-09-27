@@ -163,8 +163,8 @@ if __name__ == "__main__":
     slot = [(-50, 50, 0, 10, 1.0), (-2, 2, 0, 10, 0.0)]
     slot_bodies = [(1.0, [rect_loop(-50, -2, 0, 10)]), (1.0, [rect_loop(2, 50, 0, 10)])]
     print("%-38s %9s %9.1f %9.1f" % ("open slot (two plates)", "-", width_gj(slot_bodies), exact_gj(slot)))
-    # Interior void inside one body (outer loop + reversed inner loop, even-odd).
-    # Limitation: a CLOSED cell carries Bredt shear flow the width solve cannot see, so exact >> width.
+    # Interior void inside one body (outer loop + reversed inner loop, even-odd). The two faces over the
+    # void act as a sandwich (D about the bin centroid), which carries the closed-cell shear flow.
     hole = [(1.0, [rect_loop(-50, 50, 0, 10), rect_loop(-20, 20, 2, 8)[::-1]])]
-    print("%-38s %9s %9.1f %9.1f   (closed cell: not modelled)" % ("interior void 40x6", "-", width_gj(hole),
+    print("%-38s %9s %9.1f %9.1f" % ("interior void 40x6", "-", width_gj(hole),
           exact_gj([(-50, 50, 0, 10, 1.0), (-20, 20, 2, 8, 0.0)])))

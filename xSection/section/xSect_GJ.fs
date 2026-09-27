@@ -1,678 +1,304 @@
 FeatureScript 3083;
 
 /**
- * Torsional Stiffness (GJ) Calculation for Cross-Sections
+ * Torsional stiffness (GJ) of a ski cross-section.
  *
- * Implements the thin-plate Saint-Venant formula: GJ = 4 · Σ_e G_e · Iz_e
- * Analytically exact for b/t >> 1; ~10% error for b/t ≈ 7 (underfoot).
- * O(n) — no FEM solve required.
+ * The section is treated as a plate twisting about the ski axis, reduced to one dimension across the
+ * width (Reissner-Mindlin plate torsion). For each width bin:
+ *   D(y) = int G (z - c)^2 dz        twisting stiffness about the bin's own G-weighted centroid c
+ *   S(y) = 5/6 * t^2 / int dz / G    transverse shear stiffness (layers in series)
+ * and the rotation of the normal beta(y) minimises, at unit twist and with free edges,
+ *   GJ = min over beta of  int [ D (beta' + 1)^2 + S (y - beta)^2 ] dy
+ * With S -> infinity this is the thin-plate 4 * int D dy. Finite S lets the twisting moment die away
+ * within ~0.3 t of each free edge, which the old formula (4 * sum G Iz about one global centroid)
+ * missed: it over-predicted a representative ski section 1.6-2x, mostly through the steel edges.
+ * Checked against an exact 2D Saint-Venant warping solve: within 2% on ski sections, stepped and
+ * voided sections, 0.04% on a homogeneous rectangle (devtools/xsection/gj_oracle.py mirrors this code).
  *
- * Shear modulus per element uses G_torsion back-calculated from the Q matrix:
- * - Balanced laminates (±45°, woven, isotropic): G_torsion = (Q11 - Q12) / 2
- * - Unbalanced (0°-dominant UD): G_torsion = Q66
+ * G per body is Q66, the in-plane shear stiffness in ski axes. The through-thickness shear G_xz is
+ * taken equal to it.
  *
- * @see GJ_torsional_stiffness_reference.md for mathematical derivation
+ * Material intervals come from the body outlines (outer loops, holes and islands, even-odd), not from
+ * the triangulation, so voids are open and a poor ear clip cannot change GJ.
+ *
+ * Coordinates: point2D[0] = thickness direction z, point2D[1] = width direction y.
+ * Plain numbers inside, implicit SI (m, Pa, N*m^2); units restored on return.
  */
 
 import(path : "onshape/std/common.fs", version : "3083.0");
-// IMPORT: tools/solvers.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
+
+/** Width bins per section. The edge boundary layer (~0.3 t) must span several bins. */
+const GJ_WIDTH_BINS = 400;
+
+/** Transverse shear correction factor (Reissner-Mindlin). */
+const SHEAR_FACTOR = 5 / 6;
 
 /**
- * UNIT CONVENTION
- * ===============
- * This module uses plain number calculations with implicit units:
+ * Compute torsional stiffness GJ for a cross-section.
  *
- * Implicit Units:
- * - Coordinates (y, z): meters [m]
- * - Shear modulus (G): pascals [N/m²]
- * - Areas (A): square meters [m²]
- * - Shape gradients (dNdy, dNdz): inverse meters [1/m]
- * - Polar moments (Jp): meters^4 [m⁴]
- * - Stiffness (K): pascals [N/m²]
- * - Loads (f): newtons [N]
- * - Torsional stiffness (GJ): newton-meters² [N·m²]
- *
- * Units are:
- * - STRIPPED at entry: coordinates from sectionPoints, G from qMatrix
- * - IMPLICIT during calculation (documented in comments)
- * - RESTORED at exit: final GJ returned as ValueWithUnits
- */
-
-const MIN_AREA = 1e-12;  // 1 μm² - only filter truly degenerate triangles (implicit m²)
-
-/**
- * Main entry point: Compute torsional stiffness GJ for a cross-section
- *
- * @param section : Cross-section data with bodyData, sectionPoints, frame
- * @param bodies : Array of body material definitions with Q matrices
- * @returns : GJ_eff in N·m² (ValueWithUnits)
- *
- * Process:
- * 1. Extract triangulated mesh from section.bodyData
- * 2. Build G_torsion array (one G per triangle, back-calculated from Q matrix)
- * 3. Compute G-weighted centroid as shear center approximation
- * 4. Integrate GJ = 4·Σ G_e·Iz_e (thin-plate formula, O(n))
+ * @param section : cross-section with bodyData[].groups (perimeterPointIndices, subgroups) and sectionPoints
+ * @param bodies : body definitions with materialData.qMatrix
+ * @returns : GJ_eff in N*m^2
  */
 export function computeTorsionalStiffness(section is map, bodies is array) returns ValueWithUnits
 {
-    // Extract global mesh from hierarchical bodyData structure
-    var meshData = buildGlobalMesh(section);
-    var triangles = meshData.triangles;
-    var bodyIndices = meshData.bodyIndices;
-    var numNodes = meshData.numNodes;
-
-    // Handle edge cases
-    if (size(triangles) == 0)
+    const materials = collectMaterialLoops(section, bodies);
+    if (size(materials) == 0)
     {
         return 0 * newton * meter * meter;
     }
 
-    if (numNodes > 2000)
+    // Width range and a thickness reference (keeps the per-bin moments well conditioned)
+    var yMin = inf;
+    var yMax = -inf;
+    var zRef = inf;
+    for (var material in materials)
     {
-    }
-
-    // Extract shear modulus for each triangle from material Q matrices
-    var G_elem = extractShearModuli(triangles, bodyIndices, bodies);
-
-    // Compute G statistics for diagnostics
-    var G_min = 1e99;
-    var G_max = 0.0;
-    var G_sum = 0.0;
-    var G_count = 0;
-
-    for (var i = 0; i < size(G_elem); i += 1)
-    {
-        var G = G_elem[i];
-        if (G >= 1e-6)  // Only count valid G values
+        for (var loop in material.loops)
         {
-            G_min = min(G_min, G);
-            G_max = max(G_max, G);
-            G_sum += G;
-            G_count += 1;
+            for (var p in loop)
+            {
+                yMin = min(yMin, p[1]);
+                yMax = max(yMax, p[1]);
+                zRef = min(zRef, p[0]);
+            }
         }
     }
-
-    var G_mean = (G_count > 0) ? (G_sum / G_count) : 0.0;
-
-    // Check if any structural material exists
-    if (G_count == 0)
+    const width = yMax - yMin;
+    if (width <= 0)
     {
         return 0 * newton * meter * meter;
     }
+    const n = GJ_WIDTH_BINS;
+    const h = width / n;
 
-    // Compute G-weighted centroid as shear center approximation.
-    // y, z for FEM must be measured from shear center; using ski base inflates Jp and
-    // corrupts ψ, causing the inverted GJ curve.
-    var G_A_total = 0.0;
-    var Gy_A_total = 0.0;
-    var Gz_A_total = 0.0;
-    for (var e = 0; e < size(triangles); e += 1)
+    // Through-thickness sums per bin: int G dz, int G z dz, int G z^2 dz, int dz, int dz / G
+    var S0 = makeArray(n, 0);
+    var S1 = makeArray(n, 0);
+    var S2 = makeArray(n, 0);
+    var T = makeArray(n, 0);
+    var R = makeArray(n, 0);
+
+    for (var material in materials)
     {
-        var G = G_elem[e];
-        if (G < 1e-6) { continue; }
-        var tri = triangles[e];
-        var pt1 = section.sectionPoints[tri[0]].point2D;
-        var pt2 = section.sectionPoints[tri[1]].point2D;
-        var pt3 = section.sectionPoints[tri[2]].point2D;
-        var y1 = pt1[0] / meter; var z1 = pt1[1] / meter;
-        var y2 = pt2[0] / meter; var z2 = pt2[1] / meter;
-        var y3 = pt3[0] / meter; var z3 = pt3[1] / meter;
-        var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
-        if (shapeData.area < MIN_AREA) { continue; }
-        G_A_total += G * shapeData.area;
-        Gy_A_total += G * shapeData.area * (y1 + y2 + y3) / 3.0;
-        Gz_A_total += G * shapeData.area * (z1 + z2 + z3) / 3.0;
-    }
-    var y_bar = (G_A_total > 0) ? Gy_A_total / G_A_total : 0.0;
-    var z_bar = (G_A_total > 0) ? Gz_A_total / G_A_total : 0.0;
-
-    // Compute GJ using thin-plate formula (O(n), no FEM solve needed)
-    var GJ_val = computeGJThinPlate(triangles, G_elem, section.sectionPoints, y_bar, z_bar);
-
-    if (GJ_val <= 0.0)
-    {
-        return 0 * newton * meter * meter;
-    }
-
-    return GJ_val * newton * meter * meter;
-}
-
-/**
- * Flatten hierarchical bodyData into single triangle list
- *
- * @param section : Cross-section with bodyData array
- * @returns : map with { triangles, bodyIndices, numNodes }
- *
- * Handles nested structure:
- * - bodyData[i].groups[j].triangles = [[i1,j1,k1], ...]
- * - Each triangle indexed into shared sectionPoints array
- * - Track bodyIdx for material lookup
- */
-function buildGlobalMesh(section is map) returns map
-{
-    var triangles = [];
-    var bodyIndices = [];
-    var maxNodeIndex = -1;
-
-    // Iterate through all bodies and their groups
-    for (var bodyData in section.bodyData)
-    {
-        var bodyIdx = bodyData.bodyIdx;
-
-        // Each body has groups (perimeters, holes)
-        if (bodyData.groups != undefined)
+        const G = material.G;
+        const crossings = binCrossings(material.loops, yMin, zRef, h, n);
+        for (var j = 0; j < n; j += 1)
         {
-            for (var group in bodyData.groups)
+            const c = sort(crossings[j], function(a, b) { return a - b; });
+            // Even-odd: consecutive crossing pairs bound material
+            for (var k = 0; k + 1 < size(c); k += 2)
             {
-                if (group.triangles != undefined)
-                {
-                    for (var tri in group.triangles)
-                    {
-                        triangles = append(triangles, tri);
-                        bodyIndices = append(bodyIndices, bodyIdx);
-
-                        // Track max node index
-                        maxNodeIndex = max(maxNodeIndex, tri[0]);
-                        maxNodeIndex = max(maxNodeIndex, tri[1]);
-                        maxNodeIndex = max(maxNodeIndex, tri[2]);
-                    }
-                }
+                const a = c[k];
+                const b = c[k + 1];
+                S0[j] += G * (b - a);
+                S1[j] += G * (b * b - a * a) / 2;
+                S2[j] += G * (b * b * b - a * a * a) / 3;
+                T[j] += b - a;
+                R[j] += (b - a) / G;
             }
         }
     }
 
-    var numNodes = maxNodeIndex + 1;
-
-    return {
-        "triangles" : triangles,
-        "bodyIndices" : bodyIndices,
-        "numNodes" : numNodes
-    };
-}
-
-/**
- * Extract shear modulus G for each triangle from material data
- *
- * @param triangles : Array of [i,j,k] node indices
- * @param bodyIndices : Body index for each triangle
- * @param bodies : Body material definitions with Q matrices
- * @returns : Array of G values (plain numbers, implicit N/m²) - one per triangle
- *
- * Lookup chain: triangle → bodyIdx → Q matrix → G_torsion
- * Q is stored as 3×3: [[Q11, Q12, Q16], [Q12, Q22, Q26], [Q16, Q26, Q66]]
- * - Balanced (±45°, woven, isotropic): G_torsion = (Q11 - Q12) / 2  [back-calc gives true G12]
- * - Unbalanced (0°-dominant UD): G_torsion = Q66  [= G12 on-axis]
- * - Missing material: G = 0 (contributes no stiffness)
- */
-function extractShearModuli(triangles is array, bodyIndices is array, bodies is array) returns array
-{
-    var G_elem = [];
-
-    for (var i = 0; i < size(triangles); i += 1)
-    {
-        var bodyIdx = bodyIndices[i];
-        var G_val = 0.0;  // Plain number, implicit N/m²
-
-        // Find corresponding body material
-        for (var body in bodies)
-        {
-            if (body.bodyIdx == bodyIdx)
-            {
-                if (body.hasMaterialData &&
-                    body.materialData != undefined &&
-                    body.materialData.qMatrix != undefined)
-                {
-                    // Torsion of a thin strip loads in-plane shear (tau_xy) in ski axes, so the
-                    // stiffness is Q66 for every material. (Q11 - Q12)/2 equals it only for in-plane
-                    // isotropic material; it made 0/90 fabrics 6-13x too stiff and +-45 fabrics 3-13x
-                    // too soft (tools review 2026-09-25, reviews/2026-09-25_tools_review).
-                    var Pa = newton / (meter * meter);
-                    G_val = body.materialData.qMatrix[2][2] / Pa;
-                }
-                break;
-            }
-        }
-
-        G_elem = append(G_elem, G_val);
-    }
-
-    return G_elem;
-}
-
-/**
- * Compute GJ using the thin-plate Saint-Venant formula: GJ = 4 · Σ_e G_e · Iz_e
- *
- * Analytically exact for b/t >> 1; ~10% error for b/t ≈ 7 (underfoot).
- * O(n) — does not require FEM solve.
- *
- * @param triangles : Array of [i,j,k] node indices
- * @param G_elem : Torsional shear modulus per triangle (plain numbers, implicit N/m²)
- * @param sectionPoints : Array of {point2D: [y,z], ...}
- * @param y_bar : G-weighted centroid y coordinate (plain number, implicit m)
- * @param z_bar : G-weighted centroid z coordinate (plain number, implicit m)
- * @returns : GJ as plain number (implicit N·m²)
- */
-function computeGJThinPlate(triangles is array, G_elem is array,
-                             sectionPoints is array, y_bar is number, z_bar is number) returns number
-{
-    var Iz_sum = 0.0;
-    for (var e = 0; e < size(triangles); e += 1)
-    {
-        var G = G_elem[e];
-        if (G < 1e-6) { continue; }
-
-        var tri = triangles[e];
-        var pt1 = sectionPoints[tri[0]].point2D;
-        var pt2 = sectionPoints[tri[1]].point2D;
-        var pt3 = sectionPoints[tri[2]].point2D;
-
-        var y1 = pt1[0] / meter - y_bar;
-        var y2 = pt2[0] / meter - y_bar;
-        var y3 = pt3[0] / meter - y_bar;
-        var z1 = pt1[1] / meter - z_bar;
-        var z2 = pt2[1] / meter - z_bar;
-        var z3 = pt3[1] / meter - z_bar;
-
-        var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
-        if (shapeData.area < MIN_AREA) { continue; }
-
-        // Iz = ∫y² dA = (A/6) * (y1² + y2² + y3² + y1·y2 + y1·y3 + y2·y3)
-        var Iz = (shapeData.area / 6.0) *
-                 (y1*y1 + y2*y2 + y3*y3 + y1*y2 + y1*y3 + y2*y3);
-        Iz_sum += G * Iz;
-    }
-    return 4.0 * Iz_sum;  // GJ = 4·Σ G_e·Iz_e, implicit N·m²
-}
-
-/**
- * Assemble global FEM system K·ψ = f
- *
- * @param triangles : Array of [i,j,k] node indices
- * @param G_elem : Shear modulus for each triangle (plain numbers, implicit N/m²)
- * @param sectionPoints : Array of {point2D: [y,z], ...}
- * @param numNodes : Total number of nodes
- * @returns : map with { K: array (n×n), f: array (n×1), numNodes: int }
- *
- * Element stiffness (linear triangle):
- *   K_local[a,b] = G * A * (dNdy[a]*dNdy[b] + dNdz[a]*dNdz[b])
- *
- * Element load:
- *   f_local[a] = G * A * (z_c * dNdy[a] - y_c * dNdz[a])
- *
- * where (y_c, z_c) is triangle centroid
- */
-function assembleFEMSystem(triangles is array, G_elem is array, sectionPoints is array, numNodes is number, y_bar is number, z_bar is number) returns map
-{
-    // Initialize global arrays
-    var n = numNodes;
-    var K = makeArray(n);
-    var f = makeArray(n);
-
-    for (var i = 0; i < n; i += 1)
-    {
-        K[i] = makeArray(n, 0.0);
-        f[i] = 0.0;
-    }
-
-    // Loop over all triangles
-    var validElements = 0;
-    var skippedZeroG = 0;
-    var skippedDegenerateArea = 0;
-
-    for (var e = 0; e < size(triangles); e += 1)
-    {
-        var tri = triangles[e];
-        var i1 = tri[0];
-        var i2 = tri[1];
-        var i3 = tri[2];
-
-        var G = G_elem[e];  // Plain number, implicit N/m²
-
-        // Skip elements with zero stiffness
-        if (G < 1e-6)  // Implicit N/m²
-        {
-            skippedZeroG += 1;
-            continue;
-        }
-
-        // Get nodal coordinates in local (y,z) frame
-        var pt1 = sectionPoints[i1].point2D;
-        var pt2 = sectionPoints[i2].point2D;
-        var pt3 = sectionPoints[i3].point2D;
-
-        var y1 = pt1[0] / meter - y_bar;
-        var z1 = pt1[1] / meter - z_bar;
-        var y2 = pt2[0] / meter - y_bar;
-        var z2 = pt2[1] / meter - z_bar;
-        var y3 = pt3[0] / meter - y_bar;
-        var z3 = pt3[1] / meter - z_bar;
-
-        // Compute shape function gradients and area
-        var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
-        var dNdy = shapeData.dNdy;
-        var dNdz = shapeData.dNdz;
-        var A = shapeData.area;
-
-        // Skip degenerate triangles
-        if (A < MIN_AREA)
-        {
-            skippedDegenerateArea += 1;
-            continue;
-        }
-
-        validElements += 1;
-
-        // Centroid
-        var y_c = (y1 + y2 + y3) / 3.0;
-        var z_c = (z1 + z2 + z3) / 3.0;
-
-        // Local stiffness and load (3×3 for linear triangle)
-        var nodeIndices = [i1, i2, i3];
-
-        for (var a = 0; a < 3; a += 1)
-        {
-            var ia = nodeIndices[a];
-
-            // Element load vector
-            // Dimensional analysis: (N/m²) * m² * m * (1/m) = N
-            var f_local = G * A * (z_c * dNdy[a] - y_c * dNdz[a]);  // All plain numbers
-            f[ia] += f_local;  // No unit stripping needed
-
-            // Element stiffness matrix
-            for (var b = 0; b < 3; b += 1)
-            {
-                var ib = nodeIndices[b];
-                // Dimensional analysis: (N/m²) * m² * (1/m)² = N/m²
-                var K_local = G * A * (dNdy[a] * dNdy[b] + dNdz[a] * dNdz[b]);  // All plain numbers
-                K[ia][ib] += K_local;  // No unit stripping needed
-            }
-        }
-    }
-
-    // Warn if too many degenerate triangles (indicates mesh quality issues)
-    if (skippedDegenerateArea > size(triangles) * 0.1)
-    {
-        var pct = (skippedDegenerateArea * 100.0 / size(triangles));
-    }
-
-    return {
-        "K" : K,
-        "f" : f,
-        "numNodes" : n
-    };
-}
-
-/**
- * Apply boundary condition to remove rigid body mode
- *
- * @param K : Global stiffness matrix (n×n)
- * @param f : Global load vector (n×1)
- * @param n : Number of nodes
- * @returns : map with { K, f } (modified in place)
- *
- * Pin first node: ψ[0] = 0
- * - Set K[0,:] = 0, K[:,0] = 0, K[0,0] = 1
- * - Set f[0] = 0
- *
- * This removes the singularity (∇²ψ = 0 has constant solutions)
- */
-function applyBoundaryCondition(K is array, f is array, n is number) returns map
-{
-    // Pin first node to remove rigid body mode
+    // Per-bin twisting stiffness D (about the bin centroid) and transverse shear stiffness S
+    var D = makeArray(n, 0);
+    var S = makeArray(n, 0);
     for (var j = 0; j < n; j += 1)
     {
-        K[0][j] = 0.0;
-        K[j][0] = 0.0;
-    }
-    K[0][0] = 1.0;
-    f[0] = 0.0;
-
-    // Pin any unused nodes (disconnected from mesh) to prevent singularity
-    // These nodes have zero diagonal entries (not part of any triangle)
-    var pinnedNodes = 0;
-    for (var i = 1; i < n; i += 1)
-    {
-        if (abs(K[i][i]) < 1e-15)
+        if (S0[j] > 0)
         {
-            // Node i is unused - pin it
-            for (var j = 0; j < n; j += 1)
-            {
-                K[i][j] = 0.0;
-                K[j][i] = 0.0;
-            }
-            K[i][i] = 1.0;
-            f[i] = 0.0;
-            pinnedNodes += 1;
+            D[j] = max(S2[j] - S1[j] * S1[j] / S0[j], 0);
+        }
+        if (R[j] > 0)
+        {
+            S[j] = SHEAR_FACTOR * T[j] * T[j] / R[j];
         }
     }
 
-    return {
-        "K" : K,
-        "f" : f
-    };
-}
-
-/**
- * Solve FEM system K·ψ = f for the Saint-Venant warping function.
- *
- * @param K {array} : Stiffness matrix (n×n), plain numbers (implicit N/m²)
- * @param f {array} : Load vector (n×1), plain numbers (implicit N)
- * @param n {number} : Number of nodes
- * @returns {array} : ψ at each node (dimensionless plain numbers), or empty array [] on failure.
- *
- * Failure conditions (returns []):
- *   - K is singular or near-singular (more than n/2 zero diagonal entries)
- *   - `solveLinearSystem` returns undefined (Gaussian elimination fails, e.g. rank-deficient after BC)
- *
- * NOTE: This function does NOT throw; callers must check `size(psi) == 0` and fall back
- * to the thin-plate formula (`computeGJThinPlate`) which is used in practice.
- */
-function solveFEMSystem(K is array, f is array, n is number) returns array
-{
-    // Check matrix diagonal health
-    var diagZeros = 0;
-    var diagNonZeros = 0;
-    var diagMax = 0.0;
-    var diagMin = 1e99;
-
-    for (var i = 0; i < n; i += 1)
+    // 1D linear elements across the width, nodes at bin edges, y centred on the section
+    var yNode = makeArray(n + 1, 0);
+    for (var i = 0; i <= n; i += 1)
     {
-        var d = abs(K[i][i]);
-        if (d < 1e-15)
-        {
-            diagZeros += 1;
-        }
-        else
-        {
-            diagNonZeros += 1;
-            if (d > diagMax) diagMax = d;
-            if (d < diagMin) diagMin = d;
-        }
+        yNode[i] = -width / 2 + i * h;
+    }
+    var diag = makeArray(n + 1, 0);
+    var off = makeArray(n, 0);
+    var f = makeArray(n + 1, 0);
+    for (var e = 0; e < n; e += 1)
+    {
+        const ya = yNode[e];
+        const yb = yNode[e + 1];
+        diag[e] += D[e] / h + S[e] * h / 3;
+        diag[e + 1] += D[e] / h + S[e] * h / 3;
+        off[e] += -D[e] / h + S[e] * h / 6;
+        f[e] += D[e] + S[e] * h * (2 * ya + yb) / 6;
+        f[e + 1] += -D[e] + S[e] * h * (ya + 2 * yb) / 6;
     }
 
-    if (diagZeros > n / 2)
+    // Gaps with no material leave rows empty; a tiny diagonal keeps them solvable (their f is 0)
+    var maxDiag = 0;
+    for (var i = 0; i <= n; i += 1)
     {
+        maxDiag = max(maxDiag, diag[i]);
     }
-
-    // Solve system using dense Gaussian elimination
-    var psi = solveLinearSystem(K, f, n);
-
-    if (psi == undefined)
-    {
-        return [];  // Return empty array instead of undefined
-    }
-
-    return psi;
-}
-
-/**
- * Compute GJ from warping function and polar moments
- *
- * @param triangles : Array of [i,j,k] node indices
- * @param G_elem : Shear modulus for each triangle (plain numbers, implicit N/m²)
- * @param psi : Warping function values at nodes (dimensionless)
- * @param sectionPoints : Array of {point2D: [y,z], ...}
- * @returns : GJ in N·m²
- *
- * For each triangle:
- *   Jp_e = polar moment of inertia (exact for triangle)
- *   dpsi_dy, dpsi_dz = constant gradients from nodal ψ
- *   warp_correction = A * (y_c * dpsi_dz - z_c * dpsi_dy)
- *   GJ += G * (Jp_e + warp_correction)
- *
- * Polar moment (exact closed form):
- *   Jp = A/6 * (y1² + y2² + y3² + z1² + z2² + z3² + y1*y2 + y2*y3 + y3*y1 + z1*z2 + z2*z3 + z3*z1)
- */
-function computeGJFromWarping(triangles is array, G_elem is array, psi is array, sectionPoints is array, y_bar is number, z_bar is number) returns ValueWithUnits
-{
-    var GJ_sum = 0.0;  // Accumulate as plain number, implicit N·m²
-    var Jp_total = 0.0;   // Diagnostic: sum of G*Jp_e contributions
-    var warp_total = 0.0; // Diagnostic: sum of G*warp_correction contributions
-    var Iz_sum = 0.0;  // For thin-plate formula: GJ = 4 * Iz_sum
-
-    // Defensive check: ensure psi array is valid
-    if (size(psi) == 0)
+    if (maxDiag <= 0)
     {
         return 0 * newton * meter * meter;
     }
-
-    for (var e = 0; e < size(triangles); e += 1)
+    for (var i = 0; i <= n; i += 1)
     {
-        var tri = triangles[e];
-        var i1 = tri[0];
-        var i2 = tri[1];
-        var i3 = tri[2];
-
-        var G = G_elem[e];  // Plain number, implicit N/m²
-
-        // Skip elements with zero stiffness
-        if (G < 1e-6)  // Implicit N/m²
-        {
-            continue;
-        }
-
-        // Get nodal coordinates
-        var pt1 = sectionPoints[i1].point2D;
-        var pt2 = sectionPoints[i2].point2D;
-        var pt3 = sectionPoints[i3].point2D;
-
-        var y1 = pt1[0] / meter - y_bar;
-        var z1 = pt1[1] / meter - z_bar;
-        var y2 = pt2[0] / meter - y_bar;
-        var z2 = pt2[1] / meter - z_bar;
-        var y3 = pt3[0] / meter - y_bar;
-        var z3 = pt3[1] / meter - z_bar;
-
-        // Compute shape function gradients and area
-        var shapeData = computeShapeGradients(y1, z1, y2, z2, y3, z3);
-        var dNdy = shapeData.dNdy;
-        var dNdz = shapeData.dNdz;
-        var A = shapeData.area;
-
-        // Skip degenerate triangles
-        if (A < MIN_AREA)
-        {
-            continue;
-        }
-
-        // Get warping function values at nodes (dimensionless)
-        var psi1 = psi[i1];
-        var psi2 = psi[i2];
-        var psi3 = psi[i3];
-
-        // Compute warping gradients (constant over element)
-        var dpsi_dy = psi1 * dNdy[0] + psi2 * dNdy[1] + psi3 * dNdy[2];
-        var dpsi_dz = psi1 * dNdz[0] + psi2 * dNdz[1] + psi3 * dNdz[2];
-
-        // Centroid
-        var y_c = (y1 + y2 + y3) / 3.0;
-        var z_c = (z1 + z2 + z3) / 3.0;
-
-        // Polar moment of inertia (exact closed form for triangle)
-        // Jp = Iy + Iz where:
-        //   Iy = ∫z² dA = (A/6) * (z1² + z2² + z3² + z1*z2 + z1*z3 + z2*z3)
-        //   Iz = ∫y² dA = (A/6) * (y1² + y2² + y3² + y1*y2 + y1*y3 + y2*y3)
-        var Iy = (A / 6.0) * (z1*z1 + z2*z2 + z3*z3 + z1*z2 + z1*z3 + z2*z3);
-        var Iz = (A / 6.0) * (y1*y1 + y2*y2 + y3*y3 + y1*y2 + y1*y3 + y2*y3);
-        var Jp_e = Iy + Iz;
-
-        // Warping correction
-        var warp_correction = A * (y_c * dpsi_dz - z_c * dpsi_dy);
-
-        // Accumulate GJ element contribution
-        // Dimensional analysis: (N/m²) * m⁴ = N·m²
-        Jp_total += G * Jp_e;
-        warp_total += G * warp_correction;
-        GJ_sum += G * (Jp_e + warp_correction);  // All plain numbers, implicit N·m²
-        Iz_sum += G * Iz;
+        diag[i] += 1e-12 * maxDiag;
     }
 
-    // Diagnostic: breakdown of Jp vs warping correction
-    // After fix, warp_total should be strongly negative for flat/wide sections
+    const beta = solveSymmetricTridiagonal(diag, off, f);
 
-    // Use thin-plate formula (GJ = 4*Iz) — analytically exact for b/t >> 1,
-    // far more accurate than coarse FEM for ski cross-sections.
-    // FEM result (J_SV) kept above as diagnostic to show warping solve comparison.
-    var GJ_thin_plate = 4.0 * Iz_sum;
-    return GJ_thin_plate * newton * meter * meter;
+    // GJ as the energy at the minimum (a sum of squares, so no cancellation)
+    var GJ = 0;
+    for (var e = 0; e < n; e += 1)
+    {
+        const slope = (beta[e + 1] - beta[e]) / h;
+        const ra = yNode[e] - beta[e];
+        const rb = yNode[e + 1] - beta[e + 1];
+        GJ += D[e] * h * (slope + 1) * (slope + 1) + S[e] * h * (ra * ra + ra * rb + rb * rb) / 3;
+    }
+    return GJ * newton * meter * meter;
 }
 
 /**
- * Compute constant shape function gradients for linear triangle
+ * Outlines of every body that has a shear modulus, as plain [z, y] points in meters.
  *
- * @param y1, z1, y2, z2, y3, z3 : Nodal coordinates (plain numbers, implicit meters)
- * @returns : map with { dNdy: [3], dNdz: [3], area: number }
- *
- * Linear shape functions:
- *   N1 = (a1 + b1*y + c1*z) / (2*A)
- *   N2 = (a2 + b2*y + c2*z) / (2*A)
- *   N3 = (a3 + b3*y + c3*z) / (2*A)
- *
- * Gradients (constant over element):
- *   dN1/dy = b1/(2*A) = (z2 - z3)/(2*A)
- *   dN1/dz = c1/(2*A) = (y3 - y2)/(2*A)
- *   etc.
- *
- * Area (signed):
- *   2*A = (y2-y1)*(z3-z1) - (y3-y1)*(z2-z1)
+ * @returns : array of { G (Pa), loops : [[[z, y], ...], ...] } - outer loops, holes and islands
  */
-export function computeShapeGradients(y1 is number, z1 is number,
-                                       y2 is number, z2 is number,
-                                       y3 is number, z3 is number) returns map
+function collectMaterialLoops(section is map, bodies is array) returns array
 {
-    // Compute twice the signed area
-    var twoA = (y2 - y1) * (z3 - z1) - (y3 - y1) * (z2 - z1);
-
-    // Area (take absolute value)
-    var A = abs(twoA) / 2.0;
-
-    // Check for degenerate triangle before dividing by twoA
-    if (A < MIN_AREA)
+    var materials = [];
+    for (var bodyData in section.bodyData)
     {
-        // Return zero gradients for degenerate triangles
-        return {
-            "dNdy" : [0.0, 0.0, 0.0],
-            "dNdz" : [0.0, 0.0, 0.0],
-            "area" : A
-        };
+        const G = bodyShearModulus(bodies, bodyData.bodyIdx);
+        if (G <= 0 || bodyData.groups == undefined)
+        {
+            continue;
+        }
+        var loops = [];
+        for (var group in bodyData.groups)
+        {
+            loops = appendGroupLoops(loops, group, section.sectionPoints);
+        }
+        if (size(loops) > 0)
+        {
+            materials = append(materials, { "G" : G, "loops" : loops });
+        }
     }
+    return materials;
+}
 
-    // Shape function gradients (dimensionless / meter)
-    var dNdy = makeArray(3);
-    var dNdz = makeArray(3);
+function appendGroupLoops(loops is array, group is map, sectionPoints is array) returns array
+{
+    if (group.perimeterPointIndices != undefined && size(group.perimeterPointIndices) >= 3)
+    {
+        var loop = [];
+        for (var idx in group.perimeterPointIndices)
+        {
+            const p = sectionPoints[idx].point2D;
+            loop = append(loop, [p[0] / meter, p[1] / meter]);
+        }
+        loops = append(loops, loop);
+    }
+    if (group.subgroups != undefined)
+    {
+        for (var subgroup in group.subgroups)
+        {
+            loops = appendGroupLoops(loops, subgroup, sectionPoints);
+        }
+    }
+    return loops;
+}
 
-    dNdy[0] = (z2 - z3) / twoA;
-    dNdy[1] = (z3 - z1) / twoA;
-    dNdy[2] = (z1 - z2) / twoA;
+/**
+ * Q66 of a body in Pa (0 when the body has no material data).
+ * Torsion loads the ski-axis shear, so Q66 in ski axes is the stiffness for every material.
+ */
+function bodyShearModulus(bodies is array, bodyIdx) returns number
+{
+    for (var body in bodies)
+    {
+        if (body.bodyIdx == bodyIdx)
+        {
+            if (body.hasMaterialData == true && body.materialData != undefined && body.materialData.qMatrix != undefined)
+            {
+                return body.materialData.qMatrix[2][2] / (newton / (meter * meter));
+            }
+            return 0;
+        }
+    }
+    return 0;
+}
 
-    dNdz[0] = (y3 - y2) / twoA;
-    dNdz[1] = (y1 - y3) / twoA;
-    dNdz[2] = (y2 - y1) / twoA;
+/**
+ * For each width bin, the thickness coordinates (relative to zRef) where the loops cross the bin's
+ * centre line. Half-open edge spans [lo, hi) count a vertex exactly once.
+ */
+function binCrossings(loops is array, yMin is number, zRef is number, h is number, n is number) returns array
+{
+    var crossings = makeArray(n, []);
+    for (var loop in loops)
+    {
+        const m = size(loop);
+        for (var k = 0; k < m; k += 1)
+        {
+            const pa = loop[k];
+            const pb = loop[(k + 1) % m];
+            if (pa[1] == pb[1])
+            {
+                continue;
+            }
+            const lo = min(pa[1], pb[1]);
+            const hi = max(pa[1], pb[1]);
+            const j0 = max(ceil((lo - yMin) / h - 0.5), 0);
+            const j1 = min(ceil((hi - yMin) / h - 0.5) - 1, n - 1);
+            for (var j = j0; j <= j1; j += 1)
+            {
+                const yc = yMin + (j + 0.5) * h;
+                const z = pa[0] + (yc - pa[1]) / (pb[1] - pa[1]) * (pb[0] - pa[0]) - zRef;
+                crossings[j] = append(crossings[j], z);
+            }
+        }
+    }
+    return crossings;
+}
 
-    return {
-        "dNdy" : dNdy,
-        "dNdz" : dNdz,
-        "area" : A
-    };
+/**
+ * Solve a symmetric tridiagonal system (Thomas algorithm).
+ *
+ * @param diag : n + 1 diagonal entries
+ * @param off : n off-diagonal entries (row i, column i + 1)
+ * @param rhs : n + 1 right-hand side entries
+ */
+function solveSymmetricTridiagonal(diag is array, off is array, rhs is array) returns array
+{
+    const n = size(diag);
+    var cp = makeArray(n, 0);
+    var dp = makeArray(n, 0);
+    for (var i = 0; i < n; i += 1)
+    {
+        var m = diag[i];
+        var r = rhs[i];
+        if (i > 0)
+        {
+            m -= off[i - 1] * cp[i - 1];
+            r -= off[i - 1] * dp[i - 1];
+        }
+        if (i < n - 1)
+        {
+            cp[i] = off[i] / m;
+        }
+        dp[i] = r / m;
+    }
+    var x = makeArray(n, 0);
+    x[n - 1] = dp[n - 1];
+    for (var i = n - 2; i >= 0; i -= 1)
+    {
+        x[i] = dp[i] - cp[i] * x[i + 1];
+    }
+    return x;
 }
