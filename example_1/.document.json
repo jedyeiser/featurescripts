@@ -4,7 +4,7 @@
   "document_name": "example_1",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/7183868d32cdc7a6ad14410d/w/a3ea9a8cd3639eb3be0528c6",
-  "last_sync": "2026-09-27T05:44:01.050376+00:00",
+  "last_sync": "2026-09-27T05:45:34.916984+00:00",
   "feature_studios": {
     "variableSurfaceOffset": "a94d1ee80740b95e024f5a1c",
     "pathProcessing": "e9dd34f07820388a202cb620",
@@ -40,7 +40,22 @@
     "bridgingFilletUtils": "155f9e4a38058b4b21d73a54",
     "bridgingFillet": "48a73962008453a786ab9d54",
     "betterMeasureUtils": "2cfcc5809c8901350804ef33",
-    "offset_edges_frames": "cf322190768efbd668185c8c"
+    "offset_edges_frames": "cf322190768efbd668185c8c",
+    "offset_edges_output": "c28f4fa1f25f32f0fb709a8b"
   },
-  "tab_folders": {}
+  "tab_folders": {
+    "Top Surface": "Tooling",
+    "Tooling Setup": "Tooling",
+    "STR": "Tooling",
+    "STD": "Tooling",
+    "Baseline": "Tooling",
+    "Bottom Parts": "Parts",
+    "Top Parts": "Parts",
+    "Core/SW": "Parts",
+    "dummyEI_STR": "ref csv",
+    "dummyEI_STD.csv": "ref csv",
+    "dummyThickness_STD.csv": "ref csv",
+    "dummyThickness_STR": "ref csv",
+    "offset_edges_output": "refSurfCreation"
+  }
 }

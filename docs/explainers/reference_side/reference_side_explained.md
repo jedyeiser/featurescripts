@@ -167,70 +167,68 @@ quadrant: the result is an L of 10 000 mm2 with centroid 12.5 mm into the kept q
 
 ## 2.2 Split+
 
-![Split+ regions](img/fig03_split_regions.png)
+*Rewritten 2026-09-27 (Reference_Side v7): start / end tools, an inside reference, Keep both / inside / outside.
+Split+ features made before this need re-picking.*
 
-**What it does.** Onshape's Split, extended three ways:
+**What it does.** Onshape's Split at a **start tool** and, optionally, an **end tool**, with every piece named
+**inside** or **outside** -- so the names mean the same thing whatever the tools' normals, and you never depend on
+the order Onshape returns several tools in.
 
-1. **Several targets and several tools.** Every target is split by every tool, in the order the tools were
-   picked; the pieces of one split are the targets of the next.
-2. **Keep one side by reference.** With *Keep both sides* off, each tool keeps the side the reference is on (or
-   the other side). What survives is the region on the reference's side of **every** tool, whatever the tools'
-   normals.
-3. **Named regions.** Every piece is placed by which side of each tool it lies on, and the regions are published by
-   position, not by index.
+- **Inside** is the region on the inside of every tool:
+  - with an **inside reference**: the side of each tool the reference is on;
+  - two tools, no reference: **between** the two cuts;
+  - one tool, no reference: the tool's front (the side its normal points to) -- an info notice says so.
+- **Outside** is everything else: **start** (beyond the start tool) and **end** (beyond the end tool).
 
 **Split type.**
 
-- **Part** -- splits whole bodies (solids, surfaces, curves). Uses the std split for each tool.
-- **Face** -- splits only the picked faces; nothing is removed. The reference, if given, only names the two regions
-  of a one-tool split.
+- **Part** -- splits whole bodies (solids, surfaces, curves).
+- **Face** -- splits only the picked faces; nothing is removed.
 
-**Tools.** Surfaces, faces (construction planes included) and mate connectors (their XY plane). Mate connector and
-construction plane tools are infinite; surfaces cut as they are.
+**Tools.** A surface, a face (construction planes included) or a mate connector (its XY plane), one per field.
+Mate connector and construction plane tools are infinite; surfaces cut as they are.
 
 **Parameters.**
 
 - **Split type** -- Part / Face.
 - **Parts, surfaces, or curves to split** (Part) or **Faces to split** (Face).
-- **Entities to split with** -- the tools, in pick order. *Pick them in order along the part*: region names depend
-  on it.
-- **Keep tools** -- keep sheet-body tools after the split.
+- **Start tool** / **End tool** (optional).
+- **Inside reference** -- geometry in the region you call inside. Needed with one tool to name the sides.
+- **Keep** (Part) -- **Both** (default), **Inside** or **Outside**. The split keeps every piece; Keep then deletes
+  the other region.
 - **Trim to face boundaries** (Part) -- a single-face tool cuts only within its own boundary, as the built-in.
-- **Keep both sides** (Part, default on) -- off: keep one side per tool.
-- **Side reference** -- shown for a Face split or when one side is kept.
-- **Keep side nearest reference** (Part, one side) -- on: the reference's side of each tool; off: the other side.
-  Without a reference: on keeps each tool's front (the side its normal points to), off its back.
+- **Keep tools** -- keep sheet-body tools after the split.
 
-**Regions.** Named along the tools:
+**Cut edges.** Every cut leaves two coincident edges, one per piece. The one published is the edge on the **inside**
+piece, so `startCut` / `endCut` are "the cut as seen from inside" whatever you keep.
 
-| Tools | Regions |
-|---|---|
-| 1 | `near` / `far` (from the reference), or `front` / `back` without one |
-| 2 | `start` (beyond tool 1, away from tool 2), `middle`, `end` |
-| 3+ | `start`, `middle1` .. `middleN-1`, `end` |
-
-"Forward" for each tool is the side the next tool is on, so orientation never matters. When tools **cross inside the
-part** (a normal way to cut out a corner) or were picked out of order, no piece fits a band: the split is still made
-as asked, the region keys are published **empty**, and an info notice says why.
+**Outputs** (every key always present, empty when it does not apply): `inside`, `outside`, `start`, `end` and each
+`<region>Edges` (edges except the cuts; a surface's boundary edges); `startCut`, `endCut`; `splitEdges` (every
+cut); `splitFaces` (the caps on solids); `output` (the pieces kept) and `pieceCount`.
 
 **Messages.**
 
 | Message | Meaning |
 |---|---|
-| Error "A tool is also a target" | The same body is in both lists. |
-| Error "The keep side reference lies on tool k" | The reference has no side of that tool. Move it. |
-| Error "Nothing is left" | No part of the targets is on the kept side of every tool. |
-| Info "Split done; regions not published: ..." | Crossing or out-of-order tools (see above). The split itself is fine. |
+| Error "The start and end tools are the same" | Pick a different end tool. |
+| Error "A tool is also a target" | The same body is picked as a target and a tool. |
+| Error "The inside reference lies on the start / end tool" | The reference has no side of that tool. Move it. |
+| Error "The start and end tools meet or cross ... pick an inside reference" | Without a reference, 'between' is not defined. |
+| Error "Nothing is left: no piece lies inside / outside" | Keep removed everything. |
+| Info "Inside is the start tool's front ..." | One tool and no reference: the names follow the tool's normal. |
+| Info "... piece(s) lie beyond both tools" | Crossing tools: such pieces count as outside, in neither start nor end. |
+
+**Inside a Case pattern.** Pass the tools as Define case inputs, and the inside reference as an input or a shared
+reference -- never click them inside the repeated features (Case pattern explainer, rule 1).
 
 **Examples (tests S1-S10).**
 
-- S1-S4: a cube and a small cube, tools z = 0 and x = x0, reference at (x0 + 30, 0, 30). Whatever the tools' normals
-  (as drawn or flipped), *keep reference side* leaves 1 body, the upper quarter; *other side* leaves 2 bodies.
-- S6: a sheet split by planes at x 1980 (normal +X) and 2020 (normal -X): 3 pieces, 2 cut edges, regions
-  `start / middle / end` at x 1965 / 2000 / 2035. The opposite normals do not change the names.
+- S1-S3: a cube cut at z = 0, reference above. Keep inside leaves the upper half whether the tool's normal points up
+  (S1) or down (S2); keep outside leaves the lower half (S3).
+- S4: the same, keep both: `inside` = upper half, `start` = lower half, `startCut` = the 4 cut edges on the upper half.
+- S5-S7: a sheet cut at x 1580 (normal +X) and x 1620 (normal -X), no reference: `inside` x 1600, `start` x 1565,
+  `end` x 1635, one cut edge per tool; keep inside leaves the middle piece, keep outside the two ends.
 - S9: top and front faces of a cube, Face split by x 3180 / 3220: 2 faces per region, the cube goes from 6 to 10 faces.
-- Live (topsheet_surf studio): the topsheet split at Station A (x 300) and B (x 1500) gives `start` (x -19..300),
-  `middle` (300..1500) and `end` (1500..1799).
 
 ## 2.3 Offset+
 
@@ -329,7 +327,7 @@ result bodies) and `inputs`; the rest:
 | Feature | Keys |
 |---|---|
 | Mutual Trim+ | `trimEdges` (the trim curve: fillet here), `keptFaces1`, `keptFaces2`, `trimEdgeCount` |
-| Split+ | each region (`near`/`far`, `front`/`back`, `start`/`middle*`/`end`) and `<region>Edges`; `outside`, `inside` (+ `Edges`); `splitEdges` (one edge per cut); `cut` / `startCut`, `endCut` / `cut1..N`; `splitFaces`; `pieceCount`, `regionCount` |
+| Split+ | `inside`, `outside`, `start`, `end` and each `<region>Edges`; `startCut`, `endCut`; `splitEdges` (one edge per cut, on the inside piece); `splitFaces`; `pieceCount` |
 | Offset+ | `startVertex`, `endVertex`, `startEdge`, `endEdge` (start = the end at the source's start), `cornerArcs`, `boundaryEdges` (surfaces). Corner counts are in the notice only. |
 | Thicken+ | `towardFaces`, `awayFaces`, `sideFaces` (each tracked through the boolean) |
 | Orient to reference | `flipped` (the surfaces it flipped), `unchanged` (already facing the right way), `flippedCount`; `output` = every selected surface |

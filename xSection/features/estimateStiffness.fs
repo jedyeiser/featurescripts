@@ -45,17 +45,23 @@ export function estimateStiffnessEditingLogic(context is Context, id is Id, oldD
         if (xFCP == undefined || xACP == undefined)
             return definition;
 
-        if (xFCP >= xACP)
+        // FCP can sit at either end (tip toward +X or -X); the beam helpers want ascending X.
+        // The load is at the midpoint, so the order does not change the result (same as xSect.fs).
+        const xLo = min(xFCP, xACP);
+        const xHi = max(xFCP, xACP);
+        if (xHi - xLo < TOLERANCE.zeroLength * meter)
+        {
             return definition;
+        }
 
         // Sample EI profile from curve geometry
-        var eiData = getEIFromEdges(context, definition.eiEdges, xFCP, xACP);
+        var eiData = getEIFromEdges(context, definition.eiEdges, xLo, xHi);
 
         if (size(eiData) < 2)
             return definition;
 
         // Compute all four stiffness values
-        var result = computeBeamStiffness(eiData, xFCP, xACP);
+        var result = computeBeamStiffness(eiData, xLo, xHi);
 
         definition.prismaticlb = result.prismaticStiffness_lbin;
         definition.prismaticmm = result.prismaticStiffness_mm * millimeter;
