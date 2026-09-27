@@ -1262,7 +1262,10 @@ KEY for the invocation in which it was pressed and "" otherwise:
 `if (clickedButton == "fitControlPoints") { return withFittedControlPoints(context, definition); }`.
 Nothing to reset; the click is never stored and never re-fires on regen. Onshape migrates
 a saved boolean of that name to `BTMParameterButton` on the next push without complaint.
-`UIHint.DISPLAY_SHORT` puts two buttons on one row. Only std user: routingCurve.fs
+`UIHint.DISPLAY_SHORT` puts two buttons on one row. Leftover boolean edge detection on a
+button (`!oldDefinition.recalculate && definition.recalculate`) throws "Operand for '!' was not a
+boolean" / "Unexpected error in editing logic execution" on every dialog edit, because the button's
+value is undefined (xSection estimateStiffness, fixed 2026-09-26) -- test only `clickedButton`. Only std user: routingCurve.fs
 (`resetTriad`, `processInputs`, `orthoPrevious/Next`); repo users: footprint/analyzeFootprint.fs,
 xSection/features/*.fs. The note in example_1/betterMeasure/CLAUDE.md that "clickedButton
 does NOT exist" was wrong.

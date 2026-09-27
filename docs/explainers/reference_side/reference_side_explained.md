@@ -194,8 +194,8 @@ Mate connector and construction plane tools are infinite; surfaces cut as they a
 - **Parts, surfaces, or curves to split** (Part) or **Faces to split** (Face).
 - **Start tool** / **End tool** (optional).
 - **Inside reference** -- geometry in the region you call inside. Needed with one tool to name the sides.
-- **Keep** (Part) -- **Both** (default), **Inside** or **Outside**. The split keeps every piece; Keep then deletes
-  the other region.
+- **Bodies to keep** (Part) -- **Both** (default), **Inside** or **Outside**. The split keeps every piece; the
+  other region is then deleted.
 - **Trim to face boundaries** (Part) -- a single-face tool cuts only within its own boundary, as the built-in.
 - **Keep tools** -- keep sheet-body tools after the split.
 

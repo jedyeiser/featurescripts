@@ -72,7 +72,7 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
 
         if (definition.splitType == SplitPlusType.PART)
         {
-            annotation { "Name" : "Keep", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL], "Default" : SplitPlusKeep.BOTH }
+            annotation { "Name" : "Bodies to keep", "UIHint" : [UIHint.SHOW_LABEL], "Default" : SplitPlusKeep.BOTH }
             definition.keep is SplitPlusKeep;
 
             annotation { "Name" : "Trim to face boundaries", "Default" : false }
