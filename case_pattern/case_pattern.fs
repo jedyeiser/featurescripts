@@ -524,7 +524,7 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
                     "Description" : "Lay the case rows out again after inputs or values were added, removed, renamed or retyped in the Define case. Selections and values are kept by name." }
         isButton(definition.updateSlots);
 
-        annotation { "Name" : "Cases", "Item name" : "Case", "Item label template" : "#caseName",
+        annotation { "Name" : "Cases", "Item name" : "Case", "Item label template" : "#caseName", "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS,
                     "Description" : "Usually one. Each case gives a selection per input and a value per value (case 1's by default)." }
         definition.cases is array;
         for (var row in definition.cases)

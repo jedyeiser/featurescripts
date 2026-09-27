@@ -2,9 +2,9 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import xSect_GJ
-import(path : "9df6ba3db06d479fabe63c1d", version : "9837141c3629f42bee21b955");
+import(path : "9df6ba3db06d479fabe63c1d", version : "53beebbe21489072eb2ee2aa");
 // import gjAnalysis
-import(path : "d30d288c7bf272efb0957cff", version : "7d205074f78072655c3a66dd");
+import(path : "d30d288c7bf272efb0957cff", version : "a467a61161660e2a27be779c");
 //import gjDataAccess
 import(path : "12c9e75dc2139eb927245033", version : "245034f4d110f01b5a55c774");
 // IMPORT: solve_gj_icon.svg (feature icon)
