@@ -4,7 +4,7 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 // xSectPredicates (for DEBUG_COLOR_SEQUENCE and XSectionDebugType enum)
 import(path : "17142132b20343b5f125e7e7", version : "92eaeac3778fb2c3abe9bc15");
 // tools/debug - provides debugControlPolygon
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/8944e3e431de4929b0a28fbc", version : "889ff7e9c358da182dc0bf8a");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/8944e3e431de4929b0a28fbc", version : "c94daf0c1c7d27a9729a6cdd");
 
 /**
  * XSECTION DEBUG MODULE

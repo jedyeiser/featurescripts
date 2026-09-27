@@ -109,8 +109,21 @@ export const defineCase = defineFeature(function(context is Context, id is Id, d
             input.query is Query;
         }
 
+        annotation { "Name" : "Shared references", "Item name" : "Reference", "Item label template" : "#sharedName", "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS,
+                    "Description" : "Geometry from before this Define case that the repeated features use in EVERY case (a mate connector, a side reference). Reference it through this #name, never by clicking it inside the repeated features. No per-case selection." }
+        definition.shared is array;
+        for (var ref in definition.shared)
+        {
+            annotation { "Name" : "Name", "Default" : "", "MaxLength" : 64,
+                        "Description" : "Query variable name. It may already exist; it is redefined here." }
+            ref.sharedName is string;
+
+            annotation { "Name" : "Selection", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+            ref.sharedQuery is Query;
+        }
+
         annotation { "Name" : "Values", "Item name" : "Value", "Item label template" : "#valueName", "UIHint" : UIHint.COLLAPSE_ARRAY_ITEMS,
-                    "Description" : "# variables that change per case. Each is defined here with case 1's value; every case gives its own (case 1's by default)." }
+                    "Description" : "# variables that change per case: defined here with case 1's value, and every case gives its own. Values that are the same for every case need not be here -- plain variables from anywhere earlier work inside the repeated features." }
         definition.values is array;
         for (var value in definition.values)
         {
@@ -199,12 +212,26 @@ export const defineCase = defineFeature(function(context is Context, id is Id, d
             queries = append(queries, input.query);
         }
 
+        var sharedNames = [];
+        var sharedQueries = [];
+        for (var ref in definition.shared)
+        {
+            verifyDeclaredName(ref.sharedName, concatenateArrays([names, sharedNames]), "shared");
+            if (isQueryEmpty(context, ref.sharedQuery))
+            {
+                throw regenError("Shared reference #" ~ ref.sharedName ~ " selects nothing.", ["shared"]);
+            }
+            setQueryVariable(context, ref.sharedName, ref.sharedQuery);
+            sharedNames = append(sharedNames, ref.sharedName);
+            sharedQueries = append(sharedQueries, ref.sharedQuery);
+        }
+
         var valueNames = [];
         var valueKinds = [];
         var caseOneValues = [];
         for (var value in definition.values)
         {
-            verifyDeclaredName(value.valueName, concatenateArrays([names, valueNames]), "values");
+            verifyDeclaredName(value.valueName, concatenateArrays([names, sharedNames, valueNames]), "values");
             const caseOne = typedValue(value, "value", value.valueKind);
             verifyValueKind(caseOne, value.valueKind, value.valueName, "values");
             setVariable(context, value.valueName, caseOne);
@@ -221,6 +248,8 @@ export const defineCase = defineFeature(function(context is Context, id is Id, d
                     "caseName" : definition.caseName,
                     "names" : names,
                     "queries" : queries,
+                    "sharedNames" : sharedNames,
+                    "sharedQueries" : sharedQueries,
                     "valueNames" : valueNames,
                     "valueKinds" : valueKinds,
                     "values" : caseOneValues
@@ -228,6 +257,7 @@ export const defineCase = defineFeature(function(context is Context, id is Id, d
     }, {
         "caseName" : "A",
         "inputs" : [],
+        "shared" : [],
         "values" : []
     });
 
@@ -976,6 +1006,14 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
             usedNames = [signature.caseName];
         }
         const templateNames = parseTemplateNames(signature.templateNames);
+        // Shared references: resolved once here, OUTSIDE the pattern frame, and bound the same for every
+        // case (a query naming geometry from before the repeated features is refused inside the frame).
+        const sharedNames = signature.sharedNames is array ? signature.sharedNames : [];
+        var sharedResolved = [];
+        for (var n = 0; n < size(sharedNames); n += 1)
+        {
+            sharedResolved = append(sharedResolved, qUnion(evaluateQuery(context, signature.sharedQueries[n])));
+        }
         var failures = [];
         var notes = [];
         var unnamed = 0;
@@ -1028,10 +1066,10 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
                 }
                 if (value == undefined)
                 {
-                    value = signature.values[m];
-                    notes = append(notes, caseName ~ " uses case 1's #" ~ name ~ " (click Update from Define case in this Case pattern)");
+                    bindFailure = "#" ~ name ~ " has no value (click Update from Define case in this Case pattern)";
+                    break;
                 }
-                else if (kind == CaseValueKind.BOOLEAN && !(value is boolean))
+                if (kind == CaseValueKind.BOOLEAN && !(value is boolean))
                 {
                     bindFailure = "#" ~ name ~ " must be true or false";
                     break;
@@ -1058,6 +1096,10 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
             }
             setVariable(context, "caseName", caseName);
             setVariable(context, "caseIndex", caseIndex);
+            for (var n = 0; n < size(sharedNames); n += 1)
+            {
+                setQueryVariable(context, sharedNames[n], sharedResolved[n]);
+            }
             if (definition.debug)
             {
                 println("Case " ~ caseName ~ " (#caseIndex " ~ caseIndex ~ "):");
@@ -1141,6 +1183,10 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
         for (var m = 0; m < size(signature.valueNames); m += 1)
         {
             setVariable(context, signature.valueNames[m], signature.values[m]);
+        }
+        for (var n = 0; n < size(sharedNames); n += 1)
+        {
+            setQueryVariable(context, sharedNames[n], signature.sharedQueries[n]);
         }
         setVariable(context, "caseName", signature.caseName);
         setVariable(context, "caseIndex", 1);

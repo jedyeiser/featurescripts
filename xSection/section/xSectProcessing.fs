@@ -26,7 +26,7 @@ import(path : "08d3a8d4e34a60d45d46e261", version : "b3ec304e131f77982d65a20b");
 import(path : "f8e590162884d45f56e0a05f", version : "eea0dd2f92bbe788ad4ed3b4");
 
 // IMPORTS - xSectCLT (isotropicQMatrix, orthotropicQMatrix)
-import(path : "74231d1d53f5a117d47d17a9", version : "6037506258f6ae6f6ec90faa");
+import(path : "74231d1d53f5a117d47d17a9", version : "46d59ddc4073c927dd26d03c");
 
 // =============================================================================
 // OVERLAP DETECTION CONSTANTS
