@@ -313,6 +313,17 @@
       "last_push": "2026-09-26T04:20:53.057243+00:00",
       "document_id": "aa401f26e81a260d97f6853c",
       "workspace_id": "d38ee54f2f9b2ff2eabbcccd"
+    },
+    {
+      "name": "join_profiles",
+      "description": "Join profile surfaces / Joined part (profile joins built on Reference_Side)",
+      "working_directory": "join_profiles",
+      "onshape_url": "https://k2-sports.onshape.com/documents/13e432ceae756ed1a698c9c0/w/e8eef939e8b4d967c04a6aee",
+      "references": [],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "13e432ceae756ed1a698c9c0",
+      "workspace_id": "e8eef939e8b4d967c04a6aee"
     }
   ],
   "sync_metadata": {}
