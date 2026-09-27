@@ -387,6 +387,19 @@ case("S11 ", r'''
         return [size(bodies) == 1 && abs(v - want) < 0.01 * millimeter ^ 3,
             size(bodies) ~ " body (1), volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (" ~ roundToPrecision(want / millimeter ^ 3, 2) ~ ": the ring)"];''', PLATE="S11 plate")
 
+case("T7 ", r'''
+        const out = embedded(SELF);
+        const bodies = evaluateQuery(context, out.query.output.value);
+        const v = size(bodies) == 1 ? evVolume(context, { "entities" : bodies[0] }) : 0 * meter ^ 3;
+        return [size(bodies) == 1 && abs(v - 982000 * millimeter ^ 3) < 0.01 * millimeter ^ 3,
+            "output " ~ size(bodies) ~ " body (1), volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (982000)"];''')
+
+case("F6 ", r'''
+        const out = embedded(SELF);
+        const n = count(out.query.output.value);
+        const b = count(out.query.boundaryEdges.value);
+        return [n == 1 && b == 4, "output " ~ n ~ " face (1), boundaryEdges " ~ b ~ " (4)"];''')
+
 EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference"]
 
 

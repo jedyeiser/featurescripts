@@ -453,3 +453,20 @@ split("S11 Split+ plate by a cylinder, reference on the axis, keep outside -> th
     q("targets", body(plate)), q("startTool", body(cyl)),
     q("insideReference", ref_top("S11 reference point (16200, 0, 0)", x0, 0)), keep("OUTSIDE")])
 print("studio", E)
+
+# ---- 2026-09-27 audit: outputs of Thicken+ Remove, Move face+ at distance 0 ----
+x0 = 17000
+t7 = cube("T7 cube at x 17000", x0, 0)
+top7 = sheet("T7 sheet on the cube's top, z 50, x 16970..17030", [(x0 - 30, 50), (x0 + 30, 50)], 60)
+thicken("T7 Thicken+ 5 mm down into the cube, Remove -> 1 part, volume 982000, output = the cube", [
+    en("operationType", "NewBodyOperationType", "REMOVE", NS["thicken_plus"]), q("entities", body(top7)),
+    q("sideReference", ref_front("T7 reference point (17000, 0, 0)", x0, 0)),
+    num("thicknessToward", "5 mm"), num("thicknessAway", "0 mm"),
+    b("defaultScope", False), q("booleanScope", body(t7))])
+
+x0 = 17400
+f6 = cube("F6 cube at x 17400", x0, 0)
+move_face("F6 Move face+ distance 0 -> nothing moves, output still published (1 face)", [
+    q("faces", face_at(f6, x0, 0, 50)), num("distance", "0 mm"), q("sideReference"), b("towardReference", True),
+    b("reFillet", False), b("debugPrint", False)])
+print("studio", E)
