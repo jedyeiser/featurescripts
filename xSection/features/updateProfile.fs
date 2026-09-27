@@ -378,12 +378,15 @@ export function updateProfileEditLogic(context is Context, id is Id, oldDefiniti
             var xFCP = resolveReferencePointX(context, definition.fcpQuery, definition.targetEIQuery);
             var xACP = resolveReferencePointX(context, definition.acpQuery, definition.targetEIQuery);
 
-            if (xFCP != undefined && xACP != undefined && xFCP < xACP)
+            // FCP can sit at either end (tip toward +X or -X); the beam helpers want ascending X
+            if (xFCP != undefined && xACP != undefined && abs(xFCP - xACP) > TOLERANCE.zeroLength * meter)
             {
-                var eiData = getEIFromEdges(context, definition.targetEIQuery, xFCP, xACP);
+                const xLo = min(xFCP, xACP);
+                const xHi = max(xFCP, xACP);
+                var eiData = getEIFromEdges(context, definition.targetEIQuery, xLo, xHi);
                 if (size(eiData) >= 2)
                 {
-                    var result = computeBeamStiffness(eiData, xFCP, xACP);
+                    var result = computeBeamStiffness(eiData, xLo, xHi);
                     definition.prismaticlb = result.prismaticStiffness_lbin;
                     definition.prismaticmm = result.prismaticStiffness_mm * millimeter;
                     definition.estimatedlb = result.estimatedStiffness_lbin;

@@ -94,7 +94,7 @@ export const estimateStiffness = defineFeature(function(context is Context, id i
         annotation { "Name" : "ACP", "Filter" : (EntityType.FACE && GeometryType.PLANE) || (EntityType.VERTEX) || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1 }
         definition.acpQuery is Query;
 
-        annotation { "Group Name" : "Stiffness estimates", "Collapsed By Default" : true }
+        annotation { "Group Name" : "Stiffness estimates", "Collapsed By Default" : false }
         {
             annotation { "Name" : "Prismatic stiffness (lb/in)", "UIHint" : UIHint.READ_ONLY }
             isReal(definition.prismaticlb, POSITIVE_REAL_BOUNDS);
