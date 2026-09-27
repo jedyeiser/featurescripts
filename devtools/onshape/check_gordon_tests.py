@@ -670,7 +670,6 @@ case("P9 ", r'''
 
 # Cases that document today's bugs (reviews/2026-09-25_tools_review/curves.md). Remove an entry once its fix lands.
 EXPECT_FAIL = {
-    "T42 ": "Needs the tools version with SMOOTHERSTEP + re-pin of transition_functions (not built until then)",
     # T05, T09, SC1-SC3 fixed 2026-09-25 (quick fixes after the tools review); P1, P2 fixed 2026-09-26 (Pull surface
     # control-net rewrite) -- they now guard against regressions.
 }

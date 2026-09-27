@@ -486,9 +486,7 @@ mce_run("T40", "world G0, embedded keys -> movedVertex at To, holdVertex at the 
 
 # MCE P2: transport offset, SMOOTHERSTEP, hold-knot removal
 mce_case("T41", 50000, "transport offset -> ends exact, differs from T01", given=[b("transportOffset", True)])
-# T42 needs the tools version with SMOOTHERSTEP (re-pin transition_functions first); set GORDON_T42=1 to build it.
-if os.environ.get("GORDON_T42"):
-    mce_case("T42", 51000, "smootherstep transition -> ends exact, fixed-end tangent no worse than T01", {"transitionType": "SMOOTHERSTEP"})
+mce_case("T42", 51000, "smootherstep transition -> ends exact, fixed-end tangent no worse than T01", {"transitionType": "SMOOTHERSTEP"})
 hold_case("T43", 52000, "hold G2 + remove hold knot -> held part unchanged, 2 fewer control points than T31", (150, -30),
           enums=HOLD_G2, given=[b("removeHoldKnot", True)])
 
