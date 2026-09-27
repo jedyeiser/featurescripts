@@ -181,52 +181,45 @@ def split(name, params):
     return feature(name, "splitPlus", params, NS["split_plus"])
 
 
-for n, (flip, keep_near) in enumerate([(False, True), (False, False), (True, True), (True, False)]):
+def keep(value):
+    return en("keep", "SplitPlusKeep", value, NS["split_plus"])
+
+
+# v2 (2026-09-27): start / end tools, inside reference, Keep both / inside / outside.
+for n, (flip, kept) in enumerate([(False, "INSIDE"), (True, "INSIDE"), (False, "OUTSIDE"), (False, "BOTH")]):
     x0 = n * 400
     tag = "S%d" % (n + 1)
     target = cube("%s cube at x %d" % (tag, x0), x0, 0)
-    missed = cube("%s small cube at x %d (missed by the x tool)" % (tag, x0 - 190), x0 - 190, 0, -10, 10, 10)
     pz = plane_at("%s tool z = 0%s" % (tag, ", normal flipped" if flip else ""), "Top", 0, flip)
-    # as drawn the x tool's normal points -X (the harness's), flipped +X
-    px = plane_at("%s tool x = %d%s" % (tag, x0, ", normal +X" if flip else ", normal -X"), "Right", x0, not flip)
-    ref = ref_front("%s reference point (%d, 0, 30)" % (tag, x0 + 30), x0 + 30, 30)
-    split("%s Split+ two tools, %s, keep %s -> %s" % (tag, "flipped normals" if flip else "normals as drawn",
-                                                     "reference side" if keep_near else "other side",
-                                                     "1 body, quarter at (%d, 0, 25)" % (x0 + 25) if keep_near else "2 bodies, quarter at (%d, 0, -25)" % (x0 - 25)), [
-        q("targets", "qUnion([%s, %s])" % (body(target), body(missed))), q("tools", pz, px),
-        b("keepBothSides", False), q("keepReference", ref), b("keepNear", keep_near)])
+    ref = ref_front("%s reference point (%d, 0, 30)" % (tag, x0), x0, 30)
+    want = {"INSIDE": "1 body, centroid z 25", "OUTSIDE": "1 body, centroid z -25", "BOTH": "inside z 25, start z -25, startCut 4"}[kept]
+    split("%s Split+ one tool z = 0%s, reference above, keep %s -> %s" % (tag, " (normal down)" if flip else "", kept.lower(), want), [
+        q("targets", body(target)), q("startTool", pz), q("insideReference", ref), keep(kept)])
 
 x0 = 1600
-t = cube("S5 cube at x 1600", x0, 0)
-split("S5 Split+ keep both sides, two tools -> 4 pieces", [
-    q("targets", body(t)), q("tools", plane_at("S5 tool z = 0", "Top", 0), plane_at("S5 tool x = 1600", "Right", x0)), b("keepBothSides", True)])
-
-s = sheet("S6 sheet z 0, x 1950..2050", [(1950, 0), (2050, 0)])
-split("S6 Split+ sheet, both sides, planes x 1980 (+X) / 2020 (-X) -> 3 pieces, 2 splitEdges; regions start / middle / end at x 1965 / 2000 / 2035", [
-    q("targets", body(s)), q("tools", plane_at("S6 tool x = 1980", "Right", 1980), plane_at("S6 tool x = 2020, normal -X", "Right", 2020, True)),
-    b("keepBothSides", True)])
-
-s = sheet("S7 sheet z 0, x 2350..2450", [(2350, 0), (2450, 0)])
-split("S7 Split+ one tool x 2400, reference at x 2300 -> near 1 piece at x 2375, far 0", [
-    q("targets", body(s)), q("tools", plane_at("S7 tool x = 2400", "Right", 2400)), b("keepBothSides", False),
-    q("keepReference", ref_front("S7 reference point (2300, 0, 0)", 2300, 0)), b("keepNear", True)])
+for tag, kept, x0 in (("S5", "BOTH", 1600), ("S6", "INSIDE", 2000), ("S7", "OUTSIDE", 2400)):
+    sh = sheet("%s sheet z 0, x %d..%d" % (tag, x0 - 50, x0 + 50), [(x0 - 50, 0), (x0 + 50, 0)])
+    split("%s Split+ sheet, start x %d (+X) / end x %d (-X), no reference, keep %s" % (tag, x0 - 20, x0 + 20, kept.lower()), [
+        q("targets", body(sh)), q("startTool", plane_at("%s start tool x = %d" % (tag, x0 - 20), "Right", x0 - 20)),
+        q("endTool", plane_at("%s end tool x = %d, normal -X" % (tag, x0 + 20), "Right", x0 + 20, True)), keep(kept)])
 
 t = cube("S8 cube at x 2800", 2800, 0)
 tool = sheet("S8 tool sheet z 0, x 2700..2900 (deleted by the split)", [(2700, 0), (2900, 0)], 200)
-split("S8 Split+ by a sheet, reference below -> 1 body, centroid z -25, tool deleted", [
-    q("targets", body(t)), q("tools", body(tool)), b("keepBothSides", False),
-    q("keepReference", ref_front("S8 reference point (2800, 0, -30)", 2800, -30)), b("keepNear", True)])
+split("S8 Split+ by a sheet, reference below, keep inside -> 1 body, centroid z -25, tool deleted", [
+    q("targets", body(t)), q("startTool", body(tool)),
+    q("insideReference", ref_front("S8 reference point (2800, 0, -30)", 2800, -30)), keep("INSIDE")])
 
 t = cube("S9 cube at x 3200", 3200, 0)
-split("S9 Split+ faces (top, front) by planes x 3180 / 3220 -> 2 faces per region at x 3165 / 3200 / 3235, cube 10 faces", [
+split("S9 Split+ faces (top, front) by start x 3180 / end x 3220 -> inside / start / end 2 faces each at x 3200 / 3165 / 3235", [
     en("splitType", "SplitPlusType", "FACE", NS["split_plus"]), q("faceTargets", face_at(t, 3200, 0, 50), face_at(t, 3200, -50, 0)),
-    q("tools", plane_at("S9 tool x = 3180", "Right", 3180), plane_at("S9 tool x = 3220", "Right", 3220)), b("keepTools", True)])
+    q("startTool", plane_at("S9 start tool x = 3180", "Right", 3180)), q("endTool", plane_at("S9 end tool x = 3220", "Right", 3220)),
+    b("keepTools", True)])
 
 t = cube("S10 cube at x 3600", 3600, 0)
 tool = sheet("S10 tool sheet x = 3600 (deleted by the split)", [(3600, -100), (3600, 100)], 200)
-split("S10 Split+ top face by a sheet, reference at x 3500 -> near 1 face at x 3575, far 1, tool deleted", [
-    en("splitType", "SplitPlusType", "FACE", NS["split_plus"]), q("faceTargets", face_at(t, 3600, 0, 50)), q("tools", body(tool)),
-    q("keepReference", ref_front("S10 reference point (3500, 0, 0)", 3500, 0))])
+split("S10 Split+ top face by a sheet, reference at x 3500 -> inside 1 face at x 3575, start 1, tool deleted", [
+    en("splitType", "SplitPlusType", "FACE", NS["split_plus"]), q("faceTargets", face_at(t, 3600, 0, 50)), q("startTool", body(tool)),
+    q("insideReference", ref_front("S10 reference point (3500, 0, 0)", 3500, 0))])
 
 
 # ============================================================================

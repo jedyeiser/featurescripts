@@ -506,6 +506,49 @@ function netFromSurface(surf is map) returns map
             "uPer" : surf.isUPeriodic, "vPer" : surf.isVPeriodic, "rational" : rational, "hom" : hom };
 }
 
+/**
+ * The kernel returns a closed revolved direction (full cylinder, sphere longitude) flagged
+ * periodic but in CLAMPED form: end knots of multiplicity p + 1, last row = first row, no
+ * p-row overlap (seen live 2026-09-26: 7 rows, knots 0000 .5.5.5 1111, rational semicircles).
+ * Such a direction is handled as a clamped closed direction (tied seam row, refinable, seam
+ * and joints locked like C0 knot joints); the periodic flag is restored on output (uPerOut).
+ */
+function normalizeClampedPeriodic(net is map) returns map
+{
+    var out = net;
+    for (var dirU in [true, false])
+    {
+        if (!dirPeriodic(out, dirU) || isPeriodicOverlapped(out, dirU))
+        {
+            continue;
+        }
+        const p = dirDegree(out, dirU);
+        const knots = dirKnots(out, dirU);
+        const nK = size(knots);
+        var clamped = true;
+        for (var i = 0; i <= p; i += 1)
+        {
+            clamped = clamped && knots[i] == knots[0] && knots[nK - 1 - i] == knots[nK - 1];
+        }
+        const rows = rowsOf(out, dirU);
+        if (!clamped || !sameRow(rows[0], rows[size(rows) - 1]))
+        {
+            continue;
+        }
+        if (dirU)
+        {
+            out.uPer = false;
+            out.uPerOut = true;
+        }
+        else
+        {
+            out.vPer = false;
+            out.vPerOut = true;
+        }
+    }
+    return out;
+}
+
 function dirDegree(net is map, dirU is boolean) returns number
 {
     return dirU ? net.uDeg : net.vDeg;
@@ -835,8 +878,10 @@ function sameRow(rowA is array, rowB is array) returns boolean
 
 /**
  * Number of independent control rows of a direction. A periodic net repeats its first p rows
- * at the end (rows k and k + result are one row); a clamped direction of a closed face whose
- * first and last rows coincide ties the last row to the first. Otherwise every row counts.
+ * at the end (rows k and k + result are one row); a clamped direction whose first and last
+ * rows coincide (closed -- decided on the net, since face and surface parameters may be
+ * swapped, as on a sphere) ties the last row to the first when closedDir. Otherwise every
+ * row counts.
  */
 function uniqueRowCount(net is map, dirU is boolean, closedDir is boolean) returns number
 {
@@ -1141,7 +1186,7 @@ function netToSurface(net is map) returns BSplineSurface
         wts[i] = rowW;
     }
     return bSplineSurface({ "uDegree" : net.uDeg, "vDegree" : net.vDeg,
-                "isUPeriodic" : net.uPer, "isVPeriodic" : net.vPer,
+                "isUPeriodic" : net.uPer || net.uPerOut == true, "isVPeriodic" : net.vPer || net.vPerOut == true,
                 "controlPoints" : controlPointMatrix(pts),
                 "weights" : net.rational ? matrix(wts) : undefined,
                 "uKnots" : knotArray(net.uKnots), "vKnots" : knotArray(net.vKnots) });
@@ -1561,11 +1606,11 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         // -- Source control net --
         const approxTol = min(max(definition.fitTolerance / meter / 10, 1e-8), 1e-4);
         var src = evApproximateBSplineSurface(context, { "face" : definition.face, "tolerance" : approxTol });
-        var net = netFromSurface(src.bSplineSurface);
+        var net = normalizeClampedPeriodic(netFromSurface(src.bSplineSurface));
         if ((net.uDeg < 2 && !isSingleSpan(net, true)) || (net.vDeg < 2 && !isSingleSpan(net, false)))
         {
             src = evApproximateBSplineSurface(context, { "face" : definition.face, "tolerance" : approxTol, "forceCubic" : true });
-            net = netFromSurface(src.bSplineSurface);
+            net = normalizeClampedPeriodic(netFromSurface(src.bSplineSurface));
         }
         const targetDeg = min(max(definition.curveDegree, 2), PULL_MAX_DEGREE);
         for (var dirU in [true, false])
@@ -1652,8 +1697,8 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 const wanted = dirU ? uCount : vCount;
                 net = refineToCount(net, dirU, dirPeriodic(net, dirU) ? wanted + dirDegree(net, dirU) : wanted);
             }
-            const nUniqU = uniqueRowCount(net, true, closed[0]);
-            const nUniqV = uniqueRowCount(net, false, closed[1]);
+            const nUniqU = uniqueRowCount(net, true, true);
+            const nUniqV = uniqueRowCount(net, false, true);
             lockU = lockMask(net, true, order, nUniqU == size(net.hom));
             lockV = lockMask(net, false, order, nUniqV == size(net.hom[0]));
             const cands = freeCandidates(context, definition.face, net, lockU, lockV, nUniqU, nUniqV, size(trims) > 0, approxTol);
@@ -1707,8 +1752,8 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             }
 
             // -- Locked rows and candidate control points --
-            const nUniqU = uniqueRowCount(net, true, closed[0]);
-            const nUniqV = uniqueRowCount(net, false, closed[1]);
+            const nUniqU = uniqueRowCount(net, true, true);
+            const nUniqV = uniqueRowCount(net, false, true);
             lockU = lockMask(net, true, order, nUniqU == size(net.hom));
             lockV = lockMask(net, false, order, nUniqV == size(net.hom[0]));
             const nu = size(net.hom);

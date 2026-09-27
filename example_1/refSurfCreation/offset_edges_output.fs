@@ -8,7 +8,7 @@ import(path : "08e8748f2ef24eea16072b75/fa1a00e26f19c86291f2c55e/683d867c35fdab9
 import(path : "08e8748f2ef24eea16072b75/fa1a00e26f19c86291f2c55e/ad98c7f43a25a4c0e8a428e7", version : "223c53d12a83984c4c62e354");
 // IMPORT: offset_edges_frames.fs (same document)
 // PLACEHOLDER: replace path with the offset_edges_frames tab's element id and version with its microversion once the tab exists.
-import(path : "PLACEHOLDER_FRAMES_ELEMENT_ID", version : "PLACEHOLDER_FRAMES_MICROVERSION");
+import(path : "cf322190768efbd668185c8c", version : "de724f522170a8defcfd213b");
 
 /**
  * Offset edges -- regions, profile and output wire (split out of offsetEdges.fs 2026-09-26).

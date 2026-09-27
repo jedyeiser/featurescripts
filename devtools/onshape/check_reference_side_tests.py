@@ -72,48 +72,62 @@ def case(prefix, body, **names):
     CASES.append((prefix, body, names))
 
 
-for n, (flip, keep_near) in enumerate([(False, True), (False, False), (True, True), (True, False)]):
-    x0 = n * 400
-    want = (x0 + 25, 0, 25) if keep_near else (x0 - 25, 0, -25)
+# Split+ v2 (2026-09-27): start / end tools, inside reference, Keep both / inside / outside.
+for n, kept in enumerate(["INSIDE", "INSIDE", "OUTSIDE"]):
+    want_z = 25 if kept == "INSIDE" else -25
     case("S%d " % (n + 1), r'''
-        const bodies = evaluateQuery(context, qUnion([created(@CUBE@), created(@MISSED@), created(SELF)]));
-        if (size(bodies) != %d) { return [false, size(bodies) ~ " bodies, expected %d"]; }
-        const cc = centroid(largest(bodies));
-        return [norm(cc - pt(%g, %g, %g)) < mm(0.01), "quarter centroid " ~ fmtV(cc) ~ ", expected (%g, %g, %g), " ~ size(bodies) ~ " bodies"];''' % (
-        1 if keep_near else 2, 1 if keep_near else 2, *want, *want),
-         CUBE="S%d cube" % (n + 1), MISSED="S%d small cube" % (n + 1))
+        const bodies = evaluateQuery(context, qUnion([created(@CUBE@), created(SELF)]));
+        const cc = size(bodies) == 1 ? centroid(bodies[0]) : pt(0, 0, 0);
+        const out = embedded(SELF);
+        const region = count(out.query.%s.value);
+        return [size(bodies) == 1 && near(cc[2], mm(%d), mm(0.01)) && region == 1,
+            size(bodies) ~ " bodies (1), centroid z " ~ fmt(cc[2]) ~ " (%d), %s " ~ region ~ " (1)"];''' % (
+        kept.lower(), want_z, want_z, kept.lower()), CUBE="S%d cube" % (n + 1))
+
+case("S4 ", r'''
+        const out = embedded(SELF);
+        const ins = evaluateQuery(context, out.query.inside.value);
+        const st = evaluateQuery(context, out.query.start.value);
+        const zi = size(ins) == 1 ? centroid(ins[0])[2] : 0 * meter;
+        const zs = size(st) == 1 ? centroid(st[0])[2] : 0 * meter;
+        const cut = count(out.query.startCut.value);
+        const endCount = count(out.query.end.value) + count(out.query.endCut.value);
+        const ok = size(ins) == 1 && size(st) == 1 && near(zi, mm(25), mm(0.01)) && near(zs, mm(-25), mm(0.01)) && cut == 4 && endCount == 0;
+        return [ok, "inside z " ~ fmt(zi) ~ " (25), start z " ~ fmt(zs) ~ " (-25), startCut " ~ cut ~ " (4), end + endCut " ~ endCount ~ " (0)"];''')
 
 case("S5 ", r'''
-        const n = count(qUnion([created(@CUBE@), created(SELF)]));
-        return [n == 4, n ~ " pieces, expected 4"];''', CUBE="S5 cube")
-
-case("S6 ", r'''
         const out = embedded(SELF);
-        const seams = count(out.query.splitEdges.value);
-        const pieces = count(out.query.output.value);
-        var ok = seams == 2 && pieces == 3 && out.variable.regionCount.value == 3;
-        var detail = seams ~ " split edges (2), " ~ pieces ~ " pieces (3); ";
-        for (var region in [["start", 1965], ["middle", 2000], ["end", 2035]])
+        var ok = count(out.query.output.value) == 3;
+        var detail = count(out.query.output.value) ~ " pieces (3); ";
+        for (var region in [["inside", 1600], ["start", 1565], ["end", 1635]])
         {
             const bodies = evaluateQuery(context, out.query[region[0]].value);
             const x = size(bodies) == 1 ? centroid(bodies[0])[0] : 0 * meter;
             ok = ok && size(bodies) == 1 && near(x, mm(region[1]), mm(0.01));
             detail ~= region[0] ~ " " ~ size(bodies) ~ " at x " ~ fmt(x) ~ "; ";
         }
-        const middleEdges = count(out.query.middleEdges.value);
         const startCut = count(out.query.startCut.value);
         const endCut = count(out.query.endCut.value);
         const outside = count(out.query.outside.value);
-        ok = ok && middleEdges == 2 && startCut == 1 && endCut == 1 && outside == 2;
-        return [ok, detail ~ "middleEdges " ~ middleEdges ~ " (2), startCut " ~ startCut ~ " (1), endCut " ~ endCut ~ " (1), outside " ~ outside ~ " (2)"];''')
+        const insideEdges = count(out.query.insideEdges.value);
+        ok = ok && startCut == 1 && endCut == 1 && outside == 2 && insideEdges == 2;
+        return [ok, detail ~ "startCut " ~ startCut ~ " (1), endCut " ~ endCut ~ " (1), outside " ~ outside ~ " (2), insideEdges " ~ insideEdges ~ " (2)"];''')
+
+case("S6 ", r'''
+        const out = embedded(SELF);
+        const kept = evaluateQuery(context, out.query.output.value);
+        const x = size(kept) == 1 ? centroid(kept[0])[0] : 0 * meter;
+        return [size(kept) == 1 && near(x, mm(2000), mm(0.01)), size(kept) ~ " piece(s) (1) at x " ~ fmt(x) ~ " (2000)"];''')
 
 case("S7 ", r'''
         const out = embedded(SELF);
-        const nearBodies = evaluateQuery(context, out.query.near.value);
-        const farBodies = evaluateQuery(context, out.query.far.value);
-        const x = size(nearBodies) == 1 ? centroid(nearBodies[0])[0] : 0 * meter;
-        return [size(nearBodies) == 1 && size(farBodies) == 0 && near(x, mm(2375), mm(0.01)),
-            "near " ~ size(nearBodies) ~ " at x " ~ fmt(x) ~ " (1 at 2375), far " ~ size(farBodies) ~ " (0: removed)"];''')
+        const kept = count(out.query.output.value);
+        const st = evaluateQuery(context, out.query.start.value);
+        const en = evaluateQuery(context, out.query.end.value);
+        const xs = size(st) == 1 ? centroid(st[0])[0] : 0 * meter;
+        const xe = size(en) == 1 ? centroid(en[0])[0] : 0 * meter;
+        return [kept == 2 && near(xs, mm(2365), mm(0.01)) && near(xe, mm(2435), mm(0.01)),
+            kept ~ " pieces (2), start x " ~ fmt(xs) ~ " (2365), end x " ~ fmt(xe) ~ " (2435)"];''')
 
 case("S8 ", r'''
         const bodies = evaluateQuery(context, qUnion([created(@CUBE@), created(SELF)]));
@@ -128,7 +142,7 @@ case("S9 ", r'''
         const faces = count(qOwnedByBody(cube, EntityType.FACE));
         var ok = count(cube) == 1 && faces == 10;
         var detail = "";
-        for (var region in [["start", 3165], ["middle", 3200], ["end", 3235]])
+        for (var region in [["start", 3165], ["inside", 3200], ["end", 3235]])
         {
             const found = evaluateQuery(context, out.query[region[0]].value);
             for (var f in found)
@@ -138,21 +152,21 @@ case("S9 ", r'''
             ok = ok && size(found) == 2;
             detail ~= region[0] ~ " " ~ size(found) ~ " faces; ";
         }
-        const middleEdges = count(out.query.middleEdges.value);
+        const insideEdges = count(out.query.insideEdges.value);
         const startCut = count(out.query.startCut.value);
         const splitEdges = count(out.query.splitEdges.value);
-        ok = ok && middleEdges == 2 && startCut == 2 && splitEdges == 4 && out.variable.pieceCount.value == 6;
-        return [ok, detail ~ "middleEdges " ~ middleEdges ~ " (2), startCut " ~ startCut ~ " (2), splitEdges " ~ splitEdges ~ " (4), pieceCount "
+        ok = ok && insideEdges == 2 && startCut == 2 && splitEdges == 4 && out.variable.pieceCount.value == 6;
+        return [ok, detail ~ "insideEdges " ~ insideEdges ~ " (2), startCut " ~ startCut ~ " (2), splitEdges " ~ splitEdges ~ " (4), pieceCount "
             ~ out.variable.pieceCount.value ~ " (6), cube faces " ~ faces ~ " (10)"];''', CUBE="S9 cube")
 
 case("S10 ", r'''
         const out = embedded(SELF);
-        const nearFaces = evaluateQuery(context, out.query.near.value);
-        const farFaces = evaluateQuery(context, out.query.far.value);
-        const x = size(nearFaces) == 1 ? centroid(nearFaces[0])[0] : 0 * meter;
+        const insideFaces = evaluateQuery(context, out.query.inside.value);
+        const startFaces = evaluateQuery(context, out.query.start.value);
+        const x = size(insideFaces) == 1 ? centroid(insideFaces[0])[0] : 0 * meter;
         const toolGone = isQueryEmpty(context, created(@TOOL@));
-        return [size(nearFaces) == 1 && size(farFaces) == 1 && near(x, mm(3575), mm(0.01)) && toolGone,
-            "near " ~ size(nearFaces) ~ " at x " ~ fmt(x) ~ " (1 at 3575), far " ~ size(farFaces) ~ " (1), tool deleted " ~ toolGone];''',
+        return [size(insideFaces) == 1 && size(startFaces) == 1 && near(x, mm(3575), mm(0.01)) && toolGone,
+            "inside " ~ size(insideFaces) ~ " at x " ~ fmt(x) ~ " (1 at 3575), start " ~ size(startFaces) ~ " (1), tool deleted " ~ toolGone];''',
      TOOL="S10 tool sheet x = 3600 (deleted by the split)")
 
 for n, toward in enumerate([True, False]):

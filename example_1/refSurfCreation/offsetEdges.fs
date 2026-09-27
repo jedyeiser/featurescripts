@@ -4,7 +4,7 @@ export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "3083.0
 
 // IMPORT: offset_edges_frames.fs (same document; path, frames, offset points)
 // PLACEHOLDER: replace path with the offset_edges_frames tab's element id and version with its microversion once the tab exists.
-import(path : "PLACEHOLDER_FRAMES_ELEMENT_ID", version : "PLACEHOLDER_FRAMES_MICROVERSION");
+import(path : "cf322190768efbd668185c8c", version : "de724f522170a8defcfd213b");
 // IMPORT: offset_edges_output.fs (same document; regions, profile, output wire).
 // export import: its enums are parameter types of this feature and must be reachable from this tab's exports.
 // PLACEHOLDER: replace path with the offset_edges_output tab's element id and version with its microversion once the tab exists.
