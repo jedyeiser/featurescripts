@@ -334,6 +334,30 @@ for tag, top_z in (("F3", 60), ("F4", 40)):
         return [near(z[0], mm(-50), mm(0.001)) && near(z[1], mm(%d), mm(0.001)), "cube z " ~ fmt(z[0]) ~ ".." ~ fmt(z[1]) ~ " (-50..%d)"];''' % (top_z, top_z),
          CUBE="%s cube" % tag)
 
+# Signed / zero distances (2026-09-27)
+for tag, want in (("O3", 60), ("O4", 50)):
+    case(tag + " ", r'''
+        var zs = [];
+        for (var b in evaluateQuery(context, created(SELF)))
+        {
+            zs = append(zs, centroid(b)[2]);
+        }
+        zs = sort(zs, function(a, b) { return a - b; });
+        const ok = size(zs) == 2 && near(zs[0], mm(-%d), mm(0.001)) && near(zs[1], mm(%d), mm(0.001));
+        return [ok, size(zs) ~ " sheets at z " ~ (size(zs) == 2 ? fmt(zs[0]) ~ ", " ~ fmt(zs[1]) : "?") ~ " (-%d, %d)"];''' % (want, want, want, want))
+
+case("C9 ", r'''
+        const n = count(created(SELF));
+        const len = totalLength(created(SELF));
+        return [n == 1 && near(len, mm(400), mm(0.001)), n ~ " wire(s), length " ~ fmt(len) ~ " (1, 400)"];''')
+
+case("F5 ", r'''
+        const t = zRange(created(@TOP@));
+        const b = zRange(created(@BOTTOM@));
+        const ok = near(t[0], mm(60), mm(0.001)) && near(b[0], mm(-60), mm(0.001));
+        return [ok, "top sheet at z " ~ fmt(t[0]) ~ " (60), bottom sheet at z " ~ fmt(b[0]) ~ " (-60)"];''',
+     TOP="F5 top sheet", BOTTOM="F5 bottom sheet")
+
 EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference"]
 
 

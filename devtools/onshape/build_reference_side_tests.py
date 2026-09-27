@@ -420,3 +420,29 @@ move_face("F4 Move face+ solid top face toward a reference inside -> shrinks to 
     q("sideReference", ref_front("F4 reference point (%d, 0, 0)" % x0, x0, 0)), b("towardReference", True),
     b("reFillet", False), b("debugPrint", False)])
 print("studio", E)
+
+# ============================================================================
+# Signed / zero distances (2026-09-27): negative = the other way, 0 = an unmoved copy
+# ============================================================================
+for tag, x0, dist, want in (("O3", 14600, "-10 mm", 60), ("O4", 15000, "0 mm", 50)):
+    top = sheet("%s top sheet z 50" % tag, [(x0 - 50, 50), (x0 + 50, 50)])
+    bottom = sheet("%s bottom sheet z -50 (drawn reversed: opposite normal)" % tag, [(x0 + 50, -50), (x0 - 50, -50)])
+    offset("%s Offset+ surfaces toward the centre, distance %s -> z +-%d" % (tag, dist, want), [
+        en("offsetType", "OffsetPlusType", "SURFACE", NS["offset_plus"]), q("surfaces", body(top), body(bottom)), num("distance", dist),
+        q("sideReference", ref_front("%s reference point (%d, 0, 0)" % (tag, x0), x0, 0)), b("towardReference", True)])
+
+x0 = 15400
+sq9 = sketch("C9 square 100 at (%d, 0)" % x0, TOP, polyline("s", [(x0, 0), (x0 + 100, 0), (x0 + 100, 100), (x0, 100)], closed=True))
+offset("C9 Offset+ square, plane frame, distance 0 -> 1 wire, an exact copy, length 400", [
+    en("offsetType", "OffsetPlusType", "CURVE", NS["offset_plus"]), q("curves", edges(sq9)),
+    en("frameMode", "OffsetFrameMode", "PLANE", NS["offset_plus"]), num("distance", "0 mm"),
+    q("sideReference", ref_top("C9 reference point (%d, 50, 0)" % (x0 + 300), x0 + 300, 50)), b("towardReference", True)])
+
+x0 = 15800
+top5 = sheet("F5 top sheet z 50", [(x0 - 50, 50), (x0 + 50, 50)])
+bottom5 = sheet("F5 bottom sheet z -50 (drawn reversed: opposite normal)", [(x0 + 50, -50), (x0 - 50, -50)])
+move_face("F5 Move face+ faces toward the centre, distance -10 mm -> z +-60", [
+    q("faces", "qOwnedByBody(qUnion([%s, %s]), EntityType.FACE)" % (body(top5), body(bottom5))), num("distance", "-10 mm"),
+    q("sideReference", ref_front("F5 reference point (%d, 0, 0)" % x0, x0, 0)), b("towardReference", True),
+    b("reFillet", False), b("debugPrint", False)])
+print("studio", E)

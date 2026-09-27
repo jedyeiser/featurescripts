@@ -34,7 +34,7 @@ export function referenceProbe(context is Context, reference is Query)
         // surface normals silently flipped sides (RD 20FOU 28, 2026-09-26).
         if (isPicked(reference))
         {
-            throw regenError("The reference is selected but cannot be read here. Inside a Case pattern, pass it in through a Define case input (#name) instead of clicking it in this feature.");
+            throw regenError("The reference is selected but cannot be read here. Inside a Case pattern, pass it in through a Define case input or shared reference (#name) instead of clicking it in this feature.");
         }
         return undefined;
     }
