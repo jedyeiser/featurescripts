@@ -100,6 +100,13 @@ for prefix in ["T1 Case pattern", "T2 Case pattern", "T6 Case pattern", "T7 Case
     st = status_of(prefix)
     check(prefix + " statuses OK/INFO", st and all(s in ("OK", "INFO") for s in st), str(st))
 check("T3 Case pattern status ERROR (clicked in-list edge)", status_of("T3 Case pattern") == ["ERROR"], str(status_of("T3 Case pattern")))
+check("T11 Case pattern status ERROR (value left empty)", status_of("T11 Case pattern") == ["ERROR"], str(status_of("T11 Case pattern")))
+check("T9a Case pattern status ERROR (reference clicked inside the body)", status_of("T9a Case pattern") == ["ERROR"], str(status_of("T9a Case pattern")))
+st12 = status_of("T12 Case pattern")
+check("T12 Case pattern status OK/INFO", st12 and all(x in ("OK", "INFO") for x in st12), str(st12))
+for prefix in ["T9b Case pattern", "T10 Case pattern"]:
+    st = status_of(prefix)
+    check(prefix + " status OK/INFO", st and all(x in ("OK", "INFO") for x in st), str(st))
 
 # ---- T1 ----
 r1 = row(0)
@@ -148,6 +155,37 @@ b8 = [b for b in at_x(r8, 200) if near(b["z0"], 20) and near(b["z1"], 30)]
 c8 = [b for b in at_x(r8, 400) if near(b["z0"], 20) and near(b["z1"], 30)]
 check("T8 names ON: case B stud named Stud_B", len(b8) == 1 and b8[0]["name"] == "Stud_B", str(b8 and b8[0]["name"]))
 check("T8 names OFF: case C stud keeps a default name", len(c8) == 1 and c8[0]["name"].startswith("Part "), str(c8 and c8[0]["name"]))
+
+# ---- T9b / T10: offset sheets (Offset+ toward a reference at -X) ----
+SHEETS = '''function(context is Context, queries) {
+  var out = [];
+  for (var b in evaluateQuery(context, qBodyType(qEverything(EntityType.BODY), BodyType.SHEET))) {
+    const bb = evBox3d(context, { "topology" : b, "tight" : true });
+    out = append(out, [bb.minCorner[0] / millimeter, bb.maxCorner[0] / millimeter, bb.minCorner[1] / millimeter, bb.maxCorner[1] / millimeter]);
+  }
+  return toString(out);
+}'''
+raw_sheets = c.post(f"{BASE}/featurescript", json_data={"script": SHEETS})["result"]["value"]
+sheets = [tuple(float(v) for v in m.groups())
+          for m in re.finditer(r"\[ (-?[\d.e+-]+) , (-?[\d.e+-]+) , (-?[\d.e+-]+) , (-?[\d.e+-]+) \]", raw_sheets)]
+
+
+def sheet_near(x0, x1, y_centre):
+    return any(near(a, x0, 0.05) and near(b, x1, 0.05) and abs((y0 + y1) / 2 - y_centre) < 60 for a, b, y0, y1 in sheets)
+
+
+check("T9b case C 54 deg face offset toward the reference (x 398.82..432.11)", sheet_near(398.82, 432.11, 600))
+check("T10 case B +X face offset toward the shared reference (x 243)", sheet_near(243, 243, 700))
+check("T10 case C 54 deg face offset toward the shared reference (x 398.82..432.11)", sheet_near(398.82, 432.11, 700))
+
+# ---- T12: Move face+ with a shared reference shrinks both blocks toward -X ----
+r12 = row(900)
+a12 = [b for b in at_x(r12, 0) if near(b["z1"], 20)]
+b12 = [b for b in at_x(r12, 200) if near(b["z1"], 20)]
+c12 = [b for b in at_x(r12, 400) if near(b["z1"], 20)]
+check("T12 case A (tree) +X face moved toward the reference (x max 28)", len(a12) == 1 and near(a12[0]["x1"], 28), str(a12 and a12[0]["x1"]))
+check("T12 case B +X face moved toward the reference (x max 243)", len(b12) == 1 and near(b12[0]["x1"], 243), str(b12 and b12[0]["x1"]))
+check("T12 case C 54 deg face moved toward the reference (x max < 433.2)", len(c12) == 1 and c12[0]["x1"] < 433.2, str(c12 and c12[0]["x1"]))
 
 print("\n%d failure(s)" % fails)
 sys.exit(1 if fails else 0)

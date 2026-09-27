@@ -34,8 +34,9 @@ export const moveFacePlus = defineFeature(function(context is Context, id is Id,
         annotation { "Name" : "Faces to move", "Filter" : EntityType.FACE && ConstructionObject.NO && SketchObject.NO }
         definition.faces is Query;
 
-        annotation { "Name" : "Distance", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE }
-        isLength(definition.distance, NONNEGATIVE_LENGTH_BOUNDS);
+        annotation { "Name" : "Distance", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE,
+                    "Description" : "Positive: toward the reference (without one: along the normals). Negative: the other way. 0: nothing moves." }
+        isLength(definition.distance, LENGTH_BOUNDS);
 
         annotation { "Name" : "Side reference", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
                     "Description" : "Geometry on the side to move toward. Leave empty to move along the face normals (a solid's faces grow)." }

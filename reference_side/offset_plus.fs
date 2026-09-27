@@ -33,7 +33,7 @@ IconNamespace::import(path : "250e65ad6c2a37cefa5bf135", version : "09bf184eb261
  *   Plane            D in the plane perpendicular to a direction (default world Z):
  *                    a plan-view offset of a 3D curve.
  * The reference picks the side (toward it, or away with the box off); without one the box
- * is a plain flip.
+ * is a plain flip. The distance is signed: negative goes the other way, 0 makes an unmoved copy.
  *
  * Corners (G0 junctions): where the two offsets separate the gap is closed by an arc about
  * the corner point with radius = distance (the std round gap fill); where they overlap both
@@ -127,8 +127,9 @@ export const offsetPlus = defineFeature(function(context is Context, id is Id, d
             }
         }
 
-        annotation { "Name" : "Distance", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE }
-        isLength(definition.distance, NONNEGATIVE_LENGTH_BOUNDS);
+        annotation { "Name" : "Distance", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE,
+                    "Description" : "Positive: toward the reference (without one: along the normal or frame). Negative: the other way. 0: an unmoved copy." }
+        isLength(definition.distance, LENGTH_BOUNDS);
 
         annotation { "Name" : "Side reference", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
                     "Description" : "Geometry on the side to offset toward. Leave empty to use the flip alone." }
@@ -329,6 +330,13 @@ function offsetPlusQueries(context is Context, wires is array, sourceStarts is a
  */
 function offsetPath(context is Context, id is Id, definition is map, path is Path, probe, axis is Vector, index is number) returns map
 {
+    // Distance 0: an exact copy of the chain (a zero-distance fit would be degenerate).
+    if (tolerantEquals(definition.distance, 0 * meter))
+    {
+        opExtractWires(context, id + "wire", { "edges" : qUnion(path.edges) });
+        return { "wire" : qCreatedBy(id + "wire", EntityType.BODY), "rounded" : 0, "trimmed" : 0, "open" : 0, "cornerArcs" : [],
+                "sourceStart" : evEdgeTangentLine(context, { "edge" : path.edges[0], "parameter" : path.flipped[0] ? 1 : 0 }).origin };
+    }
     const sampled = pathStations(context, path, definition.samplesPerEdge, definition.maxSpacing);
     const stations = sampled.stations;
     const nEdges = size(path.edges);

@@ -269,8 +269,18 @@ Reference_Side errors when a picked reference resolves to nothing (correction 50
 every outside reference through a Define case input. T9a (click inside Offset+) documents the old failure
 (pinned to Reference_Side V-1458547, still flips), T9b (reference via input) passes.
 
+### Shared references; no value fallback (2026-09-26)
+Define case "Shared references" (name + selection): geometry from before the Define case used by every case.
+Case pattern resolves them once OUTSIDE the frame and binds them before each case (a query variable defined
+earlier is refused inside the frame just like a click). No per-case slot. Test T10 (Offset+ side reference as a
+shared reference, two differently oriented cases). The regen fallback "missing value -> case 1's value + note" is
+gone: a missing value fails that case ("#x has no value (click Update...)"), test T11. New rows are still
+PRE-FILLED with case 1's values by the editing logic (visible, editable). Plain value variables from before the
+Define case need no section: only geometry queries are refused inside the frame.
+Explainer rewritten for v2 (docs/explainers/case_pattern/case_pattern_explained.md).
+
 ### Open
-- Not yet exercised: value fallback notice, mate-connector outputs, sketches in the body, evaluate-on-use / track outputs.
+- Not yet exercised: mate-connector outputs, sketches in the body, evaluate-on-use / track outputs.
 - Feature names containing "#name" display as "?" in the tree (Onshape treats # in names specially).
 - docs/explainers/case_pattern/case_pattern_explained.md still describes v1.
 - The toolbar/search also offers "Case pattern" from Case_Pattern V1 (older version) -- pick the

@@ -12,7 +12,7 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | x_reference_side | Reference-side features | **reviewed** | changed since reviewed, code changed since written | `docs/explainers/reference_side/reference_side_explained.md` | 2026-09-25 written by Claude |
 | x_curve_tools | Curve tools | **draft** | - | `docs/explainers/curve_tools/curve_tools_explained.md` | 2026-09-26 written by Claude |
 | x_variable_tools | Variable tools | **draft** | - | `docs/explainers/variable_tools/variable_tools_explained.md` | 2026-09-25 written by Claude |
-| x_case_pattern | Case pattern | **draft** | - | `docs/explainers/case_pattern/case_pattern_explained.md` | 2026-09-25 written by Claude |
+| x_case_pattern | Case pattern | **draft** | - | `docs/explainers/case_pattern/case_pattern_explained.md` | 2026-09-25 written by Claude; 2026-09-26 rewritten for v2 (Define case / Close case / Case pattern) |
 | x_driven_offset | Driven offset | **planned** | - | `docs/explainers/driven_offset/driven_offset_explained.md` |   |
 | x_publish_tools | Publish & drawing tools | **planned** | - | `docs/explainers/publish_tools/publish_tools_explained.md` |   |
 | x_solvers | Solvers | **draft** | - | `docs/explainers/solvers/solvers_explained.md` | 2026-09-26 written by Claude |

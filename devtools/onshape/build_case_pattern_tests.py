@@ -23,6 +23,15 @@ T6  Boolean #pin (typed expression): Post extrude #cap 5 mm; Pin extrude #cap 12
 T7  Chained cases: Stud extrude #face 10 mm new, output stud. Case pattern B on block B's top; then
     Case pattern D whose #face is the top of B's stud (geometry made after the Define case)
     -> D's stud on top of B's stud (z 30..40); #D_stud exists
+T9  Offset+ side reference = a vertex from before the Define case: T9a clicked inside Offset+ -> expect ERROR
+    (Reference_Side V5 refuses a picked reference it cannot read; V4 silently flipped), T9b passed in as a Define
+    case input -> correct
+T10 The same reference as a SHARED reference (no per-case selection), two cases in one pattern
+    -> B's +X face and C's 54 deg face both offset toward -X
+T12 Move face+ (Reference_Side V5) in a Case pattern: input = the block's +X face, SHARED reference = block A's
+    -X corner, two cases -> each face moves 2 mm toward the reference (the block shrinks); edits geometry from
+    before the Define case, so it also runs the step-out-of-frame retry
+T11 A value slot left empty in a case -> expect ERROR "#h11 has no value" (no silent case-1 fallback)
 T8  Part naming: the same stud case twice, case 1's stud named "Stud_A" (cached names), Close case
     "Name parts with the case name" on -> case B's stud "Stud_B"; off -> Onshape's default name kept
 
@@ -222,11 +231,12 @@ def typed(prefix, kind, value):
     return out
 
 
-def define_case(name, case1, inputs, values=()):
-    """inputs: [(name, expr)]; values: [(name, KIND, case-1 expression)]."""
+def define_case(name, case1, inputs, values=(), shared=()):
+    """inputs: [(name, expr)]; values: [(name, KIND, case-1 expression)]; shared: [(name, expr)]."""
     return feature(name, "defineCase", [
         s("caseName", case1),
         arr("inputs", [[s("inputName", n), sel("query", e)] for n, e in inputs]),
+        arr("shared", [[s("sharedName", n), sel("sharedQuery", e)] for n, e in shared]),
         arr("values", [[s("valueName", n), en("valueKind", "CaseValueKind", k, NS)] + typed("value", k, v) for n, k, v in values])], NS)
 
 
@@ -345,7 +355,9 @@ case_pattern("T8 Case pattern C, names off -> default name", c8off, [case_row("C
 # Offset+ (Reference_Side) inside a case, side reference = a clicked vertex OUTSIDE the list (the RD 20FOU 28
 # setup, 2026-09-26). Wall = the block's +X face; reference = block A's (-X, -Y, top) corner, so "toward the
 # reference" is -X for every case. T9a clicks the reference in Offset+; T9b routes it through a Define case input.
-OFFSET_PLUS_NS = "d22764764a00a7f607dbc1c4d::v1458547cd7e54d77521dc145::e742e5b3f04cc9115de8b6d8a::mb6366233152c2feb25ed002a"
+# Reference_Side V5 (2026-09-27): a picked reference that cannot be read is an error, Move face+ exists.
+OFFSET_PLUS_NS = "d22764764a00a7f607dbc1c4d::vfe155aeed546628ec5b3fba7::e742e5b3f04cc9115de8b6d8a::m94ab915a1bf0099353c19a6a"
+MOVE_FACE_PLUS_NS = "d22764764a00a7f607dbc1c4d::vfe155aeed546628ec5b3fba7::efb7f7776686f955d15ce4262::mb340dd3d29eee73b047e7ea5"
 
 
 def offset_plus(name, surfaces, side_reference):
@@ -363,9 +375,39 @@ corner_a = 'qContainsPoint(qCreatedBy(makeId("%s"), EntityType.VERTEX), vector(-
 d9a = define_case("T9a Define case A: wall9 (+X face)", "A", [("wall9", side_at(A, 30, 600))])
 op9a = offset_plus("T9a Offset+ wall9 2 mm toward CLICKED corner", qv("surfaces", "wall9"), sel("sideReference", corner_a))
 c9a = close_case("T9a Close case", d9a, [op9a], name_parts=False)
-case_pattern("T9a Case pattern B -> offset toward -X (x 243)", c9a, [case_row("B", ["wall9"], [side_at(B, 245, 600)])])
+case_pattern("T9a Case pattern B -> expect ERROR: reference clicked inside the repeated features cannot be read", c9a, [case_row("B", ["wall9"], [side_at(B, 245, 600)])])
 d9b = define_case("T9b Define case A: wall9b, ref9b (corner)", "A", [("wall9b", side_at(A, 30, 600)), ("ref9b", corner_a)])
 op9b = offset_plus("T9b Offset+ wall9b 2 mm toward ref9b", qv("surfaces", "wall9b"), qv("sideReference", "ref9b"))
 c9b = close_case("T9b Close case", d9b, [op9b], name_parts=False)
 case_pattern("T9b Case pattern C -> offset toward -X (x 431.3)", c9b,
              [case_row("C", ["wall9b", "ref9b"], [side_at(C, 400 + AP * math.cos(math.radians(54)), 600 + AP * math.sin(math.radians(54))), corner_a])])
+
+# ---- T10 ----
+A, B, C = blocks("T10", 700)
+corner10 = 'qContainsPoint(qCreatedBy(makeId("%s"), EntityType.VERTEX), vector(-30, 680, 20) * millimeter)' % A
+d10 = define_case("T10 Define case A: wall10; shared ref10 (A's corner)", "A", [("wall10", side_at(A, 30, 700))], shared=[("ref10", corner10)])
+op10 = offset_plus("T10 Offset+ wall10 2 mm toward shared ref10", qv("surfaces", "wall10"), qv("sideReference", "ref10"))
+c10 = close_case("T10 Close case", d10, [op10], name_parts=False)
+case_pattern("T10 Case pattern B and C, shared reference -> both offset toward -X", c10, [
+    case_row("B", ["wall10"], [side_at(B, 245, 700)]),
+    case_row("C", ["wall10"], [side_at(C, 400 + AP * math.cos(math.radians(54)), 700 + AP * math.sin(math.radians(54)))])])
+
+# ---- T11 ----
+A, B, C = blocks("T11", 800)
+d11 = define_case("T11 Define case A: face11; h11 (length 10 mm)", "A", [("face11", top(A))], values=[("h11", "LENGTH", "10 mm")])
+stud11 = feature("T11 Stud: extrude face11 h11 new", "extrude", extrude_new("", qv("entities", "face11"), "#h11"))
+c11 = close_case("T11 Close case", d11, [stud11], name_parts=False)
+row11 = case_row("B", ["face11"], [top(B)])  # laid out WITHOUT the value slot: the case has no value for #h11
+case_pattern("T11 Case pattern B, value slot empty -> expect ERROR: #h11 has no value", c11, [row11])
+
+# ---- T12 ----
+A, B, C = blocks("T12", 900)
+corner12 = 'qContainsPoint(qCreatedBy(makeId("%s"), EntityType.VERTEX), vector(-30, 880, 20) * millimeter)' % A
+d12 = define_case("T12 Define case A: face12; shared ref12 (A's -X corner)", "A", [("face12", side_at(A, 30, 900))], shared=[("ref12", corner12)])
+mf12 = feature("T12 Move face+ face12 2 mm toward shared ref12", "moveFacePlus", [
+    qv("faces", "face12"), num("distance", "2 mm"), qv("sideReference", "ref12"), b("towardReference", True),
+    b("reFillet", False), b("debugPrint", False)], MOVE_FACE_PLUS_NS)
+c12 = close_case("T12 Close case", d12, [mf12], name_parts=False)
+case_pattern("T12 Case pattern B and C -> both faces move 2 mm toward the reference (blocks shrink)", c12, [
+    case_row("B", ["face12"], [side_at(B, 245, 900)]),
+    case_row("C", ["face12"], [side_at(C, 400 + AP * math.cos(math.radians(54)), 900 + AP * math.sin(math.radians(54)))])])
