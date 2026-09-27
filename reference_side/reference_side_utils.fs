@@ -45,6 +45,35 @@ export function referenceProbe(context is Context, reference is Query)
     return reference;
 }
 
+/**
+ * A feature's outputs for embedStandardOutputs with every query SETTLED: resolved to the entities
+ * present now, when the feature finishes. Features track internally where their own later steps
+ * (a merge, a boolean) would lose an entity, but what they publish does not keep tracking: whether a
+ * name follows its entities through LATER edits is the consumer's explicit choice (Extract
+ * variables' Track) -- correction 52, 2026-09-27.
+ */
+export function settledOutputs(context is Context, outputs is map) returns map
+{
+    var result = outputs;
+    if (outputs.output is Query)
+    {
+        result.output = qUnion(evaluateQuery(context, outputs.output));
+    }
+    if (outputs.queries is map)
+    {
+        for (var key, entry in outputs.queries)
+        {
+            var settledEntry = entry;
+            if (entry is map && entry.value is Query)
+            {
+                settledEntry.value = qUnion(evaluateQuery(context, entry.value));
+            }
+            result.queries[key] = settledEntry;
+        }
+    }
+    return result;
+}
+
 /** True when a query parameter holds a selection (which may still resolve to nothing). */
 export function isPicked(q is Query) returns boolean
 {

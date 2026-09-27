@@ -1711,6 +1711,8 @@ merged onto those edges (loft "Add"): all four variables resolved to 0 edges.
 **Measured** (sheet split, then a strip united onto the cut edge): after the union the transient query finds 0 edges,
 `makeRobustQueriesBatched` (identity-preserving freeze) finds 0, `qUnion([now, startTracking(now)])` finds the one
 new two-sided edge.
-**Fix**: publish edge keys that later features will build on TRACKED (Split+ startCut / endCut / splitEdges / region
-Edges now do; Mutual Trim+ trimEdges always did). Downstream, Extract variables' default freeze re-applies an
-identity-robust freeze and LOSES the tracking -- such entries need Evaluate on use (re-reads the tracked key) or Track.
+**Fix (user decision)**: following an entity through later edits is the CONSUMER's explicit choice, not the
+producer's: producers publish the entities as they leave them (untracked), and Extract variables' Track option
+(Evaluate on use off, Track on) stores freeze + startTracking, which finds the merged edge. A producer that tracks
+silently makes every consumer's key drift (a later fillet's edges join it). Tried and reverted the same day: Split+
+publishing tracked cut keys.

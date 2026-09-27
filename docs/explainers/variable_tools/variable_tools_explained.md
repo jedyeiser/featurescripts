@@ -64,15 +64,39 @@ reports "ambiguous" and lists the choices. **Print keys** lists every address av
 
 ![Hold, Track, Evaluate on use](img/fig02_hold_track_evaluate.png)
 
-A published query can be kept three ways:
+A published query can be kept three ways. Producers (Split+, Offset+, ...) publish the entities **as the producing
+feature leaves them**; whether a name should follow those entities through LATER edits is your choice here, made
+explicitly -- no producer does it for you.
 
-- **Hold** (default) -- the entities present when Extract variables ran, followed through later edits that keep
-  them (an extend, a move). Verified: a Move boundary that extends the held edge by 10 mm -> the name gives the
-  extended edge.
-- **Track** -- also follows what later splits or rebuilds make of them.
-- **Evaluate on use** -- the raw query, re-resolved wherever the name is used (Source key entries only). The most
-  "live", and the easiest to get wrong: on RD 20FOU 28 a Ruled surface failed because the name re-resolved to
-  something else downstream.
+| Mode | Settings | What the name stores | Use it when |
+|---|---|---|---|
+| **Hold** (default) | Evaluate on use off, Track off | the entities present when Extract variables runs, followed through edits that keep them | almost always: the name means "these entities" |
+| **Track** | Evaluate on use off, **Track on** | the same, plus every entity later made FROM them (the halves of a split edge, the new edge a merge creates) | a later feature splits, rebuilds or merges your entities and you still want "those" |
+| **Evaluate on use** | **Evaluate on use on** | the producer's query itself, worked out again wherever the name is used | rarely: you want the producer's rule re-applied at the point of use |
+
+**What survives which later edit** (measured):
+
+| Later edit | Hold | Track | Evaluate on use |
+|---|---|---|---|
+| extend or move (Move boundary 10 mm) | yes | yes | depends on the producer's query |
+| a split of the entity | no | yes (both halves) | depends |
+| a merge onto it (a loft with *Add*, a surface union) | **no** (0 edges) | **yes** (the new shared edge) | no, for exact entities such as Split+ cuts |
+| a fillet on it | the entity is gone | the fillet's new edges join the name | depends |
+
+**Track grows.** It includes whatever is later derived from the entities, of the same entity type: a fillet on a
+tracked edge adds the fillet's edges, a Ruled surface built on tracked edges is derived from them too. Use it where
+you need it, not by default.
+
+**Evaluate on use depends on the producer.** It stores the query exactly as the producer published it. A producer
+that publishes exact entities (Split+ cuts, Mutual Trim+ trim edges) then behaves like "those exact entities, now",
+and finds nothing once they are replaced; a producer that publishes a rule (created by a feature) re-applies the rule
+downstream, which can mean something else there -- on RD 20FOU 28 a Ruled surface failed because the name
+re-resolved to other edges downstream.
+
+**Example -- fillet the joints of merged lofts.** Split+ cuts two surfaces; two lofts with *Add* are merged onto the
+cut edges; a fillet then needs those joint edges. Hold and Evaluate on use both give 0 edges after the merge (the
+merge replaces each cut edge with a new edge shared by the surface and the loft). **Track** gives the new shared edge:
+set the `startCut` / `endCut` entries to Evaluate on use off, Track on.
 
 ---
 

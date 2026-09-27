@@ -364,6 +364,10 @@ fillet).
 
 ## 2.5 Outputs for Extract variables
 
+Every key holds the entities **as the feature leaves them**. A later edit that replaces them -- a loft merged onto a
+cut edge, a split -- is not followed unless you ask for it in Extract variables: **Track** follows them, **Hold**
+(the default) and **Evaluate on use** do not. See the Variable_tools explainer, section 1.4, for when to use each.
+
 Each feature publishes its results with the Variable_tools producer library, so **Extract variables** can turn
 them into named variables and query variables later in the tree. Every feature always publishes `output` (the
 result bodies) and `inputs`; the rest:

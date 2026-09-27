@@ -127,7 +127,7 @@ export const moveFacePlus = defineFeature(function(context is Context, id is Id,
 /** The standard keys (output = the moved faces) and boundaryEdges. */
 function publishMoved(context is Context, id is Id, definition is map, moved is Query)
 {
-    embedStandardOutputs(context, id, {
+    embedStandardOutputs(context, id, settledOutputs(context, {
                 "output" : moved,
                 "outputDescription" : "The moved faces",
                 "inputs" : definition.faces,
@@ -135,5 +135,5 @@ function publishMoved(context is Context, id is Id, definition is map, moved is 
                     "boundaryEdges" : extractableQuery(qAdjacent(moved, AdjacencyType.EDGE, EntityType.EDGE),
                         "The edges bounding the moved faces.", DebugColor.CYAN)
                 }
-            });
+            }));
 }

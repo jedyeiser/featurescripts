@@ -227,13 +227,13 @@ function offsetSurfaces(context is Context, id is Id, definition is map, probe)
                 });
     }
 
-    embedStandardOutputs(context, id, {
+    embedStandardOutputs(context, id, settledOutputs(context, {
                 "output" : qCreatedBy(id, EntityType.BODY),
                 "outputDescription" : "The offset surfaces",
                 "inputs" : definition.surfaces,
                 "queries" : offsetPlusQueries(context, [], [], [],
                         qEdgeTopologyFilter(qOwnedByBody(qCreatedBy(id, EntityType.BODY), EntityType.EDGE), EdgeTopology.ONE_SIDED))
-            });
+            }));
 }
 
 // ============================================================================
@@ -290,12 +290,12 @@ function offsetCurves(context is Context, id is Id, definition is map, probe)
         reportFeatureInfo(context, id, "Corners: " ~ counts.rounded ~ " rounded, " ~ counts.trimmed ~ " trimmed.");
     }
 
-    embedStandardOutputs(context, id, {
+    embedStandardOutputs(context, id, settledOutputs(context, {
                 "output" : output,
                 "outputDescription" : "The offset wires",
                 "inputs" : definition.curves,
                 "queries" : offsetPlusQueries(context, wires, sourceStarts, cornerArcs, qNothing())
-            });
+            }));
 }
 
 /**

@@ -253,7 +253,7 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
             queries[key[0] ~ "Edges"] = extractableQuery(edgesOf(key[1]), "Edges of the " ~ key[0] ~ " pieces except the cuts (a surface's boundary edges).", DebugColor.CYAN);
         }
 
-        embedStandardOutputs(context, id, {
+        embedStandardOutputs(context, id, settledOutputs(context, {
                     "output" : kept,
                     "outputDescription" : faceMode ? "The split faces" : "The pieces kept",
                     "inputs" : qUnion([faceMode ? definition.faceTargets : definition.targets, allTools]),
@@ -261,7 +261,7 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
                         "pieceCount" : extractableVariable(size(evaluateQuery(context, kept)), "Pieces kept (faces, in a face split).")
                     },
                     "queries" : queries
-                });
+                }));
     }, {
         "splitType" : SplitPlusType.PART,
         "targets" : qNothing(),

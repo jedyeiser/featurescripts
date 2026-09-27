@@ -185,7 +185,7 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
 
         processNewBodyIfNeeded(context, id, definition, thickenAll);
 
-        embedStandardOutputs(context, id, {
+        embedStandardOutputs(context, id, settledOutputs(context, {
                     // With Remove / Intersect the thickened bodies are consumed by the boolean: the
                     // bodies holding the tracked faces are the parts it changed (2026-09-27 audit).
                     "output" : qUnion([qEntityFilter(output, EntityType.BODY), qOwnerBody(outputs.toward), qOwnerBody(outputs.away), qOwnerBody(outputs.side)]),
@@ -196,7 +196,7 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
                         "awayFaces" : extractableQuery(qEntityFilter(outputs.away, EntityType.FACE), "The faces on the other side (on the input surface when Away from reference is 0).", DebugColor.RED),
                         "sideFaces" : extractableQuery(qEntityFilter(outputs.side, EntityType.FACE), "The faces around the edges of the thickened surfaces.", DebugColor.BLUE)
                     }
-                });
+                }));
     }, {
         "operationType" : NewBodyOperationType.NEW,
         "sideReference" : qNothing(),

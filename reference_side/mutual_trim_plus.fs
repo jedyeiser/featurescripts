@@ -141,7 +141,7 @@ export const mutualTrimPlus = defineFeature(function(context is Context, id is I
  */
 function publishTrim(context is Context, id is Id, definition is map, trimEdges is Query, keptFaces1 is Query, keptFaces2 is Query)
 {
-    embedStandardOutputs(context, id, {
+    embedStandardOutputs(context, id, settledOutputs(context, {
                 "output" : qUnion([definition.body1, definition.body2]),
                 "outputDescription" : "The trimmed surfaces",
                 "inputs" : qUnion([definition.body1, definition.body2]),
@@ -155,7 +155,7 @@ function publishTrim(context is Context, id is Id, definition is map, trimEdges 
                     "keptFaces1" : extractableQuery(keptFaces1, "The faces the first surface kept (still told apart after the merge).", DebugColor.CYAN),
                     "keptFaces2" : extractableQuery(keptFaces2, "The faces the second surface kept.", DebugColor.YELLOW)
                 }
-            });
+            }));
 }
 
 /**

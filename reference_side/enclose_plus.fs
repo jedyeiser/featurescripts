@@ -185,7 +185,7 @@ export const enclosePlus = defineFeature(function(context is Context, id is Id, 
         const capFaces = qIntersection([qUnion(capFaceList), qOwnedByBody(result, EntityType.FACE)]);
         const bodyFaces = qSubtraction(qOwnedByBody(result, EntityType.FACE), capFaces);
 
-        embedStandardOutputs(context, id, {
+        embedStandardOutputs(context, id, settledOutputs(context, {
                     "output" : result,
                     "outputDescription" : "The enclosed part",
                     "inputs" : qUnion([definition.surfaces, definition.caps]),
@@ -194,7 +194,7 @@ export const enclosePlus = defineFeature(function(context is Context, id is Id, 
                         "capFaces" : extractableQuery(capFaces, "The part's faces on the caps.", DebugColor.MAGENTA),
                         "seamEdges" : extractableQuery(seamEdges, "Edges on the mirror plane after the union (empty without a mirror, or where faces merged).", DebugColor.RED)
                     }
-                });
+                }));
     }, {
         "caps" : qNothing(),
         "insidePoint" : qNothing(),

@@ -1,6 +1,8 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
+// IMPORT: reference_side_utils.fs
+import(path : "9aebe5ead538258b285aec19", version : "46dade749f549210ce2b33fc");
 // IMPORT: offset_plus.fs (Offset+, called for every profile)
 import(path : "742e5b3f04cc9115de8b6d8a", version : "7a62aeff1d43b811531bb007");
 // IMPORT: split_plus.fs (Split+, called for every profile)
@@ -254,7 +256,7 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
             {
                 return extractableQuery(qIntersection([qEntityFilter(q, EntityType.FACE), qOwnedByBody(result, EntityType.FACE)]), description, DebugColor.CYAN);
             };
-        embedStandardOutputs(context, id, {
+        embedStandardOutputs(context, id, settledOutputs(context, {
                     "output" : result,
                     "outputDescription" : "The joined surface",
                     "inputs" : qUnion(concatenateArrays([inputs, [definition.startSplit, definition.endSplit]])),
@@ -271,7 +273,7 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
                         "boundaryEdges" : extractableQuery(qEdgeTopologyFilter(qOwnedByBody(result, EntityType.EDGE), EdgeTopology.ONE_SIDED),
                             "The open edges of the result.", DebugColor.CYAN)
                     }
-                });
+                }));
     }, {
         "insideOffset" : 0 * meter,
         "outsideMode" : JoinOutsideMode.SAME,

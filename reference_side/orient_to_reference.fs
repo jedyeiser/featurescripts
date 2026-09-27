@@ -127,7 +127,7 @@ export const orientToReference = defineFeature(function(context is Context, id i
         reportFeatureInfo(context, id, "Flipped " ~ size(flipped) ~ " of " ~ size(bodies) ~ " surface(s); "
             ~ size(unchanged) ~ " already faced " ~ (definition.towardReference ? "toward" : "away from") ~ " the reference.");
 
-        embedStandardOutputs(context, id, {
+        embedStandardOutputs(context, id, settledOutputs(context, {
                     "output" : qUnion(bodies),
                     "outputDescription" : "The selected surfaces, oriented",
                     "inputs" : definition.surfaces,
@@ -138,7 +138,7 @@ export const orientToReference = defineFeature(function(context is Context, id i
                         "flipped" : extractableQuery(qUnion(flipped), "The surfaces this feature flipped.", DebugColor.ORANGE),
                         "unchanged" : extractableQuery(qUnion(unchanged), "The surfaces already facing the right way.", DebugColor.GREEN)
                     }
-                });
+                }));
     }, {
         "towardReference" : true,
         "showNormals" : true,
