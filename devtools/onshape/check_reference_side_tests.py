@@ -320,6 +320,20 @@ case("R3 ", r'''
         }
         return [ok, "normal . (toward the axis) >= " ~ roundToPrecision(worst, 4) ~ " (1)"];''', HALF="R3 half cylinder")
 
+for n, (top_z, bottom_z) in enumerate([(40, -40), (60, -60)]):
+    case("F%d " % (n + 1), r'''
+        const t = zRange(created(@TOP@));
+        const b = zRange(created(@BOTTOM@));
+        const ok = near(t[0], mm(%d), mm(0.001)) && near(t[1], mm(%d), mm(0.001)) && near(b[0], mm(%d), mm(0.001)) && near(b[1], mm(%d), mm(0.001));
+        return [ok, "top sheet at z " ~ fmt(t[0]) ~ " (%d), bottom sheet at z " ~ fmt(b[0]) ~ " (%d)"];''' % (top_z, top_z, bottom_z, bottom_z, top_z, bottom_z),
+         TOP="F%d top sheet" % (n + 1), BOTTOM="F%d bottom sheet" % (n + 1))
+
+for tag, top_z in (("F3", 60), ("F4", 40)):
+    case(tag + " ", r'''
+        const z = zRange(created(@CUBE@));
+        return [near(z[0], mm(-50), mm(0.001)) && near(z[1], mm(%d), mm(0.001)), "cube z " ~ fmt(z[0]) ~ ".." ~ fmt(z[1]) ~ " (-50..%d)"];''' % (top_z, top_z),
+         CUBE="%s cube" % tag)
+
 EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference"]
 
 
@@ -352,7 +366,7 @@ def main():
 
     for prefix, body, names in CASES:
         cases = [(n, i) for n, i in by_name if n.startswith(prefix) and states.get(i, {}).get("featureStatus") != "ERROR"
-                 and any(k in n for k in ["Split+", "Offset+", "Mutual Trim+", "Thicken+", "Orient to reference"])]
+                 and any(k in n for k in ["Split+", "Offset+", "Mutual Trim+", "Thicken+", "Orient to reference", "Move face+"])]
         if len(cases) != 1:
             print("FAIL", prefix, "-- case feature not found")
             failed += 1

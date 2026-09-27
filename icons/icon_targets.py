@@ -24,7 +24,6 @@ TARGETS = [
     ("footprint", "getFootprintPoints", "footprint_points"),
     ("xSection", "features/generateBaseline", "generate_baseline"),
     ("xSection", "features/xSect", "ei_cross_section"),
-    ("xSection", "features/GJ_Feature", "solve_gj"),
     ("gordonSurface", "scaledCurve", "scaled_curve"),
     ("gordonSurface", "pullSurface", "pull_surface"),
     ("example_1", "joinWires", "join_wires"),

@@ -23,7 +23,7 @@ E = studios[STUDIO]
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 TABS = {e["name"]: e for e in ELEMENTS if e["elementType"] == "FEATURESTUDIO"}
 NS = {name: "e%s::m%s" % (TABS[name]["id"], TABS[name]["microversionId"])
-      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference"]}
+      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference", "move_face_plus"]}
 
 STATE = {"features": None}
 
@@ -390,4 +390,33 @@ x0 = 12200
 rc = cube("R4 cube at x 12200", x0, 0)
 orient("R4 Orient to reference, a solid's face -> ERROR (solids cannot be flipped)",
        face_at(rc, x0, 0, 50), ref_front("R4 reference point (%d, 0, 100)" % x0, x0, 100), True)
+# ============================================================================
+# Move face+ (2026-09-26)
+# ============================================================================
+def move_face(name, params):
+    return feature(name, "moveFacePlus", params, NS["move_face_plus"])
+
+
+for n, toward in enumerate([True, False]):
+    x0 = 13000 + 400 * n
+    tag = "F%d" % (n + 1)
+    top = sheet("%s top sheet z 50" % tag, [(x0 - 50, 50), (x0 + 50, 50)])
+    bottom = sheet("%s bottom sheet z -50 (drawn reversed: opposite normal)" % tag, [(x0 + 50, -50), (x0 - 50, -50)])
+    move_face("%s Move face+ faces of sheets of opposite normals %s the centre -> z +-%d" % (tag, "toward" if toward else "away from", 40 if toward else 60), [
+        q("faces", "qOwnedByBody(qUnion([%s, %s]), EntityType.FACE)" % (body(top), body(bottom))), num("distance", "10 mm"),
+        q("sideReference", ref_front("%s reference point (%d, 0, 0)" % (tag, x0), x0, 0)), b("towardReference", toward),
+        b("reFillet", False), b("debugPrint", False)])
+
+x0 = 13800
+mc3 = cube("F3 cube at x 13800", x0, 0)
+move_face("F3 Move face+ solid top face, no reference -> grows to z 60", [
+    q("faces", face_at(mc3, x0, 0, 50)), num("distance", "10 mm"), q("sideReference"), b("towardReference", True),
+    b("reFillet", False), b("debugPrint", False)])
+
+x0 = 14200
+mc4 = cube("F4 cube at x 14200", x0, 0)
+move_face("F4 Move face+ solid top face toward a reference inside -> shrinks to z 40", [
+    q("faces", face_at(mc4, x0, 0, 50)), num("distance", "10 mm"),
+    q("sideReference", ref_front("F4 reference point (%d, 0, 0)" % x0, x0, 0)), b("towardReference", True),
+    b("reFillet", False), b("debugPrint", False)])
 print("studio", E)

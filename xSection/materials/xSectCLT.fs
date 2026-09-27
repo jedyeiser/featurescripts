@@ -451,10 +451,9 @@ function assembleSectionMechanics(section is map, bodies is array) returns map
     }
 
     // =====================================================================
-    // Torsional stiffness (GJ) computation moved to separate gjAnalysis feature
+    // Torsional stiffness (GJ) placeholder
     // =====================================================================
-    // GJ computation is expensive and not always needed. Users can run the
-    // gjAnalysis feature separately to compute GJ on-demand.
+    // xSect.fs fills GJ_eff per section right after this (Step 3b, xSect_GJ.fs).
     var GJ_eff = 0 * newton * meter * meter;
 
     return {

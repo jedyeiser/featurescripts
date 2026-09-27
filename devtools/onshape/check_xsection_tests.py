@@ -5,8 +5,10 @@ details.beamAnalysis); every station of every case is compared with its analytic
 Fixture features must be OK; EI features OK or INFO (INFO = outlines repaired, reported on the console).
 
 Physics under test (2026-09-25): EI and the neutral axis on the beam basis, sum(E I) - sum(E S)^2 / sum(E A) with
-each body's Young's modulus E (isotropic override: E; orthotropic override: E1); GJ = 4 * sum(G * Iz), Iz about
-the G-weighted centroid in the thickness direction, G = Q66 (isotropic: E / 2.66, nu fixed at 0.33; orthotropic: G12).
+each body's Young's modulus E (isotropic override: E; orthotropic override: E1). GJ (2026-09-26): the width-reduced
+plate-torsion solve of xSect_GJ.fs, expected values from its Python mirror devtools/xsection/gj_oracle.py width_gj(),
+G = Q66 (isotropic: E / 2.66, nu fixed at 0.33; orthotropic: G12). The exact 2D Saint-Venant values (oracle exact_gj)
+are within 2% of these for the cases here; the old 4 * sum(G * Iz) formula ignored the free-edge decay.
 
 Tolerances: sections bounded by straight edges are cut into LINE edges and integrated exactly (Green's theorem for
 EI/area, exact triangle moments for GJ), so they get 0.1 % relative and 0.01 mm on the neutral axis. The circle is
@@ -16,8 +18,12 @@ usage (repo root): PYTHONPATH=. python devtools/onshape/check_xsection_tests.py
 """
 import json
 import math
+import os
 import re
 import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "xsection"))
+from gj_oracle import rect_loop, width_gj  # noqa: E402
 
 from sync.core.client import OnshapeClient
 
@@ -84,19 +90,27 @@ def layers(parts):
     return {"NA": es / ea, "EI": (ei0 - es * es / ea) * 1e-6, "GJ": gj * 1e-6, "area": sum(w * (z1 - z0) for e, g, w, z0, z1 in parts)}
 
 
+def with_gj(section, bodies):
+    """Replace the thin-plate GJ with the production width solve. bodies: [(G MPa, [(y0, y1, z0, z1), ...])], the
+    first rectangle of a body is its outline and any further ones are holes in it."""
+    loops = [(g / 1000.0, [rect_loop(*r[0])] + [rect_loop(*h)[::-1] for h in r[1:]]) for g, r in bodies]
+    return dict(section, GJ=width_gj(loops))
+
+
 ISO = (10000, g_iso(10000))
-RECT = layers([ISO + (100, 0, 10)])                                                   # 83.33, NA 5, GJ 125.31
-ORTHO = layers([(20000, 1500, 100, 0, 10)])                                          # 166.67, GJ 50.00
+RECT = with_gj(layers([ISO + (100, 0, 10)]), [(ISO[1], [(-50, 50, 0, 10)])])          # 83.33, NA 5, GJ 117.4 (old 125.31)
+ORTHO = with_gj(layers([(20000, 1500, 100, 0, 10)]), [(1500, [(-50, 50, 0, 10)])])   # 166.67, GJ 46.84 (old 50.00)
 ORTHO_Q11 = 20000 / (1 - 0.45 * 0.45 * 10000 / 20000) * 100 * 10 ** 3 / 12 * 1e-6    # 185.44: the plate basis
-PLATE = layers([(20000, 12000, 100, 0, 2)])                                          # GJ 3.200, EI 1.333
+PLATE = with_gj(layers([(20000, 12000, 100, 0, 2)]), [(12000, [(-50, 50, 0, 2)])])   # GJ 3.160 (old 3.200), EI 1.333
 q11 = 20000 / (1 - 0.45 ** 2)
 PLATE_OLD_GJ = 4 * ((q11 - 0.45 * q11) / 2) * 100 * 2 ** 3 / 12 * 1e-6               # 1.839: (Q11 - Q12)/2
-STEP = layers([ISO + (50, 0, 10), ISO + (50, 0, 4)])                                 # 57.19, NA 4.143, GJ 86.00
+STEP = with_gj(layers([ISO + (50, 0, 10), ISO + (50, 0, 4)]), [(ISO[1], [(-50, 0, 0, 10)]), (ISO[1], [(0, 50, 0, 4)])])  # 57.19, NA 4.143, GJ 59.6 (old 86.00)
 STEP_STRIPS = g_iso(10000) * (50 * 10 ** 3 + 50 * 4 ** 3) / 3 * 1e-6                  # 66.67: strip-wise thin plate
-HOLLOW = layers([ISO + (100, 0, 20), ISO + (-80, 5, 15)])                            # 600.0, NA 10, area 1200
+HOLLOW = with_gj(layers([ISO + (100, 0, 20), ISO + (-80, 5, 15)]), [(ISO[1], [(-50, 50, 0, 20), (-40, 40, 5, 15)])])  # 600.0, NA 10, area 1200
 HOLLOW_GJ_OUTER = layers([ISO + (100, 0, 20)])["GJ"]                                 # 1002.5: the hole's triangles are not subtracted
 CIRCLE = {"NA": 5.0, "EI": 10000 * math.pi * 5 ** 4 / 4 * 1e-6, "area": math.pi * 25}  # 4.909, 78.54
-BIMETAL = layers([(70000, g_iso(70000), 100, 0, 4), ISO + (100, 4, 10)])             # NA 2.882, EI 178.86, GJ 268.97
+BIMETAL = with_gj(layers([(70000, g_iso(70000), 100, 0, 4), ISO + (100, 4, 10)]),
+                  [(g_iso(70000), [(-50, 50, 0, 4)]), (ISO[1], [(-50, 50, 4, 10)])])  # NA 2.882, EI 178.86, GJ 248.8 (old 268.97)
 
 
 def rel(got, want):
@@ -151,9 +165,9 @@ CASES = {
                              (True, "Q11-basis EI would be %s" % fmt(ORTHO_Q11))),
     "X3 ": lambda rows: both(stations_match(rows, PLATE), (True, "old (Q11-Q12)/2 GJ would be %s" % fmt(PLATE_OLD_GJ))),
     "X4 ": lambda rows: both(stations_match(rows, STEP, area=STEP["area"]),
-                             (True, "strip-wise GJ %s, stored/strip %s" % (fmt(STEP_STRIPS), fmt(rows[0]["GJ"] / STEP_STRIPS) if rows else "-"))),
-    "X5 ": lambda rows: both(stations_match(rows, HOLLOW, gj=False, area=HOLLOW["area"]),
-                             (True, "GJ (info) %s: hole-aware %s, outer only %s" % (fmt(rows[0]["GJ"]) if rows else "-", fmt(HOLLOW["GJ"]), fmt(HOLLOW_GJ_OUTER)))),
+                             (True, "strip-wise thin plate would be %s" % fmt(STEP_STRIPS))),
+    "X5 ": lambda rows: both(stations_match(rows, HOLLOW, area=HOLLOW["area"]),
+                             (True, "hole filled (old code) would be ~%s" % fmt(HOLLOW_GJ_OUTER))),
     "X6 ": lambda rows: stations_match(rows, CIRCLE, ei_tol=CIRCLE_EI, na_tol=CIRCLE_NA, gj=False, area=CIRCLE["area"], area_tol=CIRCLE_AREA),
     "X7 ": lambda rows: both(stations_match(rows, BIMETAL, area=400 + 600), bodies_per_station(rows, 2)),
     "X8 ": lambda rows: both(stations_match(rows, RECT, area=RECT["area"]), bodies_per_station(rows, 2)),

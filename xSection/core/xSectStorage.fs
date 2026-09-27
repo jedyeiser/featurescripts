@@ -116,8 +116,8 @@ export function storeAnalysisData(context is Context, id is Id, definition is ma
                 "B" : section.mechanicalProperties.B,
                 "D" : section.mechanicalProperties.D
             },
-            "sectionPoints" : section.sectionPoints,  // For gjAnalysis feature
-            "bodyData" : section.bodyData             // For gjAnalysis feature
+            "sectionPoints" : section.sectionPoints,  // Outlines and mesh: Update profile, devtools/xsection
+            "bodyData" : section.bodyData             // Outlines and mesh: Update profile, devtools/xsection
         };
         sectionDetails = append(sectionDetails, sectionDetail);
     }
