@@ -1701,3 +1701,16 @@ Measured live in the "Case pattern v2 spikes" studio (case_pattern/spike_v2.fs):
 **Symptom**: `join_profile_surfaces:70:60 definition.insideProfile: Invalid filter` (warning, one per use) when the
 annotation said `"Filter" : PROFILE_FILTER` with `const PROFILE_FILTER = EntityType.BODY && BodyType.SHEET && ...;`.
 **Fix**: write the filter expression inline in every annotation. fscheck does not catch it; `pushproject --check` does.
+
+---
+
+## Correction 52: a merge kills exact AND identity-robust edge references; only tracking follows (2026-09-27)
+
+**Symptom** (RD 20FOU 28): a fillet on Split+ cut edges extracted by Extract variables failed after the lofts were
+merged onto those edges (loft "Add"): all four variables resolved to 0 edges.
+**Measured** (sheet split, then a strip united onto the cut edge): after the union the transient query finds 0 edges,
+`makeRobustQueriesBatched` (identity-preserving freeze) finds 0, `qUnion([now, startTracking(now)])` finds the one
+new two-sided edge.
+**Fix**: publish edge keys that later features will build on TRACKED (Split+ startCut / endCut / splitEdges / region
+Edges now do; Mutual Trim+ trimEdges always did). Downstream, Extract variables' default freeze re-applies an
+identity-robust freeze and LOSES the tracking -- such entries need Evaluate on use (re-reads the tracked key) or Track.

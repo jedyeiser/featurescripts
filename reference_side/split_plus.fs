@@ -229,17 +229,12 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
                     ~ ", beyond both " ~ size(regions.beyondBoth) ~ ", on a tool " ~ size(regions.onTool) ~ " piece(s).");
         }
 
-        // Edge keys are published TRACKED: the edges now plus every edge later derived from them, so
-        // "the start cut" still resolves after a loft is merged onto it (the merge replaces the edge;
-        // an exact or identity-robust reference then finds nothing -- measured 2026-09-27).
-        const tracked = function(q is Query) returns Query
-            {
-                const now = qUnion(evaluateQuery(context, q));
-                return qUnion([now, qEntityFilter(startTracking(context, now), EntityType.EDGE)]);
-            };
+        // Keys are the entities as this feature leaves them, NOT tracked: following them through later
+        // edits (a loft merged onto a cut replaces the edge -- correction 52) is the consumer's explicit
+        // choice, Extract variables' Track option.
         const edgesOf = function(q is Query) returns Query
             {
-                return tracked(faceMode ? faceRegionEdges(context, q, allCuts) : regionEdges(q, allCuts));
+                return faceMode ? faceRegionEdges(context, q, allCuts) : regionEdges(q, allCuts);
             };
         const regionKeys = [["inside", insideQ, "The pieces on the inside of every tool."],
                             ["outside", outsideQ, "Every piece not inside: start + end (and any piece beyond both tools)."],
@@ -248,9 +243,9 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         var queries = {
             "splitFaces" : extractableQuery(faceMode ? qNothing() : qIntersection([qOwnedByBody(kept, EntityType.FACE), qCreatedBy(id, EntityType.FACE)]),
                     "Faces the splits created (the caps on solids; empty in a face split).", DebugColor.MAGENTA),
-            "splitEdges" : extractableQuery(tracked(splitEdges), "Every cut: one edge per cut, on a kept piece (inside, or outside when keeping outside); followed through later edits.", DebugColor.MAGENTA),
-            "startCut" : extractableQuery(tracked(cutsByTool[0]), "The cut the start tool made (the edge on a kept piece); followed through later edits (a merged loft).", DebugColor.MAGENTA),
-            "endCut" : extractableQuery(size(cutsByTool) > 1 ? tracked(cutsByTool[1]) : qNothing(), "The cut the end tool made (the edge on a kept piece); followed through later edits (a merged loft).", DebugColor.MAGENTA)
+            "splitEdges" : extractableQuery(splitEdges, "Every cut: one edge per cut, on a kept piece (inside, or outside when keeping outside).", DebugColor.MAGENTA),
+            "startCut" : extractableQuery(cutsByTool[0], "The cut the start tool made (the edge on a kept piece). A merge onto it replaces the edge: use Track to follow it.", DebugColor.MAGENTA),
+            "endCut" : extractableQuery(size(cutsByTool) > 1 ? cutsByTool[1] : qNothing(), "The cut the end tool made (the edge on a kept piece). A merge onto it replaces the edge: use Track to follow it.", DebugColor.MAGENTA)
         };
         for (var key in regionKeys)
         {
