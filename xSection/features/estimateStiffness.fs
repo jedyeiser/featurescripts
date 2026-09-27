@@ -31,7 +31,8 @@ import(path : "08fddb59786b6bfee020ee05", version : "16a3259bfc59aee2fbc2c1dd");
 export function estimateStiffnessEditingLogic(context is Context, id is Id, oldDefinition is map, definition is map,
    isCreating is boolean, specifiedParameters is map, hiddenBodies is Query, clickedButton is string) returns map
 {
-    if ( clickedButton == "recalculate" || (!oldDefinition.recalculate && definition.recalculate))
+    // A button holds no value: clickedButton is its key in the invocation where it was pressed (correction 27)
+    if (clickedButton == "recalculate")
     {
         // Guard: eiEdges must be non-empty
         var edges = evaluateQuery(context, definition.eiEdges);
