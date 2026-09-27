@@ -22,8 +22,8 @@ IconNamespace::import(path : "3dba0e19457f30c7c2f9dddd", version : "0f63f7efa33c
  * The split keeps every piece (opSplitPart KEEP_ALL, start tool first; opSplitFace in a face split);
  * "Keep" then deletes the outside or inside pieces. A face split removes nothing.
  *
- * Every cut is left as two coincident edges (one per piece); the one published is the edge on the
- * INSIDE piece, so startCut / endCut are "the cut as seen from inside" whatever is kept.
+ * Every cut is left as two coincident edges (one per piece); the one published is the edge on a
+ * piece that is KEPT: the inside piece, or the outside piece when keeping only the outside.
  *
  * Tools: a surface, a face (construction planes included) or a mate connector (its XY plane).
  *
@@ -169,7 +169,10 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         const pieceEdges = faceMode ? qAdjacent(pieces, AdjacencyType.EDGE, EntityType.EDGE)
                                     : qOwnedByBody(qUnion(evaluateQuery(context, pieces)), EntityType.EDGE);
         const allCuts = qIntersection([pieceEdges, qCreatedBy(id, EntityType.EDGE)]);
-        const splitEdges = oneEdgePerCut(context, allCuts, tools, sides.signs);
+        // The published cut edge must be on a piece that is KEPT: the inside one, or the outside one
+        // when keeping outside (the inside pieces are deleted then -- 2026-09-27, RD ext_split).
+        const cutsFromInside = faceMode || definition.keep != SplitPlusKeep.OUTSIDE;
+        const splitEdges = oneEdgePerCut(context, allCuts, tools, sides.signs, cutsFromInside);
         const cutsByTool = cutsPerTool(context, splitEdges, tools);
 
         if (size(tempPlanes) > 0)
@@ -237,9 +240,9 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         var queries = {
             "splitFaces" : extractableQuery(faceMode ? qNothing() : qIntersection([qOwnedByBody(kept, EntityType.FACE), qCreatedBy(id, EntityType.FACE)]),
                     "Faces the splits created (the caps on solids; empty in a face split).", DebugColor.MAGENTA),
-            "splitEdges" : extractableQuery(splitEdges, "Every cut: one edge per cut, the one on the inside piece.", DebugColor.MAGENTA),
-            "startCut" : extractableQuery(cutsByTool[0], "The cut the start tool made (the edge on the inside piece).", DebugColor.MAGENTA),
-            "endCut" : extractableQuery(size(cutsByTool) > 1 ? cutsByTool[1] : qNothing(), "The cut the end tool made (the edge on the inside piece).", DebugColor.MAGENTA)
+            "splitEdges" : extractableQuery(splitEdges, "Every cut: one edge per cut, on a kept piece (inside, or outside when keeping outside).", DebugColor.MAGENTA),
+            "startCut" : extractableQuery(cutsByTool[0], "The cut the start tool made (the edge on a kept piece).", DebugColor.MAGENTA),
+            "endCut" : extractableQuery(size(cutsByTool) > 1 ? cutsByTool[1] : qNothing(), "The cut the end tool made (the edge on a kept piece).", DebugColor.MAGENTA)
         };
         for (var key in regionKeys)
         {
@@ -426,9 +429,10 @@ function piecePoint(context is Context, piece is Query) returns Vector
  * The cut edges with each coincident pair reduced to one. Keeping both sides leaves every cut
  * as two edges on top of each other, one per piece, and anything built on both -- an
  * extrude, a fillet -- fails on the overlap. Of a pair, the edge kept is the one on the
- * INSIDE piece of the tool that made it.
+ * INSIDE piece of the tool that made it (`fromInside`), or on the OUTSIDE piece when the inside
+ * pieces are about to be deleted.
  */
-function oneEdgePerCut(context is Context, edges is Query, tools is array, signs is array) returns Query
+function oneEdgePerCut(context is Context, edges is Query, tools is array, signs is array, fromInside is boolean) returns Query
 {
     const all = evaluateQuery(context, edges);
     var middles = [];
@@ -467,7 +471,8 @@ function oneEdgePerCut(context is Context, edges is Query, tools is array, signs
         for (var g in group)
         {
             const side = edgeSide(context, all[g], tools[k]);
-            if ((side > 0 * meter && signs[k] > 0) || (side < 0 * meter && signs[k] < 0))
+            const onInside = (side > 0 * meter && signs[k] > 0) || (side < 0 * meter && signs[k] < 0);
+            if (onInside == fromInside)
             {
                 chosen = all[g];
                 break;

@@ -199,8 +199,8 @@ Mate connector and construction plane tools are infinite; surfaces cut as they a
 - **Trim to face boundaries** (Part) -- a single-face tool cuts only within its own boundary, as the built-in.
 - **Keep tools** -- keep sheet-body tools after the split.
 
-**Cut edges.** Every cut leaves two coincident edges, one per piece. The one published is the edge on the **inside**
-piece, so `startCut` / `endCut` are "the cut as seen from inside" whatever you keep.
+**Cut edges.** Every cut leaves two coincident edges, one per piece. The one published is the edge on a piece that
+is **kept**: the inside piece, or the outside piece when you keep only the outside.
 
 **Outputs** (every key always present, empty when it does not apply): `inside`, `outside`, `start`, `end` and each
 `<region>Edges` (edges except the cuts; a surface's boundary edges); `startCut`, `endCut`; `splitEdges` (every
@@ -327,7 +327,7 @@ result bodies) and `inputs`; the rest:
 | Feature | Keys |
 |---|---|
 | Mutual Trim+ | `trimEdges` (the trim curve: fillet here), `keptFaces1`, `keptFaces2`, `trimEdgeCount` |
-| Split+ | `inside`, `outside`, `start`, `end` and each `<region>Edges`; `startCut`, `endCut`; `splitEdges` (one edge per cut, on the inside piece); `splitFaces`; `pieceCount` |
+| Split+ | `inside`, `outside`, `start`, `end` and each `<region>Edges`; `startCut`, `endCut`; `splitEdges` (one edge per cut, on a kept piece); `splitFaces`; `pieceCount` |
 | Offset+ | `startVertex`, `endVertex`, `startEdge`, `endEdge` (start = the end at the source's start), `cornerArcs`, `boundaryEdges` (surfaces). Corner counts are in the notice only. |
 | Thicken+ | `towardFaces`, `awayFaces`, `sideFaces` (each tracked through the boolean) |
 | Orient to reference | `flipped` (the surfaces it flipped), `unchanged` (already facing the right way), `flippedCount`; `output` = every selected surface |
