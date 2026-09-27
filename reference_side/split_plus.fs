@@ -339,7 +339,7 @@ function classifyPieces(context is Context, pieces is array, tools is array, sig
     var result = { "inside" : [], "start" : [], "end" : [], "beyondBoth" : [], "onTool" : [] };
     for (var piece in pieces)
     {
-        const point = piecePoint(context, piece);
+        const point = piecePoint(context, piece, tools);
         var beyond = [];
         var readable = true;
         for (var k = 0; k < size(tools); k += 1)
@@ -411,18 +411,60 @@ function faceRegionEdges(context is Context, faces is Query, cuts is Query) retu
 }
 
 /**
- * The point that stands for a piece when reading its side of a tool: a face's point nearest
- * its centroid (a curved face's centroid can lie off it, even across a tool), else the
- * body's centroid.
+ * The point that stands for a piece when reading its side of the tools -- always a point ON the
+ * piece (a body's centroid can lie off it, even across a tool: a ring cut out by a cylinder has
+ * its centroid on the axis, inside the cutter -- 2026-09-27, test S11).
+ *     face (face split)   its point nearest its centroid
+ *     body                of the points nearest each face's centroid (each edge's middle for a
+ *                         wire), the one farthest from the nearest tool -- so a solid's cap
+ *                         faces, which lie on a tool, never decide
  */
-function piecePoint(context is Context, piece is Query) returns Vector
+function piecePoint(context is Context, piece is Query, tools is array) returns Vector
 {
-    const centroid = evApproximateCentroid(context, { "entities" : piece });
-    if (isQueryEmpty(context, qEntityFilter(piece, EntityType.FACE)))
+    if (!isQueryEmpty(context, qEntityFilter(piece, EntityType.FACE)))
     {
-        return centroid;
+        return pointOnFace(context, piece);
     }
-    return evDistance(context, { "side0" : centroid, "side1" : piece }).sides[1].point;
+    var candidates = [];
+    const faces = evaluateQuery(context, qOwnedByBody(piece, EntityType.FACE));
+    for (var face in faces)
+    {
+        candidates = append(candidates, pointOnFace(context, face));
+    }
+    if (size(faces) == 0)
+    {
+        for (var edge in evaluateQuery(context, qOwnedByBody(piece, EntityType.EDGE)))
+        {
+            candidates = append(candidates, evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 }).origin);
+        }
+    }
+    if (size(candidates) == 0)
+    {
+        return evApproximateCentroid(context, { "entities" : piece });
+    }
+    var best = candidates[0];
+    var bestClearance = -1 * meter;
+    for (var candidate in candidates)
+    {
+        var clearance = inf * meter;
+        for (var tool in tools)
+        {
+            clearance = min(clearance, evDistance(context, { "side0" : candidate, "side1" : tool }).distance);
+        }
+        if (clearance > bestClearance)
+        {
+            bestClearance = clearance;
+            best = candidate;
+        }
+    }
+    return best;
+}
+
+/** A face's point nearest its centroid (a curved face's centroid can lie off it). */
+function pointOnFace(context is Context, face is Query) returns Vector
+{
+    const centroid = evApproximateCentroid(context, { "entities" : face });
+    return evDistance(context, { "side0" : centroid, "side1" : face }).sides[1].point;
 }
 
 /**

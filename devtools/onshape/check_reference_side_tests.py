@@ -259,10 +259,15 @@ for n, near1 in enumerate([True, False]):
         const a1 = evArea(context, { "entities" : out.query.keptFaces1.value });
         const a2 = evArea(context, { "entities" : out.query.keptFaces2.value });
         const sq = millimeter * millimeter;
+        // trimEdges: only the trim line (100 mm), not the perimeter halves the extended imprint split
+        const trim = evaluateQuery(context, out.query.trimEdges.value);
+        const trimLen = size(trim) == 1 ? evLength(context, { "entities" : trim[0] }) : 0 * meter;
         return [near(area, 10000 * sq, 0.01 * sq) && norm(cc - pt(%g, 0, 12.5)) < mm(0.01)
-                && near(a1, 5000 * sq, 0.01 * sq) && near(a2, 5000 * sq, 0.01 * sq) && norm(c1 - pt(%g, 0, 0)) < mm(0.01) && norm(c2 - pt(%d, 0, 25)) < mm(0.01),
+                && near(a1, 5000 * sq, 0.01 * sq) && near(a2, 5000 * sq, 0.01 * sq) && norm(c1 - pt(%g, 0, 0)) < mm(0.01) && norm(c2 - pt(%d, 0, 25)) < mm(0.01)
+                && size(trim) == 1 && near(trimLen, mm(100), mm(0.01)) && out.variable.trimEdgeCount.value == 1,
             "area " ~ roundToPrecision(area / sq, 3) ~ " (10000), centroid " ~ fmtV(cc) ~ "; kept 1 at " ~ fmtV(c1) ~ ", kept 2 at " ~ fmtV(c2)
-            ~ ", areas " ~ roundToPrecision(a1 / sq, 2) ~ " / " ~ roundToPrecision(a2 / sq, 2) ~ " (5000 each)"];''' % (want, want1, x0),
+            ~ ", areas " ~ roundToPrecision(a1 / sq, 2) ~ " / " ~ roundToPrecision(a2 / sq, 2) ~ " (5000 each), trimEdges " ~ size(trim)
+            ~ " of " ~ fmt(trimLen) ~ " (1 of 100)"];''' % (want, want1, x0),
          H="%s horizontal sheet" % tag, V="%s vertical sheet" % tag)
 
 for n, (toward, away, swap) in enumerate([(5, 0, False), (2, 3, False), (2, 3, True)]):
@@ -374,6 +379,13 @@ case("F5 ", r'''
         const ok = near(t[0], mm(60), mm(0.001)) && near(b[0], mm(-60), mm(0.001));
         return [ok, "top sheet at z " ~ fmt(t[0]) ~ " (60), bottom sheet at z " ~ fmt(b[0]) ~ " (-60)"];''',
      TOP="F5 top sheet", BOTTOM="F5 bottom sheet")
+
+case("S11 ", r'''
+        const bodies = evaluateQuery(context, qUnion([created(@PLATE@), created(SELF)]));
+        const v = size(bodies) == 1 ? evVolume(context, { "entities" : bodies[0] }) : 0 * meter ^ 3;
+        const want = (200000 - 8000 * PI) * millimeter ^ 3;
+        return [size(bodies) == 1 && abs(v - want) < 0.01 * millimeter ^ 3,
+            size(bodies) ~ " body (1), volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (" ~ roundToPrecision(want / millimeter ^ 3, 2) ~ ": the ring)"];''', PLATE="S11 plate")
 
 EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference"]
 

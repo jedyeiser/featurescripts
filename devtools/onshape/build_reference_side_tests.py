@@ -439,3 +439,17 @@ move_face("F5 Move face+ faces toward the centre, distance -10 mm -> z +-60", [
     q("sideReference", ref_front("F5 reference point (%d, 0, 0)" % x0, x0, 0)), b("towardReference", True),
     b("reFillet", False), b("debugPrint", False)])
 print("studio", E)
+
+# ============================================================================
+# Split+ piece side read ON the piece (2026-09-27 audit): a ring's centroid lies inside the cutter
+# ============================================================================
+x0 = 16200
+plate = cube("S11 plate at x 16200 (100 x 100 x 20)", x0, 0, -10, 10)
+circ = sketch("S11 circle r 20 at (16200, 0)", TOP, [circle("c", *mmv(x0, 0, 20))])
+cyl = feature("S11 cylinder sheet r 20 (the cutter)", "extrude", [
+    en("bodyType", "ExtendedToolBodyType", "SURFACE"), en("surfaceOperationType", "NewSurfaceOperationType", "NEW"),
+    q("surfaceEntities", edges(circ)), en("endBound", "BoundingType", "BLIND"), num("depth", "60 mm"), b("symmetric", True)])
+split("S11 Split+ plate by a cylinder, reference on the axis, keep outside -> the ring (1 body, volume 200000 - 8000 pi)", [
+    q("targets", body(plate)), q("startTool", body(cyl)),
+    q("insideReference", ref_top("S11 reference point (16200, 0, 0)", x0, 0)), keep("OUTSIDE")])
+print("studio", E)
