@@ -4,7 +4,7 @@
   "document_name": "reference_side",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/22764764a00a7f607dbc1c4d/w/3b5e11a121111a161684adee",
-  "last_sync": "2026-09-27T09:48:19.447531+00:00",
+  "last_sync": "2026-09-27T10:01:39.291843+00:00",
   "feature_studios": {
     "reference_side_utils": "9aebe5ead538258b285aec19",
     "mutual_trim_plus": "66c049c310f124d978645003",
@@ -13,7 +13,8 @@
     "thicken_plus": "0c55868c5058e59d958b7223",
     "orient_to_reference": "7b069b8070dfe5f09d924d5d",
     "move_face_plus": "fb7f7776686f955d15ce4262",
-    "enclose_plus": "b7e6a8f1efd3289abc9bd671"
+    "enclose_plus": "b7e6a8f1efd3289abc9bd671",
+    "join_profile_surfaces": "e1489344af215afe126b2859"
   },
   "tab_folders": {
     "orient_to_reference": "featurescripts",

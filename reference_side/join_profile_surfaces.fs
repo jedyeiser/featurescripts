@@ -48,26 +48,23 @@ export enum JoinFilletEdge
     OUTSIDE
 }
 
-const SPLIT_FILTER = (EntityType.BODY && BodyType.SHEET && SketchObject.NO) || EntityType.FACE || BodyType.MATE_CONNECTOR;
-const PROFILE_FILTER = EntityType.BODY && BodyType.SHEET && SketchObject.NO && ConstructionObject.NO;
-
 annotation { "Feature Type Name" : "Join profile surfaces",
         "Feature Type Description" : "Offset an inside profile and outside profile(s) toward an inside point, cut them at a start and an end split (inside keeps the middle, outside the ends), and join the cuts with lofted strips, optionally filleted.",
         "Filter Selector" : "allparts" }
 export const joinProfileSurfaces = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Start split", "Filter" : SPLIT_FILTER, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Start split", "Filter" : (EntityType.BODY && BodyType.SHEET && SketchObject.NO) || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
         definition.startSplit is Query;
 
-        annotation { "Name" : "End split", "Filter" : SPLIT_FILTER, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "End split", "Filter" : (EntityType.BODY && BodyType.SHEET && SketchObject.NO) || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
         definition.endSplit is Query;
 
         annotation { "Name" : "Inside point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
                     "Description" : "A point inside every profile surface and between the start and end splits. Positive offsets move toward it." }
         definition.insidePoint is Query;
 
-        annotation { "Name" : "Inside profile", "Filter" : PROFILE_FILTER, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Inside profile", "Filter" : EntityType.BODY && BodyType.SHEET && SketchObject.NO && ConstructionObject.NO, "MaxNumberOfPicks" : 1 }
         definition.insideProfile is Query;
 
         annotation { "Name" : "Inside offset", "Description" : "Positive: toward the inside point. 0: a copy." }
@@ -78,7 +75,7 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
 
         if (definition.outsideMode == JoinOutsideMode.SAME)
         {
-            annotation { "Name" : "Outside profile", "Filter" : PROFILE_FILTER, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Outside profile", "Filter" : EntityType.BODY && BodyType.SHEET && SketchObject.NO && ConstructionObject.NO, "MaxNumberOfPicks" : 1 }
             definition.outsideProfile is Query;
 
             annotation { "Name" : "Outside offset", "Description" : "Positive: toward the inside point. 0: a copy." }
@@ -86,13 +83,13 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         }
         else
         {
-            annotation { "Name" : "Start outside profile", "Filter" : PROFILE_FILTER, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Start outside profile", "Filter" : EntityType.BODY && BodyType.SHEET && SketchObject.NO && ConstructionObject.NO, "MaxNumberOfPicks" : 1 }
             definition.startProfile is Query;
 
             annotation { "Name" : "Start outside offset", "Description" : "Positive: toward the inside point. 0: a copy." }
             isLength(definition.startOffset, ZERO_DEFAULT_LENGTH_BOUNDS);
 
-            annotation { "Name" : "End outside profile", "Filter" : PROFILE_FILTER, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "End outside profile", "Filter" : EntityType.BODY && BodyType.SHEET && SketchObject.NO && ConstructionObject.NO, "MaxNumberOfPicks" : 1 }
             definition.endProfile is Query;
 
             annotation { "Name" : "End outside offset", "Description" : "Positive: toward the inside point. 0: a copy." }
