@@ -1196,11 +1196,45 @@ export function casePatternEditLogic(context is Context, id is Id, oldDefinition
     {
         definition.cases = [emptyCaseRow()];
     }
+    // Lay rows out only when something can have changed their layout: every row after a new Close
+    // case or the Update button, otherwise just rows that do not match the signature (a new row).
+    // Typing a name or value then returns the definition untouched, which keeps the dialog quick.
+    const oldClose = oldDefinition.closeCase is map ? toString(keys(oldDefinition.closeCase)) : "";
+    const everyRow = isCreating || clickedButton == "updateSlots" || oldClose != toString(keys(definition.closeCase));
     for (var r = 0; r < size(definition.cases); r += 1)
     {
-        definition.cases[r] = layoutRow(definition.cases[r], signature);
+        if (everyRow || !isLaidOut(definition.cases[r], signature))
+        {
+            definition.cases[r] = layoutRow(definition.cases[r], signature);
+        }
     }
     return definition;
+}
+
+/** True when a case row's slots already carry the signature's names and value types. */
+function isLaidOut(row is map, signature is map) returns boolean
+{
+    const count = size(signature.names);
+    for (var k = 1; k <= CASE_MAX_INPUTS; k += 1)
+    {
+        if (row["in" ~ k ~ "Key"] != (k <= count ? signature.names[k - 1] : ""))
+        {
+            return false;
+        }
+    }
+    const valueCount = size(signature.valueNames);
+    for (var m = 1; m <= CASE_MAX_VALUES; m += 1)
+    {
+        if (row["v" ~ m ~ "Key"] != (m <= valueCount ? signature.valueNames[m - 1] : ""))
+        {
+            return false;
+        }
+        if (m <= valueCount && row["v" ~ m ~ "Kind"] != slotKind(signature.valueKinds[m - 1]))
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 /** A case row laid out for `signature`, keeping selections and values by name. */
@@ -1231,8 +1265,13 @@ function layoutRow(row is map, signature is map) returns map
         result["use" ~ k] = used;
         result["in" ~ k ~ "Key"] = name;
         result["in" ~ k ~ "Name"] = used ? "#" ~ name : "";
-        const kept = used ? oldInputs[name] : undefined;
-        result["input" ~ k] = kept is Query ? kept : qNothing();
+        if (used)
+        {
+            // Unused slots are hidden and unbound (their key is cleared); leaving them untouched keeps
+            // the returned definition small.
+            const kept = oldInputs[name];
+            result["input" ~ k] = kept is Query ? kept : qNothing();
+        }
     }
     const valueCount = size(signature.valueNames);
     for (var m = 1; m <= CASE_MAX_VALUES; m += 1)
