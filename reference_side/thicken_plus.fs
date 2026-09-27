@@ -186,7 +186,9 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
         processNewBodyIfNeeded(context, id, definition, thickenAll);
 
         embedStandardOutputs(context, id, {
-                    "output" : qEntityFilter(output, EntityType.BODY),
+                    // With Remove / Intersect the thickened bodies are consumed by the boolean: the
+                    // bodies holding the tracked faces are the parts it changed (2026-09-27 audit).
+                    "output" : qUnion([qEntityFilter(output, EntityType.BODY), qOwnerBody(outputs.toward), qOwnerBody(outputs.away), qOwnerBody(outputs.side)]),
                     "outputDescription" : "The thickened bodies (or the parts they merged into)",
                     "inputs" : definition.entities,
                     "queries" : {

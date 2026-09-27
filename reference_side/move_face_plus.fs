@@ -66,7 +66,10 @@ export const moveFacePlus = defineFeature(function(context is Context, id is Id,
         }
         if (tolerantEquals(definition.distance, 0 * meter))
         {
+            // Still publish every key, so Extract variables entries hold when a variable drives
+            // the distance to 0 (2026-09-27 audit).
             reportFeatureInfo(context, id, "Distance is zero: nothing was moved.");
+            publishMoved(context, id, definition, qUnion(evaluateQuery(context, faces)));
             return;
         }
 
@@ -113,19 +116,24 @@ export const moveFacePlus = defineFeature(function(context is Context, id is Id,
             opOffsetFace(context, id + "against", { "moveFaces" : qUnion(against), "offsetDistance" : -definition.distance, "reFillet" : definition.reFillet });
         }
 
-        const moved = qEntityFilter(qUnion([held, tracked]), EntityType.FACE);
-        embedStandardOutputs(context, id, {
-                    "output" : moved,
-                    "outputDescription" : "The moved faces",
-                    "inputs" : definition.faces,
-                    "queries" : {
-                        "boundaryEdges" : extractableQuery(qAdjacent(moved, AdjacencyType.EDGE, EntityType.EDGE),
-                            "The edges bounding the moved faces.", DebugColor.CYAN)
-                    }
-                });
+        publishMoved(context, id, definition, qEntityFilter(qUnion([held, tracked]), EntityType.FACE));
     }, {
         "sideReference" : qNothing(),
         "towardReference" : true,
         "reFillet" : false,
         "debugPrint" : false
     });
+
+/** The standard keys (output = the moved faces) and boundaryEdges. */
+function publishMoved(context is Context, id is Id, definition is map, moved is Query)
+{
+    embedStandardOutputs(context, id, {
+                "output" : moved,
+                "outputDescription" : "The moved faces",
+                "inputs" : definition.faces,
+                "queries" : {
+                    "boundaryEdges" : extractableQuery(qAdjacent(moved, AdjacencyType.EDGE, EntityType.EDGE),
+                        "The edges bounding the moved faces.", DebugColor.CYAN)
+                }
+            });
+}
