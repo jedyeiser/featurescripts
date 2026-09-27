@@ -246,6 +246,13 @@ in-list reference -> ERROR (expected); T6 boolean suppression per case; T7 chain
 UI (2026-09-26, Playwright): picking a Close case adds the first row, laid out by name with case 1's
 values (Boolean shown as the expression "true").
 
+### Part naming option (2026-09-26, user's RD 20FOU 28 doc)
+Close case "Name parts with the case name" (default ON = old behaviour; correction 25 migrates the default
+into saved features). OFF leaves names to the repeated features -- e.g. a rename feature using #caseName,
+which the suffix rule would otherwise overwrite (it produced sw_inside_surf_3d_sw_inside_2d). Outputs are
+unaffected (queries, not names); they are named #<case>_<output>, so renaming a CASE renames its outputs.
+Test T8 (on -> Stud_B, off -> default name kept).
+
 ### Open
 - Not yet exercised: slot values kept by name after the Define case changes (layoutRow), value fallback
   notice, mate-connector outputs, sketches in the body, evaluate-on-use / track outputs.

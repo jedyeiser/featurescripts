@@ -96,7 +96,7 @@ def status_of(prefix):
 
 
 # ---- statuses ----
-for prefix in ["T1 Case pattern", "T2 Case pattern", "T6 Case pattern", "T7 Case pattern"]:
+for prefix in ["T1 Case pattern", "T2 Case pattern", "T6 Case pattern", "T7 Case pattern", "T8 Case pattern"]:
     st = status_of(prefix)
     check(prefix + " statuses OK/INFO", st and all(s in ("OK", "INFO") for s in st), str(st))
 check("T3 Case pattern status ERROR (clicked in-list edge)", status_of("T3 Case pattern") == ["ERROR"], str(status_of("T3 Case pattern")))
@@ -141,6 +141,13 @@ check("T7 case B stud on block B (z 20..30)", any(near(b["z0"], 20) and near(b["
 check("T7 case D stud on B's stud (z 30..40, chained)", any(near(b["z0"], 30) and near(b["z1"], 40) for b in b7))
 for n in ("A_stud", "B_stud", "D_stud"):
     check("T7 #%s = one body" % n, outputs[n].startswith("1 "), outputs[n])
+
+# ---- T8 ----
+r8 = row(500)
+b8 = [b for b in at_x(r8, 200) if near(b["z0"], 20) and near(b["z1"], 30)]
+c8 = [b for b in at_x(r8, 400) if near(b["z0"], 20) and near(b["z1"], 30)]
+check("T8 names ON: case B stud named Stud_B", len(b8) == 1 and b8[0]["name"] == "Stud_B", str(b8 and b8[0]["name"]))
+check("T8 names OFF: case C stud keeps a default name", len(c8) == 1 and c8[0]["name"].startswith("Part "), str(c8 and c8[0]["name"]))
 
 print("\n%d failure(s)" % fails)
 sys.exit(1 if fails else 0)

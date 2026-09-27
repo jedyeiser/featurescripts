@@ -518,6 +518,12 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
         annotation { "Name" : "Close case", "Description" : "The Close case ending the features to repeat." }
         definition.closeCase is FeatureList;
 
+        // A real button (correction 27): pressing it runs the editing logic, which lays every case row
+        // out again from the Define case (editing logic does not run when a dialog is only opened).
+        annotation { "Name" : "Update from Define case",
+                    "Description" : "Lay the case rows out again after inputs or values were added, removed, renamed or retyped in the Define case. Selections and values are kept by name." }
+        isButton(definition.updateSlots);
+
         annotation { "Name" : "Cases", "Item name" : "Case", "Item label template" : "#caseName",
                     "Description" : "Usually one. Each case gives a selection per input and a value per value (case 1's by default)." }
         definition.cases is array;
@@ -999,7 +1005,7 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
                 const selection = slot == undefined ? undefined : row["input" ~ slot];
                 if (selection == undefined || isQueryEmpty(context, selection))
                 {
-                    bindFailure = "#" ~ name ~ " selects nothing" ~ (slot == undefined ? " (edit this Case pattern after changing the Define case)" : "");
+                    bindFailure = "#" ~ name ~ " selects nothing" ~ (slot == undefined ? " (click Update from Define case in this Case pattern)" : "");
                     break;
                 }
                 selections = append(selections, selection);
@@ -1023,7 +1029,7 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
                 if (value == undefined)
                 {
                     value = signature.values[m];
-                    notes = append(notes, caseName ~ " uses case 1's #" ~ name ~ " (edit this Case pattern after changing the Define case)");
+                    notes = append(notes, caseName ~ " uses case 1's #" ~ name ~ " (click Update from Define case in this Case pattern)");
                 }
                 else if (kind == CaseValueKind.BOOLEAN && !(value is boolean))
                 {
@@ -1170,10 +1176,11 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
  * labelled selection per input, one labelled field of the right type per value -- keeping each
  * slot's selection or value by NAME, so adding, removing or reordering inputs in the Define case
  * does not shuffle them. A new slot, or one whose type changed, starts at case 1's value. Adds the
- * first case row when the Close case is picked on a new feature.
+ * first case row when the Close case is picked on a new feature. Runs on any change in the dialog,
+ * including the "Update from Define case" button.
  */
 export function casePatternEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
-    isCreating is boolean, specifiedParameters is map) returns map
+    isCreating is boolean, specifiedParameters is map, hiddenBodies is Query, clickedButton is string) returns map
 {
     const close = findSignature(context, definition.closeCase, "caseClose");
     if (close == undefined)

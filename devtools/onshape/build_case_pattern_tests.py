@@ -23,6 +23,8 @@ T6  Boolean #pin (typed expression): Post extrude #cap 5 mm; Pin extrude #cap 12
 T7  Chained cases: Stud extrude #face 10 mm new, output stud. Case pattern B on block B's top; then
     Case pattern D whose #face is the top of B's stud (geometry made after the Define case)
     -> D's stud on top of B's stud (z 30..40); #D_stud exists
+T8  Part naming: the same stud case twice, case 1's stud named "Stud_A" (cached names), Close case
+    "Name parts with the case name" on -> case B's stud "Stud_B"; off -> Onshape's default name kept
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_case_pattern_tests.py
 """
@@ -228,9 +230,9 @@ def define_case(name, case1, inputs, values=()):
         arr("values", [[s("valueName", n), en("valueKind", "CaseValueKind", k, NS)] + typed("value", k, v) for n, k, v in values])], NS)
 
 
-def close_case(name, define, features, outputs=(), names=""):
+def close_case(name, define, features, outputs=(), names="", name_parts=True):
     """outputs: [(name, query variable name, evaluate on use)]."""
-    return feature(name, "closeCase", [
+    return feature(name, "closeCase", [b("nameParts", name_parts),
         flist("defineCase", [define]), flist("features", features),
         arr("outputs", [[s("outputName", n), qv("outputQuery", v), b("outputOnUse", on_use), b("outputTrack", False)]
                         for n, v, on_use in outputs]),
@@ -329,3 +331,12 @@ c7 = close_case("T7 Close case: output stud", d7, [stud, qv7], [("stud", "studBo
 case_pattern("T7 Case pattern B -> stud on block B, #B_stud", c7, [case_row("B", ["face7"], [top(B)])])
 stud_b_top = 'qContainsPoint(qEverything(EntityType.FACE), vector(200, 400, 30) * millimeter)'
 case_pattern("T7 Case pattern D on top of B's stud (chained) -> z 30..40, #D_stud", c7, [case_row("D", ["face7"], [stud_b_top])])
+
+# ---- T8 ----
+A, B, C = blocks("T8", 500)
+d8 = define_case("T8 Define case A: face8", "A", [("face8", top(A))])
+stud8 = feature("T8 Stud: extrude face8 10 mm new", "extrude", extrude_new("", qv("entities", "face8"), "10 mm"))
+c8on = close_case("T8 Close case, name parts ON", d8, [stud8], names="0	0	Stud_A")
+case_pattern("T8 Case pattern B, names on -> Stud_B", c8on, [case_row("B", ["face8"], [top(B)])])
+c8off = close_case("T8 Close case, name parts OFF", d8, [stud8], names="0	0	Stud_A", name_parts=False)
+case_pattern("T8 Case pattern C, names off -> default name", c8off, [case_row("C", ["face8"], [top(C)])])
