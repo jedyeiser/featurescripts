@@ -253,9 +253,16 @@ which the suffix rule would otherwise overwrite (it produced sw_inside_surf_3d_s
 unaffected (queries, not names); they are named #<case>_<output>, so renaming a CASE renames its outputs.
 Test T8 (on -> Stud_B, off -> default name kept).
 
+### Update from Define case button (2026-09-26)
+Editing logic does not run when a dialog is only opened, so after adding/removing/retyping a Define case
+input or value the Case pattern needs a change to re-lay its rows: the "Update from Define case" button
+(isButton, correction 27). Tested live: new input inserted FIRST in T7's Define case -> button -> saved rows
+have in1Key extraFace (empty), in2Key face7 with B's selection kept (bind by name works). Quirk: the open
+dialog does not repaint read-only label strings changed by editing logic in existing array rows -- the
+stored labels are right and show on reopening.
+
 ### Open
-- Not yet exercised: slot values kept by name after the Define case changes (layoutRow), value fallback
-  notice, mate-connector outputs, sketches in the body, evaluate-on-use / track outputs.
+- Not yet exercised: value fallback notice, mate-connector outputs, sketches in the body, evaluate-on-use / track outputs.
 - Feature names containing "#name" display as "?" in the tree (Onshape treats # in names specially).
 - docs/explainers/case_pattern/case_pattern_explained.md still describes v1.
 - The toolbar/search also offers "Case pattern" from Case_Pattern V1 (older version) -- pick the

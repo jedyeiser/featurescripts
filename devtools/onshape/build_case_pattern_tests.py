@@ -340,3 +340,32 @@ c8on = close_case("T8 Close case, name parts ON", d8, [stud8], names="0	0	Stud_A
 case_pattern("T8 Case pattern B, names on -> Stud_B", c8on, [case_row("B", ["face8"], [top(B)])])
 c8off = close_case("T8 Close case, name parts OFF", d8, [stud8], names="0	0	Stud_A", name_parts=False)
 case_pattern("T8 Case pattern C, names off -> default name", c8off, [case_row("C", ["face8"], [top(C)])])
+
+# ---- T9 ----
+# Offset+ (Reference_Side) inside a case, side reference = a clicked vertex OUTSIDE the list (the RD 20FOU 28
+# setup, 2026-09-26). Wall = the block's +X face; reference = block A's (-X, -Y, top) corner, so "toward the
+# reference" is -X for every case. T9a clicks the reference in Offset+; T9b routes it through a Define case input.
+OFFSET_PLUS_NS = "d22764764a00a7f607dbc1c4d::v1458547cd7e54d77521dc145::e742e5b3f04cc9115de8b6d8a::mb6366233152c2feb25ed002a"
+
+
+def offset_plus(name, surfaces, side_reference):
+    return feature(name, "offsetPlus", [
+        en("offsetType", "OffsetPlusType", "SURFACE", OFFSET_PLUS_NS), surfaces, q("curves"),
+        en("frameMode", "OffsetFrameMode", "TRANSPORT", OFFSET_PLUS_NS), q("normalSurface"),
+        en("surfaceDirection", "SurfaceOffsetDirection", "NORMAL", OFFSET_PLUS_NS), q("planeNormal"),
+        num("distance", "2 mm"), side_reference, b("towardReference", True),
+        num("samplesPerEdge", "24", integer=True), num("maxSpacing", "5 mm"), num("fitTolerance", "0.001 mm"), b("debugPrint", False)],
+        OFFSET_PLUS_NS)
+
+
+A, B, C = blocks("T9", 600)
+corner_a = 'qContainsPoint(qCreatedBy(makeId("%s"), EntityType.VERTEX), vector(-30, 580, 20) * millimeter)' % A
+d9a = define_case("T9a Define case A: wall9 (+X face)", "A", [("wall9", side_at(A, 30, 600))])
+op9a = offset_plus("T9a Offset+ wall9 2 mm toward CLICKED corner", qv("surfaces", "wall9"), sel("sideReference", corner_a))
+c9a = close_case("T9a Close case", d9a, [op9a], name_parts=False)
+case_pattern("T9a Case pattern B -> offset toward -X (x 243)", c9a, [case_row("B", ["wall9"], [side_at(B, 245, 600)])])
+d9b = define_case("T9b Define case A: wall9b, ref9b (corner)", "A", [("wall9b", side_at(A, 30, 600)), ("ref9b", corner_a)])
+op9b = offset_plus("T9b Offset+ wall9b 2 mm toward ref9b", qv("surfaces", "wall9b"), qv("sideReference", "ref9b"))
+c9b = close_case("T9b Close case", d9b, [op9b], name_parts=False)
+case_pattern("T9b Case pattern C -> offset toward -X (x 431.3)", c9b,
+             [case_row("C", ["wall9b", "ref9b"], [side_at(C, 400 + AP * math.cos(math.radians(54)), 600 + AP * math.sin(math.radians(54))), corner_a])])

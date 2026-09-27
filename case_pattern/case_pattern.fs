@@ -1044,9 +1044,13 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
                 continue;
             }
 
+            // Bind the entities resolved HERE, outside the pattern frame: a selection re-resolved inside
+            // the frame is refused "out of pattern scope" when it names geometry made before the repeated
+            // features (custom features then throw or see nothing -- Offset+ lost its side reference,
+            // 2026-09-26, test T9).
             for (var n = 0; n < size(signature.names); n += 1)
             {
-                setQueryVariable(context, signature.names[n], selections[n]);
+                setQueryVariable(context, signature.names[n], qUnion(evaluateQuery(context, selections[n])));
             }
             for (var m = 0; m < size(values); m += 1)
             {
