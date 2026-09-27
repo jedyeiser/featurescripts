@@ -29,6 +29,13 @@ export function referenceProbe(context is Context, reference is Query)
 {
     if (isQueryEmpty(context, reference))
     {
+        // Picked but unreadable is an error, never "no reference": inside a Case pattern a click on
+        // geometry made before the repeated features resolves to nothing, and falling back to the
+        // surface normals silently flipped sides (RD 20FOU 28, 2026-09-26).
+        if (isPicked(reference))
+        {
+            throw regenError("The reference is selected but cannot be read here. Inside a Case pattern, pass it in through a Define case input (#name) instead of clicking it in this feature.");
+        }
         return undefined;
     }
     if (!isQueryEmpty(context, qBodyType(reference, BodyType.MATE_CONNECTOR)))
@@ -36,6 +43,27 @@ export function referenceProbe(context is Context, reference is Query)
         return evMateConnector(context, { "mateConnector" : reference }).origin;
     }
     return reference;
+}
+
+/** True when a query parameter holds a selection (which may still resolve to nothing). */
+export function isPicked(q is Query) returns boolean
+{
+    if (q.queryType == QueryType.NOTHING)
+    {
+        return false;
+    }
+    if (q.queryType == QueryType.UNION && q.subqueries is array)
+    {
+        for (var sub in q.subqueries)
+        {
+            if (isPicked(sub))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    return true;
 }
 
 /** The faces of a query holding sheet bodies, faces, or both. */
