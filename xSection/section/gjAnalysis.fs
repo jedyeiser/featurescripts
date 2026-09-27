@@ -4,7 +4,7 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: xSection/gjDataAccess
 import(path : "12c9e75dc2139eb927245033", version : "245034f4d110f01b5a55c774");
 // IMPORT: xSection/xSect_GJ
-import(path : "9df6ba3db06d479fabe63c1d", version : "85b2b777fcad63294d446295");
+import(path : "9df6ba3db06d479fabe63c1d", version : "9837141c3629f42bee21b955");
 
 
 /**

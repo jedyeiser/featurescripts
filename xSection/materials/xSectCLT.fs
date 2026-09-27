@@ -5,7 +5,7 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "f8e590162884d45f56e0a05f", version : "eea0dd2f92bbe788ad4ed3b4");
 
 // xSect_GJ (computeTorsionalStiffness)
-import(path : "9df6ba3db06d479fabe63c1d", version : "85b2b777fcad63294d446295");
+import(path : "9df6ba3db06d479fabe63c1d", version : "9837141c3629f42bee21b955");
 
 
 // =============================================================================

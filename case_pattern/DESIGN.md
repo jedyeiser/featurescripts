@@ -261,6 +261,14 @@ have in1Key extraFace (empty), in2Key face7 with B's selection kept (bind by nam
 dialog does not repaint read-only label strings changed by editing logic in existing array rows -- the
 stored labels are right and show on reopening.
 
+### Outside references in the frame (2026-09-26, test T9)
+Offset+ in the RD doc flipped sides for some cases: its side reference was a click on the MRS mate connector
+(outside the repeated features); inside the frame that query is "out of pattern scope" and read as empty,
+so Offset+ fell back to surface normals. Fixed: inputs are bound as entities resolved outside the frame;
+Reference_Side errors when a picked reference resolves to nothing (correction 50). Rule for users: route
+every outside reference through a Define case input. T9a (click inside Offset+) documents the old failure
+(pinned to Reference_Side V-1458547, still flips), T9b (reference via input) passes.
+
 ### Open
 - Not yet exercised: value fallback notice, mate-connector outputs, sketches in the body, evaluate-on-use / track outputs.
 - Feature names containing "#name" display as "?" in the tree (Onshape treats # in names specially).

@@ -12,8 +12,13 @@ FeatureScript 3083;
  * With S -> infinity this is the thin-plate 4 * int D dy. Finite S lets the twisting moment die away
  * within ~0.3 t of each free edge, which the old formula (4 * sum G Iz about one global centroid)
  * missed: it over-predicted a representative ski section 1.6-2x, mostly through the steel edges.
- * Checked against an exact 2D Saint-Venant warping solve: within 2% on ski sections, stepped and
- * voided sections, 0.04% on a homogeneous rectangle (devtools/xsection/gj_oracle.py mirrors this code).
+ * Checked against an exact 2D Saint-Venant warping solve (devtools/xsection/gj_oracle.py mirrors this
+ * code): 0.04% on a homogeneous rectangle, within 2% on idealised ski, stepped and voided sections.
+ * On real stored sections (devtools/xsection/real_section_check.py, 2026-09-26): ROY underfoot +13%
+ * (skin wrapped up the core sides), Test -25% (1 MPa full-width rubber layer: one rotation per bin
+ * cannot let the stack above and below it twist separately). The old formula was +155% / +377%.
+ * Bodies without material data are voids: layers they separate are still bridged within a bin here,
+ * while the true section would fall apart - assign materials rather than trust GJ across them.
  *
  * G per body is Q66, the in-plane shear stiffness in ski axes. The through-thickness shear G_xz is
  * taken equal to it.

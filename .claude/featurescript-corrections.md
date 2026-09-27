@@ -1678,4 +1678,15 @@ Measured live in the "Case pattern v2 spikes" studio (case_pattern/spike_v2.fs):
     first call sees the previous case's values -- outputs lagged one case).
   - References inside the list resolve relative to the id a feature is called with, so every feature of
     one case must run under the same prefix (splitting a case over several calls broke "created by").
+- **Queries on outside geometry inside the frame (2026-09-26, RD 20FOU 28 Offset+ sides flipped; test T9):**
+  inside a pattern frame, a query that resolves through the history of an op from OUTSIDE the instance
+  (a click, or a query variable bound to such a selection) is refused "@evaluateQuery / @isQueryEmpty:
+  Operation id <op> is out of pattern scope <instance>". Native features cope; custom ones either throw
+  ("Execution error") or -- worse -- read it as EMPTY: Offset+ then had no side reference and offset along
+  the surface normals (right where the normal pointed inward, flipped elsewhere).
+  Fixes: (1) Case pattern binds each input as the entities it resolved OUTSIDE the frame
+  (`qUnion(evaluateQuery(context, selection))`) -- T9b passes; (2) Reference_Side referenceProbe throws
+  when a reference is picked (`isPicked`) but resolves to nothing, instead of returning "no reference".
+  User rule: pass outside references (side references, mate connectors) in through a Define case input,
+  never click them inside a repeated feature (T9a still flips on an old Reference_Side version).
 
