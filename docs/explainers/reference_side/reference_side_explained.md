@@ -318,6 +318,25 @@ the error gives its location and radius -- instead of the kernel's bare "thicken
 reference. T4 (a half cylinder r 10 thickened 15 mm toward its axis) **must** error with the curvature message; T5 (5 mm) gives a 5 mm shell.
 T6: 5 mm up from a cube's top, Add: one part, volume 1 018 000 mm3, `towardFaces` is the face at z 55.
 
+## 2.4b Enclose+
+
+*Added 2026-09-27.* Onshape's Enclose makes solids from the volume surfaces and caps close off. It has no notion of
+"inside": every pocket the inputs close off from the outside becomes solid, interior walls dropped (measured: a
+tube capped at z -20 / +20 with an extra plane at z 0 still gives one solid). Construction planes are infinite.
+
+| Parameter | Meaning |
+|---|---|
+| **Surfaces** | the surfaces bounding the part (sheets or faces) |
+| **Caps** | optional: construction planes and mate connectors (infinite), faces or surfaces |
+| **Inside point** | vertex or mate connector: keeps only the solid containing it (a stray pocket is dropped); a point in no solid is an error (a gap). Empty: every solid is kept |
+| **Mirror plane** | optional: the surfaces are one half. The half is enclosed against the plane, mirrored and united; the union merges faces split by the plane where they lie on one plane or cylinder (a mirrored free-form surface keeps a seam edge). A point on the mirrored side is mirrored too |
+| **Keep tools** | keep the input surfaces (planes and mate connectors are never deleted) |
+
+**Outputs:** `output` (the part), `surfaceFaces`, `capFaces`, `seamEdges` (edges left on the mirror plane).
+
+**Tests:** E1 (tube + plane caps: 400000 mm3, 6 faces), E2 (half tube + mirror: one part, 6 faces -- the split faces
+merged), E3 (a stray pocket dropped), E4 (point outside: error).
+
 ## 2.5 Outputs for Extract variables
 
 Each feature publishes its results with the Variable_tools producer library, so **Extract variables** can turn

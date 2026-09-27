@@ -400,7 +400,23 @@ case("F6 ", r'''
         const b = count(out.query.boundaryEdges.value);
         return [n == 1 && b == 4, "output " ~ n ~ " face (1), boundaryEdges " ~ b ~ " (4)"];''')
 
-EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference"]
+# Enclose+ (2026-09-27)
+for tag, want_faces, x_range in (("E1", 6, None), ("E2", 6, (18350, 18450)), ("E3", 6, None)):
+    xr = "true" if x_range is None else "near(bb.minCorner[0], mm(%g), mm(0.01)) && near(bb.maxCorner[0], mm(%g), mm(0.01))" % x_range
+    case(tag + " ", r'''
+        const out = embedded(SELF);
+        const bodies = evaluateQuery(context, out.query.output.value);
+        if (size(bodies) != 1) { return [false, size(bodies) ~ " parts (1)"]; }
+        const v = evVolume(context, { "entities" : bodies[0] });
+        const faces = count(qOwnedByBody(bodies[0], EntityType.FACE));
+        const caps = count(out.query.capFaces.value);
+        const sides = count(out.query.surfaceFaces.value);
+        const bb = evBox3d(context, { "topology" : bodies[0] });
+        const ok = abs(v - 400000 * millimeter ^ 3) < 0.01 * millimeter ^ 3 && faces == %d && caps == 2 && sides == 4 && %s;
+        return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 1) ~ " (400000), faces " ~ faces ~ " (%d), capFaces " ~ caps ~ " (2), surfaceFaces " ~ sides ~ " (4), x "
+            ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0])];''' % (want_faces, xr, want_faces))
+
+EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference", "E4 Enclose+"]
 
 
 def strings(result):
@@ -432,7 +448,7 @@ def main():
 
     for prefix, body, names in CASES:
         cases = [(n, i) for n, i in by_name if n.startswith(prefix) and states.get(i, {}).get("featureStatus") != "ERROR"
-                 and any(k in n for k in ["Split+", "Offset+", "Mutual Trim+", "Thicken+", "Orient to reference", "Move face+"])]
+                 and any(k in n for k in ["Split+", "Offset+", "Mutual Trim+", "Thicken+", "Orient to reference", "Move face+", "Enclose+"])]
         if len(cases) != 1:
             print("FAIL", prefix, "-- case feature not found")
             failed += 1

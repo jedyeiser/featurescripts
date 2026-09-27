@@ -23,7 +23,7 @@ E = studios[STUDIO]
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 TABS = {e["name"]: e for e in ELEMENTS if e["elementType"] == "FEATURESTUDIO"}
 NS = {name: "e%s::m%s" % (TABS[name]["id"], TABS[name]["microversionId"])
-      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference", "move_face_plus"]}
+      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference", "move_face_plus", "enclose_plus"]}
 
 STATE = {"features": None}
 
@@ -469,4 +469,49 @@ f6 = cube("F6 cube at x 17400", x0, 0)
 move_face("F6 Move face+ distance 0 -> nothing moves, output still published (1 face)", [
     q("faces", face_at(f6, x0, 0, 50)), num("distance", "0 mm"), q("sideReference"), b("towardReference", True),
     b("reFillet", False), b("debugPrint", False)])
+print("studio", E)
+
+# ============================================================================
+# Enclose+ (2026-09-27)
+# ============================================================================
+def enclose(name, params):
+    return feature(name, "enclosePlus", params, NS["enclose_plus"])
+
+
+def tube(name, pts, closed=True):
+    """A surface: a Top-plane polyline extruded symmetric 100 mm in Z."""
+    sk = sketch(name + " (sketch)", TOP, polyline("t", pts, closed=closed))
+    return feature(name, "extrude", [
+        en("bodyType", "ExtendedToolBodyType", "SURFACE"), en("surfaceOperationType", "NewSurfaceOperationType", "NEW"),
+        q("surfaceEntities", edges(sk)), en("endBound", "BoundingType", "BLIND"), num("depth", "100 mm"), b("symmetric", True)])
+
+
+def square(x0, half=50):
+    return [(x0 - half, -half), (x0 + half, -half), (x0 + half, half), (x0 - half, half)]
+
+
+cap_hi = plane_at("Enclose cap plane z = 20", "Top", 20)
+cap_lo = plane_at("Enclose cap plane z = -20", "Top", -20)
+
+x0 = 18000
+e1 = tube("E1 square tube 100 at x 18000", square(x0))
+enclose("E1 Enclose+ tube capped by planes z +-20, point inside -> 1 part, volume 400000, 6 faces (2 cap, 4 surface)", [
+    q("surfaces", body(e1)), q("caps", cap_hi, cap_lo), q("insidePoint", ref_top("E1 inside point (18000, 0, 0)", x0, 0)), b("keepTools", False)])
+
+x0 = 18400
+e2 = tube("E2 half tube (U, open at x 18400)", [(x0, -50), (x0 + 50, -50), (x0 + 50, 50), (x0, 50)], closed=False)
+enclose("E2 Enclose+ half tube, mirror at x 18400 -> 1 part x 18350..18450, volume 400000, 6 faces", [
+    q("surfaces", body(e2)), q("caps", cap_hi, cap_lo), q("insidePoint", ref_top("E2 inside point (18425, 0, 0)", x0 + 25, 0)),
+    q("mirrorPlane", plane_at("E2 mirror plane x = 18400", "Right", x0)), b("keepTools", False)])
+
+x0 = 18800
+e3 = tube("E3 square tube 100 at x 18800", square(x0))
+e3s = tube("E3 small tube 20 at x 19000 (a stray pocket)", square(x0 + 200, 10))
+enclose("E3 Enclose+ two tubes, point in the big one -> 1 part, volume 400000 (the stray pocket dropped)", [
+    q("surfaces", body(e3), body(e3s)), q("caps", cap_hi, cap_lo), q("insidePoint", ref_top("E3 inside point (18800, 0, 0)", x0, 0)), b("keepTools", False)])
+
+x0 = 19400
+e4 = tube("E4 square tube 100 at x 19400", square(x0))
+enclose("E4 Enclose+ inside point outside the tube -> ERROR", [
+    q("surfaces", body(e4)), q("caps", cap_hi, cap_lo), q("insidePoint", ref_top("E4 point outside (19600, 0, 0)", x0 + 200, 0)), b("keepTools", False)])
 print("studio", E)
