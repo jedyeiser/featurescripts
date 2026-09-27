@@ -91,6 +91,10 @@ export const mutualTrimPlus = defineFeature(function(context is Context, id is I
 
         const found = findFacesToDelete(context, id, definition, splitId, splitResult.splittingEdges);
         const facesToDelete = found.faces;
+        // Imprint edges already on a sheet's outer boundary BEFORE the delete: the pieces of the
+        // perimeter the extended imprint split. They stay one-sided after the delete and are not
+        // part of the trim (2026-09-27: a crossing X published the trim edge + 4 perimeter halves).
+        const perimeter = qUnion(evaluateQuery(context, qEdgeTopologyFilter(found.imprint, EdgeTopology.ONE_SIDED)));
         if (!isQueryEmpty(context, facesToDelete))
         {
             opDeleteFace(context, id + "deleteFaces", {
@@ -104,7 +108,7 @@ export const mutualTrimPlus = defineFeature(function(context is Context, id is I
         // The trim boundary: imprint edges left bounding a kept face on one side only. Frozen
         // now and tracked, so the merge below (which fuses the two sides' boundary edges into
         // one) does not lose them.
-        const boundary = qUnion(evaluateQuery(context, qEdgeTopologyFilter(found.imprint, EdgeTopology.ONE_SIDED)));
+        const boundary = qUnion(evaluateQuery(context, qSubtraction(qEdgeTopologyFilter(found.imprint, EdgeTopology.ONE_SIDED), perimeter)));
         const trimEdges = qUnion([boundary, startTracking(context, boundary)]);
         const keptFaces1 = frozenAndTracked(context, qOwnedByBody(definition.body1, EntityType.FACE));
         const keptFaces2 = frozenAndTracked(context, qOwnedByBody(definition.body2, EntityType.FACE));

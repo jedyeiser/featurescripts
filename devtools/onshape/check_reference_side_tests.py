@@ -126,8 +126,11 @@ case("S7 ", r'''
         const en = evaluateQuery(context, out.query.end.value);
         const xs = size(st) == 1 ? centroid(st[0])[0] : 0 * meter;
         const xe = size(en) == 1 ? centroid(en[0])[0] : 0 * meter;
-        return [kept == 2 && near(xs, mm(2365), mm(0.01)) && near(xe, mm(2435), mm(0.01)),
-            kept ~ " pieces (2), start x " ~ fmt(xs) ~ " (2365), end x " ~ fmt(xe) ~ " (2435)"];''')
+        // keep outside: the cut edges must be on the KEPT (outside) pieces, not the deleted inside one
+        const sc = count(out.query.startCut.value);
+        const ec = count(out.query.endCut.value);
+        return [kept == 2 && near(xs, mm(2365), mm(0.01)) && near(xe, mm(2435), mm(0.01)) && sc == 1 && ec == 1,
+            kept ~ " pieces (2), start x " ~ fmt(xs) ~ " (2365), end x " ~ fmt(xe) ~ " (2435), startCut " ~ sc ~ " (1), endCut " ~ ec ~ " (1)"];''')
 
 case("S8 ", r'''
         const bodies = evaluateQuery(context, qUnion([created(@CUBE@), created(SELF)]));
