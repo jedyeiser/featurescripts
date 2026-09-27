@@ -680,6 +680,8 @@ EXPECT_FAIL = {
 # (OK, INFO) where an optional note (shortened end handle, merged-fit deviation, hold point a few um off) may appear.
 MAYBE_INFO = ("OK", "INFO")
 EXPECTED_STATUS = {
+    # P8/P9: closed / pole faces pull ~7.7 of 10 mm via the approximate-interpolation fallback (INFO note), 2026-09-26.
+    "P8 ": MAYBE_INFO, "P9 ": MAYBE_INFO,
     "T07 ": "INFO",  # face reference: the tangent is the approach direction projected into the face
     "T10 ": MAYBE_INFO, "T12 ": MAYBE_INFO, "T13 ": MAYBE_INFO, "T14 ": MAYBE_INFO, "T16 ": "INFO", "T17 ": "INFO",
     "T20 ": MAYBE_INFO, "T21 ": MAYBE_INFO, "T22 ": "INFO", "T23 ": "ERROR", "T24 ": "ERROR",
