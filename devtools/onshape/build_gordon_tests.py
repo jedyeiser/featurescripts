@@ -45,19 +45,38 @@ point is (200,130). Mate connectors sit on Front-plane sketch points (Z = the Fr
   T37 hold distance 1000 mm (longer than the curve)   -> ERROR
   T38 hold (150,-30) G1 + arc G2 + project on Top     -> held part unchanged, end tangent = arc's (curvature info)
   T40 world G0, embedded keys                         -> movedVertex = 1 vertex at To, holdVertex = the fixed-end vertex
+MCE P2 (curves.md sec 3 P2 / 4.3 step 7; S curve at x = 50000..52000):
+  T41 world G0 + "Carry offset along the curve"       -> both ends exact, curve differs from T01 (offset transported)
+  T42 SMOOTHERSTEP transition                         -> both ends exact, fixed-end tangent error <= T01's (LOGISTIC)
+      NEEDS a tools version with SMOOTHERSTEP and modifyCurveEnd's transition_functions import re-pinned to it;
+      until then the enum value is not in the feature spec and this instance fails to insert / regenerate.
+  T43 hold (150,-30) G2 + Remove hold knot            -> as T31 (held part unchanged, G2 at the hold), 2 fewer control points
 Scaled Curve (SC):
   SC0 control: two lines y=0 / y=100, Create curve on   -> midline y=50
   SC1 default instance (Create curve left at default)   -> one wire body (creates nothing today)
   SC2 two splines, degree 5                             -> output degree 5 (hard-coded 3 today)
   SC3 concentric arcs R100 / R200                       -> exact R150 (arcs sampled without forceNonRational today)
+Scaled Curve native-path rewrite (2026-09-26):
+  SC4 Group 0 line drawn right-to-left, factors -0.5 -> +0.5 -> auto-oriented: the straight diagonal (x0,0)-(x0+200,100)
+  SC5 concentric circles R100 / R200 (closed / closed)   -> one closed curve, radius 150
+  SC6 circle + line (closed / open)                    -> ERROR
+  SC7 two S curves, Sample spacing 60, Minimum samples 5 -> INFO: deviation between samples reported; ends exact
 Pull surface (P), offsets written straight into mpOffsets/activeOffsets (editing logic does not run over REST):
   P1 G0 4x4, 90 deg cylinder patch R100, +10 at (1,1)   -> boundary on the source boundary along whole edges
   P2 G1 5x5, same patch, +10 at (2,2)                   -> boundary G0 + normals match along whole edges
   P3 G0 4x4, planar top of a block, +10 at (1,2)        -> boundary exact (control)
+  P4 G2 7x7, cylinder patch, +10 at (3,3)               -> boundary G0 + normals match along whole edges
+  P5 Replace face on a 90 deg cylinder SHEET, G1 5x5    -> source sheet deleted, the pulled sheet replaces it (1 body), edges on R100 + radial normals
+  P6 Replace face on the patch SOLID, G0 4x4            -> still 1 solid, boundary on R100, face pulled
+  P7 One handle per control point, G0, 7 CPs, CP (3,3)  -> boundary G0, centre pulled 2..9 mm (CP moves 10, surface ~4.4)
+  P8 G1 6x6 full cylinder (closed / periodic)           -> closed sheet with 2 edges, boundary G0 + G1, pulled
+  P9 G1 6x6 hemisphere (pole)                           -> pole point unchanged, boundary G0 + G1, pulled
+     (a pole that is not a collapsed control row errors "boundary spans no parameter range" -- the designed fallback)
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_gordon_tests.py
 """
 import copy
+import os
 import math
 
 from sync.core.client import OnshapeClient
@@ -465,6 +484,14 @@ cv, t = s_case("T40", x)
 mce_run("T40", "world G0, embedded keys -> movedVertex at To, holdVertex at the fixed end", edges(cv), vertex_at(cv, x + 200, 0),
         vertex_of(t))
 
+# MCE P2: transport offset, SMOOTHERSTEP, hold-knot removal
+mce_case("T41", 50000, "transport offset -> ends exact, differs from T01", given=[b("transportOffset", True)])
+# T42 needs the tools version with SMOOTHERSTEP (re-pin transition_functions first); set GORDON_T42=1 to build it.
+if os.environ.get("GORDON_T42"):
+    mce_case("T42", 51000, "smootherstep transition -> ends exact, fixed-end tangent no worse than T01", {"transitionType": "SMOOTHERSTEP"})
+hold_case("T43", 52000, "hold G2 + remove hold knot -> held part unchanged, 2 fewer control points than T31", (150, -30),
+          enums=HOLD_G2, given=[b("removeHoldKnot", True)])
+
 
 # ---- Scaled Curve ----
 def scaled(tag, text, g0, g1, given=()):
@@ -487,16 +514,35 @@ g0 = sketch("SC3 group 0", TOP, [arc("a", *mmv(13000, 0, 100), 0, math.pi / 2)])
 g1 = sketch("SC3 group 1", TOP, [arc("a", *mmv(13000, 0, 200), 0, math.pi / 2)])
 scaled("SC3", "arcs R100 / R200 -> exact R150", g0, g1, [b("createCurve", True)])
 
+# Native-path rewrite cases
+g0 = sketch("SC4 group 0", TOP, [seg("l", *mmv(14200, 0, 14000, 0))])
+g1 = sketch("SC4 group 1", TOP, [seg("l", *mmv(14000, 100, 14200, 100))])
+scaled("SC4", "reversed Group 0, factors -0.5 to 0.5 -> auto-oriented straight diagonal", g0, g1, [num("sf0", "-0.5"), num("sf1", "0.5")])
+
+g0 = sketch("SC5 group 0", TOP, [circle("c", *mmv(18000, 0, 100))])
+g1 = sketch("SC5 group 1", TOP, [circle("c", *mmv(18000, 0, 200))])
+scaled("SC5", "circles R100 / R200 closed -> closed R150", g0, g1)
+
+g0 = sketch("SC6 group 0", TOP, [circle("c", *mmv(19000, 0, 100))])
+g1 = sketch("SC6 group 1", TOP, [seg("l", *mmv(18800, 300, 19200, 300))])
+scaled("SC6", "closed circle with open line -> ERROR", g0, g1)
+
+g0 = s_curve("SC7 group 0", 53000, 0, 0.0)
+g1 = s_curve("SC7 group 1", 53000, 100, 0.0)
+scaled("SC7", "S curves, spacing 60, 5 samples -> INFO deviation between samples", g0, g1,
+       [num("sampleSpacing", "60 mm"), integer("numScaledSamples", 5)])
+
 
 # ---- Pull surface ----
-def pull(tag, text, face_expr, n, continuity, offsets):
+def pull(tag, text, face_expr, n, continuity, offsets, given=()):
     """offsets {(i, j): mm}; written into both the hidden flat cache mpOffsets (what the body reads) and the
-    visible activeOffsets list, as the editing logic / manipulator would."""
+    visible activeOffsets list, as the editing logic / manipulator would. In control-point mode (i, j) are
+    control-point indices and only activeOffsets is read. given: extra parameters (replaceFace, ...)."""
     mp = [{"btType": "BTMArrayParameterItem-1843", "parameters": [num("off", "%g mm" % offsets.get((k // n, k % n), 0))]}
           for k in range(n * n)]
     active = [{"btType": "BTMArrayParameterItem-1843", "parameters": [integer("u", i), integer("v", j), num("value", "%g mm" % v)]}
               for (i, j), v in sorted(offsets.items())]
-    return instance(PULL, "%s %s" % (tag, text), [q("face", face_expr), integer("uCurveCount", n), integer("vCurveCount", n)],
+    return instance(PULL, "%s %s" % (tag, text), [q("face", face_expr), integer("uCurveCount", n), integer("vCurveCount", n)] + list(given),
                     {"continuityType": continuity}, {"mpOffsets": mp, "activeOffsets": active})
 
 
@@ -517,5 +563,37 @@ sk3 = sketch("P3 block (sketch)", TOP, [seg("a", *mmv(16950, -50, 17050, -50)), 
 f3 = extrude("P3 block", sk3, 20)
 pull("P3", "G0 4x4 planar top face, +10 at (1,2) -> boundary exact (control)",
      'qContainsPoint(qCreatedBy(makeId("%s"), EntityType.FACE), vector(17000, 0, 10) * millimeter)' % f3, 4, "G0", {(1, 2): 10})
+
+# Pull surface P2 upgrades (curves.md P2): G2, replace face, one handle per control point, closed face, pole.
+pull("P4", "G2 7x7 cylinder patch, +10 at (3,3) -> boundary G0 + normals along whole edges", cylinder_patch("P4", 60000), 7, "G2",
+     {(3, 3): 10})
+
+sk5 = sketch("P5 sheet (sketch)", TOP, [arc("a", *mmv(61000, 0, 100), -math.pi / 4, math.pi / 4)])
+f5 = feature("P5 sheet", "extrude", [
+    en("bodyType", "ExtendedToolBodyType", "SURFACE"), q("surfaceEntities", edges(sk5)),
+    en("endBound", "BoundingType", "BLIND"), num("depth", "100 mm"), b("symmetric", True)])
+pull("P5", "replace face on a sheet, G1 5x5, +10 at (2,2) -> sheet keeps 1 face, edges G0 + G1, face pulled",
+     cylinder_face(f5), 5, "G1", {(2, 2): 10}, [b("replaceFace", True)])
+
+pull("P6", "replace face on a solid, G0 4x4, +10 at (1,1) -> still 1 solid, boundary G0, face pulled",
+     cylinder_patch("P6", 62000), 4, "G0", {(1, 1): 10}, [b("replaceFace", True)])
+
+pull("P7", "one handle per control point, G0 7 CPs, +10 at CP (3,3) -> boundary G0, centre pulled 2..9 mm",
+     cylinder_patch("P7", 63000), 7, "G0", {(3, 3): 10}, [b("handlePerControlPoint", True)])
+
+sk8 = sketch("P8 cylinder (sketch)", TOP, [circle("c", *mmv(64000, 0, 100))])
+f8 = extrude("P8 cylinder", sk8, 100)
+pull("P8", "G1 6x6 full cylinder (closed), +10 at (2,2) -> closed sheet (2 edges), boundary G0 + G1",
+     cylinder_face(f8), 6, "G1", {(2, 2): 10})
+
+# Hemisphere: quarter disc on Front (sketch y = world Z) revolved about the line x = 65000; pole at (65000, 0, 100).
+sk9 = sketch("P9 hemisphere (sketch)", FRONT, [arc("a", *mmv(65000, 0, 100), 0, math.pi / 2),
+                                               seg("l1", *mmv(65000, 100, 65000, 0)), seg("l2", *mmv(65000, 0, 65100, 0))])
+ax9 = sketch("P9 axis", FRONT, [seg("l", *mmv(65000, 0, 65000, 100))])
+f9 = feature("P9 hemisphere", "revolve", [
+    en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
+    q("entities", 'qSketchRegion(makeId("%s"))' % sk9), q("axis", edges(ax9)), b("fullRevolve", True)])
+pull("P9", "G1 6x6 hemisphere (pole), +10 at (2,2) -> pole fixed, boundary G0 + G1",
+     'qGeometry(qCreatedBy(makeId("%s"), EntityType.FACE), GeometryType.SPHERE)' % f9, 6, "G1", {(2, 2): 10})
 
 print("studio", E)

@@ -39,6 +39,7 @@ length and the Intersections array (blends) are all written here by hand. Cases 
   OE21  region extent from two points projected onto an arc -> s 52.3599..104.7198
   OE22  native composite curve of OE6's blend edge, picked by its transient id -> reference survives
   OE16  two lines at a corner (not G1; temporary instance, deleted) -> ERROR
+  OE25  OE6's layout, both regions named "A", blend keyed by the hidden region ids -> same as OE6
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_offset_edges_tests.py
 """
@@ -218,8 +219,9 @@ def ref_point(tag, x, y):
 
 # ---- the feature under test ----
 def region(name, start, end, shape="LINEAR", offset_type="NORMAL", normal=(0, 0), binormal=(0, 0), dwell=(0, 0),
-           quad="AT_START", extent_points=None, number=1):
-    """One Regions item. start / end in mm from the reference point (X_EXTENTS) unless extent_points is a query."""
+           quad="AT_START", extent_points=None, number=1, region_id=None):
+    """One Regions item. start / end in mm from the reference point (X_EXTENTS) unless extent_points is a query.
+    region_id: the hidden stable id (2026-09-26) -- None leaves the spec default "" (a region saved before ids)."""
     item = {"regionType": shape, "quadZeroSlope": quad, "regionNum": "%d" % number, "regionName": name,
             "offsetType": offset_type,
             "startNormalOffset": "%g mm" % normal[0], "endNormalOffset": "%g mm" % normal[1],
@@ -230,13 +232,19 @@ def region(name, start, end, shape="LINEAR", offset_type="NORMAL", normal=(0, 0)
     else:
         item.update({"extentType": "X_EXTENTS", "regionStart": "%g mm" % start, "regionEnd": "%g mm" % end,
                      "length": "%g mm" % abs(end - start)})
+    if region_id is not None:
+        item["regionId"] = region_id
     return item
 
 
-def blend(number, region1, region2, c0="G1", d0=10, c1="G1", d1=10):
-    """One Intersections item, as the editing logic would write it for consecutive sorted regions."""
-    return {"isValid": True, "intersectionNum": "%d" % number, "region1": region1, "region2": region2, "blend": True,
+def blend(number, region1, region2, c0="G1", d0=10, c1="G1", d1=10, ids=None):
+    """One Intersections item, as the editing logic would write it for consecutive sorted regions.
+    ids: (region1Id, region2Id) -- None leaves the spec defaults "" (an intersection saved before ids: by name)."""
+    item = {"isValid": True, "intersectionNum": "%d" % number, "region1": region1, "region2": region2, "blend": True,
             "startContinuity": c0, "startDist": "%g mm" % d0, "endContinuity": c1, "endDist": "%g mm" % d1}
+    if ids is not None:
+        item.update({"region1Id": ids[0], "region2Id": ids[1]})
+    return item
 
 
 def pin(name, position, offset_type="NORMAL", normal=0, binormal=0):
@@ -380,4 +388,12 @@ for tag, x0, sgn in [("OE23", 23000, 1), ("OE24", 24000, -1)]:
            edges(sketch("%s source corner (%d, 0) to (%d, 0) to (%d, 100)" % (tag, x0, x0 + 100, x0 + 100),
                         [seg("a", *mmv(x0, 0, x0 + 100, 0)), seg("b", *mmv(x0 + 100, 0, x0 + 100, 100))])),
            ref_point(tag, x0, 0), [region("A", 0, 200, offset_type="BINORMAL", binormal=(10 * sgn, 10 * sgn))])
+
+# OE25 blends keyed by the hidden region ids (2026-09-26): OE6's layout with BOTH regions named "A". By name the
+# blend could not tell them apart (it resolved both ends to the second region); by id it is OE6 again.
+offset("OE25 line 400, regions A (id R1) and A (id R2), G1 blend keyed by id -> same as OE6",
+       line_source("OE25", 25000, 400), ref_point("OE25", 25000, 0),
+       [region("A", 0, 150, normal=(0, 0), number=1, region_id="R1"),
+        region("A", 250, 400, normal=(20, 20), number=2, region_id="R2")],
+       [blend(1, "A", "A", "G1", 10, "G1", 10, ids=("R1", "R2"))])
 print("studio", E)

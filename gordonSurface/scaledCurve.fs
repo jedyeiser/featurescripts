@@ -3,47 +3,51 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import constEnums (export - needed for enums in preconditions)
 export import(path : "050a4670bd42b2ca8da04540", version : "7a407d1cf555ba0254c21433");
-//import tools/bspline_knots
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/dadb70c0a762573622fa609c", version : "744c7afe122e8ae2b3b17a12");
-//import tools/transition_functions (export.import)
+//import tools/transition_functions (export import)
 export import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/a656fa0d17723f0dafaf8638", version : "172b230734bb73cef189f4ed");
-//import tools/arc_length
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
 
 //import curveOps
 import(path : "73de71e75b755f0042e0e6d8", version : "585ddf22041315f25495eeec");
 // IMPORT: scaled_curve_icon.svg (feature icon)
 IconNamespace::import(path : "8b2fda35054b2e92a6334cd4", version : "501e50ca04aec46d534e616f");
 
+/** Distance between samples along the longer group (the sample count is at least "Minimum samples"). */
+export const SC_SAMPLE_SPACING_BOUNDS = { (millimeter) : [0.01, 5, 1e5] } as LengthBoundSpec;
 
+/** Cap on the samples per group (an info notice says when it is reached). */
+const SC_MAX_SAMPLES = 1000;
 
-annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Scaled Curve", "Feature Type Description" : "Creates a new BSplineCurve as a scaled combination of the two input curves" }
-export const createScaledCurve = defineFeature(function(context is Context, id is Id, definition is map) returns map
+/** Edge end points this close join into one path (the same as std Edit curve's approximation). */
+const SC_PATH_TOLERANCE = 1e-5 * meter;
+
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Scaled Curve",
+        "Feature Type Description" : "Creates a new B-spline curve that blends between two edge chains (open or closed), with a scale factor that changes from start to end." }
+export const createScaledCurve = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Group 0", "Filter" : EntityType.EDGE}
+        annotation { "Name" : "Group 0", "Filter" : EntityType.EDGE }
         definition.group0 is Query;
-        
-        annotation { "Name" : "Flip?", "Default" : false, "UIHint": UIHint.OPPOSITE_DIRECTION, "Description": "Flip evaluation order of Group0" }
-        definition.flip is boolean;
-        
-        annotation { "Name" : "Group 1", "Filter" : EntityType.EDGE}
+
+        annotation { "Name" : "Reverse Group 0", "Default" : false, "UIHint" : [UIHint.OPPOSITE_DIRECTION],
+                     "Description" : "Group 0 is paired with Group 1 automatically (open: nearest ends; closed: same direction of travel, seams aligned). This reverses that pairing." }
+        definition.flipPairing is boolean;
+
+        annotation { "Name" : "Group 1", "Filter" : EntityType.EDGE }
         definition.group1 is Query;
-        
-        
-        annotation { "Name" : "Initial curve scalefactor", "Description": "Where scaled curve should sit in [-0.5, 0.5] between Group 0 and Group 1. -.5 -> 100% Group 0. +.5 -> 100% Group 1"}
+
+        annotation { "Name" : "Initial curve scale factor", "Description" : "Where the curve sits at the start of Group 1, in [-0.5, 0.5]: -0.5 = on Group 0, +0.5 = on Group 1." }
         isReal(definition.sf0, ScaledCurveParameterBounds);
-        
-        annotation { "Name" : "Final curve scalefactor", "Description": "Where scaled curve should sit in [-0.5, 0.5] between Group 0 and Group 1. -.5 -> 100% Group 0. +.5 -> 100% Group 1"}
+
+        annotation { "Name" : "Final curve scale factor", "Description" : "Where the curve sits at the end of Group 1, in [-0.5, 0.5]: -0.5 = on Group 0, +0.5 = on Group 1." }
         isReal(definition.sf1, ScaledCurveParameterBounds);
-        
-        annotation { "Name" : "Transition Type", "Default": TransitionType.LINEAR, "Description" : "How to transition from one scalefactor to another along our scaled curve" }
+
+        annotation { "Name" : "Transition type", "Default" : TransitionType.LINEAR, "UIHint" : [UIHint.SHOW_LABEL],
+                     "Description" : "How the scale factor changes from the initial to the final value, by arc length along Group 1." }
         definition.transitionType is TransitionType;
-        
-        // (The "Create curve?" toggle is gone: it defaulted to off, so a new instance built nothing.)
-        annotation { "Name" : "Curve name", "Description": "When not blank, the output wire body will get this name." }
+
+        annotation { "Name" : "Curve name", "Description" : "When not blank, the output wire body will get this name." }
         definition.curveName is string;
-        
+
         annotation { "Name" : "Project onto surface?" }
         definition.curveOnSurface is boolean;
 
@@ -55,138 +59,394 @@ export const createScaledCurve = defineFeature(function(context is Context, id i
 
         annotation { "Group Name" : "Debug & Details", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Show endpoints", "Description": "When true, shows spline startpoints in GREEN and endpoints in RED", "Default": false }
+            annotation { "Name" : "Show endpoints", "Description" : "When true, shows the paired start points in GREEN and end points in RED", "Default" : false }
             definition.showEndpoints is boolean;
-            
-            annotation { "Name" : "Show curves", "Description": "When true, shows Group 0 in CYAN and Group 1 in MAGENTA", "Default": false }
+
+            annotation { "Name" : "Show curves", "Description" : "When true, shows Group 0 in CYAN and Group 1 in MAGENTA", "Default" : false }
             definition.showGroups is boolean;
-            
-            annotation { "Name" : "Print BSplineCurve data", "Desription": "Prints bspline data for combined input groups and final curve", "Default": false }
+
+            annotation { "Name" : "Print BSplineCurve data", "Description" : "Prints the sampling and the output B-spline", "Default" : false }
             definition.printBsplines is boolean;
-            
+
             if (definition.printBsplines)
             {
-                annotation { "Name" : "Data Depth", "Description" : "Print metadata only, or all details for our Input and output curves" }
+                annotation { "Name" : "Data depth", "UIHint" : [UIHint.SHOW_LABEL], "Description" : "Print metadata only, or all details of the output curve" }
                 definition.bsplineFormat is PrintFormat;
-                   
             }
-            
+
             annotation { "Group Name" : "Details", "Collapsed By Default" : true }
             {
                 annotation { "Group Name" : "Output parameters", "Collapsed By Default" : true }
                 {
-                    annotation { "Name" : "Scaled samples",  "Description": "Number of samples to use along our output curve. The control point count will be less than or equal to this value" }
+                    annotation { "Name" : "Minimum samples", "Description" : "At least this many samples along the curve; more when Sample spacing asks for them." }
                     isInteger(definition.numScaledSamples, SampleCountBounds);
-                
-                    annotation { "Name" : "Scaled tolerance", "Description": "Fit tolerance for output curve. Fits sampled data to within this tolerance. Onshape minimum of 1e-8 meter or 1e-5 millimeter"  }
-                    isLength(definition.scaledTol, FitToleranceBounds); 
-                
-                    annotation { "Name" : "Scaled curve degree", "Description": "Degree of scaled curve" }
+
+                    annotation { "Name" : "Scaled tolerance", "Description" : "Fit tolerance for the output curve. Onshape minimum of 1e-8 meter or 1e-5 millimeter" }
+                    isLength(definition.scaledTol, FitToleranceBounds);
+
+                    annotation { "Name" : "Scaled curve degree", "Description" : "Degree of the output curve" }
                     isInteger(definition.scaledDegree, curveDegreeBounds);
                 }
-                
-                 
-                annotation { "Group Name" : "Input parameters", "Collapsed By Default" : true }
-                {
-                    annotation { "Name" : "Number of samples along Group 0",  "Description": "Number of samples to use along Group 0 when creating a unified BSplineCurve. The control point count will be less than or equal to this value" }
-                    isInteger(definition.group0SampleCount, SampleCountBounds);
-                
-                    annotation { "Name" : "Group 0 fit tolerance", "Description": "Fit tolerance for Group 0. Onshape minimum of 1e-8 meter or 1e-5 millimeter"  }
-                    isLength(definition.group0Tol, FitToleranceBounds); 
-                
-                    annotation { "Name" : "Number of samples along Group 1", "Description": "Number of samples to use along Group 1 when creating a unified BSplineCurve. The control point count will be less than or equal to this value"  }
-                    isInteger(definition.group1SampleCount, SampleCountBounds);
-                
-                    annotation { "Name" : "Group 1 fit tolerance", "Description": "Fit tolerance for Group 0. Onshape minimum of 1e-8 meter or 1e-5 millimeter" }
-                    isLength(definition.group1Tol, FitToleranceBounds); 
-                }
-                
-                
+
+                annotation { "Name" : "Sample spacing", "Description" : "Distance between samples along the longer group. Both groups are sampled at the same arc-length fractions." }
+                isLength(definition.sampleSpacing, SC_SAMPLE_SPACING_BOUNDS);
             }
-            
-            
         }
-        
     }
     {
-        const shiftedScalefactors = [0.5 + definition.sf0, 0.5 + definition.sf1];
-        var group0_arr = evaluateQuery(context, qUnion([definition.group0]));
-        var group1_arr = evaluateQuery(context, qUnion([definition.group1]));
-        
-        // forceNonRational: evaluateSpline ignores weights, so an exact (rational) arc is otherwise sampled
-        // off the circle (correction 39).
-        var bSpline0_arr = mapArray(group0_arr, function(x) {return evApproximateBSplineCurve(context, { "edge" : x, "forceNonRational" : true } ); });
-        var bSpline1_arr = mapArray(group1_arr, function(x) {return evApproximateBSplineCurve(context, { "edge" : x, "forceNonRational" : true } ); });
+        var notes = [];
 
-        const curve0 = joinCurveSegments(context, bSpline0_arr, definition.group0SampleCount, definition.group0Tol);
-        const curve1 = joinCurveSegments(context, bSpline1_arr, definition.group1SampleCount, definition.group1Tol);
-        
-        if (definition.showEndpoints)
+        // ---- 1. Each group as one native path (arc-length parameterized) ----
+        const path0 = scPath(context, definition.group0, "group0");
+        const path1 = scPath(context, definition.group1, "group1");
+        if (path0.closed != path1.closed)
         {
-            var curve0Points = evaluateSpline({
-                    "spline" : curve0,
-                    "parameters" : [0, 1]
-            }); 
-            var curve1Points = evaluateSpline({
-                    "spline" : curve1,
-                    "parameters" : [0, 1]
-            });
-            
-            addDebugPoint(context, curve0Points[0][0], DebugColor.GREEN);
-            addDebugPoint(context, curve1Points[0][0], DebugColor.GREEN);
-            addDebugPoint(context, curve0Points[0][1], DebugColor.RED);
-            addDebugPoint(context, curve1Points[0][1], DebugColor.RED);
+            throw regenError("Group 0 and Group 1 must both be closed or both be open.", ["group0", "group1"]);
         }
-        
-        if (definition.showGroups)
+        const closed = path1.closed;
+        const length0 = evPathLength(context, path0);
+        const length1 = evPathLength(context, path1);
+
+        // ---- 2. Sample count from the spacing (at least Minimum samples, at most SC_MAX_SAMPLES) ----
+        var n = max(definition.numScaledSamples, ceil(max(length0, length1) / definition.sampleSpacing) + 1);
+        if (n > SC_MAX_SAMPLES)
         {
-            addDebugEntities(context, qUnion(group0_arr), DebugColor.CYAN); 
-            addDebugEntities(context, qUnion(group1_arr), DebugColor.MAGENTA);
+            notes = append(notes, "Sampling capped at " ~ SC_MAX_SAMPLES ~ " samples (Sample spacing asks for " ~ n ~ ").");
+            n = SC_MAX_SAMPLES;
         }
-        
-        var retCurve = scaledCurve(context, curve0, curve1, definition.flip, shiftedScalefactors[0], shiftedScalefactors[1], definition.transitionType, definition.numScaledSamples, definition.scaledDegree, definition.scaledTol);
+        var fractions = [];
+        for (var i = 0; i < n; i += 1)
+        {
+            fractions = append(fractions, i / (n - 1));
+        }
+
+        // ---- 3. Pairing: Group 1 sets the direction; Group 0 is oriented (and, closed, its seam aligned) to it ----
+        const pairing = scPairing(context, path0, path1, definition.flipPairing);
+        const sfStart = 0.5 + definition.sf0;
+        const sfEnd = 0.5 + definition.sf1;
+        const periodic = closed && abs(sfStart - sfEnd) < 1e-12;
+        if (closed && !periodic)
+        {
+            notes = append(notes, "Closed groups with different initial and final scale factors give an open curve (its ends meet only when the factors are equal).");
+        }
+
+        var positions = scBlendAt(context, path0, path1, pairing, fractions, sfStart, sfEnd, definition.transitionType);
+
+        // Exact blend halfway between samples, for the deviation check.
+        var midFractions = [];
+        for (var i = 0; i < n - 1; i += 1)
+        {
+            midFractions = append(midFractions, (fractions[i] + fractions[i + 1]) / 2);
+        }
+        var midPositions = scBlendAt(context, path0, path1, pairing, midFractions, sfStart, sfEnd, definition.transitionType);
 
         if (definition.curveOnSurface)
         {
-            retCurve = projectCurveOnSurface(context, retCurve, definition.projectionFace, definition.numScaledSamples, definition.scaledTol);
+            if (isQueryEmpty(context, definition.projectionFace))
+            {
+                throw regenError("Select a projection face, or turn off Project onto surface.", ["projectionFace"]);
+            }
+            positions = scProjectPoints(context, positions, definition.projectionFace);
+            midPositions = scProjectPoints(context, midPositions, definition.projectionFace);
+        }
+
+        if (definition.showEndpoints)
+        {
+            const ends0 = evPathTangentLines(context, path0, [scFraction0(pairing, 0), scFraction0(pairing, 1)]).tangentLines;
+            const ends1 = evPathTangentLines(context, path1, [0, 1]).tangentLines;
+            addDebugPoint(context, ends0[0].origin, DebugColor.GREEN);
+            addDebugPoint(context, ends1[0].origin, DebugColor.GREEN);
+            addDebugPoint(context, ends0[1].origin, DebugColor.RED);
+            addDebugPoint(context, ends1[1].origin, DebugColor.RED);
+        }
+
+        if (definition.showGroups)
+        {
+            addDebugEntities(context, qUnion(path0.edges), DebugColor.CYAN);
+            addDebugEntities(context, qUnion(path1.edges), DebugColor.MAGENTA);
+        }
+
+        // ---- 4. One fit: the user's degree; chord-length parameters (open) or periodic (closed, equal factors) ----
+        const retCurve = scFit(context, positions, definition.scaledDegree, definition.scaledTol, periodic);
+
+        opCreateBSplineCurve(context, id + "createScaledBsplineCurve", {
+                    "bSplineCurve" : retCurve
+                });
+
+        const splineQ = qCreatedBy(id + "createScaledBsplineCurve", EntityType.BODY);
+        if (length(definition.curveName) > 0)
+        {
+            setProperty(context, {
+                        "entities" : splineQ,
+                        "propertyType" : PropertyType.NAME,
+                        "value" : definition.curveName
+                    });
+        }
+
+        // ---- 5. Deviation between samples: the created edge against the exact blend at the midpoints ----
+        const edgeQ = qCreatedBy(id + "createScaledBsplineCurve", EntityType.EDGE);
+        var deviation = 0 * meter;
+        for (var p in midPositions)
+        {
+            deviation = max(deviation, evDistance(context, { "side0" : edgeQ, "side1" : p }).distance);
+        }
+        if (deviation > 2 * definition.scaledTol)
+        {
+            notes = append(notes, "Between samples the curve is up to " ~ scMm(deviation) ~ " from the exact blend (" ~ n ~ " samples, fit tolerance "
+                    ~ scMm(definition.scaledTol) ~ "); reduce Sample spacing for a closer curve.");
         }
 
         if (definition.printBsplines)
         {
-            println("---------------- BSPLINE DATA ----------------");
-            printBSpline(curve0, definition.bsplineFormat, [" - - - - - - Group 0 BSplineCurve - - - - - - "]);
-            printBSpline(curve1, definition.bsplineFormat, [" - - - - - - Group 1 BSplineCurve - - - - - - "]);
+            println("---------------- SCALED CURVE ----------------");
+            println("Group 0: " ~ size(path0.edges) ~ " edge(s), " ~ scMm(length0) ~ (path0.closed ? ", closed" : "") ~ "; Group 1: " ~ size(path1.edges)
+                    ~ " edge(s), " ~ scMm(length1) ~ (path1.closed ? ", closed" : ""));
+            println("samples " ~ n ~ ", Group 0 reversed " ~ pairing.reversed ~ ", seam shift " ~ pairing.shift ~ ", periodic " ~ periodic
+                    ~ ", max deviation between samples " ~ scMm(deviation));
             printBSpline(retCurve, definition.bsplineFormat, [" - - - - - - Scaled BSplineCurve - - - - - - "]);
-            println("---------------- / BSPLINE DATA ----------------");
+            println("---------------- / SCALED CURVE ----------------");
         }
-        
-        var retMap = {"bspline": retCurve};
-        
+
+        if (size(notes) > 0)
         {
-            opCreateBSplineCurve(context, id + "createScaledBsplineCurve", {
-                    "bSplineCurve" : retCurve
-            });
-            
-            var splineQ = qCreatedBy(id + "createScaledBsplineCurve", EntityType.BODY);
-            if (length(definition.curveName) > 0)
-            {
-                setProperty(context, {
-                        "entities" : splineQ,
-                        "propertyType" : PropertyType.NAME,
-                        "value" : definition.curveName
-                });
-            }
-            
-            retMap['query']= splineQ;
+            reportFeatureInfo(context, id, join(notes, " "));
         }
-        
-        
-        return retMap;
-   
-        
-    });
+    }, { "flipPairing" : false, "sampleSpacing" : 5 * millimeter, "curveName" : "", "curveOnSurface" : false, "projectionFace" : qNothing(),
+            "showEndpoints" : false, "showGroups" : false, "printBsplines" : false });
 
+// ============================================================================
+// Paths and pairing
+// ============================================================================
 
+/**
+ * The edges of a selection as one path (edges in any order; open or closed). A selection that is not one
+ * continuous chain fails with std's "Edges do not form a continuous path".
+ * Coincident duplicates are dropped first: a closed sketch profile has both a wire edge and the region's boundary
+ * edge on the same geometry, and with both the path runs round the loop twice (a self-overlapping periodic fit,
+ * refused by opCreateBSplineCurve as BAD_GEOMETRY -- SC5, 2026-09-26).
+ */
+export function scPath(context is Context, selection is Query, parameterId is string) returns Path
+{
+    const edges = qEntityFilter(selection, EntityType.EDGE);
+    if (isQueryEmpty(context, edges))
+    {
+        throw regenError("Select the edges of " ~ (parameterId == "group0" ? "Group 0." : "Group 1."), [parameterId]);
+    }
+    var kept = [];
+    var keptLengths = [];
+    for (var edge in evaluateQuery(context, edges))
+    {
+        const edgeLength = evLength(context, { "entities" : edge });
+        const probes = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0.25, 0.75] });
+        var duplicate = false;
+        for (var j = 0; j < size(kept); j += 1)
+        {
+            if (abs(edgeLength - keptLengths[j]) < SC_PATH_TOLERANCE
+                && evDistance(context, { "side0" : kept[j], "side1" : probes[0].origin }).distance < SC_PATH_TOLERANCE
+                && evDistance(context, { "side0" : kept[j], "side1" : probes[1].origin }).distance < SC_PATH_TOLERANCE)
+            {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate)
+        {
+            kept = append(kept, edge);
+            keptLengths = append(keptLengths, edgeLength);
+        }
+    }
+    return constructPath(context, qUnion(kept), { "tolerance" : SC_PATH_TOLERANCE }).path;
+}
+
+/**
+ * Arc-length fraction along a path of the path point nearest `point`.
+ */
+export function scPathFraction(context is Context, path is Path, point is Vector) returns number
+{
+    const total = evPathLength(context, path);
+    const nearest = evDistance(context, { "side0" : qUnion(path.edges), "side1" : point }).sides[0];
+    var start = 0;
+    for (var i = 0; i < nearest.index; i += 1)
+    {
+        start += evLength(context, { "entities" : path.edges[i] }) / total;
+    }
+    const edgeFraction = evLength(context, { "entities" : path.edges[nearest.index] }) / total;
+    const t = path.flipped[nearest.index] ? 1 - nearest.parameter : nearest.parameter;
+    return start + edgeFraction * t;
+}
+
+/**
+ * How Group 0 is paired with Group 1 (which sets the direction): Group 0's fraction at Group 1 fraction f is
+ * reversed ? 1 - f : f (open) or wrap(shift +- f) (closed; shift = Group 0's point nearest Group 1's start).
+ * Open: reversed when the crossed end pairing is shorter. Closed: reversed when the two loops run in opposite
+ * senses (vector areas; the start tangents when a loop has no area). `flip` reverses the automatic choice.
+ *
+ * @returns {{ @field reversed {boolean}, @field shift {number}, @field closed {boolean} }}
+ */
+export function scPairing(context is Context, path0 is Path, path1 is Path, flip is boolean) returns map
+{
+    if (!path1.closed)
+    {
+        const ends0 = evPathTangentLines(context, path0, [0, 1]).tangentLines;
+        const ends1 = evPathTangentLines(context, path1, [0, 1]).tangentLines;
+        const straight = norm(ends0[0].origin - ends1[0].origin) + norm(ends0[1].origin - ends1[1].origin);
+        const crossed = norm(ends0[0].origin - ends1[1].origin) + norm(ends0[1].origin - ends1[0].origin);
+        return { "reversed" : (crossed < straight) != flip, "shift" : 0, "closed" : false };
+    }
+
+    const start1 = evPathTangentLines(context, path1, [0]).tangentLines[0];
+    const shift = scPathFraction(context, path0, start1.origin);
+    var fractions = [];
+    for (var i = 0; i < 64; i += 1)
+    {
+        fractions = append(fractions, i / 64);
+    }
+    const area0 = scVectorArea(evPathTangentLines(context, path0, fractions).tangentLines);
+    const area1 = scVectorArea(evPathTangentLines(context, path1, fractions).tangentLines);
+    const size0 = evPathLength(context, path0);
+    const size1 = evPathLength(context, path1);
+    var reversed;
+    if (norm(area0) > 1e-6 * size0 * size0 && norm(area1) > 1e-6 * size1 * size1)
+    {
+        reversed = dot(area0, area1) < 0 * meter * meter * meter * meter;
+    }
+    else
+    {
+        const seam0 = evPathTangentLines(context, path0, [shift]).tangentLines[0];
+        reversed = dot(seam0.direction, start1.direction) < 0;
+    }
+    return { "reversed" : reversed != flip, "shift" : shift, "closed" : true };
+}
+
+/** Vector area of a closed polygon (half the sum of p_i x p_i+1, taken about the first point). */
+export function scVectorArea(lines is array) returns Vector
+{
+    const origin = lines[0].origin;
+    var area = vector(0, 0, 0) * meter * meter;
+    for (var i = 0; i < size(lines); i += 1)
+    {
+        const a = lines[i].origin - origin;
+        const b = lines[(i + 1) % size(lines)].origin - origin;
+        area = area + cross(a, b) / 2;
+    }
+    return area;
+}
+
+/** Group 0's path fraction paired with Group 1's fraction f. */
+export function scFraction0(pairing is map, f is number) returns number
+{
+    if (!pairing.closed)
+    {
+        return pairing.reversed ? 1 - f : f;
+    }
+    const x = pairing.reversed ? pairing.shift - f : pairing.shift + f;
+    return x - floor(x);
+}
+
+/**
+ * The blend (1 - sf) * Group0 + sf * Group1 at Group 1 fractions `fractions`, sf by the transition from sfStart to sfEnd.
+ */
+export function scBlendAt(context is Context, path0 is Path, path1 is Path, pairing is map, fractions is array,
+    sfStart is number, sfEnd is number, transitionType is TransitionType) returns array
+{
+    var fractions0 = [];
+    for (var f in fractions)
+    {
+        fractions0 = append(fractions0, scFraction0(pairing, f));
+    }
+    const lines0 = evPathTangentLines(context, path0, fractions0).tangentLines;
+    const lines1 = evPathTangentLines(context, path1, fractions).tangentLines;
+    var out = [];
+    for (var i = 0; i < size(fractions); i += 1)
+    {
+        const sf = computeAppliedSF(fractions[i], sfStart, sfEnd, transitionType);
+        out = append(out, (1 - sf) * lines0[i].origin + sf * lines1[i].origin);
+    }
+    return out;
+}
+
+/** Each point moved to the nearest point of the face. */
+export function scProjectPoints(context is Context, points is array, face is Query) returns array
+{
+    var out = [];
+    for (var p in points)
+    {
+        out = append(out, evDistance(context, { "side0" : face, "side1" : p }).sides[0].point);
+    }
+    return out;
+}
+
+/**
+ * One approximateSpline fit. Open: chord-length parameters (so the fitter keeps the derivative sizes, correction 23),
+ * both ends interpolated; points closer than 1e-6 of the chord to the previous one are dropped. Periodic: std's own
+ * form (positions from fraction 0 to 1 inclusive, no parameters), as Edit curve does for a closed path.
+ */
+export function scFit(context is Context, positions is array, degree is number, tolerance is ValueWithUnits, periodic is boolean) returns BSplineCurve
+{
+    if (periodic)
+    {
+        return approximateSpline(context, {
+                        "degree" : degree,
+                        "tolerance" : tolerance,
+                        "isPeriodic" : true,
+                        "targets" : [approximationTarget({ "positions" : positions })],
+                        "suppressInterpolationNotice" : true
+                    })[0];
+    }
+    var total = 0 * meter;
+    for (var i = 1; i < size(positions); i += 1)
+    {
+        total += norm(positions[i] - positions[i - 1]);
+    }
+    if (total < TOLERANCE.zeroLength * meter)
+    {
+        throw regenError("The scaled curve has zero length.", ["group0", "group1"]);
+    }
+    var kept = [positions[0]];
+    var chord = [0 * meter];
+    for (var i = 1; i < size(positions); i += 1)
+    {
+        const step = norm(positions[i] - kept[size(kept) - 1]);
+        if (step > 1e-6 * total)
+        {
+            kept = append(kept, positions[i]);
+            chord = append(chord, chord[size(chord) - 1] + step);
+        }
+        else if (i == size(positions) - 1)
+        {
+            // Keep the true end: it replaces the last kept point.
+            kept[size(kept) - 1] = positions[i];
+        }
+    }
+    if (size(kept) < 2)
+    {
+        throw regenError("The scaled curve has zero length.", ["group0", "group1"]);
+    }
+    var params = [];
+    for (var s in chord)
+    {
+        params = append(params, s / chord[size(chord) - 1]);
+    }
+    return approximateSpline(context, {
+                    "degree" : degree,
+                    "tolerance" : tolerance,
+                    "isPeriodic" : false,
+                    "targets" : [approximationTarget({ "positions" : kept })],
+                    "parameters" : params,
+                    "interpolateIndices" : [0, size(kept) - 1],
+                    "suppressInterpolationNotice" : true
+                })[0];
+}
+
+/** A length as "x.xxxx mm". */
+export function scMm(value is ValueWithUnits) returns string
+{
+    return toString(roundToPrecision(value / millimeter, 4)) ~ " mm";
+}
+
+// ============================================================================
+// Legacy API (B-spline in, B-spline out). The feature above no longer uses these.
+// ============================================================================
 
 /**
  * Project a BSplineCurve onto a face by finding the closest point on the face
@@ -194,7 +454,7 @@ export const createScaledCurve = defineFeature(function(context is Context, id i
  * along the face normal (orthogonal projection).
  *
  * @param context {Context}
- * @param curve {BSplineCurve} : Curve to project
+ * @param curve {BSplineCurve} : Curve to project (clamped, domain [0, 1])
  * @param face {Query} : Target face
  * @param numSamples {number} : Sample count along the curve for re-fitting
  * @param tolerance {ValueWithUnits} : Fitting tolerance for approximateSpline
@@ -222,17 +482,9 @@ export function projectCurveOnSurface(context is Context, curve is BSplineCurve,
     })[0];
 }
 
-// Transition functions now handled by tools/transition_functions.fs
-// Available functions:
-// - computeAppliedSF(s, sfStart, sfEnd, transitionType)
-// - linearTransition(t)
-// - sinusoidalTransition(t)
-// - logisticTransition(t)
-// Note: The version with custom k parameter is not in tools - if needed,
-// use evaluateTransition() directly with custom logistic implementation
-
 /**
- * Create a blended curve between two curves with variable scale factor.
+ * Create a blended curve between two B-splines with a variable scale factor, pairing them by B-SPLINE PARAMETER
+ * (the feature pairs by arc length instead).
  *
  * @param curve0 {BSplineCurve} : First boundary curve
  * @param curve1 {BSplineCurve} : Second boundary curve
@@ -241,317 +493,30 @@ export function projectCurveOnSurface(context is Context, curve is BSplineCurve,
  * @param sf_1 {number} : Scale factor at S=1
  * @param transition {TransitionType} : How scale factor changes
  * @param numSamples {number} : Number of sample points for fitting
+ * @param degree {number} : Output degree
  * @param tolerance {ValueWithUnits} : Fitting tolerance for approximateSpline
  */
 export function scaledCurve(context is Context, curve0 is BSplineCurve, curve1 is BSplineCurve, flip is boolean, sf_0 is number, sf_1 is number, transition is TransitionType, numSamples is number, degree is number, tolerance is ValueWithUnits) returns BSplineCurve
 {
-    // Sample both curves and blend
     var blendedPoints = [];
-    
-    for (var i = 0; i < numSamples; i += 1)
-    {
-        var S = i / (numSamples - 1);  // 0 to 1 inclusive   
-        
-        // Evaluate curve0 (with flip if needed)
-        var S0 = flip ? (1 - S) : S;
-        var pt0 = evaluateSpline({ 
-            "spline" : curve0, 
-            "parameters" : [S0] 
-        })[0][0];
-        
-        // Evaluate curve1
-        var pt1 = evaluateSpline({ 
-            "spline" : curve1, 
-            "parameters" : [S] 
-        })[0][0];
-        
-        // Compute blended point
-        var sf = computeAppliedSF(S, sf_0, sf_1, transition);
-        var blendedPt = (1 - sf) * pt0 + sf * pt1;
-        
-        blendedPoints = append(blendedPoints, blendedPt);
-    }
-    
-    // Fit curve through blended points
-    // Use explicit parameters to ensure endpoints are exact
     var params = [];
     for (var i = 0; i < numSamples; i += 1)
     {
-        params = append(params, i / (numSamples - 1));
+        var S = i / (numSamples - 1);
+        var S0 = flip ? (1 - S) : S;
+        var pt0 = evaluateSpline({ "spline" : curve0, "parameters" : [S0] })[0][0];
+        var pt1 = evaluateSpline({ "spline" : curve1, "parameters" : [S] })[0][0];
+        var sf = computeAppliedSF(S, sf_0, sf_1, transition);
+        blendedPoints = append(blendedPoints, (1 - sf) * pt0 + sf * pt1);
+        params = append(params, S);
     }
-    
-    var result = approximateSpline(context, {
+
+    return approximateSpline(context, {
         "degree" : degree,
         "tolerance" : tolerance,
         "isPeriodic" : false,
         "targets" : [approximationTarget({ "positions" : blendedPoints })],
         "parameters" : params,
-        "interpolateIndices" : [0, numSamples - 1]  // Force exact endpoints
-    });
-    
-    return result[0];
-}
-
-
-/**
- * Join an array of curve segments into a single BSplineCurve.
- * Uses arc-length proportional sampling.
- *
- * @param context {Context}
- * @param segments {array} : Unordered array of BSplineCurve
- * @param totalSamples {number} : Total sample points across all segments
- * @param tolerance {ValueWithUnits} : Fitting tolerance
- */
-export function joinCurveSegments(
-    context is Context,
-    segments is array,
-    totalSamples is number,
-    tolerance is ValueWithUnits
-) returns BSplineCurve
-{
-    if (size(segments) == 0)
-    {
-        throw regenError("No segments provided");
-    }
-    
-    if (size(segments) == 1)
-    {
-        return segments[0];
-    }
-    
-    // Order the segments first
-    var ordering = orderCurveSegments(context, segments, tolerance);
-    var orderedSegs = ordering.ordered;
-    var flips = ordering.flips;
-    
-    // Compute arc length of each segment
-    const arcLengthSamples = 20;  // For approximation
-    var lengths = [];
-    var totalLength = 0 * meter;
-    
-    for (var seg in orderedSegs)
-    {
-        var len = computeArcLength(seg, {numIntervals: arcLengthSamples});
-        lengths = append(lengths, len);
-        totalLength += len;
-    }
-    
-    // Allocate samples per segment proportionally
-    var samplesPerSeg = [];
-    var allocatedSamples = 0;
-    
-    for (var i = 0; i < size(orderedSegs); i += 1)
-    {
-        var fraction = lengths[i] / totalLength;
-        var samples = round(fraction * totalSamples);
-        
-        // Ensure at least 2 samples per segment
-        samples = max(samples, 2);
-        
-        samplesPerSeg = append(samplesPerSeg, samples);
-        allocatedSamples += samples;
-    }
-    
-    // Adjust last segment to hit exact total (account for rounding)
-    var adjustment = totalSamples - allocatedSamples;
-    samplesPerSeg[size(samplesPerSeg) - 1] = samplesPerSeg[size(samplesPerSeg) - 1] + adjustment;
-    
-    // Sample all segments, collecting points
-    var allPoints = [];
-    
-    for (var segIdx = 0; segIdx < size(orderedSegs); segIdx += 1)
-    {
-        var segment = orderedSegs[segIdx];
-        var flip = flips[segIdx];
-        var numSamples = samplesPerSeg[segIdx];
-        
-        // Skip start point for subsequent segments (avoids duplicate)
-        var startI = (segIdx == 0) ? 0 : 1;
-        
-        for (var i = startI; i < numSamples; i += 1)
-        {
-            var S = i / (numSamples - 1);
-            var evalS = flip ? (1 - S) : S;
-            
-            var pt = evaluateSpline({
-                "spline" : segment,
-                "parameters" : [evalS]
-            })[0][0];
-            
-            allPoints = append(allPoints, pt);
-        }
-    }
-    
-    // Create parameters proportional to cumulative arc length
-    var params = [];
-    var cumulativeLength = 0 * meter;
-    var prevPt = allPoints[0];
-    params = append(params, 0);
-    
-    for (var i = 1; i < size(allPoints); i += 1)
-    {
-        cumulativeLength += norm(allPoints[i] - prevPt);
-        params = append(params, cumulativeLength / totalLength);  // Normalized to [0, 1]
-        prevPt = allPoints[i];
-    }
-    
-    // Force last param to exactly 1 (avoid floating point drift)
-    params[size(params) - 1] = 1;
-    
-    // Fit single curve through all points
-    var result = approximateSpline(context, {
-        "degree" : 3,
-        "tolerance" : tolerance,
-        "isPeriodic" : false,
-        "targets" : [approximationTarget({ "positions" : allPoints })],
-        "parameters" : params,
-        "interpolateIndices" : [0, size(allPoints) - 1]
-    });
-    
-    return result[0];
-}
-
-// Arc length computation now handled by tools/arc_length.fs
-// Using adaptive Gaussian quadrature for improved accuracy over chord-length approximation
-// Available functions:
-// - computeArcLength(curve, {numIntervals: n})
-
-
-/**
- * Order an array of curve segments into a connected path.
- * Returns ordered segments and flip flags.
- *
- * @param context {Context}
- * @param segments {array} : Unordered array of BSplineCurve
- * @param tolerance {ValueWithUnits} : Tolerance for endpoint matching
- * @returns {map} : { "ordered" : array, "flips" : array } or throws error
- */
-export function orderCurveSegments(context is Context, segments is array, tolerance is ValueWithUnits) returns map
-{
-    if (size(segments) == 0)
-    {
-        throw regenError("No segments provided");
-    }
-    
-    if (size(segments) == 1)
-    {
-        return { "ordered" : segments, "flips" : [false] };
-    }
-    
-    // Get start and end points for each segment
-    var endpoints = [];
-    for (var i = 0; i < size(segments); i += 1)
-    {
-        var startPt = evaluateSpline({ "spline" : segments[i], "parameters" : [0] })[0][0];
-        var endPt = evaluateSpline({ "spline" : segments[i], "parameters" : [1] })[0][0];
-        endpoints = append(endpoints, { "start" : startPt, "end" : endPt });
-    }
-    
-    // Track which segments are used
-    var used = makeArray(size(segments), false);
-    var ordered = [];
-    var flips = [];
-    
-    // Start with segment 0, determine if it needs flipping later
-    var currentIdx = 0;
-    var currentFlip = false;
-    
-    // First, find a segment that's an endpoint of the chain (only one connection)
-    // This ensures we start at a true endpoint, not the middle
-    for (var i = 0; i < size(segments); i += 1)
-    {
-        var connections = countConnections(endpoints, i, tolerance);
-        if (connections == 1)
-        {
-            currentIdx = i;
-            break;
-        }
-    }
-    
-    // Determine if first segment needs flipping
-    // (its "start" should be the unconnected end)
-    var firstStart = endpoints[currentIdx].start;
-    var hasConnectionAtStart = false;
-    for (var i = 0; i < size(segments); i += 1)
-    {
-        if (i == currentIdx) continue;
-        if (tolerantEquals(firstStart, endpoints[i].start) || 
-            tolerantEquals(firstStart, endpoints[i].end))
-        {
-            hasConnectionAtStart = true;
-            break;
-        }
-    }
-    currentFlip = hasConnectionAtStart;  // Flip if start is connected (we want start to be free end)
-    
-    // Build the chain
-    while (size(ordered) < size(segments))
-    {
-        ordered = append(ordered, segments[currentIdx]);
-        flips = append(flips, currentFlip);
-        used[currentIdx] = true;
-        
-        // Current endpoint we're continuing from
-        var currentEnd = currentFlip ? endpoints[currentIdx].start : endpoints[currentIdx].end;
-        
-        // Find next segment
-        var foundNext = false;
-        for (var i = 0; i < size(segments); i += 1)
-        {
-            if (used[i]) continue;
-            
-            if (tolerantEquals(currentEnd, endpoints[i].start))
-            {
-                currentIdx = i;
-                currentFlip = false;
-                foundNext = true;
-                break;
-            }
-            else if (tolerantEquals(currentEnd, endpoints[i].end))
-            {
-                currentIdx = i;
-                currentFlip = true;
-                foundNext = true;
-                break;
-            }
-        }
-        
-        if (!foundNext && size(ordered) < size(segments))
-        {
-            throw regenError("Segments do not form a continuous path. " ~ 
-                size(ordered) ~ " of " ~ size(segments) ~ " segments connected.");
-        }
-    }
-    
-    return { "ordered" : ordered, "flips" : flips };
-}
-
-
-/**
- * Count how many other segments connect to segment at index.
- */
-
-export function countConnections(endpoints is array, index is number, tolerance is ValueWithUnits) returns number
-{
-    var count = 0;
-    var myStart = endpoints[index].start;
-    var myEnd = endpoints[index].end;
-    
-    for (var i = 0; i < size(endpoints); i += 1)
-    {
-        if (i == index) continue;
-        
-        if (tolerantEquals(myStart, endpoints[i].start) ||
-            tolerantEquals(myStart, endpoints[i].end))
-        {
-            count += 1;
-        }
-        if (tolerantEquals(myEnd, endpoints[i].start) ||
-            tolerantEquals(myEnd, endpoints[i].end))
-        {
-            count += 1;
-        }
-    }
-    
-    return count;
+        "interpolateIndices" : [0, numSamples - 1]
+    })[0];
 }

@@ -2,19 +2,19 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import tools/bspline_knots
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/dadb70c0a762573622fa609c", version : "744c7afe122e8ae2b3b17a12");
 //import constEnums (export/import)
 
-export import(path : "050a4670bd42b2ca8da04540", version : "3e1798281ef975ee9c4347c8");
+export import(path : "050a4670bd42b2ca8da04540", version : "7a407d1cf555ba0254c21433");
 //import modifyCurveEnd
-import(path : "c6dca62049572faaa07ddd10", version : "a619f44c968dc41869f4329d");
+import(path : "c6dca62049572faaa07ddd10", version : "f4721b9b4c7deba1fd71c782");
 //import gordonCurveCompat
-import(path : "b9e1608a507a242d87720d9b", version : "18979096f9f0772acdf86513");
+import(path : "b9e1608a507a242d87720d9b", version : "c5c9ecc408f10cf66fde9655");
 //import gordonSurface
-import(path : "b3c74a9035256a2ff6bd0004", version : "deb2a5d1e054856f1b2f6f3d");
+import(path : "b3c74a9035256a2ff6bd0004", version : "4abd4ae467b58d50abf2af36");
 
 //import continuityTools
-import(path : "6db2a56b5418f71818d7a607", version : "83f6800b12709ff24c7d9f9b");
+import(path : "6db2a56b5418f71818d7a607", version : "572e9b00092aba3c046bebcc");
 
 
 // Explicit LengthBoundSpec constant — inline map literals are not auto-typed in this context

@@ -10,7 +10,7 @@ export import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/a656fa0d
 //import constEnums (export - needed for enums in preconditions)
 export import(path : "050a4670bd42b2ca8da04540", version : "7a407d1cf555ba0254c21433");
 //import scaledCurve
-import(path : "2dfee1d44e9bde0daba9d73e", version : "40fd9a6d864b4d7389b4b809");
+import(path : "2dfee1d44e9bde0daba9d73e", version : "43e9d842d62de2642d74cefc");
 
 //import continuityTools
 import(path : "6db2a56b5418f71818d7a607", version : "572e9b00092aba3c046bebcc");
@@ -59,6 +59,13 @@ const MCE_ARC_LENGTH_SPANS = 200;
 // An existing knot this close to the hold parameter is used as the hold knot.
 const MCE_KNOT_SNAP = 1e-7;
 
+// A hold-knot removal is kept only if the curve moves less than this (exact in theory; 1 nm absorbs the rounding of
+// the divisions in P&T A5.6 on curves far from the origin).
+const MCE_KNOT_REMOVAL_TOLERANCE = 1e-9 * meter;
+
+// Transport: at most this many parameter steps from the end to the hold between tangent samples (plus every Greville abscissa).
+const MCE_TRANSPORT_STEPS = 400;
+
 const MCE_GAUSS_NODES = [-0.9061798459386640, -0.5384693101056831, 0, 0.5384693101056831, 0.9061798459386640];
 const MCE_GAUSS_WEIGHTS = [0.2369268850561891, 0.4786286704993665, 0.5688888888888889, 0.4786286704993665, 0.2369268850561891];
 
@@ -99,6 +106,10 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
                 annotation { "Name" : "Hold distance", "Description" : "Arc length from the modified end to the hold. Everything farther from the modified end is unchanged." }
                 isLength(definition.holdDistance, HOLD_DISTANCE_BOUNDS);
             }
+
+            annotation { "Name" : "Remove hold knot", "Default" : false,
+                         "Description" : "After the edit, take the hold knot back down from multiplicity p to p - k (k = 1 for G1, 2 for G2): fewer control points, same curve (a removal is kept only where it moves the curve less than 1 nm)." }
+            definition.removeHoldKnot is boolean;
         }
 
         annotation { "Group Name" : "Parameters", "Collapsed By Default" : true }
@@ -106,6 +117,10 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
             annotation { "Name" : "Offset frame", "UIHint" : [UIHint.SHOW_LABEL], "Default" : OffsetFrame.FRENET,
                          "Description" : "World: the end moves by To - From. Frenet: currently the same constant offset as World (kept for saved features)." }
             definition.offsetFrame is OffsetFrame;
+
+            annotation { "Name" : "Carry offset along the curve (transport)", "Default" : false,
+                         "Description" : "Off: every point moves in the same direction (a constant offset, faded by the transition). On: the offset is fixed to the curve at the modified end and carried back along it by parallel transport (no twist), so it turns with the curve; the end still lands exactly on To." }
+            definition.transportOffset is boolean;
 
             annotation { "Name" : "Transition type", "UIHint" : [UIHint.SHOW_LABEL], "Default" : TransitionType.LOGISTIC,
                          "Description" : "How the offset fades from the modified end to the hold (or the fixed end), by arc length." }
@@ -311,8 +326,15 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
         const holdIndex = prepared.holdIndex;
         const lastLocked = holdIndex + kHold;
 
-        // ---- 4. Blend weights and displacement ----
-        curve = mceDisplace(curve, table, holdParam, lastLocked, displacement, definition.transitionType);
+        // ---- 4. Blend weights and displacement (constant, or carried along the curve by parallel transport) ----
+        if (definition.transportOffset)
+        {
+            curve = mceDisplaceTransported(curve, table, holdParam, lastLocked, displacement, definition.transitionType);
+        }
+        else
+        {
+            curve = mceDisplace(curve, table, holdParam, lastLocked, displacement, definition.transitionType);
+        }
 
         // ---- 5. End reference overwrite (closed form) ----
         var endTangent = undefined;
@@ -353,6 +375,26 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
         }
 
         const holdPosition = holdActive ? curve.controlPoints[holdIndex] : curve.controlPoints[0];
+
+        // ---- 6. Optional: take the hold knot back down (exact: the edited curve is C^kHold there) ----
+        if (holdActive && definition.removeHoldKnot)
+        {
+            // Projection keeps only G1 at the hold (mceProjectTail), so at most one removal there.
+            const wanted = definition.curveOnSurface ? min(kHold, 1) : kHold;
+            if (wanted == 0)
+            {
+                notes = append(notes, "Remove hold knot: a G0 hold is a corner, so its knot stays.");
+            }
+            else
+            {
+                const removal = mceRemoveKnot(curve, holdParam, wanted, MCE_KNOT_REMOVAL_TOLERANCE);
+                curve = removal.curve;
+                if (removal.removed < wanted)
+                {
+                    notes = append(notes, "Remove hold knot: removed " ~ removal.removed ~ " of " ~ wanted ~ " (the rest would move the curve).");
+                }
+            }
+        }
         const movedPosition = curve.controlPoints[size(curve.controlPoints) - 1];
         const modifiedCurve = reversed ? mceReverse(curve) : curve;
 
@@ -362,7 +404,8 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
             println("modified end " ~ toString(oldEnd) ~ " -> " ~ toString(target) ~ ", reversed " ~ reversed);
             println("hold parameter " ~ holdParam ~ " (control point " ~ holdIndex ~ "), fixed/hold continuity " ~ definition.fixedEndContinuity
                 ~ ", end continuity order " ~ kEnd);
-            println("transitionType " ~ definition.transitionType ~ ", offsetFrame " ~ definition.offsetFrame);
+            println("transitionType " ~ definition.transitionType ~ ", offsetFrame " ~ definition.offsetFrame ~ ", transport " ~ definition.transportOffset
+                ~ ", remove hold knot " ~ definition.removeHoldKnot ~ ", control points " ~ size(modifiedCurve.controlPoints));
         }
         if (definition.printInput)
         {
@@ -404,7 +447,8 @@ export const modCurveEnd = defineFeature(function(context is Context, id is Id, 
     }, { "useHold" : false, "holdMode" : HoldMode.POINT, "holdPoint" : qNothing(), "holdDistance" : 50 * millimeter,
             "showModContinuity" : false, "modContinuityRef" : qNothing(), "flipRef" : false, "modEndContinuity" : GeometricContinuity.G0,
             "modCurvatureMode" : EndCurvatureMode.MATCH, "modEndRadius" : 100 * millimeter, "curveOnSurface" : false, "projectionFace" : qNothing(),
-            "fromPoint" : qNothing(), "toPoint" : qNothing(), "printInput" : false, "printOutput" : false, "printFormat" : PrintFormat.METADATA });
+            "fromPoint" : qNothing(), "toPoint" : qNothing(), "printInput" : false, "printOutput" : false, "printFormat" : PrintFormat.METADATA,
+            "transportOffset" : false, "removeHoldKnot" : false });
 
 // ============================================================================
 // Chain and selections
@@ -777,19 +821,13 @@ export function mcePrepare(curve is BSplineCurve, holdParam is number, kHold is 
     return { "curve" : c, "holdParam" : h, "holdIndex" : holdIndex };
 }
 
-/**
- * Move the free control points by w_i * D, w_i = transition(sigma_i), sigma_i = the Greville abscissa of control
- * point i mapped onto [hold, end] by arc length. Control points 0..lastLocked stay; the last one moves by D. The
- * basis functions sum to one, so the displacement along the curve is W(u) * D with W between 0 and 1.
- */
-export function mceDisplace(curve is BSplineCurve, table is map, holdParam is number, lastLocked is number,
-    displacement is Vector, transitionType is TransitionType) returns BSplineCurve
+/** Greville abscissae of the control points, clamped to [0, 1]. */
+export function mceGreville(curve is BSplineCurve) returns array
 {
     const p = curve.degree;
     const knots = curve.knots;
-    const n = size(curve.controlPoints);
     var greville = [];
-    for (var i = 0; i < n; i += 1)
+    for (var i = 0; i < size(curve.controlPoints); i += 1)
     {
         var g = 0;
         for (var k = i + 1; k <= i + p; k += 1)
@@ -798,10 +836,22 @@ export function mceDisplace(curve is BSplineCurve, table is map, holdParam is nu
         }
         greville = append(greville, clamp(g / p, 0, 1));
     }
+    return greville;
+}
+
+/**
+ * Blend weight of every control point: 0 for 0..lastLocked, 1 for the last one, else transition(sigma_i) with sigma_i
+ * the Greville abscissa of control point i mapped onto [hold, end] by arc length.
+ */
+export function mceBlendWeights(curve is BSplineCurve, table is map, holdParam is number, lastLocked is number,
+    transitionType is TransitionType) returns array
+{
+    const n = size(curve.controlPoints);
+    const greville = mceGreville(curve);
     const lengths = mceLengthsAt(curve, table, concatenateArrays([[holdParam], greville]));
     const holdLength = lengths[0];
     const span = table.lengths[size(table.lengths) - 1] - holdLength;
-    var points = curve.controlPoints;
+    var weights = makeArray(n, 0);
     for (var i = lastLocked + 1; i < n; i += 1)
     {
         var w = 1;
@@ -809,9 +859,224 @@ export function mceDisplace(curve is BSplineCurve, table is map, holdParam is nu
         {
             w = evaluateTransition(clamp((lengths[i + 1] - holdLength) / span, 0, 1), transitionType);
         }
-        points[i] = points[i] + w * displacement;
+        weights[i] = w;
     }
-    return mceCurve(p, points, knots);
+    return weights;
+}
+
+/**
+ * Move the free control points by w_i * D (weights from mceBlendWeights). Control points 0..lastLocked stay; the last
+ * one moves by D. The basis functions sum to one, so the displacement along the curve is W(u) * D with W between 0 and 1.
+ */
+export function mceDisplace(curve is BSplineCurve, table is map, holdParam is number, lastLocked is number,
+    displacement is Vector, transitionType is TransitionType) returns BSplineCurve
+{
+    const weights = mceBlendWeights(curve, table, holdParam, lastLocked, transitionType);
+    var points = curve.controlPoints;
+    for (var i = lastLocked + 1; i < size(points); i += 1)
+    {
+        points[i] = points[i] + weights[i] * displacement;
+    }
+    return mceCurve(curve.degree, points, curve.knots);
+}
+
+/**
+ * TRANSPORT offset ("Carry offset along the curve").
+ *
+ * Definition: the displacement D = To - (old end) is attached to the curve at the modified end (u = 1) and carried
+ * back along the UNEDITED curve by parallel transport. R(g) is the rotation-minimizing (Bishop, zero-twist) map from
+ * u = 1 to parameter g: it sends the unit tangent T(1) to T(g) and turns vectors normal to the tangent with no spin
+ * about it. Control point i moves by
+ *     w_i * R(g_i) D
+ * with w_i the same blend weight as the constant offset (mceBlendWeights) and g_i its Greville abscissa. So D's
+ * tangential part turns with the tangent and its normal part keeps its angle to the transported normals.
+ * Properties: R(1) = I and w = 1 at the last control point, so the end still lands exactly on To; the held control
+ * points (w = 0) do not move; on a straight stretch R = I and the result is the constant (WORLD) offset.
+ * Computed by composing minimal rotations between tangents sampled from u = 1 down to the lowest free Greville abscissa,
+ * at most 1 / MCE_TRANSPORT_STEPS apart in u, plus every Greville abscissa; a tangent reversal between two samples
+ * (a cusp) is skipped.
+ */
+export function mceDisplaceTransported(curve is BSplineCurve, table is map, holdParam is number, lastLocked is number,
+    displacement is Vector, transitionType is TransitionType) returns BSplineCurve
+{
+    const n = size(curve.controlPoints);
+    const weights = mceBlendWeights(curve, table, holdParam, lastLocked, transitionType);
+    const greville = mceGreville(curve);
+    var lowest = 1;
+    for (var i = lastLocked + 1; i < n; i += 1)
+    {
+        lowest = min(lowest, greville[i]);
+    }
+    // Parameters from 1 down to the lowest free Greville abscissa: a uniform grid plus the abscissae themselves.
+    var params = [];
+    for (var k = 0; k <= MCE_TRANSPORT_STEPS; k += 1)
+    {
+        const u = 1 - k / MCE_TRANSPORT_STEPS;
+        if (u > lowest)
+        {
+            params = append(params, u);
+        }
+    }
+    for (var i = lastLocked + 1; i < n; i += 1)
+    {
+        params = append(params, greville[i]);
+    }
+    params = sort(params, function(a, b) { return b - a; });
+    const d1 = evaluateSpline({ "spline" : curve, "parameters" : params, "nDerivatives" : 1 })[1];
+
+    // Walk from u = 1 toward the hold carrying D; record it at every sample (looked up at the Greville abscissae).
+    var carried = {};
+    var v = displacement;
+    var previous = normalize(d1[0]);
+    for (var k = 0; k < size(params); k += 1)
+    {
+        if (norm(d1[k]) > TOLERANCE.zeroLength * meter)
+        {
+            const tangent = normalize(d1[k]);
+            v = mceMinimalRotation(v, previous, tangent);
+            previous = tangent;
+        }
+        carried[params[k]] = v;
+    }
+
+    var points = curve.controlPoints;
+    for (var i = lastLocked + 1; i < n; i += 1)
+    {
+        const moved = i == n - 1 ? displacement : carried[greville[i]];
+        points[i] = points[i] + weights[i] * moved;
+    }
+    return mceCurve(curve.degree, points, curve.knots);
+}
+
+/**
+ * v turned by the smallest rotation that takes unit vector a to unit vector b (about the axis a x b), by Rodrigues'
+ * formula with the unnormalized axis w = a x b and c = a . b:  v c + w x v + w (w . v) / (1 + c).
+ * Parallel or opposite a and b: v is returned unchanged.
+ */
+export function mceMinimalRotation(v is Vector, a is Vector, b is Vector) returns Vector
+{
+    const w = cross(a, b);
+    const c = dot(a, b);
+    if (norm(w) < 1e-14 || c <= -1 + 1e-12)
+    {
+        return v;
+    }
+    return v * c + cross(w, v) + w * dot(w, v) / (1 + c);
+}
+
+/**
+ * Remove interior knot u up to `times` times (P&T A5.6, one removal per pass). A removal is kept only if the curve
+ * moves less than `tol`; the first refused one stops the loop.
+ *
+ * @returns {{ @field curve {BSplineCurve}, @field removed {number} }}
+ */
+export function mceRemoveKnot(curve is BSplineCurve, u is number, times is number, tol is ValueWithUnits) returns map
+{
+    var c = curve;
+    var removed = 0;
+    for (var t = 0; t < times; t += 1)
+    {
+        const once = mceRemoveKnotOnce(c, u, tol);
+        if (once == undefined)
+        {
+            break;
+        }
+        c = once;
+        removed += 1;
+    }
+    return { "curve" : c, "removed" : removed };
+}
+
+/**
+ * One removal of the interior knot u (Piegl & Tiller A5.6 with num = 1, non-rational), or undefined when u is not an
+ * interior knot or the removal would move the curve by more than `tol`.
+ * (tools/bspline_knots removeKnotOnce skips the deviation check when first == last, i.e. for a knot of multiplicity p,
+ * and keeps only the left-hand new points; hence this local version.)
+ */
+export function mceRemoveKnotOnce(curve is BSplineCurve, u is number, tol is ValueWithUnits)
+{
+    const p = curve.degree;
+    const knots = curve.knots;
+    const points = curve.controlPoints;
+    const n = size(points) - 1;
+    var r = -1;
+    var s = 0;
+    for (var i = 0; i < size(knots); i += 1)
+    {
+        if (knots[i] == u)
+        {
+            r = i;
+            s += 1;
+        }
+    }
+    if (s == 0 || r < p + 1 || r > n)
+    {
+        return undefined;
+    }
+    const ord = p + 1;
+    const first = r - p;
+    const last = r - s;
+    const off = first - 1;
+    var temp = makeArray(last - off + 2);
+    temp[0] = points[off];
+    temp[last + 1 - off] = points[last + 1];
+    var i = first;
+    var j = last;
+    var ii = 1;
+    var jj = last - off;
+    while (j - i > 0)
+    {
+        const alfi = (u - knots[i]) / (knots[i + ord] - knots[i]);
+        const alfj = (u - knots[j]) / (knots[j + ord] - knots[j]);
+        temp[ii] = (points[i] - (1 - alfi) * temp[ii - 1]) / alfi;
+        temp[jj] = (points[j] - alfj * temp[jj + 1]) / (1 - alfj);
+        i += 1;
+        ii += 1;
+        j -= 1;
+        jj -= 1;
+    }
+    var gap;
+    if (j - i < 0)
+    {
+        gap = norm(temp[ii - 1] - temp[jj + 1]);
+    }
+    else
+    {
+        const alfi = (u - knots[i]) / (knots[i + ord] - knots[i]);
+        gap = norm(points[i] - (alfi * temp[ii + 1] + (1 - alfi) * temp[ii - 1]));
+    }
+    if (gap > tol)
+    {
+        return undefined;
+    }
+    var updated = points;
+    i = first;
+    j = last;
+    while (j - i > 0)
+    {
+        updated[i] = temp[i - off];
+        updated[j] = temp[j - off];
+        i += 1;
+        j -= 1;
+    }
+    const fout = floor((2 * r - s - p) / 2);
+    var newPoints = [];
+    for (var k = 0; k <= n; k += 1)
+    {
+        if (k != fout)
+        {
+            newPoints = append(newPoints, updated[k]);
+        }
+    }
+    var newKnots = [];
+    for (var k = 0; k < size(knots); k += 1)
+    {
+        if (k != r)
+        {
+            newKnots = append(newKnots, knots[k]);
+        }
+    }
+    return mceCurve(p, newPoints, newKnots);
 }
 
 /**

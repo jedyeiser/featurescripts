@@ -9,53 +9,33 @@ import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b982
 IconNamespace::import(path : "3dba0e19457f30c7c2f9dddd", version : "0f63f7efa33cc8032cc45c9e");
 
 /**
- * Split+: the standard part split, with several targets and several tools, and -- when one
- * side is kept -- the side named by a reference instead of by a flip.
+ * Split+ (v2, 2026-09-27): split parts, surfaces, curves or faces by a START tool and, optionally,
+ * an END tool, and name what results by INSIDE and OUTSIDE instead of by tool order or normals.
  *
- * Every target is split by every tool in turn (opSplitPart, one call per tool, the pieces of
- * one split being the targets of the next). With "Keep both sides" that is the built-in
- * split repeated. With it off, each tool keeps the side of itself the REFERENCE is on
- * ("Keep side nearest reference" on) or the other side (off): what survives is the region
- * on the reference's side of every tool, whatever the tools' orientations.
+ * INSIDE is the region on the inside of every tool:
+ *     with an inside reference   the side of each tool the reference is on;
+ *     two tools, no reference    the side of each tool the other tool is on (between the cuts);
+ *     one tool, no reference     the tool's front (the side its normal points to) -- a notice says so.
+ * OUTSIDE is everything else: START (beyond the start tool) and END (beyond the end tool).
+ * A piece beyond both tools (crossing tools) counts as outside only, and a notice says so.
  *
- * The side is read per tool as the reference's signed distance to that tool (positive on
- * the side its normal points to), and opSplitPart's KEEP_FRONT keeps exactly that side
- * (verified 2026-09-23: a +Z plane tool keeps z > 0 with KEEP_FRONT). Without a reference
- * the box is the built-in's own: on keeps the front of every tool, off the back.
+ * The split keeps every piece (opSplitPart KEEP_ALL, start tool first; opSplitFace in a face split);
+ * "Keep" then deletes the outside or inside pieces. A face split removes nothing.
  *
- * Tools: surfaces, faces (construction planes included) and mate connectors (their XY
- * plane). A multi-face surface splits by its faces as they are; "Trim to face boundaries"
- * applies to single faces, as in the built-in.
+ * Every cut is left as two coincident edges (one per piece); the one published is the edge on the
+ * INSIDE piece, so startCut / endCut are "the cut as seen from inside" whatever is kept.
  *
- * FACE split type: the faces picked are split by every tool in turn (opSplitFace; planes
- * and mate connectors infinite, surfaces and faces as they are); nothing is removed, and
- * the pieces and regions below are FACES. The side reference, when given, only names the
- * regions of a one-tool split (near / far). Edge tools are not offered: the side rule needs
- * a surface; use the built-in Split for projected edges.
- *
- * REGIONS. Every resulting piece is placed by which side of each tool it lies on (its
- * centroid's signed distance), and named by position along the tools, in the order picked:
- *     1 tool      near / far (from the keep side reference), or front / back (the sides the
- *                 tool's normal points to and from) when there is no reference
- *     2 tools     start (beyond the first tool, away from the second), middle, end
- *     3+ tools    start, middle1 .. middleN-1, end
- * "Forward" for a tool is the side the next tool is on (for the last: away from the one
- * before), so orientation never matters. When the tools cross inside the part (a normal
- * way to keep a corner) or were picked out of order, no piece fits a band: the split is
- * made as asked and the region keys are published empty, with an info notice saying why.
+ * Tools: a surface, a face (construction planes included) or a mate connector (its XY plane).
  *
  * Publishes (Extract variables), every key always present (empty when not applicable):
- *     output                 all resulting pieces; pieceCount, regionCount
- *     <region>               the pieces of each region (bodies)
- *     <region>Edges          their edges except the cuts (boundary edges of a surface)
- *     outside / outsideEdges start + end;   inside / insideEdges  every middle region
- *     splitEdges             every cut, one edge per cut (the edge on the piece in front of
- *                            its tool); per tool: cut (1 tool), startCut / endCut (2),
- *                            cut1 .. cutN (3+)
- *     splitFaces             faces the splits created (the caps on solids)
+ *     output                        the pieces kept; pieceCount
+ *     inside, outside, start, end   the pieces of each region (faces in a face split)
+ *     <region>Edges                 their edges except the cuts (boundary edges of a surface)
+ *     startCut, endCut              the cut each tool made (edges on the inside piece)
+ *     splitEdges                    every cut; splitFaces  faces the splits created (the caps on solids)
  */
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Split+",
-        "Feature Type Description" : "Split parts, surfaces, curves or faces with several tools; when one side is kept, the side is the one a reference is on, whatever the tools' orientations.",
+        "Feature Type Description" : "Split parts, surfaces, curves or faces at a start tool and an optional end tool; the pieces are named inside / outside (start, end) from a reference, and you keep both, the inside or the outside.",
         "Filter Selector" : "allparts" }
 export const splitPlus = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -75,40 +55,36 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
             definition.faceTargets is Query;
         }
 
-        annotation { "Name" : "Entities to split with",
+        annotation { "Name" : "Start tool", "MaxNumberOfPicks" : 1,
                     "Filter" : (EntityType.BODY && BodyType.SHEET && SketchObject.NO) || EntityType.FACE || BodyType.MATE_CONNECTOR,
-                    "Description" : "Surfaces, faces, planes or mate connectors. Each splits everything the ones before it left, in the order picked." }
-        definition.tools is Query;
+                    "Description" : "A surface, face, plane or mate connector. Its cut is published as startCut; what lies beyond it is the start region." }
+        definition.startTool is Query;
+
+        annotation { "Name" : "End tool", "MaxNumberOfPicks" : 1,
+                    "Filter" : (EntityType.BODY && BodyType.SHEET && SketchObject.NO) || EntityType.FACE || BodyType.MATE_CONNECTOR,
+                    "Description" : "Optional second cut (endCut). Inside is then the part between the two tools." }
+        definition.endTool is Query;
+
+        annotation { "Name" : "Inside reference", "MaxNumberOfPicks" : 1,
+                    "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR,
+                    "Description" : "Geometry in the region you call inside. Needed with one tool to name the sides; with two tools inside is between them unless a reference says otherwise." }
+        definition.insideReference is Query;
+
+        if (definition.splitType == SplitPlusType.PART)
+        {
+            annotation { "Name" : "Keep", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL], "Default" : SplitPlusKeep.BOTH }
+            definition.keep is SplitPlusKeep;
+
+            annotation { "Name" : "Trim to face boundaries", "Default" : false }
+            definition.useTrimmed is boolean;
+        }
 
         annotation { "Name" : "Keep tools", "Default" : false }
         definition.keepTools is boolean;
 
-        if (definition.splitType == SplitPlusType.PART)
-        {
-            annotation { "Name" : "Trim to face boundaries", "Default" : false }
-            definition.useTrimmed is boolean;
-
-            annotation { "Name" : "Keep both sides", "Default" : true }
-            definition.keepBothSides is boolean;
-        }
-
-        if (definition.splitType == SplitPlusType.FACE || !definition.keepBothSides)
-        {
-            annotation { "Name" : "Side reference", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
-                        "Description" : "Geometry on one side of the tools. Part split keeping one side: the side of every tool to keep (empty = the built-in front / back choice). With one tool it also names the regions near / far." }
-            definition.keepReference is Query;
-        }
-
-        if (definition.splitType == SplitPlusType.PART && !definition.keepBothSides)
-        {
-            annotation { "Name" : "Keep side nearest reference", "Default" : true, "UIHint" : UIHint.OPPOSITE_DIRECTION,
-                        "Description" : "On: keep the side of each tool the reference is on. Off: keep the other side. Without a reference: on keeps each tool's front (the side its normal points to), off its back." }
-            definition.keepNear is boolean;
-        }
-
         annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Print sides", "Default" : false, "Description" : "Which side of each tool the reference is on, and what was kept." }
+            annotation { "Name" : "Print sides", "Default" : false, "Description" : "Which side of each tool is inside, and the pieces of each region." }
             definition.debugPrintSides is boolean;
         }
     }
@@ -122,24 +98,31 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         {
             verifyNonemptyQuery(context, definition, "targets", ErrorStringEnum.SPLIT_SELECT_TARGETS);
         }
-        verifyNonemptyQuery(context, definition, "tools", ErrorStringEnum.SPLIT_SELECT_TOOL);
-        const clash = faceMode ? qIntersection([definition.faceTargets, facesOf(definition.tools)])
-                               : qIntersection([definition.targets, qOwnerBody(definition.tools)]);
+        verifyNonemptyQuery(context, definition, "startTool", ErrorStringEnum.SPLIT_SELECT_TOOL);
+        const hasEnd = !isQueryEmpty(context, definition.endTool);
+        if (hasEnd && !isQueryEmpty(context, qIntersection([definition.startTool, definition.endTool])))
+        {
+            throw regenError("The start and end tools are the same; pick a different end tool.", ["endTool"]);
+        }
+        const allTools = qUnion([definition.startTool, definition.endTool]);
+        const clash = faceMode ? qIntersection([definition.faceTargets, facesOf(allTools)])
+                               : qIntersection([definition.targets, qOwnerBody(allTools)]);
         if (!isQueryEmpty(context, clash))
         {
-            throw regenError("A tool is also a target; pick it only once.", ["tools"]);
+            throw regenError("A tool is also a target; pick it only once.", ["startTool"]);
         }
 
-        // A face split removes nothing; there the reference only names the sides.
-        const probe = (faceMode || !definition.keepBothSides) ? referenceProbe(context, definition.keepReference) : undefined;
-        const tools = evaluateQuery(context, definition.tools);
+        const probe = referenceProbe(context, definition.insideReference);
+        const toolInputs = hasEnd ? [definition.startTool, definition.endTool] : [definition.startTool];
+        const toolNames = ["start tool", "end tool"];
 
+        // The splits: every piece kept; Keep removes pieces afterwards, by region.
         var tempPlanes = [];
-        var resolvedTools = [];
+        var tools = [];
         var pieces = faceMode ? qEntityFilter(definition.faceTargets, EntityType.FACE) : definition.targets;
-        for (var i = 0; i < size(tools); i += 1)
+        for (var i = 0; i < size(toolInputs); i += 1)
         {
-            var tool = tools[i];
+            var tool = toolInputs[i];
             var isPlane = false;
             const cSys = mateConnectorFrame(context, tool);
             if (cSys != undefined)
@@ -150,7 +133,7 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
                 tempPlanes = append(tempPlanes, qCreatedBy(planeId, EntityType.BODY));
                 isPlane = true;
             }
-            resolvedTools = append(resolvedTools, tool);
+            tools = append(tools, tool);
 
             if (faceMode)
             {
@@ -161,26 +144,33 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
                 pieces = qUnion(evaluateQuery(context, qUnion([pieces, qSplitBy(faceSplitId, EntityType.FACE, false), qSplitBy(faceSplitId, EntityType.FACE, true)])));
                 continue;
             }
-
-            const keepType = keepTypeFor(context, definition, probe, tool, i);
             const splitId = id + ("split" ~ i);
             opSplitPart(context, splitId, {
                         "targets" : pieces,
                         "tool" : tool,
                         "keepTools" : true,
                         "useTrimmed" : definition.useTrimmed,
-                        "keepType" : keepType
+                        "keepType" : SplitOperationKeepType.KEEP_ALL
                     });
             pieces = qUnion([pieces, qCreatedBy(splitId, EntityType.BODY)]);
         }
 
-        // Cuts and regions, read while the tools (and the temporary planes) still exist.
+        // Which side of each tool is inside, then every piece placed in a region -- read while
+        // the tools (and the temporary planes) still exist.
+        const sides = insideSides(context, tools, probe, toolNames);
+        if (definition.debugPrintSides)
+        {
+            for (var k = 0; k < size(tools); k += 1)
+            {
+                println("[split+] " ~ toolNames[k] ~ ": inside is its " ~ (sides.signs[k] > 0 ? "front" : "back") ~ " (" ~ sides.how ~ ").");
+            }
+        }
+        const regions = classifyPieces(context, evaluateQuery(context, pieces), tools, sides.signs);
         const pieceEdges = faceMode ? qAdjacent(pieces, AdjacencyType.EDGE, EntityType.EDGE)
                                     : qOwnedByBody(qUnion(evaluateQuery(context, pieces)), EntityType.EDGE);
         const allCuts = qIntersection([pieceEdges, qCreatedBy(id, EntityType.EDGE)]);
-        const splitEdges = oneEdgePerCut(context, allCuts, resolvedTools);
-        const regions = classifyRegions(context, evaluateQuery(context, pieces), resolvedTools, probe);
-        const cutsByTool = cutsPerTool(context, splitEdges, resolvedTools);
+        const splitEdges = oneEdgePerCut(context, allCuts, tools, sides.signs);
+        const cutsByTool = cutsPerTool(context, splitEdges, tools);
 
         if (size(tempPlanes) > 0)
         {
@@ -188,77 +178,81 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         }
         if (!definition.keepTools)
         {
-            const toolBodies = qBodyType(qEntityFilter(definition.tools, EntityType.BODY), BodyType.SHEET);
+            const toolBodies = qBodyType(qEntityFilter(allTools, EntityType.BODY), BodyType.SHEET);
             if (!isQueryEmpty(context, toolBodies))
             {
                 opDeleteBodies(context, id + "deleteTools", { "entities" : toolBodies });
             }
         }
 
+        const insideQ = qUnion(regions.inside);
+        const startQ = qUnion(regions.start);
+        const endQ = qUnion(regions.end);
+        const outsideQ = qUnion(concatenateArrays([regions.start, regions.end, regions.beyondBoth]));
+        if (!faceMode && definition.keep != SplitPlusKeep.BOTH)
+        {
+            const removed = definition.keep == SplitPlusKeep.INSIDE ? outsideQ : insideQ;
+            if (!isQueryEmpty(context, removed))
+            {
+                opDeleteBodies(context, id + "deleteSide", { "entities" : removed });
+            }
+        }
         const kept = qUnion(evaluateQuery(context, pieces));
         if (isQueryEmpty(context, kept))
         {
-            throw regenError("Nothing is left: no part of the targets lies on the kept side of every tool.", ["keepReference"]);
+            throw regenError("Nothing is left: no piece lies " ~ (definition.keep == SplitPlusKeep.INSIDE ? "inside" : "outside") ~ ".", ["keep"]);
         }
+
+        var notes = [];
+        if (sides.note != undefined)
+        {
+            notes = append(notes, sides.note);
+        }
+        if (size(regions.beyondBoth) > 0)
+        {
+            notes = append(notes, size(regions.beyondBoth) ~ " piece(s) lie beyond both tools (the tools cross inside the part): counted as outside, in neither start nor end.");
+        }
+        if (size(regions.onTool) > 0)
+        {
+            notes = append(notes, size(regions.onTool) ~ " piece(s) lie on a tool, so their side cannot be read: in no region.");
+        }
+        if (size(notes) > 0)
+        {
+            reportFeatureInfo(context, id, join(notes, " "));
+        }
+        if (definition.debugPrintSides)
+        {
+            println("[split+] inside " ~ size(regions.inside) ~ ", start " ~ size(regions.start) ~ ", end " ~ size(regions.end)
+                    ~ ", beyond both " ~ size(regions.beyondBoth) ~ ", on a tool " ~ size(regions.onTool) ~ " piece(s).");
+        }
+
         const edgesOf = function(q is Query) returns Query
             {
                 return faceMode ? faceRegionEdges(context, q, allCuts) : regionEdges(q, allCuts);
             };
-
+        const regionKeys = [["inside", insideQ, "The pieces on the inside of every tool."],
+                            ["outside", outsideQ, "Every piece not inside: start + end (and any piece beyond both tools)."],
+                            ["start", startQ, "The pieces beyond the start tool."],
+                            ["end", endQ, "The pieces beyond the end tool (empty with one tool)."]];
         var queries = {
             "splitFaces" : extractableQuery(faceMode ? qNothing() : qIntersection([qOwnedByBody(kept, EntityType.FACE), qCreatedBy(id, EntityType.FACE)]),
                     "Faces the splits created (the caps on solids; empty in a face split).", DebugColor.MAGENTA),
-            "splitEdges" : extractableQuery(splitEdges,
-                    "The cuts: one edge per cut, the one on the piece in front of its tool (the side the tool's normal points to).",
-                    DebugColor.MAGENTA)
+            "splitEdges" : extractableQuery(splitEdges, "Every cut: one edge per cut, the one on the inside piece.", DebugColor.MAGENTA),
+            "startCut" : extractableQuery(cutsByTool[0], "The cut the start tool made (the edge on the inside piece).", DebugColor.MAGENTA),
+            "endCut" : extractableQuery(size(cutsByTool) > 1 ? cutsByTool[1] : qNothing(), "The cut the end tool made (the edge on the inside piece).", DebugColor.MAGENTA)
         };
-        const cutNames = cutKeyNames(size(resolvedTools));
-        for (var k = 0; k < size(cutNames); k += 1)
+        for (var key in regionKeys)
         {
-            queries[cutNames[k]] = extractableQuery(cutsByTool[k], "The cut made by tool " ~ (k + 1) ~ ".", DebugColor.MAGENTA);
-        }
-        var outside = [];
-        var inside = [];
-        for (var r = 0; r < size(regions.names); r += 1)
-        {
-            const name = regions.names[r];
-            const bodies = qUnion(regions.bodies[r]);
-            queries[name] = extractableQuery(bodies, "Region " ~ name ~ ": " ~ regions.descriptions[r] ~ ".", DebugColor.CYAN);
-            queries[name ~ "Edges"] = extractableQuery(edgesOf(bodies),
-                    "Edges of region " ~ name ~ " except the cuts (a surface's boundary edges).", DebugColor.CYAN);
-            if (regions.outside[r])
-            {
-                outside = append(outside, bodies);
-            }
-            else if (regions.inside[r])
-            {
-                inside = append(inside, bodies);
-            }
-        }
-        queries["outside"] = extractableQuery(qUnion(outside), "The regions beyond the first and last tools (start and end).", DebugColor.CYAN);
-        queries["outsideEdges"] = extractableQuery(edgesOf(qUnion(outside)), "Edges of the outside regions except the cuts.", DebugColor.CYAN);
-        queries["inside"] = extractableQuery(qUnion(inside), "Every region between the first and last tools.", DebugColor.CYAN);
-        queries["insideEdges"] = extractableQuery(edgesOf(qUnion(inside)), "Edges of the inside regions except the cuts.", DebugColor.CYAN);
-
-        if (regions.problem != undefined)
-        {
-            reportFeatureInfo(context, id, "Split done; regions not published: " ~ regions.problem ~ ".");
-        }
-        if (definition.debugPrintSides)
-        {
-            for (var r = 0; r < size(regions.names); r += 1)
-            {
-                println("[split+] region " ~ regions.names[r] ~ ": " ~ size(regions.bodies[r]) ~ " piece(s).");
-            }
+            queries[key[0]] = extractableQuery(key[1], key[2], DebugColor.CYAN);
+            queries[key[0] ~ "Edges"] = extractableQuery(edgesOf(key[1]), "Edges of the " ~ key[0] ~ " pieces except the cuts (a surface's boundary edges).", DebugColor.CYAN);
         }
 
         embedStandardOutputs(context, id, {
                     "output" : kept,
-                    "outputDescription" : faceMode ? "The split faces" : "The split pieces",
-                    "inputs" : qUnion([faceMode ? definition.faceTargets : definition.targets, definition.tools]),
+                    "outputDescription" : faceMode ? "The split faces" : "The pieces kept",
+                    "inputs" : qUnion([faceMode ? definition.faceTargets : definition.targets, allTools]),
                     "variables" : {
-                        "pieceCount" : extractableVariable(size(evaluateQuery(context, kept)), "Pieces the split left (faces, in a face split)."),
-                        "regionCount" : extractableVariable(size(regions.names), "Regions the tools define: 2 for one tool, N + 1 for N tools.")
+                        "pieceCount" : extractableVariable(size(evaluateQuery(context, kept)), "Pieces kept (faces, in a face split).")
                     },
                     "queries" : queries
                 });
@@ -266,11 +260,11 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         "splitType" : SplitPlusType.PART,
         "targets" : qNothing(),
         "faceTargets" : qNothing(),
+        "endTool" : qNothing(),
+        "insideReference" : qNothing(),
+        "keep" : SplitPlusKeep.BOTH,
         "keepTools" : false,
         "useTrimmed" : false,
-        "keepBothSides" : true,
-        "keepReference" : qNothing(),
-        "keepNear" : true,
         "debugPrintSides" : false
     });
 
@@ -281,6 +275,99 @@ export enum SplitPlusType
     PART,
     annotation { "Name" : "Face" }
     FACE
+}
+
+/** Which pieces a part split keeps. */
+export enum SplitPlusKeep
+{
+    annotation { "Name" : "Both" }
+    BOTH,
+    annotation { "Name" : "Inside" }
+    INSIDE,
+    annotation { "Name" : "Outside" }
+    OUTSIDE
+}
+
+/**
+ * The inside side of each tool (+1 its front, -1 its back), how it was decided, and a notice when
+ * it is only the start tool's normal.
+ */
+function insideSides(context is Context, tools is array, probe, toolNames is array) returns map
+{
+    var signs = [];
+    if (probe != undefined)
+    {
+        for (var k = 0; k < size(tools); k += 1)
+        {
+            const side = sideSign(context, probe, tools[k]);
+            if (side == 0)
+            {
+                throw regenError("The inside reference lies on the " ~ toolNames[k] ~ " (or no side of it can be read there); pick something clearly inside.",
+                    ["insideReference"]);
+            }
+            signs = append(signs, side);
+        }
+        return { "signs" : signs, "how" : "from the inside reference" };
+    }
+    if (size(tools) == 2)
+    {
+        for (var k = 0; k < 2; k += 1)
+        {
+            const other = tools[1 - k];
+            const side = sideSign(context, evApproximateCentroid(context, { "entities" : other }), tools[k]);
+            if (side == 0)
+            {
+                throw regenError("The start and end tools meet or cross, so 'between' is not defined: pick an inside reference.", ["insideReference"]);
+            }
+            signs = append(signs, side);
+        }
+        return { "signs" : signs, "how" : "between the two tools" };
+    }
+    return { "signs" : [1], "how" : "the start tool's front",
+            "note" : "Inside is the start tool's front (the side its normal points to); pick an inside reference to name the sides." };
+}
+
+/**
+ * Every piece placed by the side of each tool its point is on: inside (inside of every tool),
+ * start (beyond the start tool only), end (beyond the end tool only), beyondBoth, onTool.
+ */
+function classifyPieces(context is Context, pieces is array, tools is array, signs is array) returns map
+{
+    var result = { "inside" : [], "start" : [], "end" : [], "beyondBoth" : [], "onTool" : [] };
+    for (var piece in pieces)
+    {
+        const point = piecePoint(context, piece);
+        var beyond = [];
+        var readable = true;
+        for (var k = 0; k < size(tools); k += 1)
+        {
+            const side = sideSign(context, point, tools[k]);
+            if (side == 0)
+            {
+                readable = false;
+            }
+            beyond = append(beyond, side != signs[k]);
+        }
+        var key = "inside";
+        if (!readable)
+        {
+            key = "onTool";
+        }
+        else if (size(tools) == 2 && beyond[0] && beyond[1])
+        {
+            key = "beyondBoth";
+        }
+        else if (beyond[0])
+        {
+            key = "start";
+        }
+        else if (size(tools) == 2 && beyond[1])
+        {
+            key = "end";
+        }
+        result[key] = append(result[key], piece);
+    }
+    return result;
 }
 
 /**
@@ -339,9 +426,9 @@ function piecePoint(context is Context, piece is Query) returns Vector
  * The cut edges with each coincident pair reduced to one. Keeping both sides leaves every cut
  * as two edges on top of each other, one per piece, and anything built on both -- an
  * extrude, a fillet -- fails on the overlap. Of a pair, the edge kept is the one on the
- * piece in front of the tool that made it (the side the tool's normal points to).
+ * INSIDE piece of the tool that made it.
  */
-function oneEdgePerCut(context is Context, edges is Query, tools is array) returns Query
+function oneEdgePerCut(context is Context, edges is Query, tools is array, signs is array) returns Query
 {
     const all = evaluateQuery(context, edges);
     var middles = [];
@@ -375,11 +462,12 @@ function oneEdgePerCut(context is Context, edges is Query, tools is array) retur
             continue;
         }
 
-        const tool = nearestTool(context, middles[i], tools);
+        const k = nearestToolIndex(context, middles[i], tools);
         var chosen = all[group[0]];
         for (var g in group)
         {
-            if (edgeSide(context, all[g], tool) > 0 * meter)
+            const side = edgeSide(context, all[g], tools[k]);
+            if ((side > 0 * meter && signs[k] > 0) || (side < 0 * meter && signs[k] < 0))
             {
                 chosen = all[g];
                 break;
@@ -390,18 +478,18 @@ function oneEdgePerCut(context is Context, edges is Query, tools is array) retur
     return qUnion(result);
 }
 
-/** The tool nearest a point. */
-function nearestTool(context is Context, point is Vector, tools is array) returns Query
+/** The index of the tool nearest a point. */
+function nearestToolIndex(context is Context, point is Vector, tools is array) returns number
 {
-    var best = tools[0];
+    var best = 0;
     var bestDistance = inf * meter;
-    for (var tool in tools)
+    for (var k = 0; k < size(tools); k += 1)
     {
-        const d = evDistance(context, { "side0" : point, "side1" : tool }).distance;
+        const d = evDistance(context, { "side0" : point, "side1" : tools[k] }).distance;
         if (d < bestDistance)
         {
             bestDistance = d;
-            best = tool;
+            best = k;
         }
     }
     return best;
@@ -426,25 +514,6 @@ function edgeSide(context is Context, edge is Query, tool is Query) returns Valu
     return best;
 }
 
-/** The per-tool cut keys: cut (1 tool), startCut / endCut (2), cut1 .. cutN (3+). */
-function cutKeyNames(toolCount is number) returns array
-{
-    if (toolCount == 1)
-    {
-        return ["cut"];
-    }
-    if (toolCount == 2)
-    {
-        return ["startCut", "endCut"];
-    }
-    var names = [];
-    for (var k = 0; k < toolCount; k += 1)
-    {
-        names = append(names, "cut" ~ (k + 1));
-    }
-    return names;
-}
-
 /** The cut edges split by the tool that made each (the nearest tool). */
 function cutsPerTool(context is Context, cuts is Query, tools is array) returns array
 {
@@ -452,18 +521,8 @@ function cutsPerTool(context is Context, cuts is Query, tools is array) returns 
     for (var e in evaluateQuery(context, cuts))
     {
         const middle = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin;
-        var best = 0;
-        var bestDistance = inf * meter;
-        for (var k = 0; k < size(tools); k += 1)
-        {
-            const d = evDistance(context, { "side0" : middle, "side1" : tools[k] }).distance;
-            if (d < bestDistance)
-            {
-                bestDistance = d;
-                best = k;
-            }
-        }
-        byTool[best] = append(byTool[best], e);
+        const k = nearestToolIndex(context, middle, tools);
+        byTool[k] = append(byTool[k], e);
     }
     var result = [];
     for (var list in byTool)
@@ -481,144 +540,6 @@ function regionEdges(bodies is Query, cuts is Query) returns Query
     return qSubtraction(qUnion([sheetEdges, otherEdges]), cuts);
 }
 
-/**
- * Every piece placed in a region by the side of each tool its centroid is on.
- *
- * @returns {map} : { names, descriptions, bodies (array of arrays of body queries), outside
- *      (booleans), inside (booleans) } -- one entry per region, in order along the tools.
- */
-function classifyRegions(context is Context, pieces is array, tools is array, probe) returns map
-{
-    const n = size(tools);
-    var sides = [];
-    for (var piece in pieces)
-    {
-        const centroid = piecePoint(context, piece);
-        var row = [];
-        for (var k = 0; k < n; k += 1)
-        {
-            row = append(row, sideSign(context, centroid, tools[k]));
-        }
-        sides = append(sides, row);
-    }
-
-    if (n == 1)
-    {
-        // Two regions, named by the reference when there is one, else by the tool's normal.
-        var refSide = 0;
-        if (probe != undefined)
-        {
-            refSide = sideSign(context, probe, tools[0]);
-        }
-        const named = refSide != 0;
-        var first = [];
-        var second = [];
-        for (var i = 0; i < size(pieces); i += 1)
-        {
-            if (sides[i][0] == 0)
-            {
-                return noRegions(named ? ["near", "far"] : ["front", "back"], "a piece lies on the tool, so its side cannot be read");
-            }
-            if (named ? sides[i][0] == refSide : sides[i][0] > 0)
-            {
-                first = append(first, pieces[i]);
-            }
-            else
-            {
-                second = append(second, pieces[i]);
-            }
-        }
-        return {
-                "names" : named ? ["near", "far"] : ["front", "back"],
-                "descriptions" : named ? ["the side of the tool the reference is on", "the other side of the tool"]
-                                       : ["the side the tool's normal points to", "the side the tool's normal points away from"],
-                "bodies" : [first, second],
-                "outside" : [false, false],
-                "inside" : [false, false]
-            };
-    }
-
-    // forward[k]: the side of tool k the next tool is on (the last: away from the one before).
-    var forward = [];
-    for (var k = 0; k < n; k += 1)
-    {
-        const other = k < n - 1 ? tools[k + 1] : tools[k - 1];
-        const at = sideSign(context, evApproximateCentroid(context, { "entities" : other }), tools[k]);
-        forward = append(forward, k < n - 1 ? at : -at);
-    }
-
-    var names = ["start"];
-    var descriptions = ["beyond tool 1, away from tool 2"];
-    for (var j = 1; j < n; j += 1)
-    {
-        names = append(names, n == 2 ? "middle" : "middle" ~ j);
-        descriptions = append(descriptions, "between tools " ~ j ~ " and " ~ (j + 1));
-    }
-    names = append(names, "end");
-    descriptions = append(descriptions, "beyond tool " ~ n ~ ", away from tool " ~ (n - 1));
-
-    for (var k = 0; k < n; k += 1)
-    {
-        if (forward[k] == 0)
-        {
-            return noRegions(names, "tools " ~ (k + 1) ~ " and " ~ (k < n - 1 ? k + 2 : k) ~ " meet or cross");
-        }
-    }
-
-    var bodies = makeArray(n + 1, []);
-    for (var i = 0; i < size(pieces); i += 1)
-    {
-        // A piece in region j is forward of tools 1..j and behind tools j+1..n.
-        var region = 0;
-        var consistent = true;
-        for (var k = 0; k < n; k += 1)
-        {
-            if (sides[i][k] == 0)
-            {
-                consistent = false;
-            }
-            else if (sides[i][k] == forward[k])
-            {
-                if (region != k)
-                {
-                    consistent = false;
-                }
-                region = k + 1;
-            }
-        }
-        if (!consistent)
-        {
-            return noRegions(names, "a piece fits no band -- the tools cross inside the part, or were not picked in order along it");
-        }
-        bodies[region] = append(bodies[region], pieces[i]);
-    }
-
-    var outside = makeArray(n + 1, false);
-    var inside = makeArray(n + 1, true);
-    outside[0] = true;
-    outside[n] = true;
-    inside[0] = false;
-    inside[n] = false;
-    return { "names" : names, "descriptions" : descriptions, "bodies" : bodies, "outside" : outside, "inside" : inside };
-}
-
-/**
- * The region keys, all empty, and why: the tools do not define bands (they cross, or were
- * picked out of order). The split itself is unaffected -- crossing tools are a normal way
- * to keep a corner.
- */
-function noRegions(names is array, why is string) returns map
-{
-    return {
-            "names" : names,
-            "descriptions" : makeArray(size(names), "not defined: " ~ why),
-            "bodies" : makeArray(size(names), []),
-            "outside" : makeArray(size(names), false),
-            "inside" : makeArray(size(names), false),
-            "problem" : why
-        };
-}
-
 /** A mate connector's frame, or undefined for anything else. */
 function mateConnectorFrame(context is Context, tool is Query)
 {
@@ -627,34 +548,4 @@ function mateConnectorFrame(context is Context, tool is Query)
         return undefined;
     }
     return evMateConnector(context, { "mateConnector" : tool });
-}
-
-/**
- * The opSplitPart keep type for one tool. KEEP_FRONT keeps the side the tool's normal points
- * to, so with a reference the kept side is the reference's side (or the other one).
- */
-function keepTypeFor(context is Context, definition is map, probe, tool is Query, index is number) returns SplitOperationKeepType
-{
-    if (definition.keepBothSides)
-    {
-        return SplitOperationKeepType.KEEP_ALL;
-    }
-    if (probe == undefined)
-    {
-        return definition.keepNear ? SplitOperationKeepType.KEEP_FRONT : SplitOperationKeepType.KEEP_BACK;
-    }
-
-    const side = sideSign(context, probe, tool);
-    if (side == 0)
-    {
-        throw regenError("The keep side reference lies on tool " ~ (index + 1) ~ " (or no side of it can be read there); pick something clearly on the side to keep.",
-            ["keepReference"]);
-    }
-    const keepFront = (side > 0) == definition.keepNear;
-    if (definition.debugPrintSides)
-    {
-        println("[split+] tool " ~ (index + 1) ~ ": reference " ~ fmtMM(signedSideOf(context, probe, tool), 3)
-            ~ " mm from it, on its " ~ (side > 0 ? "front" : "back") ~ "; keeping the " ~ (keepFront ? "front" : "back") ~ ".");
-    }
-    return keepFront ? SplitOperationKeepType.KEEP_FRONT : SplitOperationKeepType.KEEP_BACK;
 }

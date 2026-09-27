@@ -2,16 +2,14 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import tools/bspline_knots
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
+import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/dadb70c0a762573622fa609c", version : "744c7afe122e8ae2b3b17a12");
 // import gordonCurveCompat
-import(path : "b9e1608a507a242d87720d9b", version : "18979096f9f0772acdf86513");
+import(path : "b9e1608a507a242d87720d9b", version : "c5c9ecc408f10cf66fde9655");
 // constEnums
-export import(path : "050a4670bd42b2ca8da04540", version : "3e1798281ef975ee9c4347c8");
-//scaledCurve
-import(path : "2dfee1d44e9bde0daba9d73e", version : "76bc8c9afe3d321353d3bff6");
+export import(path : "050a4670bd42b2ca8da04540", version : "7a407d1cf555ba0254c21433");
 
 //import curveOps
-import(path : "73de71e75b755f0042e0e6d8", version : "f51c516b967c2c9a09b18a89");
+import(path : "73de71e75b755f0042e0e6d8", version : "585ddf22041315f25495eeec");
 
 
 
@@ -79,14 +77,24 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         var u1_queries = evaluateQuery(context, qUnion([definition.u1]));
         var v0_queries = evaluateQuery(context, qUnion([definition.v0]));
         var v1_queries = evaluateQuery(context, qUnion([definition.v1]));
-        
-        var u0_BSplineCurves = mapArray(u0_queries, function(x) {return evApproximateBSplineCurve(context, { "edge" : x}); });
-        var u1_BSplineCurves = mapArray(u1_queries, function(x) {return evApproximateBSplineCurve(context, { "edge" : x}); });
-        var v0_BSplineCurves = mapArray(v0_queries, function(x) {return evApproximateBSplineCurve(context, { "edge" : x}); });
-        var v1_BSplineCurves = mapArray(v1_queries, function(x) {return evApproximateBSplineCurve(context, { "edge" : x}); });
-        
-        var resultMap = generateInteriorCurves(context, u0_BSplineCurves, u1_BSplineCurves, v0_BSplineCurves, v1_BSplineCurves, definition.numIntU, definition.numIntV, definition.blendMode);
-        
+
+        // Per-edge B-splines: only for the sample-count estimate and the print. forceNonRational: evaluateSpline drops
+        // the weights of an exact arc (correction 39).
+        var u0_BSplineCurves = mapArray(u0_queries, function(x) {return evApproximateBSplineCurve(context, { "edge" : x, "forceNonRational" : true }); });
+        var u1_BSplineCurves = mapArray(u1_queries, function(x) {return evApproximateBSplineCurve(context, { "edge" : x, "forceNonRational" : true }); });
+        var v0_BSplineCurves = mapArray(v0_queries, function(x) {return evApproximateBSplineCurve(context, { "edge" : x, "forceNonRational" : true }); });
+        var v1_BSplineCurves = mapArray(v1_queries, function(x) {return evApproximateBSplineCurve(context, { "edge" : x, "forceNonRational" : true }); });
+
+        // Each boundary as one curve on [0, 1]: one edge exactly, a chain through a native path.
+        const tolerance = 1e-6 * meter;  // Could make smarter based on bounding box
+        const numSamples = estimateSampleCount([u0_BSplineCurves, u1_BSplineCurves, v0_BSplineCurves, v1_BSplineCurves]);
+        const u0 = boundaryCurve(context, definition.u0, numSamples, tolerance, "u0");
+        const u1 = boundaryCurve(context, definition.u1, numSamples, tolerance, "u1");
+        const v0 = boundaryCurve(context, definition.v0, numSamples, tolerance, "v0");
+        const v1 = boundaryCurve(context, definition.v1, numSamples, tolerance, "v1");
+
+        var resultMap = generateInteriorCurves(context, u0, u1, v0, v1, definition.numIntU, definition.numIntV, definition.blendMode, numSamples, tolerance);
+
         for (var i = 0; i < size(resultMap['interiorU']); i += 1)
         {
             opCreateBSplineCurve(context, id + ("interiorU_" ~ i), {
@@ -136,37 +144,105 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
 
 
 /**
- * Generate interior curves for a 4-sided boundary.
- * Derives numSamples and tolerance internally.
+ * One boundary (one edge or a chain of edges, in any order) as a clamped, non-rational curve on [0, 1].
+ * One edge: its own B-spline (exact, forceNonRational). A chain: a native path (constructPath, 1e-5 m joins)
+ * sampled at `numSamples` equal arc-length fractions (evPathTangentLines) and fitted, degree 3, with
+ * chord-length parameters and both ends interpolated. Replaces scaledCurve.fs joinCurveSegments (2026-09-26).
+ */
+export function boundaryCurve(context is Context, selection is Query, numSamples is number, tolerance is ValueWithUnits, parameterId is string) returns BSplineCurve
+{
+    const edges = qEntityFilter(selection, EntityType.EDGE);
+    const edgeList = evaluateQuery(context, edges);
+    if (size(edgeList) == 0)
+    {
+        throw regenError("Select the " ~ parameterId ~ " boundary edges.", [parameterId]);
+    }
+    if (size(edgeList) == 1)
+    {
+        return unitDomainCurve(evApproximateBSplineCurve(context, { "edge" : edgeList[0], "forceNonRational" : true }));
+    }
+    const path = constructPath(context, edges, { "tolerance" : 1e-5 * meter }).path;
+    var fractions = [];
+    for (var i = 0; i < numSamples; i += 1)
+    {
+        fractions = append(fractions, i / (numSamples - 1));
+    }
+    const lines = evPathTangentLines(context, path, fractions).tangentLines;
+    var points = [];
+    var chord = [0 * meter];
+    for (var i = 0; i < size(lines); i += 1)
+    {
+        if (i > 0)
+        {
+            chord = append(chord, chord[i - 1] + norm(lines[i].origin - lines[i - 1].origin));
+        }
+        points = append(points, lines[i].origin);
+    }
+    var params = [];
+    for (var s in chord)
+    {
+        params = append(params, s / chord[size(chord) - 1]);
+    }
+    params[size(params) - 1] = 1;
+    return approximateSpline(context, {
+                    "degree" : 3,
+                    "tolerance" : tolerance,
+                    "isPeriodic" : false,
+                    "targets" : [approximationTarget({ "positions" : points })],
+                    "parameters" : params,
+                    "interpolateIndices" : [0, size(points) - 1],
+                    "suppressInterpolationNotice" : true
+                })[0];
+}
+
+/**
+ * The same curve with its knot vector rescaled to [0, 1] (the shape is unchanged; the code below evaluates at 0..1).
+ */
+export function unitDomainCurve(curve is BSplineCurve) returns BSplineCurve
+{
+    const knots = curve.knots;
+    const k0 = knots[0];
+    const k1 = knots[size(knots) - 1];
+    if (k0 == 0 && k1 == 1)
+    {
+        return curve;
+    }
+    var scaled = [];
+    for (var k in knots)
+    {
+        scaled = append(scaled, (k - k0) / (k1 - k0));
+    }
+    return bSplineCurve({
+                "degree" : curve.degree,
+                "isPeriodic" : curve.isPeriodic,
+                "controlPoints" : curve.controlPoints,
+                "knots" : scaled as KnotArray
+            });
+}
+
+/**
+ * Generate interior curves for a 4-sided boundary given as four curves on [0, 1] (see boundaryCurve).
  */
 export function generateInteriorCurves(
     context is Context,
-    u0_curves is array,
-    u1_curves is array,
-    v0_curves is array,
-    v1_curves is array,
+    u0 is BSplineCurve,
+    u1 is BSplineCurve,
+    v0 is BSplineCurve,
+    v1 is BSplineCurve,
     numInteriorU is number,
     numInteriorV is number,
-    blendMode is BlendMode
+    blendMode is BlendMode,
+    numSamples is number,
+    tolerance is ValueWithUnits
 ) returns map
 {
-    // Derive reasonable defaults
-    var tolerance = 1e-6 * meter;  // Could make smarter based on bounding box
-    var numSamples = estimateSampleCount([u0_curves, u1_curves, v0_curves, v1_curves]);
-    
-    // Join boundary segments
-    var u0 = joinCurveSegments(context, u0_curves, numSamples, tolerance);
-    var u1 = joinCurveSegments(context, u1_curves, numSamples, tolerance);
-    var v0 = joinCurveSegments(context, v0_curves, numSamples, tolerance);
-    var v1 = joinCurveSegments(context, v1_curves, numSamples, tolerance);
-    
     var interiorU = [];
     var interiorV = [];
-    
+
     if (blendMode == BlendMode.AUTO)
     {
-        var result = generateIntersectingCurves(context, u0, u1, v0, v1, 
-                                                  numInteriorU, numInteriorV, 
+        var result = generateIntersectingCurves(context, u0, u1, v0, v1,
+                                                  numInteriorU, numInteriorV,
                                                   numSamples, tolerance);
         interiorU = result.interiorU;
         interiorV = result.interiorV;
@@ -182,7 +258,7 @@ export function generateInteriorCurves(
         interiorU = generateCrossSampledCurves(context, v0, v1, u0, u1, numInteriorU, numSamples, tolerance);
         interiorV = generateCrossSampledCurves(context, u0, u1, v0, v1, numInteriorV, numSamples, tolerance);
     }
-    
+
     return {
         "interiorU" : interiorU,
         "interiorV" : interiorV,

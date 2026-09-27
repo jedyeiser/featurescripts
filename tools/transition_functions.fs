@@ -4,19 +4,22 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 /**
  * Transition and blending functions for smooth parameter transitions.
  *
- * Provides various monotonic functions mapping [0,1] → [0,1] with different
- * smoothness properties. Used for blending scale factors, applying smooth
- * offsets, and creating smooth transitions in curve modifications.
+ * Monotonic functions mapping [0, 1] -> [0, 1] with f(0) = 0 and f(1) = 1 and different
+ * smoothness at the ends. Used for blending scale factors, applying smooth offsets, and
+ * creating smooth transitions in curve modifications.
  *
  * @source gordonSurface/modifyCurveEnd.fs, gordonSurface/scaledCurve.fs
  */
 
 /**
- * Transition function types with different smoothness properties.
+ * Transition function types, by how smoothly they start and stop (derivatives at t = 0 and t = 1):
  *
- * - LINEAR: C^∞ but has corner (discontinuous derivative) at endpoints when chained
- * - SINUSOIDAL: C^1 continuous (smooth first derivative)
- * - LOGISTIC: C^∞ smooth sigmoid (smooth to all orders)
+ * - LINEAR: f' = 1 at both ends (a corner where it meets a constant).
+ * - SINUSOIDAL: f' = 0 at both ends; f'' = +-pi^2/2 at the ends (not zero).
+ * - LOGISTIC: steep sigmoid (k = 10); f'(0) = f'(1) = 0.067 (small, NOT zero).
+ * - SMOOTHERSTEP: 6t^5 - 15t^4 + 10t^3; f' = f'' = 0 at both ends (C2 against a constant).
+ *
+ * New members go at the END (saved features store the member name; order only affects the dropdown).
  *
  * @source gordonSurface/constEnums.fs:20-28
  */
@@ -27,19 +30,16 @@ export enum TransitionType
     annotation { "Name" : "Sinusoidal" }
     SINUSOIDAL,
     annotation { "Name" : "Logistic" }
-    LOGISTIC
+    LOGISTIC,
+    annotation { "Name" : "Smootherstep" }
+    SMOOTHERSTEP
 }
 
 /**
  * Linear transition: f(t) = t
  *
- * Simplest transition with constant rate of change.
- * Derivative is constant (f'(t) = 1 everywhere).
- *
- * Use when: Simple linear blending is sufficient
- *
- * Smoothness: C^∞ in interior, but creates corner when used
- *             at boundaries between segments
+ * Constant rate of change (f'(t) = 1 everywhere), so it leaves a slope corner where it meets
+ * a constant (for example the unchanged part of a curve).
  *
  * @param t {number} : Parameter in [0, 1]
  * @returns {number} : t (identity function)
@@ -52,15 +52,10 @@ export function linearTransition(t is number) returns number
 }
 
 /**
- * Sinusoidal transition: f(t) = (1 - cos(πt)) / 2
+ * Sinusoidal transition: f(t) = (1 - cos(pi t)) / 2
  *
- * Smooth S-curve with zero derivatives at endpoints (f'(0) = f'(1) = 0).
- * Creates smooth blending that eases in and out.
- *
- * Use when: Need smooth blend with zero derivative at ends (G1 continuity)
- *
- * Smoothness: C^1 continuous (smooth first derivative)
- * Properties: f(0) = 0, f(1) = 1, f'(0) = 0, f'(1) = 0
+ * Eases in and out: f'(0) = f'(1) = 0. The second derivative is pi^2/2 at t = 0 and -pi^2/2
+ * at t = 1, so it is C1 (not C2) against a constant.
  *
  * @param t {number} : Parameter in [0, 1]
  * @returns {number} : Sinusoidal blend value in [0, 1]
@@ -75,17 +70,15 @@ export function sinusoidalTransition(t is number) returns number
 }
 
 /**
- * Logistic (sigmoid) transition: f(t) = 1 / (1 + e^(-k(t-0.5)))
+ * Logistic (sigmoid) transition: s(t) = 1 / (1 + e^(-k (t - 0.5))) with k = 10, rescaled so
+ * f(0) = 0 and f(1) = 1: f(t) = (s(t) - s(0)) / (s(1) - s(0)).
  *
- * Smooth S-curve using logistic function, scaled/shifted to map [0,1] → [0,1].
- * Smoother than sinusoidal, with all derivatives continuous.
- * Uses steepness parameter k=10 for good transition characteristics.
+ * Infinitely differentiable inside [0, 1], and steeper in the middle than SINUSOIDAL. Its end
+ * derivatives do NOT vanish: f'(0) = f'(1) = k s(0) (1 - s(0)) / (s(1) - s(0)) = 0.067, and
+ * f''(0) = +0.66, f''(1) = -0.66 (all small, none zero). Use SMOOTHERSTEP when the ends must be
+ * flat to second order.
  *
- * Use when: Need maximum smoothness (G^∞ continuity)
- *
- * Smoothness: C^∞ continuous (infinitely differentiable)
- * Properties: f(0) ≈ 0, f(0.5) = 0.5, f(1) ≈ 1
- *             All derivatives vanish at endpoints
+ * Properties: f(0) = 0, f(0.5) = 0.5, f(1) = 1 (exactly, by the rescaling).
  *
  * @param t {number} : Parameter in [0, 1]
  * @returns {number} : Sigmoid blend value in [0, 1]
@@ -108,6 +101,26 @@ export function logisticTransition(t is number) returns number
 }
 
 /**
+ * Smootherstep transition (Perlin): f(t) = 6t^5 - 15t^4 + 10t^3 = t^3 (t (6t - 15) + 10)
+ *
+ * The lowest-degree polynomial with f(0) = 0, f(1) = 1 and f' = f'' = 0 at BOTH ends:
+ *   f'(t)  = 30 t^2 (t - 1)^2
+ *   f''(t) = 60 t (t - 1) (2t - 1)
+ * so it meets a constant with C2 continuity at either end. Symmetric: f(1 - t) = 1 - f(t),
+ * f(0.5) = 0.5, peak slope f'(0.5) = 1.875.
+ *
+ * @param t {number} : Parameter in [0, 1] (clamped)
+ * @returns {number} : Blend value in [0, 1]
+ *
+ * @example `smootherstepTransition(0.5)` returns `0.5`
+ */
+export function smootherstepTransition(t is number) returns number
+{
+    const x = clamp(t, 0, 1);
+    return x * x * x * (x * (6 * x - 15) + 10);
+}
+
+/**
  * Evaluate transition function by type.
  *
  * Dispatcher function that calls the appropriate transition function
@@ -122,11 +135,21 @@ export function logisticTransition(t is number) returns number
 export function evaluateTransition(t is number, transitionType is TransitionType) returns number
 {
     if (transitionType == TransitionType.LINEAR)
+    {
         return linearTransition(t);
+    }
     else if (transitionType == TransitionType.SINUSOIDAL)
+    {
         return sinusoidalTransition(t);
+    }
     else if (transitionType == TransitionType.LOGISTIC)
+    {
         return logisticTransition(t);
+    }
+    else if (transitionType == TransitionType.SMOOTHERSTEP)
+    {
+        return smootherstepTransition(t);
+    }
 
     // Default to linear if unknown type
     return linearTransition(t);

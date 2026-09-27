@@ -189,6 +189,50 @@ HELPERS = r'''
             "text" : "1 sheet (" ~ count(bodies(outFid)) ~ " bodies); boundary vs source boundary max " ~ fmt(g0) ~ " mm; normal angle along boundary max "
                 ~ num(g1) ~ " rad; interior pulled " ~ fmt(pulled) ~ " mm" };
     };
+
+    // Pull surface, Replace face: the replaced face against the R100 cylinder about (x0, 0, z). The face is on
+    // the fixture body (solid: opReplaceFace keeps the body) or on the pull's own sheet (a one-face sheet is
+    // replaced as a whole: fixture deleted). g0 = boundary radius error, g1 = face normal vs radial along the
+    // boundary, pulled = interior radius change.
+    const replaceReport = function(outFid, fixFid, x0) returns map
+    {
+        const body = qBodyType(qUnion([bodies(fixFid), bodies(outFid)]), [BodyType.SOLID, BodyType.SHEET]);
+        const allFaces = qOwnedByBody(body, EntityType.FACE);
+        const face = qSubtraction(allFaces, qGeometry(allFaces, GeometryType.PLANE));
+        const nFaces = count(face);
+        const nSolids = count(qBodyType(bodies(fixFid), BodyType.SOLID));
+        const nSheets = count(qBodyType(bodies(fixFid), BodyType.SHEET));
+        const own = count(bodies(outFid));
+        const head = nFaces ~ " pulled face(s), fixture " ~ nSolids ~ " solid / " ~ nSheets ~ " sheet, " ~ own ~ " bodies created";
+        if (nFaces != 1)
+        {
+            return { "ok" : false, "faces" : nFaces, "solids" : nSolids, "sheets" : nSheets, "own" : own, "text" : head };
+        }
+        const radial = function(p) { return vector(p[0] - x0 * millimeter, p[1], 0 * meter); };
+        var g0 = 0 * meter;
+        var g1 = 0;
+        for (var e in evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE)))
+        {
+            for (var t in range(0, 1, 25))
+            {
+                const p = tangentAt(e, t).origin;
+                g0 = max(g0, abs(norm(radial(p)) - 100 * millimeter));
+                g1 = max(g1, angleBetween(faceNormalAt(face, p), radial(p)));
+            }
+        }
+        var pulled = 0 * meter;
+        for (var u in range(0.1, 0.9, 9))
+        {
+            for (var v in range(0.1, 0.9, 9))
+            {
+                const p = evFaceTangentPlane(context, { "face" : face, "parameter" : vector(u, v) }).origin;
+                pulled = max(pulled, abs(norm(radial(p)) - 100 * millimeter));
+            }
+        }
+        return { "ok" : true, "faces" : nFaces, "solids" : nSolids, "sheets" : nSheets, "own" : own, "g0" : g0, "g1" : g1, "pulled" : pulled,
+            "text" : head ~ "; boundary |r - 100| max " ~ fmt(g0) ~ " mm; normal vs radial along boundary max " ~ num(g1)
+                ~ " rad; interior pulled " ~ fmt(pulled) ~ " mm" };
+    };
 '''
 
 CASES = []
@@ -455,6 +499,37 @@ mce("T40 ", r'''
         const nOut = count(out.query.output.value);
         return [basic(r) && kv.ok && kh.ok && nOut == 1, mceText(r) ~ "; " ~ kv.text ~ "; " ~ kh.text ~ "; output " ~ nOut ~ " body"];''')
 
+# ---- Modify curve end P2 ----
+# Largest distance from 21 points of this case's output to T01's output, shifted back by @DX@ mm.
+SHIFTED_VS_T01 = r'''
+        var dmax = -1 * meter;
+        if (r.ok)
+        {
+            dmax = 0 * meter;
+            for (var i = 0; i <= 20; i += 1)
+            {
+                dmax = max(dmax, dist(wireEdge(@T01@), tangentAt(r.edge, i / 20).origin - pt(@DX@, 0, 0)));
+            }
+        }'''
+
+mce("T41 ", SHIFTED_VS_T01.replace("@DX@", "50000") + r'''
+        return [basic(r) && dmax > 0.01 * millimeter, mceText(r) ~ "; max distance to T01 (shifted) " ~ fmt(dmax) ~ " mm (expected > 0.01: transported)"];''',
+    T01="case:T01 ")
+
+mce("T42 ", SHIFTED_VS_T01.replace("@DX@", "51000") + r'''
+        const r1 = mceReport(@T01@, @T01SRC@, toPoint(@T01TO@));
+        const fixOk = r.ok && r1.ok && r.fixAngle <= r1.fixAngle + 1e-9;
+        return [basic(r) && dmax > 0.001 * millimeter && fixOk, mceText(r) ~ "; max distance to T01 (shifted) " ~ fmt(dmax)
+            ~ " mm; fixed-end tangent angle of T01 (LOGISTIC) " ~ (r1.ok ? num(r1.fixAngle) : "?") ~ " rad"];''',
+    T01="case:T01 ", T01SRC="T01 curve", T01TO="T01 to point")
+
+# T31's check plus: 2 control points fewer than T31 (the G2 hold knot taken from multiplicity 3 to 1).
+T43_CHECK = HOLD_CHECK.replace("@G2@", "true").replace("        const ok = r.ok", r'''        const n43 = r.ok ? size(evCurveDefinition(context, { "edge" : r.edge }).controlPoints) : 0;
+        const r31 = mceReport(@T31@, @T31SRC@, toPoint(@T31TO@));
+        const n31 = r31.ok ? size(evCurveDefinition(context, { "edge" : r31.edge }).controlPoints) : 0;
+        const ok = n31 > 0 && n31 - n43 == 2 && r.ok''').replace("kh.text];", 'kh.text ~ "; control points " ~ n43 ~ " vs T31 " ~ n31 ~ " (expected 2 fewer)"];')
+mce("T43 ", T43_CHECK, HOLD="T43 hold point", T31="case:T31 ", T31SRC="T31 curve", T31TO="T31 to point")
+
 # ---- Scaled Curve ----
 case("SC0 ", r'''
         const e = wireEdge(@SELF@);
@@ -501,6 +576,48 @@ case("SC3 ", r'''
         }
         return [rdev < 0.002 * millimeter, "max |radius - 150| " ~ fmt(rdev) ~ " mm (fit tolerance 0.001)"];''')
 
+SC_EDGE = r'''
+        const e = wireEdge(@SELF@);
+        if (count(e) != 1)
+        {
+            return [false, count(e) ~ " output edges, " ~ count(bodies(@SELF@)) ~ " bodies"];
+        }
+        const p0 = tangentAt(e, 0).origin;
+        const p1 = tangentAt(e, 1).origin;'''
+
+case("SC4 ", SC_EDGE + r'''
+        const a = pt(14000, 0, 0);
+        const b = pt(14200, 100, 0);
+        const endErr = min(norm(p0 - a) + norm(p1 - b), norm(p0 - b) + norm(p1 - a));
+        const axis = normalize(b - a);
+        var off = 0 * meter;
+        for (var i = 0; i <= 20; i += 1)
+        {
+            const d = tangentAt(e, i / 20).origin - a;
+            off = max(off, norm(d - dot(d, axis) * axis));
+        }
+        return [endErr < 0.001 * millimeter && off < 0.001 * millimeter,
+            "end error " ~ fmt(endErr) ~ " mm; max off the diagonal " ~ fmt(off) ~ " mm (a crossed pairing bulges by tens of mm)"];''')
+
+case("SC5 ", SC_EDGE + r'''
+        var rdev = 0 * meter;
+        for (var i = 0; i <= 40; i += 1)
+        {
+            rdev = max(rdev, abs(norm(tangentAt(e, i / 40).origin - pt(18000, 0, 0)) - 150 * millimeter));
+        }
+        const gap = norm(p1 - p0);
+        return [rdev < 0.002 * millimeter && gap < 0.001 * millimeter, "max |radius - 150| " ~ fmt(rdev) ~ " mm; end gap " ~ fmt(gap)
+            ~ " mm (closed)"];''')
+
+case("SC6 ", ERROR_CASE)
+
+case("SC7 ", SC_EDGE + r'''
+        const a = pt(53000, 50, 0);
+        const b = pt(53200, 50, 0);
+        const endErr = min(norm(p0 - a) + norm(p1 - b), norm(p0 - b) + norm(p1 - a));
+        return [count(qBodyType(bodies(@SELF@), BodyType.WIRE)) == 1 && endErr < 0.001 * millimeter,
+            "end error " ~ fmt(endErr) ~ " mm (status INFO carries the deviation between samples)"];''')
+
 # ---- Pull surface ----
 case("P1 ", r'''
         const r = pullReport(@SELF@, cylinder(@PATCH@));
@@ -514,14 +631,52 @@ case("P3 ", r'''
         const r = pullReport(@SELF@, qContainsPoint(qCreatedBy(makeId(@BLOCK@), EntityType.FACE), pt(17000, 0, 10)));
         return [r.ok && r.bodies == 1 && r.g0 < 0.001 * millimeter && r.pulled > 5 * millimeter, r.text];''', BLOCK="P3 block")
 
+# Pull surface P2 upgrades (curves.md P2).
+case("P4 ", r'''
+        const r = pullReport(@SELF@, cylinder(@PATCH@));
+        return [r.ok && r.bodies == 1 && r.g0 < 0.001 * millimeter && r.g1 < 1e-3 && r.pulled > 5 * millimeter, r.text];''', PATCH="P4 patch")
+
+case("P5 ", r'''
+        const r = replaceReport(@SELF@, @FIX@, 61000);
+        // One-face sheet: the source sheet is deleted, the pull's own sheet replaces it.
+        return [r.ok && r.sheets == 0 && r.solids == 0 && r.own == 1 && r.g0 < 0.001 * millimeter && r.g1 < 1e-3 && r.pulled > 5 * millimeter,
+            r.text];''', FIX="P5 sheet")
+
+case("P6 ", r'''
+        const r = replaceReport(@SELF@, @FIX@, 62000);
+        return [r.ok && r.solids == 1 && r.own == 0 && r.g0 < 0.001 * millimeter && r.pulled > 5 * millimeter, r.text];''', FIX="P6 patch")
+
+case("P7 ", r'''
+        const r = pullReport(@SELF@, cylinder(@PATCH@));
+        return [r.ok && r.bodies == 1 && r.g0 < 0.001 * millimeter && r.pulled > 2 * millimeter && r.pulled < 9 * millimeter, r.text];''',
+    PATCH="P7 patch")
+
+case("P8 ", r'''
+        const r = pullReport(@SELF@, cylinder(@CYL@));
+        const nEdges = count(qOwnedByBody(qBodyType(bodies(@SELF@), BodyType.SHEET), EntityType.EDGE));
+        return [r.ok && r.bodies == 1 && nEdges == 2 && r.g0 < 0.001 * millimeter && r.g1 < 1e-3 && r.pulled > 5 * millimeter,
+            r.text ~ "; " ~ nEdges ~ " sheet edges (2 = closed, no seam)"];''', CYL="P8 cylinder")
+
+case("P9 ", r'''
+        const sphere = qGeometry(qCreatedBy(makeId(@HEMI@), EntityType.FACE), GeometryType.SPHERE);
+        const r = pullReport(@SELF@, sphere);
+        var pole = 1 * meter;
+        if (r.ok)
+        {
+            pole = dist(qOwnedByBody(qBodyType(bodies(@SELF@), BodyType.SHEET), EntityType.FACE), pt(65000, 0, 100));
+        }
+        return [r.ok && r.bodies == 1 && r.g0 < 0.001 * millimeter && r.g1 < 1e-3 && pole < 0.001 * millimeter && r.pulled > 5 * millimeter,
+            r.text ~ "; pole off by " ~ fmt(pole) ~ " mm"];''', HEMI="P9 hemisphere")
+
 # Cases that document today's bugs (reviews/2026-09-25_tools_review/curves.md). Remove an entry once its fix lands.
 EXPECT_FAIL = {
+    "T42 ": "Needs the tools version with SMOOTHERSTEP + re-pin of transition_functions (not built until then)",
     # T05, T09, SC1-SC3 fixed 2026-09-25 (quick fixes after the tools review); P1, P2 fixed 2026-09-26 (Pull surface
     # control-net rewrite) -- they now guard against regressions.
 }
 
 # Feature statuses other than OK that are the expected outcome: a status or a tuple of allowed statuses.
-# INFO = reportFeatureInfo (an expected outcome), ERROR = a regenError case (temporary instance, T23/T24/T36/T37).
+# INFO = reportFeatureInfo (an expected outcome), ERROR = a regenError case (T23/T24/T36/T37, SC6).
 # (OK, INFO) where an optional note (shortened end handle, merged-fit deviation, hold point a few um off) may appear.
 MAYBE_INFO = ("OK", "INFO")
 EXPECTED_STATUS = {
@@ -530,6 +685,7 @@ EXPECTED_STATUS = {
     "T20 ": MAYBE_INFO, "T21 ": MAYBE_INFO, "T22 ": "INFO", "T23 ": "ERROR", "T24 ": "ERROR",
     "T30 ": MAYBE_INFO, "T31 ": MAYBE_INFO, "T32 ": MAYBE_INFO, "T33 ": MAYBE_INFO, "T34 ": MAYBE_INFO,
     "T35 ": "INFO", "T36 ": "ERROR", "T37 ": "ERROR", "T38 ": "INFO",
+    "T43 ": MAYBE_INFO, "SC6 ": "ERROR", "SC7 ": "INFO",
 }
 
 

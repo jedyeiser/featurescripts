@@ -8,9 +8,9 @@ export import(path : "050a4670bd42b2ca8da04540", version : "7a407d1cf555ba0254c2
 //import gordonCurveCompat
 import(path : "b9e1608a507a242d87720d9b", version : "c5c9ecc408f10cf66fde9655");
 //import scaledCurve
-import(path : "2dfee1d44e9bde0daba9d73e", version : "697107b420d9d97965d2d809");
+import(path : "2dfee1d44e9bde0daba9d73e", version : "43e9d842d62de2642d74cefc");
 //import modifyCurveEnd
-import(path : "c6dca62049572faaa07ddd10", version : "a7820c10c0d0688788f5ed30");
+import(path : "c6dca62049572faaa07ddd10", version : "c6115698501ae8a62ec04f09");
 //import debugTools
 import(path : "3f40c735a406f3df927e0b13", version : "92c9069be35efc4573a15086");
 

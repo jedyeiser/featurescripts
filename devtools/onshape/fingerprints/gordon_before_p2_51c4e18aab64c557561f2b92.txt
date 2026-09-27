@@ -1,0 +1,13 @@
+Simple Body Rename 1 | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Simple Body Rename 2 | myFeature | bodies 0 | edges 0 len 0 | faces 0 area 0
+Scaled Curve 1 | createScaledCurve | bodies 1 | edges 1 len 72.85056 | faces 0 area 0
+Interior curves 1 | myFeature | bodies 8 | edges 8 len 747.98743 | faces 0 area 0
+Extride Edge 1 | extrudeEdges | bodies 1 | edges 4 len 240.15414 | faces 1 area 2376.9271
+Modify curve end 1 | modCurveEnd | bodies 1 | edges 1 len 81.04208 | faces 0 area 0
+Pull surface 1 | pullSurface | bodies 14 | edges 18 len 1598.42612 | faces 1 area 7714.7843
+Curve Eval 2 | evaluator | bodies 0 | edges 0 len 0 | faces 0 area 0
+Gordon Surface 1 | gordonSurface | bodies 1 | edges 4 len 344.75938 | faces 1 area 7480.8948
+Simplify surface 1 | simplifySurface | bodies 1 | edges 4 len 344.60794 | faces 1 area 7471.4809
+Surface Eval 1 | surfEval | bodies 0 | edges 0 len 0 | faces 0 area 0
+Gordon Surface 2 | gordonSurface | bodies 0 | edges 0 len 0 | faces 0 area 0
+ALL bodies 44 total edge length 7843.7893

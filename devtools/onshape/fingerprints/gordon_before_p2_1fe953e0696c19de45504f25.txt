@@ -1,0 +1,40 @@
+T01 world G0 -> both ends exact | modCurveEnd | bodies 1 | edges 1 len 193.28497 | faces 0 area 0
+T02 frenet G0 -> identical to T01 | modCurveEnd | bodies 1 | edges 1 len 193.28497 | faces 0 area 0
+T03 fixed end G1 -> fixed tangent = source | modCurveEnd | bodies 1 | edges 1 len 193.25978 | faces 0 area 0
+T04 fixed end G2 best effort -> fixed tangent + curvature = source | modCurveEnd | bodies 1 | edges 1 len 193.07933 | faces 0 area 0
+T05 fixed end G2 exact -> fixed tangent + curvature = source | modCurveEnd | bodies 1 | edges 1 len 193.07933 | faces 0 area 0
+T06 reference line G1 -> end tangent along the 45 deg line | modCurveEnd | bodies 1 | edges 1 len 193.21336 | faces 0 area 0
+T07 reference face G1 -> end tangent in the cylinder's tangent plane | modCurveEnd | bodies 1 | edges 1 len 198.8258 | faces 0 area 0
+T08 project onto the R500 cylinder -> curve on the face | modCurveEnd | bodies 1 | edges 1 len 186.1021 | faces 0 area 0
+T09 reference line stored, checkbox off -> ignored, end tangent = T01 | modCurveEnd | bodies 1 | edges 1 len 193.28497 | faces 0 area 0
+SC0 two lines, Create curve on -> midline y = 50 | createScaledCurve | bodies 1 | edges 1 len 200 | faces 0 area 0
+SC1 default instance -> one wire body | createScaledCurve | bodies 1 | edges 1 len 200 | faces 0 area 0
+SC2 two splines, degree 5 -> output degree 5 | createScaledCurve | bodies 1 | edges 1 len 238.63811 | faces 0 area 0
+SC3 arcs R100 / R200 -> exact R150 | createScaledCurve | bodies 1 | edges 1 len 149.99966 | faces 0 area 0
+P1 G0 4x4 cylinder patch, +10 at (1,1) -> boundary on the source boundary | pullSurface | bodies 1 | edges 4 len 514.15922 | faces 1 area 16145.8288
+P2 G1 5x5 cylinder patch, +10 at (2,2) -> boundary G0 + normals along whole edges | pullSurface | bodies 1 | edges 4 len 514.15922 | faces 1 area 16030.6845
+P3 G0 4x4 planar top face, +10 at (1,2) -> boundary exact (control) | pullSurface | bodies 1 | edges 4 len 400 | faces 1 area 10204.6251
+T10 reference arc R25 G2 -> end tangent, curvature 40/m and normal = the arc's | modCurveEnd | bodies 1 | edges 1 len 192.5181 | faces 0 area 0
+T11 reference mate connector G1 -> end tangent along its Z | modCurveEnd | bodies 1 | edges 1 len 198.82319 | faces 0 area 0
+T12 mate connector G1, Opposite direction -> end tangent reversed vs T11 | modCurveEnd | bodies 1 | edges 1 len 198.82319 | faces 0 area 0
+T13 mate connector G2 radius 50 -> k 20/m toward its X | modCurveEnd | bodies 1 | edges 1 len 206.021 | faces 0 area 0
+T14 reference line G2 -> end curvature 0 | modCurveEnd | bodies 1 | edges 1 len 193.92872 | faces 0 area 0
+T15 no To point, reference line through the end G1 -> end stays, tangent along the line | modCurveEnd | bodies 1 | edges 1 len 201.52905 | faces 0 area 0
+T16 no To point, reference line 10 mm away G0 -> end snaps onto the line (info) | modCurveEnd | bodies 1 | edges 1 len 209.99105 | faces 0 area 0
+T17 reference line 35 mm away G1 -> tangent along the line (info) | modCurveEnd | bodies 1 | edges 1 len 193.21336 | faces 0 area 0
+T20 W3 as a wire -> one edge, ends exact | modCurveEnd | bodies 1 | edges 1 len 287.91589 | faces 0 area 0
+T21 W3 edges in reverse order -> same as T20 | modCurveEnd | bodies 1 | edges 1 len 287.91616 | faces 0 area 0
+T22 W3 wire, no Modified end -> chain end moved (info) | modCurveEnd | bodies 1 | edges 1 len 287.91589 | faces 0 area 0
+T23 closed chain -> ERROR | modCurveEnd | bodies 0 | edges 0 len 0 | faces 0 area 0
+T24 two separate lines -> ERROR | modCurveEnd | bodies 0 | edges 0 len 0 | faces 0 area 0
+T30 hold point G1 -> held part unchanged, tangent kept at the hold | modCurveEnd | bodies 2 | edges 1 len 222.54458 | faces 0 area 0
+T31 hold point G2 -> held part unchanged, curvature kept at the hold | modCurveEnd | bodies 2 | edges 1 len 222.66779 | faces 0 area 0
+T32 W3 hold on the line G1 -> held part within splineTol | modCurveEnd | bodies 2 | edges 1 len 288.8697 | faces 0 area 0
+T33 hold distance 60 G1 -> held part unchanged | modCurveEnd | bodies 2 | edges 1 len 222.17266 | faces 0 area 0
+T34 hold at a spline knot G2 -> held part unchanged, G2 at the hold | modCurveEnd | bodies 2 | edges 1 len 206.51879 | faces 0 area 0
+T35 hold at the fixed end -> same as no hold (info) | modCurveEnd | bodies 1 | edges 1 len 231.19839 | faces 0 area 0
+T36 hold at the modified end -> ERROR | modCurveEnd | bodies 0 | edges 0 len 0 | faces 0 area 0
+T37 hold distance 1000 -> ERROR | modCurveEnd | bodies 0 | edges 0 len 0 | faces 0 area 0
+T38 hold G1 + arc G2 + project on Top -> held part unchanged, end tangent = arc's (info) | modCurveEnd | bodies 2 | edges 1 len 226.98267 | faces 0 area 0
+T40 world G0, embedded keys -> movedVertex at To, holdVertex at the fixed end | modCurveEnd | bodies 1 | edges 1 len 193.28497 | faces 0 area 0
+ALL bodies 405 total edge length 40633.8004

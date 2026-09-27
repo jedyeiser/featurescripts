@@ -31,6 +31,24 @@ IconNamespace::import(path : "a2fbcb115c3ae9d8c34586c8", version : "d4bd951dc528
  * needs 5 curves each way and G2 7 before any handle is free.
  * Offsets are stored in definition.mpOffsets (flat, i * vCount + j) and mirrored in the
  * visible activeOffsets list.
+ *
+ * "One handle per control point": the net is refined until each non-periodic direction has
+ * at least U / V curve count control points; every free control point gets a handle at its
+ * Greville point and its offset moves that control point along the normal (no field, no
+ * solve). activeOffsets then holds control-point indices (k, l) and is read directly.
+ *
+ * Closed faces (a full cylinder / revolved face): in a direction where the face meets
+ * itself the handles sit at i / count (no duplicate at the seam), none is locked, the field
+ * wraps, no edge rows are locked, and the overlapping control rows of a periodic net (or the
+ * coincident first / last row of a clamped closed net) move together, so the result stays
+ * closed. Poles (sphere cap, cone apex): a collapsed end row the face reaches extends the
+ * clip box to the pole; the pole row is an end row, so it is locked like an edge.
+ *
+ * "Replace face": the pulled sheet replaces the source face in its body (opReplaceFace,
+ * sense auto-detected), then the sheet is deleted. A one-face sheet (which opReplaceFace
+ * refuses) is deleted instead and the pulled sheet is the result.
+ * Periodic directions are refined too (exact periodic knot insertion); their C0 knot joints,
+ * the seam included, lock like interior joints.
  */
 
 // Knot values closer than this fraction of the domain are treated as equal.
@@ -41,6 +59,12 @@ const PULL_SPANS_PER_HANDLE = 3;
 const PULL_MAX_DEGREE = 5;
 // Solved handle values larger than this multiple of the largest offset count as ill-conditioned.
 const PULL_SOLVE_LIMIT = 50;
+// Face parameters are kept this far inside [0, 1] (a cone apex has no tangent plane).
+const PULL_PARAM_EPS = 1e-9;
+// Two face points closer than this (meters) are the same point (closed direction, pole row).
+const PULL_SAME_POINT = 1e-7;
+// Homogeneous control points closer than this are the same (periodic overlap, closed seam).
+const PULL_SAME_CP = 1e-10;
 
 // -- Handle grid ------------------------------------------------------------------
 
@@ -63,6 +87,82 @@ export function isPointLocked(i is number, j is number, uCount is number, vCount
     }
     const g2row = (i == 2 || i == uCount - 3 || j == 2 || j == vCount - 3);
     return boundary || g1row || g2row;
+}
+
+/**
+ * isPointLocked with closed directions: a direction in which the face meets itself has no
+ * edge, so no handle is locked by it. Open directions lock as isPointLocked.
+ */
+export function isHandleLocked(i is number, j is number, uCount is number, vCount is number, continuity is GeometricContinuity,
+    uClosed is boolean, vClosed is boolean) returns boolean
+{
+    const reach = (continuity == GeometricContinuity.G0) ? 0 : ((continuity == GeometricContinuity.G1) ? 1 : 2);
+    const lockedU = !uClosed && (i <= reach || i >= uCount - 1 - reach);
+    const lockedV = !vClosed && (j <= reach || j >= vCount - 1 - reach);
+    return lockedU || lockedV;
+}
+
+/** Normalized face parameter of handle i of `count`: i / (count - 1), or i / count in a closed direction. */
+function gridParam(i is number, count is number, closed is boolean) returns number
+{
+    const x = closed ? i / count : i / (count - 1);
+    return min(max(x, PULL_PARAM_EPS), 1 - PULL_PARAM_EPS);
+}
+
+/**
+ * [uClosed, vClosed]: whether the face meets itself across its u (v) parameter range, read
+ * from face points just inside the parameter box (the same answer in editing logic and body).
+ */
+export function faceClosedDirs(context is Context, face is Query) returns array
+{
+    if (isQueryEmpty(context, face))
+    {
+        return [false, false];
+    }
+    const e = PULL_PARAM_EPS;
+    var ps = [];
+    for (var s in [0.25, 0.5, 0.75])
+    {
+        ps = concatenateArrays([ps, [vector(e, s), vector(1 - e, s), vector(0.5, s), vector(s, e), vector(s, 1 - e), vector(s, 0.5)]]);
+    }
+    const pl = evFaceTangentPlanes(context, { "face" : face, "parameters" : ps });
+    var uClosed = true;
+    var vClosed = true;
+    for (var k = 0; k < 3; k += 1)
+    {
+        const b = 6 * k;
+        const tol = PULL_SAME_POINT * meter;
+        uClosed = uClosed && norm(pl[b].origin - pl[b + 1].origin) < tol && norm(pl[b].origin - pl[b + 2].origin) > tol;
+        vClosed = vClosed && norm(pl[b + 3].origin - pl[b + 4].origin) < tol && norm(pl[b + 3].origin - pl[b + 5].origin) > tol;
+    }
+    return [uClosed, vClosed];
+}
+
+/** activeOffsets with item (i, j) set to value (added, replaced, or removed when zero). */
+function setOffsetItem(active, i is number, j is number, value is ValueWithUnits) returns array
+{
+    var found = false;
+    var newActive = [];
+    for (var item in (active == undefined ? [] : active))
+    {
+        if (item.u == i && item.v == j)
+        {
+            found = true;
+            if (value != 0 * meter)
+            {
+                newActive = append(newActive, { "u" : i, "v" : j, "value" : value });
+            }
+        }
+        else
+        {
+            newActive = append(newActive, item);
+        }
+    }
+    if (!found && value != 0 * meter)
+    {
+        newActive = append(newActive, { "u" : i, "v" : j, "value" : value });
+    }
+    return newActive;
 }
 
 /** Flat offset cache (i * vCount + j) built from a list of { u, v, value } items. */
@@ -126,7 +226,45 @@ function catmullRomWeights(x is number, count is number) returns array
     return result;
 }
 
-// -- B-spline basics (P&T ch. 2 / 5) ---------------------------------------------------
+/** Catmull-Rom weights of `count` nodes at i / count on a closed (wrapping) direction. */
+function catmullRomWeightsPeriodic(x is number, count is number) returns array
+{
+    const xs = (x - floor(x)) * count;
+    const i = min(floor(xs), count - 1);
+    const t = xs - i;
+    const t2 = t * t;
+    const t3 = t2 * t;
+    const ws = [(-t3 + 2 * t2 - t) / 2, (3 * t3 - 5 * t2 + 2) / 2, (-3 * t3 + 4 * t2 + t) / 2, (t3 - t2) / 2];
+    var result = [];
+    for (var a = 0; a < 4; a += 1)
+    {
+        const node = i - 1 + a;
+        result = append(result, [node - floor(node / count) * count, ws[a]]);
+    }
+    return result;
+}
+
+/** Field weights [[free index, weight], ...] of face parameter ab over the free handles. */
+function fieldWeights(ab is array, uCount is number, vCount is number, closed is array, freeIndex is array) returns array
+{
+    const wu = closed[0] ? catmullRomWeightsPeriodic(ab[0], uCount) : catmullRomWeights(ab[0], uCount);
+    const wv = closed[1] ? catmullRomWeightsPeriodic(ab[1], vCount) : catmullRomWeights(ab[1], vCount);
+    var weights = [];
+    for (var wa in wu)
+    {
+        for (var wb in wv)
+        {
+            const fi = freeIndex[wa[0] * vCount + wb[0]];
+            if (fi >= 0 && wa[1] * wb[1] != 0)
+            {
+                weights = append(weights, [fi, wa[1] * wb[1]]);
+            }
+        }
+    }
+    return weights;
+}
+
+// -- B-spline basics (P&T ch. 2 / 5)---------------------------------------------------
 
 function plainArray(values is array) returns array
 {
@@ -420,8 +558,91 @@ function withRows(net is map, dirU is boolean, rows is array, knots is array, de
 
 function insertKnotDir(net is map, dirU is boolean, u is number) returns map
 {
+    if (dirPeriodic(net, dirU))
+    {
+        return insertKnotPeriodic(net, dirU, u);
+    }
     const res = insertKnotRows(rowsOf(net, dirU), dirKnots(net, dirU), dirDegree(net, dirU), u);
     return withRows(net, dirU, res.rows, res.knots, dirDegree(net, dirU));
+}
+
+/** True when a periodic direction is in the overlapped form (rows k and k + nUnique equal for k < p). */
+function isPeriodicOverlapped(net is map, dirU is boolean) returns boolean
+{
+    return dirPeriodic(net, dirU) && uniqueRowCount(net, dirU, false) < dirCount(net, dirU);
+}
+
+/**
+ * Exact knot insertion of u (in the domain) into a periodic direction, keeping the periodic
+ * overlapped form. The padded arrays (knots[i] = T(i - p), row i = unique row i mod nU) are
+ * continued p rows / knots to the right so u's span has all its control points, u is inserted
+ * once (Boehm), and one period of new unique rows is read where no un-inserted periodic image
+ * of u reaches the supports; the padded arrays are then rebuilt from those rows and the new
+ * one-period knot list.
+ */
+function insertKnotPeriodic(net is map, dirU is boolean, u is number) returns map
+{
+    const p = dirDegree(net, dirU);
+    const knots = dirKnots(net, dirU);
+    const rows = rowsOf(net, dirU);
+    const n = size(rows);
+    const nU = n - p;
+    const dom = dirDomain(net, dirU);
+    const period = dom[1] - dom[0];
+    if (!isPeriodicOverlapped(net, dirU) || nU < p + 1 || u < dom[0] || u >= dom[1] || knotMultiplicity(knots, u) >= p)
+    {
+        return net;
+    }
+    var extRows = rows;
+    for (var i = n; i < n + p; i += 1)
+    {
+        extRows = append(extRows, rows[i - nU]);
+    }
+    var extKnots = knots;
+    const nK = size(knots);
+    for (var i = nK; i < nK + p; i += 1)
+    {
+        extKnots = append(extKnots, extKnots[i - nU] + period);
+    }
+    const k = findSpanIdx(size(extRows) - 1, p, u, extKnots);
+    const res = insertKnotRows(extRows, extKnots, p, u);
+    const nU2 = nU + 1;
+    const i0 = max(0, k - nU + 1);
+    var uniq = makeArray(nU2);
+    for (var i = i0; i <= i0 + nU; i += 1)
+    {
+        uniq[i - floor(i / nU2) * nU2] = res.rows[i];
+    }
+    // One period of knots T'(0 .. nU2 - 1) with u placed after equal values (as Boehm places it).
+    var tp = [];
+    var placed = false;
+    for (var j = 0; j < nU; j += 1)
+    {
+        const t = knots[p + j];
+        if (!placed && u < t)
+        {
+            tp = append(tp, u);
+            placed = true;
+        }
+        tp = append(tp, t);
+    }
+    if (!placed)
+    {
+        tp = append(tp, u);
+    }
+    var newKnots = makeArray(nU2 + 2 * p + 1);
+    for (var i = 0; i < size(newKnots); i += 1)
+    {
+        const j = i - p;
+        const q = floor(j / nU2);
+        newKnots[i] = tp[j - q * nU2] + q * period;
+    }
+    var newRows = makeArray(nU2 + p);
+    for (var i = 0; i < nU2 + p; i += 1)
+    {
+        newRows[i] = uniq[i - floor(i / nU2) * nU2];
+    }
+    return withRows(net, dirU, newRows, newKnots, p);
 }
 
 /** True when a direction is one clamped Bezier span. */
@@ -541,46 +762,149 @@ function spanCount(net is map, dirU is boolean) returns number
     return c;
 }
 
-/** Bisect the largest span until the direction has `target` spans (non-periodic only). */
+/** The net with its largest span of one direction bisected, or undefined when it has no span. */
+function bisectLargestSpan(net is map, dirU is boolean)
+{
+    if (dirPeriodic(net, dirU) && !isPeriodicOverlapped(net, dirU))
+    {
+        return undefined;
+    }
+    const p = dirDegree(net, dirU);
+    const knots = dirKnots(net, dirU);
+    var best = -1;
+    var bestLen = 0;
+    for (var k = p; k < dirCount(net, dirU); k += 1)
+    {
+        if (knots[k + 1] - knots[k] > bestLen)
+        {
+            bestLen = knots[k + 1] - knots[k];
+            best = k;
+        }
+    }
+    if (best < 0)
+    {
+        return undefined;
+    }
+    return insertKnotDir(net, dirU, (knots[best] + knots[best + 1]) / 2);
+}
+
+/** Bisect the largest span until the direction has `target` spans (periodic directions in overlapped form too). */
 function refineDir(net is map, dirU is boolean, target is number) returns map
 {
     var out = net;
     while (spanCount(out, dirU) < target)
     {
-        const p = dirDegree(out, dirU);
-        const knots = dirKnots(out, dirU);
-        var best = -1;
-        var bestLen = 0;
-        for (var k = p; k < dirCount(out, dirU); k += 1)
-        {
-            if (knots[k + 1] - knots[k] > bestLen)
-            {
-                bestLen = knots[k + 1] - knots[k];
-                best = k;
-            }
-        }
-        if (best < 0)
+        const next = bisectLargestSpan(out, dirU);
+        if (next == undefined)
         {
             break;
         }
-        out = insertKnotDir(out, dirU, (knots[best] + knots[best + 1]) / 2);
+        out = next;
     }
     return out;
+}
+
+/** Bisect the largest span until the direction has at least `target` control points (periodic: counting the overlap). */
+function refineToCount(net is map, dirU is boolean, target is number) returns map
+{
+    var out = net;
+    while (dirCount(out, dirU) < target)
+    {
+        const next = bisectLargestSpan(out, dirU);
+        if (next == undefined)
+        {
+            break;
+        }
+        out = next;
+    }
+    return out;
+}
+
+/** True when two homogeneous control rows are the same points and weights. */
+function sameRow(rowA is array, rowB is array) returns boolean
+{
+    for (var j = 0; j < size(rowA); j += 1)
+    {
+        if (norm(rowA[j] - rowB[j]) > PULL_SAME_CP)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Number of independent control rows of a direction. A periodic net repeats its first p rows
+ * at the end (rows k and k + result are one row); a clamped direction of a closed face whose
+ * first and last rows coincide ties the last row to the first. Otherwise every row counts.
+ */
+function uniqueRowCount(net is map, dirU is boolean, closedDir is boolean) returns number
+{
+    const n = dirCount(net, dirU);
+    const p = dirDegree(net, dirU);
+    const rows = rowsOf(net, dirU);
+    if (dirPeriodic(net, dirU))
+    {
+        const nUnique = n - p;
+        if (nUnique < 2)
+        {
+            return n;
+        }
+        for (var k = 0; k < p; k += 1)
+        {
+            if (!sameRow(rows[k], rows[k + nUnique]))
+            {
+                return n;
+            }
+        }
+        return nUnique;
+    }
+    if (closedDir && sameRow(rows[0], rows[n - 1]))
+    {
+        return n - 1;
+    }
+    return n;
+}
+
+/** Row k and its repeats (k + nUnique, ...) below n. */
+function rowCopies(k is number, nUnique is number, n is number) returns array
+{
+    var out = [];
+    for (var c = k; c < n; c += nUnique)
+    {
+        out = append(out, c);
+    }
+    return out;
+}
+
+/** The point control row k of a direction collapses to (a pole / apex), or undefined. */
+function collapsedRowPoint(net is map, dirU is boolean, k is number)
+{
+    const row = rowsOf(net, dirU)[k];
+    const p0 = vector(row[0][0], row[0][1], row[0][2]) / row[0][3];
+    for (var h in row)
+    {
+        if (norm(vector(h[0], h[1], h[2]) / h[3] - p0) > PULL_SAME_POINT)
+        {
+            return undefined;
+        }
+    }
+    return p0;
 }
 
 /**
  * Row lock mask of one direction. Non-periodic ends lock (order + 1) rows, plus
  * (p + 1 - end multiplicity) on an unclamped end. Interior knots of multiplicity >= p
  * (a C0 joint in parameter) lock the joint row and max(order, 1) rows either side, so
- * a geometric G1 joint stays G1.
+ * a geometric G1 joint stays G1. endLocks false (a closed face's tied seam) skips the ends.
  */
-function lockMask(net is map, dirU is boolean, order is number) returns array
+function lockMask(net is map, dirU is boolean, order is number, endLocks is boolean) returns array
 {
     const p = dirDegree(net, dirU);
     const knots = dirKnots(net, dirU);
     const n = dirCount(net, dirU) - 1;
     var mask = makeArray(n + 1, false);
-    if (!dirPeriodic(net, dirU))
+    if (!dirPeriodic(net, dirU) && endLocks)
     {
         var mStart = 0;
         for (var j = p; j >= 0 && knots[j] == knots[p]; j -= 1)
@@ -603,6 +927,45 @@ function lockMask(net is map, dirU is boolean, order is number) returns array
         }
     }
     const reach = max(order, 1);
+    if (!dirPeriodic(net, dirU) && !endLocks)
+    {
+        // Clamped closed face: the tied seam row is a C0 knot joint like any other.
+        for (var k = 0; k <= n; k += 1)
+        {
+            if (k <= reach || k >= n - reach)
+            {
+                mask[k] = true;
+            }
+        }
+    }
+    if (dirPeriodic(net, dirU))
+    {
+        // Periodic: every joint in [lo, hi] of the padded knots, the seam included, locks its
+        // rows modulo the unique count (and their overlap copies).
+        const nU = uniqueRowCount(net, dirU, false);
+        const dom = dirDomain(net, dirU);
+        var f = 1;
+        while (f < size(knots))
+        {
+            var m = 1;
+            while (f + m < size(knots) && knots[f + m] == knots[f])
+            {
+                m += 1;
+            }
+            if (m >= p && knots[f] >= dom[0] && knots[f] <= dom[1] && f - 1 <= n)
+            {
+                for (var k = f - 1 - reach; k <= f + m - p - 1 + reach; k += 1)
+                {
+                    for (var c = k - floor(k / nU) * nU; c <= n; c += nU)
+                    {
+                        mask[c] = true;
+                    }
+                }
+            }
+            f += m;
+        }
+        return mask;
+    }
     var f = p + 1;
     while (f <= n)
     {
@@ -820,6 +1183,100 @@ function trimBox(curves is array) returns map
     return { "lo" : lo, "hi" : hi, "isBox" : isBox };
 }
 
+/**
+ * Free control points: not locked, independent (below nUniqU / nUniqV) and, on a trimmed
+ * face, inside the face. Each is { k, l, s, t (Greville), pt, ab (face parameter), normal }.
+ */
+function freeCandidates(context is Context, face is Query, net is map, lockU is array, lockV is array, nUniqU is number, nUniqV is number,
+    trimmed is boolean, approxTol is number) returns array
+{
+    const gU = greville(net, true);
+    const gV = greville(net, false);
+    const isPlanar = !isQueryEmpty(context, qGeometry(face, GeometryType.PLANE));
+    var planeFrame = undefined;
+    if (isPlanar)
+    {
+        const fr = evFaceTangentPlanes(context, { "face" : face, "parameters" : [vector(0, 0), vector(1, 0), vector(0, 1)] });
+        planeFrame = { "o" : fr[0].origin / meter, "ea" : (fr[1].origin - fr[0].origin) / meter, "eb" : (fr[2].origin - fr[0].origin) / meter };
+    }
+    const outsideTol = 10 * approxTol + 1e-7;
+    var cands = [];
+    for (var k = 0; k < nUniqU; k += 1)
+    {
+        for (var l = 0; l < nUniqV; l += 1)
+        {
+            if (lockU[k] || lockV[l])
+            {
+                continue;
+            }
+            const e = evalNet(net, gU[k], gV[l]);
+            var ab = undefined;
+            var inside = true;
+            if (isPlanar)
+            {
+                const r = e.pt - planeFrame.o;
+                const a11 = dot(planeFrame.ea, planeFrame.ea);
+                const a12 = dot(planeFrame.ea, planeFrame.eb);
+                const a22 = dot(planeFrame.eb, planeFrame.eb);
+                const b1 = dot(planeFrame.ea, r);
+                const b2 = dot(planeFrame.eb, r);
+                const det = a11 * a22 - a12 * a12;
+                ab = [(b1 * a22 - b2 * a12) / det, (a11 * b2 - a12 * b1) / det];
+                if (trimmed)
+                {
+                    inside = evDistance(context, { "side0" : face, "side1" : e.pt * meter }).distance <= outsideTol * meter;
+                }
+            }
+            else
+            {
+                const dr = evDistance(context, { "side0" : face, "side1" : e.pt * meter });
+                const par = dr.sides[0].parameter;
+                ab = [par[0], par[1]];
+                if (trimmed)
+                {
+                    inside = dr.distance <= outsideTol * meter;
+                }
+            }
+            if (!inside)
+            {
+                continue;
+            }
+            ab = [min(max(ab[0], 0), 1), min(max(ab[1], 0), 1)];
+            cands = append(cands, { "k" : k, "l" : l, "s" : gU[k], "t" : gV[l], "pt" : e.pt, "ab" : ab });
+        }
+    }
+    if (size(cands) > 0)
+    {
+        var candParams = [];
+        for (var c in cands)
+        {
+            candParams = append(candParams, vector(c.ab[0], c.ab[1]));
+        }
+        const candPlanes = evFaceTangentPlanes(context, { "face" : face, "parameters" : candParams });
+        for (var ci = 0; ci < size(cands); ci += 1)
+        {
+            cands[ci].normal = candPlanes[ci].normal;
+        }
+    }
+    return cands;
+}
+
+/** Moves control point (k, l) and its periodic / seam copies by disp (meters) along normal; weights unchanged. */
+function shiftControlPoint(net is map, k is number, l is number, nUniqU is number, nUniqV is number, disp is number, normal is Vector) returns map
+{
+    var out = net;
+    for (var kk in rowCopies(k, nUniqU, size(net.hom)))
+    {
+        for (var ll in rowCopies(l, nUniqV, size(net.hom[0])))
+        {
+            const h = out.hom[kk][ll];
+            const shift = h[3] * disp * normal;
+            out.hom[kk][ll] = vector([h[0] + shift[0], h[1] + shift[1], h[2] + shift[2], h[3]]);
+        }
+    }
+    return out;
+}
+
 // -- Editing logic -------------------------------------------------------------------------
 
 /**
@@ -830,20 +1287,25 @@ function trimBox(curves is array) returns map
  * kept). The hidden flat cache is rebuilt from the clean list.
  *
  * The face is intentionally not compared: query comparison can flip during a
- * manipulator drag and would zero the offsets mid-drag.
+ * manipulator drag and would zero the offsets mid-drag. (Evaluating it for closed
+ * directions is fine.) In control-point mode the handle layout depends on the face's net,
+ * so only zero / negative items are dropped here; the body ignores the rest (with a note).
  */
 export function pullSurfaceEditingLogic(context is Context, id is Id, oldDefinition is map, definition is map, isCreating is boolean, specifiedParameters is map) returns map
 {
     const uCount = definition.uCurveCount;
     const vCount = definition.vCurveCount;
+    const cpMode = definition.handlePerControlPoint == true;
     if (definition.uCurveCount != oldDefinition.uCurveCount ||
         definition.vCurveCount != oldDefinition.vCurveCount ||
-        definition.continuityType != oldDefinition.continuityType)
+        definition.continuityType != oldDefinition.continuityType ||
+        cpMode != (oldDefinition.handlePerControlPoint == true))
     {
         definition.mpOffsets = makeArray(uCount * vCount, { "off" : 0 * meter });
         definition.activeOffsets = [];
         return definition;
     }
+    const closed = cpMode ? [false, false] : faceClosedDirs(context, definition.face);
     var clean = [];
     var slotOf = {};
     if (definition.activeOffsets != undefined)
@@ -854,11 +1316,15 @@ export function pullSurfaceEditingLogic(context is Context, id is Id, oldDefinit
             {
                 continue;
             }
-            if (item.u < 0 || item.u >= uCount || item.v < 0 || item.v >= vCount)
+            if (item.u < 0 || item.v < 0)
             {
                 continue;
             }
-            if (isPointLocked(item.u, item.v, uCount, vCount, definition.continuityType))
+            if (!cpMode && (item.u >= uCount || item.v >= vCount))
+            {
+                continue;
+            }
+            if (!cpMode && isHandleLocked(item.u, item.v, uCount, vCount, definition.continuityType, closed[0], closed[1]))
             {
                 continue;
             }
@@ -893,39 +1359,21 @@ export function pullSurfaceManipulator(context is Context, definition is map, ne
     const vCount = definition.vCurveCount;
     for (var key, manip in newManipulators)
     {
+        // Control-point handles: "cp_<k>_<l>" (net indices, not bounded by the curve counts).
+        const cpKey = match(key, "cp_([0-9]+)_([0-9]+)");
+        if (cpKey.hasMatch)
+        {
+            definition.activeOffsets = setOffsetItem(definition.activeOffsets, stringToNumber(cpKey.captures[1]),
+                stringToNumber(cpKey.captures[2]), manip.offset);
+            continue;
+        }
         for (var i = 0; i < uCount; i += 1)
         {
             for (var j = 0; j < vCount; j += 1)
             {
                 if (("mp_" ~ i ~ "_" ~ j) == key)
                 {
-                    var active = definition.activeOffsets;
-                    if (active == undefined)
-                    {
-                        active = [];
-                    }
-                    var found = false;
-                    var newActive = [];
-                    for (var item in active)
-                    {
-                        if (item.u == i && item.v == j)
-                        {
-                            found = true;
-                            if (manip.offset != 0 * meter)
-                            {
-                                newActive = append(newActive, { "u" : i, "v" : j, "value" : manip.offset });
-                            }
-                        }
-                        else
-                        {
-                            newActive = append(newActive, item);
-                        }
-                    }
-                    if (!found && manip.offset != 0 * meter)
-                    {
-                        newActive = append(newActive, { "u" : i, "v" : j, "value" : manip.offset });
-                    }
-                    definition.activeOffsets = newActive;
+                    definition.activeOffsets = setOffsetItem(definition.activeOffsets, i, j, manip.offset);
                 }
             }
         }
@@ -939,36 +1387,44 @@ export function pullSurfaceManipulator(context is Context, definition is map, ne
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Pull surface",
         "Editing Logic Function" : "pullSurfaceEditingLogic",
         "Manipulator Change Function" : "pullSurfaceManipulator",
-        "Feature Type Description" : "Creates a copy of a face pushed and pulled along its normal by a grid of handles. The edges keep their position (G0), tangent plane (G1) or curvature (G2) along their whole length; the face's control net is edited, not refitted." }
+        "Feature Type Description" : "Creates a copy of a face pushed and pulled along its normal by a grid of handles (or one handle per control point), or replaces the face in its body. The edges keep their position (G0), tangent plane (G1) or curvature (G2) along their whole length; the face's control net is edited, not refitted." }
 export const pullSurface = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
         annotation { "Name" : "Face", "Filter" : EntityType.FACE, "MaxNumberOfPicks" : 1,
-                    "Description" : "The face to pull. It is left unchanged; the result is a new surface." }
+                    "Description" : "The face to pull. It is left unchanged (the result is a new surface) unless Replace face is on." }
         definition.face is Query;
 
-        annotation { "Name" : "U curve count", "Description" : "Handles across the face's first parameter direction, edges included." }
+        annotation { "Name" : "Replace face", "Default" : false,
+                    "Description" : "Put the pulled surface in place of the face in its own body (solid or surface) instead of creating a new surface. A solid stays solid when the kernel can re-fit the neighbouring faces; a one-face surface is replaced by the pulled surface as a whole (new body)." }
+        definition.replaceFace is boolean;
+
+        annotation { "Name" : "U curve count", "Description" : "Handles across the face's first parameter direction, edges included. With one handle per control point: the minimum number of control points in that direction." }
         isInteger(definition.uCurveCount, { (unitless) : [2, 4, 20] } as IntegerBoundSpec);
 
-        annotation { "Name" : "V curve count", "Description" : "Handles across the face's second parameter direction, edges included." }
+        annotation { "Name" : "V curve count", "Description" : "Handles across the face's second parameter direction, edges included. With one handle per control point: the minimum number of control points in that direction." }
         isInteger(definition.vCurveCount, { (unitless) : [2, 4, 20] } as IntegerBoundSpec);
 
         annotation { "Name" : "Continuity", "UIHint" : [UIHint.SHOW_LABEL],
-                    "Description" : "What the edges keep: position, tangency or curvature. Handles on the edges (and one / two rows in for tangency / curvature) are fixed, so tangency needs 5 curves each way and curvature 7 before a handle is free." }
+                    "Description" : "What the edges keep: position, tangency or curvature. Handles on the edges (and one / two rows in for tangency / curvature) are fixed, so tangency needs 5 curves each way and curvature 7 before a handle is free. A closed direction (full cylinder) has no edge and fixes nothing; a pole is fixed like an edge." }
         definition.continuityType is GeometricContinuity;
 
+        annotation { "Name" : "One handle per control point", "Default" : false,
+                    "Description" : "A handle at every free control point (at its Greville point) instead of the U / V grid; an offset moves that control point along the normal. U / V curve count set the minimum number of control points (periodic directions keep theirs)." }
+        definition.handlePerControlPoint is boolean;
+
         // Live list of non-zero handle offsets, filled when a manipulator is dragged.
-        // U and V are grid indices; Offset is along the face normal at the handle.
+        // U and V are grid indices (control-point indices in control-point mode); Offset is along the face normal.
         annotation { "Name" : "Active offsets", "Item name" : "Offset",
                     "Description" : "Handle offsets. Drag a manipulator to add one; set Offset to 0 or delete the item to remove it." }
         definition.activeOffsets is array;
         for (var activeOffset in definition.activeOffsets)
         {
             annotation { "Name" : "U" }
-            isInteger(activeOffset.u, { (unitless) : [0, 0, 19] } as IntegerBoundSpec);
+            isInteger(activeOffset.u, { (unitless) : [0, 0, 999] } as IntegerBoundSpec);
 
             annotation { "Name" : "V" }
-            isInteger(activeOffset.v, { (unitless) : [0, 0, 19] } as IntegerBoundSpec);
+            isInteger(activeOffset.v, { (unitless) : [0, 0, 999] } as IntegerBoundSpec);
 
             annotation { "Name" : "Offset" }
             isLength(activeOffset.value, { (millimeter) : [-10000, 0, 10000] } as LengthBoundSpec);
@@ -1023,60 +1479,83 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         const total = uCount * vCount;
         const order = (definition.continuityType == GeometricContinuity.G0) ? 0 :
             ((definition.continuityType == GeometricContinuity.G1) ? 1 : 2);
+        const cpMode = definition.handlePerControlPoint;
         var notes = [];
 
-        // -- Handles: base points and normals on the face's parameter grid --
-        var gridParams = [];
-        for (var i = 0; i < uCount; i += 1)
+        if (definition.replaceFace)
         {
-            for (var j = 0; j < vCount; j += 1)
+            if (!isQueryEmpty(context, qSketchFilter(definition.face, SketchObject.YES)) ||
+                isQueryEmpty(context, qModifiableEntityFilter(definition.face)))
             {
-                gridParams = append(gridParams, vector(i / (uCount - 1), j / (vCount - 1)));
+                throw regenError("Replace face cannot modify this face (a sketch region, or a face this feature may not change). Turn Replace face off to create a new surface.",
+                    ["replaceFace"], definition.face);
+            }
+            if (isQueryEmpty(context, qBodyType(qOwnerBody(definition.face), [BodyType.SOLID, BodyType.SHEET])))
+            {
+                throw regenError("Replace face needs a face of a solid or a surface body.", ["face"], definition.face);
             }
         }
-        const basePlanes = evFaceTangentPlanes(context, { "face" : definition.face, "parameters" : gridParams });
 
-        const offsets = definition.mpOffsets;
-        const haveOffsets = offsets != undefined && size(offsets) == total;
+        // Directions in which the face meets itself (full cylinder / revolved face).
+        const closed = faceClosedDirs(context, definition.face);
+
+        // -- Grid handles: base points and normals on the face's parameter grid --
+        var basePlanes = [];
         var handleOffset = makeArray(total, 0 * meter);
         var freeIndex = makeArray(total, -1);
         var freeHandles = [];
         var anyOffset = false;
-        var manipMap = {};
-        for (var i = 0; i < uCount; i += 1)
+        var targets = [];
+        if (!cpMode)
         {
-            for (var j = 0; j < vCount; j += 1)
+            var gridParams = [];
+            for (var i = 0; i < uCount; i += 1)
             {
-                const flat = i * vCount + j;
-                if (isPointLocked(i, j, uCount, vCount, definition.continuityType))
+                for (var j = 0; j < vCount; j += 1)
                 {
-                    continue;
+                    gridParams = append(gridParams, vector(gridParam(i, uCount, closed[0]), gridParam(j, vCount, closed[1])));
                 }
-                const off = haveOffsets ? offsets[flat].off : 0 * meter;
-                handleOffset[flat] = off;
-                freeIndex[flat] = size(freeHandles);
-                freeHandles = append(freeHandles, flat);
-                if (off != 0 * meter)
-                {
-                    anyOffset = true;
-                }
-                manipMap["mp_" ~ i ~ "_" ~ j] = linearManipulator({
-                            "base" : basePlanes[flat].origin,
-                            "direction" : basePlanes[flat].normal,
-                            "offset" : off
-                        });
             }
-        }
-        addManipulators(context, id, manipMap);
-        if (size(freeHandles) == 0)
-        {
-            notes = append(notes, "No handle is free: tangency needs at least 5 U and V curves, curvature at least 7. The surface is an unchanged copy.");
-        }
+            basePlanes = evFaceTangentPlanes(context, { "face" : definition.face, "parameters" : gridParams });
 
-        var targets = makeArray(total);
-        for (var flat = 0; flat < total; flat += 1)
-        {
-            targets[flat] = basePlanes[flat].origin + handleOffset[flat] * basePlanes[flat].normal;
+            const offsets = definition.mpOffsets;
+            const haveOffsets = offsets != undefined && size(offsets) == total;
+            var manipMap = {};
+            for (var i = 0; i < uCount; i += 1)
+            {
+                for (var j = 0; j < vCount; j += 1)
+                {
+                    const flat = i * vCount + j;
+                    if (isHandleLocked(i, j, uCount, vCount, definition.continuityType, closed[0], closed[1]))
+                    {
+                        continue;
+                    }
+                    const off = haveOffsets ? offsets[flat].off : 0 * meter;
+                    handleOffset[flat] = off;
+                    freeIndex[flat] = size(freeHandles);
+                    freeHandles = append(freeHandles, flat);
+                    if (off != 0 * meter)
+                    {
+                        anyOffset = true;
+                    }
+                    manipMap["mp_" ~ i ~ "_" ~ j] = linearManipulator({
+                                "base" : basePlanes[flat].origin,
+                                "direction" : basePlanes[flat].normal,
+                                "offset" : off
+                            });
+                }
+            }
+            addManipulators(context, id, manipMap);
+            if (size(freeHandles) == 0)
+            {
+                notes = append(notes, "No handle is free: tangency needs at least 5 U and V curves, curvature at least 7. The surface is an unchanged copy.");
+            }
+
+            targets = makeArray(total);
+            for (var flat = 0; flat < total; flat += 1)
+            {
+                targets[flat] = basePlanes[flat].origin + handleOffset[flat] * basePlanes[flat].normal;
+            }
         }
 
         // -- Source control net --
@@ -1097,6 +1576,26 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             }
         }
 
+        // -- Poles: a collapsed end row that the face reaches (sphere cap, cone apex) --
+        // The face's boundary never reaches a pole, so the clip box is extended to it.
+        var poles = [[false, false], [false, false]];
+        for (var d = 0; d < 2; d += 1)
+        {
+            const dirU = (d == 0);
+            if (dirPeriodic(net, dirU))
+            {
+                continue;
+            }
+            for (var endIdx = 0; endIdx < 2; endIdx += 1)
+            {
+                const pp = collapsedRowPoint(net, dirU, (endIdx == 0) ? 0 : dirCount(net, dirU) - 1);
+                if (pp != undefined && evDistance(context, { "side0" : definition.face, "side1" : pp * meter }).distance < 10 * PULL_SAME_POINT * meter)
+                {
+                    poles[d][endIdx] = true;
+                }
+            }
+        }
+
         // -- Clip to the face's parameter box; keep the trim loop unless it is that box --
         var trims = [];
         const boundary = (src.boundaryBSplineCurves == undefined) ? [] : src.boundaryBSplineCurves;
@@ -1109,7 +1608,14 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 const dirU = (d == 0);
                 const dom = dirDomain(net, dirU);
                 const eps = PULL_KNOT_EPS * (dom[1] - dom[0]) * 10;
-                const partial = tb.lo[d] > dom[0] + eps || tb.hi[d] < dom[1] - eps;
+                const lo = poles[d][0] ? dom[0] : max(tb.lo[d], dom[0]);
+                const hi = poles[d][1] ? dom[1] : min(tb.hi[d], dom[1]);
+                if (hi - lo <= eps)
+                {
+                    throw regenError("Pull surface cannot read this face: its boundary spans no parameter range in one direction (a pole or degenerate face it cannot resolve).",
+                        ["face"], definition.face);
+                }
+                const partial = lo > dom[0] + eps || hi < dom[1] - eps;
                 if (!partial)
                 {
                     continue;
@@ -1120,7 +1626,7 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 }
                 else
                 {
-                    net = clipDir(net, dirU, max(tb.lo[d], dom[0]), min(tb.hi[d], dom[1]));
+                    net = clipDir(net, dirU, lo, hi);
                 }
             }
             if (needTrims)
@@ -1128,97 +1634,86 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 trims = boundary;
             }
         }
-        if (src.innerLoopBSplineCurves != undefined && size(src.innerLoopBSplineCurves) > 0)
+        if (!definition.replaceFace && src.innerLoopBSplineCurves != undefined && size(src.innerLoopBSplineCurves) > 0)
         {
             notes = append(notes, "Holes in the face are not kept; the result covers the outer boundary.");
         }
 
         var solveInfo = "no offsets";
-        if (anyOffset)
+        var lockU = undefined;
+        var lockV = undefined;
+        var cpHandles = [];
+        if (cpMode)
+        {
+            // -- One handle per free control point; its offset moves that control point --
+            for (var dirU in [true, false])
+            {
+                // A periodic direction counts its unique control points (the overlap adds p).
+                const wanted = dirU ? uCount : vCount;
+                net = refineToCount(net, dirU, dirPeriodic(net, dirU) ? wanted + dirDegree(net, dirU) : wanted);
+            }
+            const nUniqU = uniqueRowCount(net, true, closed[0]);
+            const nUniqV = uniqueRowCount(net, false, closed[1]);
+            lockU = lockMask(net, true, order, nUniqU == size(net.hom));
+            lockV = lockMask(net, false, order, nUniqV == size(net.hom[0]));
+            const cands = freeCandidates(context, definition.face, net, lockU, lockV, nUniqU, nUniqV, size(trims) > 0, approxTol);
+
+            var offsetOf = {};
+            for (var item in (definition.activeOffsets == undefined ? [] : definition.activeOffsets))
+            {
+                offsetOf[item.u ~ "_" ~ item.v] = item.value;
+            }
+            var manipMap = {};
+            var used = 0;
+            for (var c in cands)
+            {
+                const key = c.k ~ "_" ~ c.l;
+                const off = (offsetOf[key] == undefined) ? 0 * meter : offsetOf[key];
+                manipMap["cp_" ~ key] = linearManipulator({ "base" : c.pt * meter, "direction" : c.normal, "offset" : off });
+                cpHandles = append(cpHandles, { "k" : c.k, "l" : c.l, "base" : c.pt * meter, "normal" : c.normal, "off" : off });
+                if (off != 0 * meter)
+                {
+                    used += 1;
+                    anyOffset = true;
+                    net = shiftControlPoint(net, c.k, c.l, nUniqU, nUniqV, off / meter, c.normal);
+                }
+            }
+            addManipulators(context, id, manipMap);
+            var requested = 0;
+            for (var key, value in offsetOf)
+            {
+                if (value != 0 * meter)
+                {
+                    requested += 1;
+                }
+            }
+            if (size(cands) == 0)
+            {
+                notes = append(notes, "No control point is free: raise U / V curve count (tangency needs 5, curvature 7). The surface is an unchanged copy.");
+            }
+            if (requested > used)
+            {
+                notes = append(notes, (requested - used) ~ " offsets are not on a free control point and were ignored (the face, curve counts or continuity changed the net).");
+            }
+            solveInfo = "control-point mode, " ~ size(cands) ~ " free control points, " ~ used ~ " moved";
+        }
+        else if (anyOffset)
         {
             // -- Refine (exact knot insertion) so the handle grid is resolved --
             const spansTarget = max(PULL_SPANS_PER_HANDLE * (max(uCount, vCount) - 1), 2 * (order + 1) + 4);
             for (var dirU in [true, false])
             {
-                if (!dirPeriodic(net, dirU))
-                {
-                    net = refineDir(net, dirU, spansTarget);
-                }
+                net = refineDir(net, dirU, spansTarget);
             }
 
             // -- Locked rows and candidate control points --
-            const lockU = lockMask(net, true, order);
-            const lockV = lockMask(net, false, order);
-            const gU = greville(net, true);
-            const gV = greville(net, false);
+            const nUniqU = uniqueRowCount(net, true, closed[0]);
+            const nUniqV = uniqueRowCount(net, false, closed[1]);
+            lockU = lockMask(net, true, order, nUniqU == size(net.hom));
+            lockV = lockMask(net, false, order, nUniqV == size(net.hom[0]));
             const nu = size(net.hom);
             const nv = size(net.hom[0]);
-            const isPlanar = !isQueryEmpty(context, qGeometry(definition.face, GeometryType.PLANE));
-            var planeFrame = undefined;
-            if (isPlanar)
-            {
-                const fr = evFaceTangentPlanes(context, { "face" : definition.face, "parameters" : [vector(0, 0), vector(1, 0), vector(0, 1)] });
-                planeFrame = { "o" : fr[0].origin / meter, "ea" : (fr[1].origin - fr[0].origin) / meter, "eb" : (fr[2].origin - fr[0].origin) / meter };
-            }
-            const outsideTol = 10 * approxTol + 1e-7;
-            var cands = [];
-            for (var k = 0; k < nu; k += 1)
-            {
-                for (var l = 0; l < nv; l += 1)
-                {
-                    if (lockU[k] || lockV[l])
-                    {
-                        continue;
-                    }
-                    const e = evalNet(net, gU[k], gV[l]);
-                    var ab = undefined;
-                    var inside = true;
-                    if (isPlanar)
-                    {
-                        const r = e.pt - planeFrame.o;
-                        const a11 = dot(planeFrame.ea, planeFrame.ea);
-                        const a12 = dot(planeFrame.ea, planeFrame.eb);
-                        const a22 = dot(planeFrame.eb, planeFrame.eb);
-                        const b1 = dot(planeFrame.ea, r);
-                        const b2 = dot(planeFrame.eb, r);
-                        const det = a11 * a22 - a12 * a12;
-                        ab = [(b1 * a22 - b2 * a12) / det, (a11 * b2 - a12 * b1) / det];
-                        if (size(trims) > 0)
-                        {
-                            inside = evDistance(context, { "side0" : definition.face, "side1" : e.pt * meter }).distance <= outsideTol * meter;
-                        }
-                    }
-                    else
-                    {
-                        const dr = evDistance(context, { "side0" : definition.face, "side1" : e.pt * meter });
-                        const par = dr.sides[0].parameter;
-                        ab = [par[0], par[1]];
-                        if (size(trims) > 0)
-                        {
-                            inside = dr.distance <= outsideTol * meter;
-                        }
-                    }
-                    if (!inside)
-                    {
-                        continue;
-                    }
-                    ab = [min(max(ab[0], 0), 1), min(max(ab[1], 0), 1)];
-                    // Field weights of this control point over the FREE handles.
-                    var weights = [];
-                    for (var wa in catmullRomWeights(ab[0], uCount))
-                    {
-                        for (var wb in catmullRomWeights(ab[1], vCount))
-                        {
-                            const fi = freeIndex[wa[0] * vCount + wb[0]];
-                            if (fi >= 0 && wa[1] * wb[1] != 0)
-                            {
-                                weights = append(weights, [fi, wa[1] * wb[1]]);
-                            }
-                        }
-                    }
-                    cands = append(cands, { "k" : k, "l" : l, "s" : gU[k], "t" : gV[l], "pt" : e.pt, "ab" : ab, "weights" : weights });
-                }
-            }
+            var cands = freeCandidates(context, definition.face, net, lockU, lockV, nUniqU, nUniqV, size(trims) > 0, approxTol);
 
             if (size(cands) == 0)
             {
@@ -1227,17 +1722,19 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             }
             else
             {
-                var candParams = [];
-                for (var c in cands)
-                {
-                    candParams = append(candParams, vector(c.ab[0], c.ab[1]));
-                }
-                const candPlanes = evFaceTangentPlanes(context, { "face" : definition.face, "parameters" : candParams });
+                // Field weights of each control point over the FREE handles; periodic / seam
+                // copies of a control point share its candidate.
                 var candIndex = {};
                 for (var ci = 0; ci < size(cands); ci += 1)
                 {
-                    cands[ci].normal = candPlanes[ci].normal;
-                    candIndex[cands[ci].k ~ "_" ~ cands[ci].l] = ci;
+                    cands[ci].weights = fieldWeights(cands[ci].ab, uCount, vCount, closed, freeIndex);
+                    for (var kk in rowCopies(cands[ci].k, nUniqU, nu))
+                    {
+                        for (var ll in rowCopies(cands[ci].l, nUniqV, nv))
+                        {
+                            candIndex[kk ~ "_" ~ ll] = ci;
+                        }
+                    }
                 }
 
                 // -- Response of each free handle to each free field value --
@@ -1291,16 +1788,51 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 }
 
                 var g = makeArray(m, 0);
-                const solved = inverse(matrix(respRows)) * matrix(rhs);
+                // A handle with no (or no finite) response makes the matrix singular: fall back
+                // instead of inverting (matrixInverse fails on NaN).
                 var solveOk = true;
                 for (var h = 0; h < m; h += 1)
                 {
-                    const gh = solved[h][0];
-                    if (!(abs(gh) <= PULL_SOLVE_LIMIT * dMax))
+                    var rowMax = 0;
+                    for (var x in respRows[h])
+                    {
+                        if (!(abs(x) < inf))
+                        {
+                            rowMax = -1;
+                            break;
+                        }
+                        rowMax = max(rowMax, abs(x));
+                    }
+                    if (!(rowMax > 1e-9))
                     {
                         solveOk = false;
                     }
-                    g[h] = gh;
+                }
+                if (solveOk)
+                {
+                    // Near-singular (two handles with the same response): condition check by SVD.
+                    const sv = svd(matrix(respRows)).s;
+                    var sMin = inf;
+                    var sMax = 0;
+                    for (var h = 0; h < m; h += 1)
+                    {
+                        sMin = min(sMin, abs(sv[h][h]));
+                        sMax = max(sMax, abs(sv[h][h]));
+                    }
+                    solveOk = sMin > 1e-10 * sMax;
+                }
+                if (solveOk)
+                {
+                    const solved = inverse(matrix(respRows)) * matrix(rhs);
+                    for (var h = 0; h < m; h += 1)
+                    {
+                        const gh = solved[h][0];
+                        if (!(abs(gh) <= PULL_SOLVE_LIMIT * dMax))
+                        {
+                            solveOk = false;
+                        }
+                        g[h] = gh;
+                    }
                 }
                 if (!solveOk)
                 {
@@ -1312,7 +1844,7 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 }
                 solveInfo = (solveOk ? "solved" : "fallback") ~ ", " ~ m ~ " free handles, " ~ size(cands) ~ " free control points";
 
-                // -- Move the free control points along the normal (weights unchanged) --
+                // -- Move the free control points (and their copies) along the normal --
                 for (var c in cands)
                 {
                     var disp = 0;
@@ -1324,26 +1856,24 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                     {
                         continue;
                     }
-                    const h = net.hom[c.k][c.l];
-                    const shift = h[3] * disp * c.normal;
-                    net.hom[c.k][c.l] = vector([h[0] + shift[0], h[1] + shift[1], h[2] + shift[2], h[3]]);
+                    net = shiftControlPoint(net, c.k, c.l, nUniqU, nUniqV, disp, c.normal);
                 }
             }
-
-            if (definition.printCurveData)
+        }
+        if (definition.printCurveData && lockU != undefined)
+        {
+            var lu = "";
+            for (var x in lockU)
             {
-                var lu = "";
-                for (var x in lockU)
-                {
-                    lu = lu ~ (x ? "L" : ".");
-                }
-                var lv = "";
-                for (var x in lockV)
-                {
-                    lv = lv ~ (x ? "L" : ".");
-                }
-                println("[pullSurface] locks u " ~ lu ~ "  v " ~ lv);
+                lu = lu ~ (x ? "L" : ".");
             }
+            var lv = "";
+            for (var x in lockV)
+            {
+                lv = lv ~ (x ? "L" : ".");
+            }
+            println("[pullSurface] locks u " ~ lu ~ "  v " ~ lv ~ "; closed " ~ closed[0] ~ "/" ~ closed[1]
+                    ~ "; poles u " ~ poles[0][0] ~ "/" ~ poles[0][1] ~ " v " ~ poles[1][0] ~ "/" ~ poles[1][1]);
         }
         if (size(trims) > 0 && anyOffset)
         {
@@ -1389,32 +1919,72 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
                 }
             }
         }
+        // Control-point handles by "k_l", for the debug grid.
+        var cpTarget = {};
+        for (var hd in cpHandles)
+        {
+            cpTarget[hd.k ~ "_" ~ hd.l] = hd.base + hd.off * hd.normal;
+        }
         if (definition.showCPPolygons)
         {
-            for (var i = 0; i < uCount; i += 1)
+            if (!cpMode)
             {
-                for (var j = 0; j < vCount; j += 1)
+                for (var i = 0; i < uCount; i += 1)
                 {
-                    addDebugPoint(context, targets[i * vCount + j], DebugColor.BLUE);
-                    if (j < vCount - 1)
+                    for (var j = 0; j < vCount; j += 1)
                     {
-                        addDebugLine(context, targets[i * vCount + j], targets[i * vCount + j + 1], DebugColor.CYAN);
+                        addDebugPoint(context, targets[i * vCount + j], DebugColor.BLUE);
+                        if (j < vCount - 1)
+                        {
+                            addDebugLine(context, targets[i * vCount + j], targets[i * vCount + j + 1], DebugColor.CYAN);
+                        }
+                        if (i < uCount - 1)
+                        {
+                            addDebugLine(context, targets[i * vCount + j], targets[(i + 1) * vCount + j], DebugColor.MAGENTA);
+                        }
                     }
-                    if (i < uCount - 1)
+                }
+            }
+            else
+            {
+                for (var hd in cpHandles)
+                {
+                    const tp = cpTarget[hd.k ~ "_" ~ hd.l];
+                    addDebugPoint(context, tp, DebugColor.BLUE);
+                    const nextL = cpTarget[hd.k ~ "_" ~ (hd.l + 1)];
+                    if (nextL != undefined)
                     {
-                        addDebugLine(context, targets[i * vCount + j], targets[(i + 1) * vCount + j], DebugColor.MAGENTA);
+                        addDebugLine(context, tp, nextL, DebugColor.CYAN);
+                    }
+                    const nextK = cpTarget[(hd.k + 1) ~ "_" ~ hd.l];
+                    if (nextK != undefined)
+                    {
+                        addDebugLine(context, tp, nextK, DebugColor.MAGENTA);
                     }
                 }
             }
         }
         if (definition.showOffsetVectors)
         {
-            for (var flat = 0; flat < total; flat += 1)
+            if (!cpMode)
             {
-                if (handleOffset[flat] != 0 * meter)
+                for (var flat = 0; flat < total; flat += 1)
                 {
-                    addDebugLine(context, basePlanes[flat].origin, targets[flat],
-                        (handleOffset[flat] > 0 * meter) ? DebugColor.GREEN : DebugColor.RED);
+                    if (handleOffset[flat] != 0 * meter)
+                    {
+                        addDebugLine(context, basePlanes[flat].origin, targets[flat],
+                            (handleOffset[flat] > 0 * meter) ? DebugColor.GREEN : DebugColor.RED);
+                    }
+                }
+            }
+            else
+            {
+                for (var hd in cpHandles)
+                {
+                    if (hd.off != 0 * meter)
+                    {
+                        addDebugLine(context, hd.base, hd.base + hd.off * hd.normal, (hd.off > 0 * meter) ? DebugColor.GREEN : DebugColor.RED);
+                    }
                 }
             }
         }
@@ -1422,11 +1992,21 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         // -- Optional helper bodies (not part of the output) --
         if (definition.keepPoints)
         {
-            for (var i = 0; i < uCount; i += 1)
+            if (!cpMode)
             {
-                for (var j = 0; j < vCount; j += 1)
+                for (var i = 0; i < uCount; i += 1)
                 {
-                    opPoint(context, id + ("pt_" ~ i ~ "_" ~ j), { "point" : targets[i * vCount + j] });
+                    for (var j = 0; j < vCount; j += 1)
+                    {
+                        opPoint(context, id + ("pt_" ~ i ~ "_" ~ j), { "point" : targets[i * vCount + j] });
+                    }
+                }
+            }
+            else
+            {
+                for (var hd in cpHandles)
+                {
+                    opPoint(context, id + ("pt_" ~ hd.k ~ "_" ~ hd.l), { "point" : cpTarget[hd.k ~ "_" ~ hd.l] });
                 }
             }
         }
@@ -1445,6 +2025,37 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
             }
         }
 
+        // -- Replace face: the pulled sheet takes the face's place in its body, then goes --
+        var output = qCreatedBy(id + "pullSurf", EntityType.BODY);
+        var outputDescription = "The pulled surface";
+        const sourceBody = qOwnerBody(definition.face);
+        const singleFaceSheet = definition.replaceFace && !isQueryEmpty(context, qBodyType(sourceBody, BodyType.SHEET)) &&
+            size(evaluateQuery(context, qOwnedByBody(sourceBody, EntityType.FACE))) == 1;
+        if (singleFaceSheet)
+        {
+            // The kernel refuses opReplaceFace on a one-face sheet (DIRECT_EDIT_REPLACE_FACE_FAILED):
+            // replacing its only face IS replacing the body, so the source sheet is deleted and
+            // the pulled sheet is the result (new body identity; downstream picks re-pick).
+            opDeleteBodies(context, id + "deleteSource", { "entities" : sourceBody });
+            outputDescription = "The pulled surface, replacing the source sheet";
+        }
+        else if (definition.replaceFace)
+        {
+            const templateFace = qCreatedBy(id + "pullSurf", EntityType.FACE);
+            // Sense auto-detected (corrections log: opReplaceFace oppositeSense).
+            const srcPlane = evFaceTangentPlane(context, { "face" : definition.face, "parameter" : vector(0.5, 0.5) });
+            const near = evDistance(context, { "side0" : templateFace, "side1" : srcPlane.origin });
+            const tplPlane = evFaceTangentPlane(context, { "face" : templateFace, "parameter" : near.sides[0].parameter });
+            opReplaceFace(context, id + "replaceFace", {
+                        "replaceFaces" : definition.face,
+                        "templateFace" : templateFace,
+                        "oppositeSense" : dot(srcPlane.normal, tplPlane.normal) < 0
+                    });
+            opDeleteBodies(context, id + "deleteTemplate", { "entities" : qCreatedBy(id + "pullSurf", EntityType.BODY) });
+            output = qOwnerBody(definition.face);
+            outputDescription = "The body whose face was replaced by the pulled surface";
+        }
+
         if (size(notes) > 0)
         {
             var msg = notes[0];
@@ -1456,10 +2067,10 @@ export const pullSurface = defineFeature(function(context is Context, id is Id, 
         }
 
         embedStandardOutputs(context, id, {
-                    "output" : qCreatedBy(id + "pullSurf", EntityType.BODY),
-                    "outputDescription" : "The pulled surface",
+                    "output" : output,
+                    "outputDescription" : outputDescription,
                     "inputs" : definition.face
                 });
     }, { "activeOffsets" : [], "mpOffsets" : [], "showIsoCurves" : false, "keepUCurves" : false, "keepVCurves" : false,
             "keepPoints" : false, "showCPPolygons" : false, "showOffsetVectors" : false, "printCurveData" : false,
-            "curveDegree" : 3, "fitTolerance" : 1e-6 * meter });
+            "curveDegree" : 3, "fitTolerance" : 1e-6 * meter, "replaceFace" : false, "handlePerControlPoint" : false });

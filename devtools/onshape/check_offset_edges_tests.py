@@ -74,6 +74,9 @@ CASES = [
     dict(tag="OE23", src="OE23 source corner", mode=("x", 23000), prof=None, wires=1, edges=2, lengths=[90, 90]),
     dict(tag="OE24", src="OE24 source corner", mode=("x", 24000), prof=None, wires=1, edges=3, lengths=[15.7080, 100, 100],
          typeset=["CIRCLE", "SPLINE", "SPLINE"]),
+    # Blends keyed by hidden region ids (2026-09-26): OE6 with both regions named "A" -- must match OE6.
+    dict(tag="OE25", src="OE25 source", mode=("x", 25000), prof="s < 200 ? 0 : 20", skip=[(140, 260)], wires=1, edges=3,
+         extent=(0, 400), dev=0.01, joints=0.01),
 ]
 
 # Expected statuses (today's code; see the notes). Every other case and every fixture must be OK.
@@ -481,6 +484,9 @@ def main():
         old = json.load(open(args.baseline))
         moved_total = 0
         for tag in sorted(set(old) | set(record)):
+            if tag not in old:
+                print("NEW", tag, "-- not in the baseline (a case added after it); judged above, not compared")
+                continue
             moved = compare(tag, old.get(tag, {}), record.get(tag, {}), args.tol)
             if moved:
                 moved_total += 1
