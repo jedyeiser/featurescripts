@@ -80,7 +80,7 @@ export enum SamplingType
 }
 
 
-annotation { "Feature Type Name" : "Create SW Rout Surface", "Feature Type Description" : "Creates a Sidewall Rout Surface based on user input" }
+annotation { "Feature Type Name" : "Create SW Rout Surface (legacy)", "Feature Type Description" : "Legacy (2026-09-26): superseded by Driven edge offset / offset surface. Creates a Sidewall Rout Surface based on user input" }
 export const myFeature = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {

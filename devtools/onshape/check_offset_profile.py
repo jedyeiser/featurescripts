@@ -1,6 +1,6 @@
 """Check the Create offset profile test cases in BeamBuilder Testbed's "Offset profile tests" Part Studio.
 
-The cases are real feature instances in the tree (T1..T5, named by case and expected result), so anyone can open
+The cases are real feature instances in the tree (T1..T9, named by case and expected result), so anyone can open
 them. This script measures their output geometry and published values through the eval API and prints PASS / FAIL.
 Error cases are checked with temporary instances that are inserted, read and deleted again.
 
@@ -55,6 +55,32 @@ HELPERS = r'''
             }
             const angle = min(angleBetween(sides[0].tangent, sides[1].tangent), angleBetween(sides[0].tangent, -sides[1].tangent));
             return { "ok" : true, "angle" : angle, "k0" : sides[0].curvature, "k1" : sides[1].curvature };
+        };
+    const slopeAt = function(wires is Query, x is number)
+        {
+            // dY/dX of the wire at an edge end at station x (the first edge end found there), or undefined.
+            for (var e in evaluateQuery(context, qOwnedByBody(wires, EntityType.EDGE)))
+            {
+                const ends = evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 1] });
+                for (var k in [0, 1])
+                {
+                    if (abs(ends[k].origin[0] - x * millimeter) < 1e-9 * meter)
+                    {
+                        return ends[k].direction[1] / ends[k].direction[0];
+                    }
+                }
+            }
+            return undefined;
+        };
+    const degreesOf = function(wires is Query) returns array
+        {
+            var out = [];
+            for (var e in evaluateQuery(context, qOwnedByBody(wires, EntityType.EDGE)))
+            {
+                const cd = evCurveDefinition(context, { "edge" : e });
+                out = append(out, cd is BSplineCurve ? cd.degree : -1);
+            }
+            return out;
         };
     const fmt = function(v) returns string
         {
@@ -132,6 +158,26 @@ CHECKS = {
         const s1 = out.variable.endStation.value;
         const e = valueAt(wires, 7100);
         return [pieces == 1 && near(s1, 7100, 1e-6) && near(e[0], 3, 1e-6), pieces ~ " piece, ends at " ~ fmt(s1) ~ ", width there " ~ fmt(e[0])];''',
+    "T8": r'''
+        const a = valueAt(wires, 8025);
+        const m = valueAt(wires, 8050);
+        const k0 = slopeAt(wires, 8000);
+        const k1 = slopeAt(wires, 8100);
+        const deg = degreesOf(wires);
+        const ok = pieces == 1 && deg == [2] && near(a[0], 0.25, 1e-6) && near(m[0], 1, 1e-6) && near(m[1], 0, 1e-6)
+            && k0 is number && abs(k0) < 1e-8 && k1 is number && abs(k1 - 0.08) < 1e-8;
+        return [ok, pieces ~ " piece, edge degrees " ~ toString(deg) ~ ", width at 8025 / 8050 = " ~ fmt(a[0]) ~ " / " ~ fmt(m[0])
+            ~ ", slope at 8000 / 8100 = " ~ toString(k0) ~ " / " ~ toString(k1)];''',
+    "T9": r'''
+        const a = valueAt(wires, 9025);
+        const m = valueAt(wires, 9050);
+        const k0 = slopeAt(wires, 9000);
+        const k1 = slopeAt(wires, 9100);
+        const deg = degreesOf(wires);
+        const ok = pieces == 1 && deg == [2] && near(a[0], 1.75, 1e-6) && near(m[0], 3, 1e-6) && near(m[1], 0, 1e-6)
+            && k0 is number && abs(k0 - 0.08) < 1e-8 && k1 is number && abs(k1) < 1e-8;
+        return [ok, pieces ~ " piece, edge degrees " ~ toString(deg) ~ ", width at 9025 / 9050 = " ~ fmt(a[0]) ~ " / " ~ fmt(m[0])
+            ~ ", slope at 9000 / 9100 = " ~ toString(k0) ~ " / " ~ toString(k1)];''',
 }
 
 

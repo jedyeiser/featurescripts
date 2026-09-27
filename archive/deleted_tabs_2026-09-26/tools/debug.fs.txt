@@ -9,7 +9,7 @@ import(path : "34fb2c6a3c895cfce6b281f3", version : "18fcdac56b39d12dba5ce285");
 import(path : "b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
 
 //import bspline_knots
-import(path : "dadb70c0a762573622fa609c", version : "2e6c3f335af252d49f0fac60");
+import(path : "dadb70c0a762573622fa609c", version : "744c7afe122e8ae2b3b17a12");
 
 //import math_utils
 import(path : "280a24d76f52bdbf44cd941d", version : "43549bf2d5a2bb2e92fb44bd");

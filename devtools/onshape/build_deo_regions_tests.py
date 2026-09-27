@@ -12,6 +12,8 @@ same number of bodies and edges.
   D3 arc: 'Low' CONSTANT 0..200 w 3, 'High' CONSTANT 200..400 w 6 (a step: the profile breaks at 200) -> matches D3-W
   D4 line, Measure along World X: 'Picked' LINEAR from a sketch point at x 100 to a mate connector at x 350 - 50 mm
      (station 300), w 2 -> 5 -> matches D4-W, and runs x 100 .. 300 with width 2 / 5 at its ends
+  D5 arc: 'Quad' QUADRATIC flat at start 0..250 w 2->8 h 0->2 (buffers 20 / 20: C1 into the ramp, a kink out of
+     it at 230), 'Hold' CONSTANT 250..450 w 8 h 2 -> matches D5-W
 
 usage (repo root, Git Bash): PYTHONPATH=. MSYS_NO_PATHCONV=1 python devtools/onshape/build_deo_regions_tests.py
 Needs the offset_profile_core tab and the Regions source pushed first (driven_edge_offset featurespecs must list
@@ -170,9 +172,12 @@ def station(prefix, ns, value=None, pick=None, offset="0 mm"):
             num(ids[2], offset), num(ids[3], value or "0 mm")]
 
 
-def region(ns, name, start, end, shape, cw="0 mm", ch="0 mm", w0="0 mm", w1="0 mm", h0="0 mm", h1="0 mm", b0="0 mm", b1="0 mm"):
-    """start / end: (value, pick, offset) of each station."""
+def region(ns, name, start, end, shape, cw="0 mm", ch="0 mm", w0="0 mm", w1="0 mm", h0="0 mm", h1="0 mm", b0="0 mm", b1="0 mm",
+           flat="START"):
+    """start / end: (value, pick, offset) of each station. Every item parameter is sent, hidden ones included
+    (correction 38); `flat` is QUADRATIC's "Flat at"."""
     return item(s("regionName", name), *station("start", ns, *start), *station("end", ns, *end), en("shape", "OffsetProfileShape", shape, ns),
+                en("quadraticFlat", "OffsetQuadraticFlat", flat, ns),
                 num("constantWidth", cw), num("constantHeight", ch), num("startWidth", w0), num("endWidth", w1),
                 num("startHeight", h0), num("endHeight", h1), num("startBuffer", b0), num("endBuffer", b1))
 
@@ -189,6 +194,12 @@ def step(ns):
 
 def picked(ns):
     return [region(ns, "Picked", (None, vertex(p100)), (None, body(mc350), "-50 mm"), "LINEAR", w0="2 mm", w1="5 mm")]
+
+
+def quad_hold(ns):
+    return [region(ns, "Quad", ("0 mm", None), ("250 mm", None), "QUADRATIC", w0="2 mm", w1="8 mm", h0="0 mm", h1="2 mm",
+                   b0="20 mm", b1="20 mm", flat="START"),
+            region(ns, "Hold", ("250 mm", None), ("450 mm", None), "CONSTANT", cw="8 mm", ch="2 mm")]
 
 
 # No intersections: no blends (touching regions with equal values join; a jump breaks). The editing logic does not
@@ -220,4 +231,6 @@ pair("D2", ref_arc, "arc R400", ramp_hold, "same regions as P-D1 (arc)")
 pair("D3", ref_arc, "arc R400 step", step, "Low 0..200 w 3 | High 200..400 w 6 -> 2 pieces, step at 200")
 pair("D4", ref_line, "line World X, point / MC stations", picked,
      "Picked LINEAR pt x100 .. MC x350 - 50 (300) w 2->5 -> x 100..300", measure="WORLD_X")
+pair("D5", ref_arc, "arc R400 quadratic", quad_hold,
+     "Quad QUADRATIC flat at start 0..250 w 2->8 h 0->2 (buffers 20), Hold 250..450 w 8 h 2 -> 1 piece")
 print("studio", E)

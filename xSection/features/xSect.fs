@@ -24,7 +24,7 @@ import(path : "a2f2ae10eb446d33ccd47bb9", version : "7b8b82625834395fb57e6d86");
 //import xSectComposites
 import(path : "8c01f1526e7b93cc89fe9811", version : "2d8b92bd11edcfc8999293e2");
 //import xSectDebug
-import(path : "4973f90e73d48ab3578831f0", version : "e38efa2b86d0d20ef2d1f40f");
+import(path : "4973f90e73d48ab3578831f0", version : "cb50eeb383ffb50105f8084f");
 //import xSectReferencePoints
 import(path : "08fddb59786b6bfee020ee05", version : "16a3259bfc59aee2fbc2c1dd");
 // xSect_GJ (torsional stiffness)

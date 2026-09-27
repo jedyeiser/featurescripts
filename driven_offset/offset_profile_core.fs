@@ -44,7 +44,21 @@ export enum OffsetProfileShape
     annotation { "Name" : "Linear" }
     LINEAR,
     annotation { "Name" : "Smooth" }
-    SMOOTH
+    SMOOTH,
+    annotation { "Name" : "Quadratic" }
+    QUADRATIC
+}
+
+/**
+ * Which end of a QUADRATIC region's ramp is flat (zero slope): the retired Variable surface offset's "Zero slope
+ * at start" and Offset edges' "Zero slope at" (AT_START / AT_END). START: S(u) = u^2; END: S(u) = 2u - u^2.
+ */
+export enum OffsetQuadraticFlat
+{
+    annotation { "Name" : "Start" }
+    START,
+    annotation { "Name" : "End" }
+    END
 }
 
 /** How the profile runs from one point to the next. */
@@ -131,8 +145,15 @@ export predicate offsetProfileRegionsPredicate(definition is map)
         }
 
         annotation { "Name" : "Shape", "Default" : OffsetProfileShape.LINEAR, "UIHint" : UIHint.HORIZONTAL_ENUM,
-                    "Description" : "Constant (one width and height), linear, or smooth (smootherstep: flat, zero curvature at both ends of the change)." }
+                    "Description" : "Constant (one width and height), linear, smooth (smootherstep: flat, zero curvature at both ends of the change), or quadratic (a parabola, flat at one end of the change)." }
         region.shape is OffsetProfileShape;
+
+        if (region.shape == OffsetProfileShape.QUADRATIC)
+        {
+            annotation { "Name" : "Flat at", "Default" : OffsetQuadraticFlat.START, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL],
+                        "Description" : "The end of the change with zero slope (width and height alike); the other end meets its buffer, or the next region, at a kink." }
+            region.quadraticFlat is OffsetQuadraticFlat;
+        }
 
         if (region.shape == OffsetProfileShape.CONSTANT)
         {
@@ -449,12 +470,23 @@ function sortedRegionOrder(regions is array) returns array
 // Shapes and region values (all internal math in metres, as plain numbers)
 // ============================================================================
 
-/** The shape function S(u) and its first and second derivatives, u in [0, 1]. */
-function shapeAt(shape is OffsetProfileShape, u is number) returns array
+/**
+ * The shape function S(u) and its first and second derivatives, u in [0, 1]. `flatEnd` (QUADRATIC only): the
+ * zero slope is at u = 1 instead of u = 0.
+ */
+function shapeAt(shape is OffsetProfileShape, flatEnd is boolean, u is number) returns array
 {
     if (shape == OffsetProfileShape.LINEAR)
     {
         return [u, 1, 0];
+    }
+    if (shape == OffsetProfileShape.QUADRATIC)
+    {
+        if (flatEnd)
+        {
+            return [2 * u - u * u, 2 - 2 * u, -2];
+        }
+        return [u * u, 2 * u, 2];
     }
     const u2 = u * u;
     const u3 = u2 * u;
@@ -480,7 +512,7 @@ function regionValue(region is map, channel is string, x is number) returns arra
         return [v1, 0, 0];
     }
     const len = rampEnd - rampStart;
-    const s = shapeAt(region.shape, (x - rampStart) / len);
+    const s = shapeAt(region.shape, region.quadraticFlatEnd == true, (x - rampStart) / len);
     return [v0 + (v1 - v0) * s[0], (v1 - v0) * s[1] / len, (v1 - v0) * s[2] / (len * len)];
 }
 
@@ -514,7 +546,8 @@ function regionData(region is map, index is number) returns map
             "w1" : (constant ? region.constantWidth : region.endWidth) / meter,
             "h0" : (constant ? region.constantHeight : region.startHeight) / meter,
             "h1" : (constant ? region.constantHeight : region.endHeight) / meter,
-            "shape" : region.shape
+            "shape" : region.shape,
+            "quadraticFlatEnd" : region.shape == OffsetProfileShape.QUADRATIC && region.quadraticFlat == OffsetQuadraticFlat.END
         };
 }
 
@@ -529,15 +562,20 @@ function segment(xa is number, xb is number, degree is number, w is function, h 
 }
 
 /**
- * The region's own sub-segments inside [a, b]: the start buffer (constant), the ramp (linear or smootherstep),
- * the end buffer (constant). Zero-length pieces are skipped.
+ * The region's own sub-segments inside [a, b]: the start buffer (constant), the ramp (linear, smootherstep or
+ * quadratic), the end buffer (constant). Zero-length pieces are skipped. The ramp's degree is the shape's own
+ * (1, 5, 2), so offsetProfileCurves writes it as an exact Bezier of that degree.
  */
 function regionSegments(region is map, a is number, b is number) returns array
 {
     const tol = OFFSET_PROFILE_TOLERANCE / meter;
     const w = function(x is number) returns number { return regionValue(region, "w", x)[0]; };
     const h = function(x is number) returns number { return regionValue(region, "h", x)[0]; };
-    const rampDegree = region.shape == OffsetProfileShape.SMOOTH ? 5 : 1;
+    var rampDegree = region.shape == OffsetProfileShape.SMOOTH ? 5 : 1;
+    if (region.shape == OffsetProfileShape.QUADRATIC)
+    {
+        rampDegree = 2;
+    }
     const parts = [[region.xs, region.xs + region.b0, 1, "start buffer"],
             [region.xs + region.b0, region.xe - region.b1, rampDegree, "ramp"],
             [region.xe - region.b1, region.xe, 1, "end buffer"]];

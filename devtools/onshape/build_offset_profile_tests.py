@@ -6,6 +6,10 @@
       -> one piece 6000 .. 6350, width 2 at 6050, 3 at 6225
   T7  Points: 7000 (value) w 0, smooth to a mate connector at x 7150 - 50 mm (station 7100) w 3
       -> one piece 7000 .. 7100, width 3 at 7100
+  T8  Regions: 'Quad' QUADRATIC flat at START 8000 .. 8100, w 0 -> 4, h 0 (no buffers)
+      -> one piece, one degree-2 edge; w 0.25 at 8025, 1 at 8050; slope 0 at 8000, 0.08 at 8100
+  T9  Regions: 'Quad' QUADRATIC flat at END 9000 .. 9100, w 0 -> 4, h 0 (no buffers)
+      -> one piece, one degree-2 edge; w 1.75 at 9025, 3 at 9050; slope 0.08 at 9000, 0 at 9100
 
 usage (repo root, Git Bash): PYTHONPATH=. MSYS_NO_PATHCONV=1 python devtools/onshape/build_offset_profile_tests.py
 """
@@ -93,8 +97,10 @@ def station(prefix, value=None, pick=None, offset="0 mm"):
             num(ids[2], offset), num(ids[3], value or "0 mm")]
 
 
-def region(name, start, end, shape, cw="0 mm", ch="0 mm", w0="0 mm", w1="0 mm", h0="0 mm", h1="0 mm"):
+def region(name, start, end, shape, cw="0 mm", ch="0 mm", w0="0 mm", w1="0 mm", h0="0 mm", h1="0 mm", flat="START"):
+    """Every item parameter, hidden ones included (correction 38); `flat` is QUADRATIC's "Flat at"."""
     return item(s("regionName", name), *start, *end, en("shape", "OffsetProfileShape", shape),
+                en("quadraticFlat", "OffsetQuadraticFlat", flat),
                 num("constantWidth", cw), num("constantHeight", ch), num("startWidth", w0), num("endWidth", w1),
                 num("startHeight", h0), num("endHeight", h1), num("startBuffer", "0 mm"), num("endBuffer", "0 mm"))
 
@@ -122,3 +128,9 @@ profile("T7 Points 7000 w0 smooth to MC-50 (7100) w3 -> one piece 7000..7100", "
     item(*station("station", "7000 mm"), num("width", "0 mm"), num("height", "0 mm"), en("transition", "OffsetPointTransition", "SMOOTH")),
     item(*station("station", pick='qCreatedBy(makeId("%s"), EntityType.BODY)' % mc7, offset="-50 mm"), num("width", "3 mm"),
          num("height", "0 mm"), en("transition", "OffsetPointTransition", "SMOOTH"))])
+
+# T8 / T9
+profile("T8 Regions QUADRATIC flat at start 8000..8100 w 0->4 -> w 0.25 at 8025, 1 at 8050, slope 0 at 8000", "REGIONS", regions=[
+    region("Quad", station("start", "8000 mm"), station("end", "8100 mm"), "QUADRATIC", w0="0 mm", w1="4 mm", flat="START")])
+profile("T9 Regions QUADRATIC flat at end 9000..9100 w 0->4 -> w 1.75 at 9025, 3 at 9050, slope 0 at 9100", "REGIONS", regions=[
+    region("Quad", station("start", "9000 mm"), station("end", "9100 mm"), "QUADRATIC", w0="0 mm", w1="4 mm", flat="END")])

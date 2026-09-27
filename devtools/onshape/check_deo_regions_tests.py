@@ -21,7 +21,7 @@ E = [e["id"] for e in c.list_elements(D, W) if e["name"] == "DEO regions tests"]
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 
 TOL_MM = 1e-3
-CASES = ["D1", "D2", "D3", "D4"]
+CASES = ["D1", "D2", "D3", "D4", "D5"]
 
 SCRIPT = r'''
 function(context is Context, queries)

@@ -9,7 +9,7 @@ import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b982
 // IMPORT: offset_profile_core.fs (same document; Regions profile source: region UI + in-memory profile).
 // export import: its enums are parameter types of this feature (and reach DOS / evaluate_offset harmlessly).
 // PLACEHOLDER: replace path with the new tab's element id and version with its microversion once the tab exists.
-export import(path : "9553c095d4d77c83c34a0a36", version : "223aaaeb6c249e3bf29f4710");
+export import(path : "9553c095d4d77c83c34a0a36", version : "9959cfca807a6db2d6508f32");
 // IMPORT: driven_edge_offset_icon.svg (feature icon)
 IconNamespace::import(path : "a5478e383c9502910040f17c", version : "234ff09fac32522d9e5809af");
 

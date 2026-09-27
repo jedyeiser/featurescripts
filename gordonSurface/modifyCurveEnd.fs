@@ -2,20 +2,16 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import tools/bspline_knots.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/dadb70c0a762573622fa609c", version : "744c7afe122e8ae2b3b17a12");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/dadb70c0a762573622fa609c", version : "744c7afe122e8ae2b3b17a12");
 // import tools/frenet
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/a19a275a032ee47f4dbcc83c", version : "e11709063628c9ca70edfca2");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/a19a275a032ee47f4dbcc83c", version : "e11709063628c9ca70edfca2");
 //import tools/transition_functions (export/import)
-export import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/a656fa0d17723f0dafaf8638", version : "172b230734bb73cef189f4ed");
+export import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/a656fa0d17723f0dafaf8638", version : "f1dad98aa52458dfc0c1109e");
 //import constEnums (export - needed for enums in preconditions)
-export import(path : "050a4670bd42b2ca8da04540", version : "7a407d1cf555ba0254c21433");
+export import(path : "050a4670bd42b2ca8da04540", version : "14e722813a28828489a4152a");
 //import scaledCurve
-import(path : "2dfee1d44e9bde0daba9d73e", version : "43e9d842d62de2642d74cefc");
+import(path : "2dfee1d44e9bde0daba9d73e", version : "da388d9fca74198ea618b08a");
 
-//import continuityTools
-import(path : "6db2a56b5418f71818d7a607", version : "572e9b00092aba3c046bebcc");
-//import curveOps
-import(path : "73de71e75b755f0042e0e6d8", version : "585ddf22041315f25495eeec");
 
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");

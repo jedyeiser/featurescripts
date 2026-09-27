@@ -2,12 +2,10 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import constEnums (export - needed for enums in preconditions)
-export import(path : "050a4670bd42b2ca8da04540", version : "7a407d1cf555ba0254c21433");
+export import(path : "050a4670bd42b2ca8da04540", version : "14e722813a28828489a4152a");
 //import tools/transition_functions (export import)
-export import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/a656fa0d17723f0dafaf8638", version : "172b230734bb73cef189f4ed");
+export import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/a656fa0d17723f0dafaf8638", version : "f1dad98aa52458dfc0c1109e");
 
-//import curveOps
-import(path : "73de71e75b755f0042e0e6d8", version : "585ddf22041315f25495eeec");
 // IMPORT: scaled_curve_icon.svg (feature icon)
 IconNamespace::import(path : "8b2fda35054b2e92a6334cd4", version : "501e50ca04aec46d534e616f");
 
