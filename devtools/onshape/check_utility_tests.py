@@ -1,13 +1,13 @@
 """Check the utility-feature test cases built by build_utility_tests.py:
 
-  example_1 / "Utility tests"  Join wires J1-J5, Extrude edge E1, E2, E4, E7, E8
-  bodyRename / "Rename tests"  Simple Body Rename R1-R6
+  example_1 / "Utility tests"  Join wires J1-J6, Extrude edge E1, E2, E4, E7, E8, E10-E13, E15-E17
+  bodyRename / "Rename tests"  Simple Body Rename R1-R9
 
 Each case is measured through the eval API and printed PASS / FAIL, and every feature's status is checked
 (fixtures OK; a case's expected status from EXPECTED_STATUS, else OK). The expectations are the DESIRED
 behaviour from reviews/2026-09-25_tools_review/utility.md. Cases that document a bug present today are in
 EXPECT_FAIL: a failure there prints XFAIL and is not counted; a pass prints XPASS and IS counted, so the entry
-gets removed once the bug is fixed. The error cases (E3, E6, E9) are checked by the builder (temporary instances).
+gets removed once the bug is fixed. The error cases (E3, E6, E9, E18) are checked by the builder (temporary instances).
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/check_utility_tests.py
 """
@@ -75,6 +75,11 @@ case("U", "J5 ", r'''
         return [count(out) == 1 && count(edgesOf(out)) == 2 && kept, wireSummary(out) ~ "; seeds kept " ~ kept];''',
      WA="J5 wire A", WB="J5 wire B")
 
+case("U", "J6 ", r'''
+        const out = wires(SELF);
+        const n = name(out);
+        return [count(out) == 1 && n == "J6 joined", wireSummary(out) ~ ", name '" ~ n ~ "' (expected 1 wire named 'J6 joined')"];''')
+
 
 # ---- Extrude edge ----
 def extrusion(prefix, area, z0, z1, nsheets=1):
@@ -94,6 +99,16 @@ extrusion("E2 ", 1000, 10, 35, nsheets=2)  # opposite top edges of the block: no
 extrusion("E4 ", 2500, -5, 20)
 extrusion("E7 ", 2000, -20, 0)
 extrusion("E8 ", 2000, 0, 20)
+extrusion("E10 ", 3000, -15, 15)   # symmetric
+extrusion("E11 ", 4000, 0, 40)     # up to face above
+extrusion("E12 ", 3000, -30, 0)    # up to face below: extrudes toward the target
+extrusion("E13 ", 2500, 0, 25)     # up to vertex
+extrusion("E15 ", 2000, -20, 0)    # opposite direction, non-negative depth
+extrusion("E16 ", 2000, -20, 0)    # legacy signed depth still honoured
+extrusion("E17 ", 2000, 0, 20)
+case("U", "E17 ", r'''
+        const n = name(sheets(SELF));
+        return [n == "E17 ribbon", "sheet name '" ~ n ~ "' (expected 'E17 ribbon')"];''')
 
 
 # ---- Simple Body Rename ----
@@ -115,9 +130,15 @@ case("R", "R4 ", r'''
 case("R", "R5 ", r'''
         const n = name(created(@BLOCK@));
         return [n == "R5 kept", "name '" ~ n ~ "' (expected 'R5 kept')"];''', BLOCK="R5 block")
+renamed("R7 ", "R7 block", "R7 Spar_A_Spar")
+renamed("R8 ", "R8 block", "R8 a_b")
+case("R", "R9 ", r'''
+        const n = name(created(@BLOCK@));
+        return [count(created(@BLOCK@)) == 1 && n != "R9 renamed" && n != "", "name '" ~ n ~ "' (expected the default name)"];''', BLOCK="R9 block")
 
 # Simple rename reports "Renamed N bodies." as INFO (2026-09-25 guards), so every rename case is INFO except R5.
-EXPECTED_STATUS = {"J3 ": "WARNING", "J4 ": "INFO", "R1 ": "INFO", "R2 ": "INFO", "R3 ": "INFO", "R4 ": "INFO", "R5 ": "WARNING", "R6 ": "INFO"}
+EXPECTED_STATUS = {"J3 ": "WARNING", "J4 ": "INFO", "R1 ": "INFO", "R2 ": "INFO", "R3 ": "INFO", "R4 ": "INFO", "R5 ": "WARNING", "R6 ": "INFO",
+                   "R7 ": "INFO", "R8 ": "INFO", "R9 ": "WARNING"}
 
 # J2, J3, R4, R5 fixed 2026-09-25 (quick fixes after the tools review) -- they now guard against regressions.
 EXPECT_FAIL = {

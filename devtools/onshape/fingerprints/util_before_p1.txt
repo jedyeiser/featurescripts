@@ -1,0 +1,11 @@
+J1 two touching wires -> 1 wire, 2 edges, length 170.7107, seeds deleted | joinWires | bodies 1 | edges 2 len 170.71068 | faces 0 area 0
+J2 block edge + touching wire -> 1 wire, 2 edges, length 100, block kept, seed deleted | joinWires | bodies 1 | edges 2 len 100 | faces 0 area 0
+J3 two wires with a 50 gap -> WARNING, 2 wires, length 200 | joinWires | bodies 2 | edges 2 len 200 | faces 0 area 0
+J4 three wires closing a triangle -> INFO, 1 closed wire, 3 edges, 3 vertices | joinWires | bodies 1 | edges 3 len 288.67962 | faces 0 area 0
+J5 keep seed bodies -> 1 wire, both seeds kept (3 bodies) | joinWires | bodies 1 | edges 2 len 170.71068 | faces 0 area 0
+E1 wire + mate connector, 30 -> 1 sheet, area 5356.194, z 0..30 | extrudeEdge | bodies 1 | edges 7 len 447.07963 | faces 2 area 5356.1945
+E2 two block edges + Top plane, 25 -> 1 sheet, area 1000, z 10..35 | extrudeEdge | bodies 2 | edges 8 len 180 | faces 2 area 1000
+E4 wire, vector (0, 0, 1), 20 + second direction 5 -> area 2500, z -5..20 | extrudeEdge | bodies 1 | edges 4 len 250 | faces 1 area 2500
+E7 wire + mate connector flipped, 20 -> area 2000, z -20..0 | extrudeEdge | bodies 1 | edges 4 len 240 | faces 1 area 2000
+E8 wire + mate connector picked by its vertex, 20 -> area 2000, z 0..20 | extrudeEdge | bodies 1 | edges 4 len 240 | faces 1 area 2000
+ALL bodies 64 total edge length 8176.3993

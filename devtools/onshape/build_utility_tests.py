@@ -17,7 +17,10 @@ Join wires (utility.md J1-J5)
   J3  two wires with a 50 mm gap                  -> WARNING, 2 wires (BUG today: no warning)
   J4  three wires forming a closed triangle       -> INFO, 1 closed wire (BUG today: no notice)
   J5  J1 with Keep seed bodies                    -> 1 wire, both seeds kept (3 bodies)
-Extrude edge (utility.md E1-E6; E5 "up to surface" cannot be set: the feature has BLIND only)
+  J6  two touching wires, Name "J6 joined"        -> 1 wire named "J6 joined"
+Extrude edge (utility.md E1-E6). E1-E9 use the legacy hidden input-type selection and signed depths (the
+parameters every saved instance still carries); E10+ use the single selection "extrudeEntities" and the
+non-negative depths (legacyDepths false, which the dialog's editing logic sets on a new instance).
   E1  wire (line 100 + R50 quarter arc) + mate connector, 30     -> 1 sheet, area 5356.194, z 0..30
   E2  two model edges of a block + the Top plane, 25             -> 1 sheet, area 1000, z 10..35
   E4  wire, direction vector (0, 0, 1), 20 + second direction 5  -> area 2500, z -5..20
@@ -28,6 +31,14 @@ Extrude edge (utility.md E1-E6; E5 "up to surface" cannot be set: the feature ha
   E9  direction from a circular edge (temporary, deleted)        -> ERROR (today: extractDir falls off its end
                                                                     with no return, so the error is a type error,
                                                                     not a message; the status cannot tell them apart)
+  E10 symmetric, depth 30                                        -> area 3000, z -15..15
+  E11 up to face: offset plane z = 40                            -> area 4000, z 0..40
+  E12 up to face below (plane z = -30), direction +Z             -> area 3000, z -30..0 (extrudes toward the target)
+  E13 up to vertex: sketch point at z = 25                       -> area 2500, z 0..25
+  E15 flip (Opposite direction), depth 20                        -> area 2000, z -20..0
+  E16 legacy signed depth -20 (saved-instance compatibility)     -> area 2000, z -20..0
+  E17 Name "E17 ribbon", depth 20                                -> area 2000, z 0..20, sheet named "E17 ribbon"
+  E18 up to face with nothing picked (temporary, deleted)        -> ERROR
 Simple Body Rename (utility.md R1-R6)
   R1  solid                      -> "R1 solid"
   R2  composite part             -> "R2 composite"
@@ -37,6 +48,11 @@ Simple Body Rename (utility.md R1-R6)
                                     CANNOT_RESOLVE_ENTITIES on the empty item, so the feature is an ERROR and
                                     nothing is renamed; verified by eval)
   R6  wire body                  -> "R6 wire"
+  R7  find "Rib" -> "Spar" in "R7 Rib_A_Rib"  -> INFO, "R7 Spar_A_Spar" (every occurrence)
+  R8  find "." -> "_" in "R8 a.b"             -> INFO, "R8 a_b" (literal text, not a regexp)
+  R9  find/replace with no captured names     -> WARNING, name unchanged
+  R7-R9 supply "capturedNames" as the editing logic would write it: a REST insert does not run editing logic,
+  so the capture itself (getProperty in the dialog, correction 36) is checked by hand in the dialog.
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_utility_tests.py
 """
@@ -278,6 +294,10 @@ w5a = U.wire("J5 wire A line (4000, 0) to (4100, 0)", polyline("l", [(4000, 0), 
 w5b = U.wire("J5 wire B line (4100, 0) to (4150, 50)", polyline("l", [(4100, 0), (4150, 50)]))
 U.custom("J5 keep seed bodies -> 1 wire, both seeds kept (3 bodies)", {"edgeWireSelection": [body(w5a), body(w5b)], "keepSeeds": True})
 
+w6a = U.wire("J6 wire A line (5000, 0) to (5100, 0)", polyline("l", [(5000, 0), (5100, 0)]))
+w6b = U.wire("J6 wire B line (5100, 0) to (5150, 50)", polyline("l", [(5100, 0), (5150, 50)]))
+U.custom("J6 Name 'J6 joined' -> 1 wire named 'J6 joined'", {"edgeWireSelection": [body(w6a), body(w6b)], "wireName": "J6 joined"})
+
 # ============================================================================
 # example_1 / Utility tests: Extrude edge (same studio, own feature studio tab)
 # ============================================================================
@@ -346,6 +366,54 @@ ok &= X.temporary("E9 direction from a circular edge (extractDir falls through)"
     "inputType": ens("inputType", "ExtrudeEdgeInputType", "BODIES"), "wireBody": body(w9),
     "extrudeDirectionFrom": ens("extrudeDirectionFrom", "ExtrudeEdgeDirectionType", "QUERY"), "directionQuery": edges(c9),
     "extrudeLength": "20 mm"})
+
+
+# New-style instances: one selection, non-negative depths (legacyDepths false), vector (0, 0, 1).
+def ee_new(name, wire_id, extra):
+    given = {"extrudeEntities": body(wire_id), "legacyDepths": False,
+             "extrudeDirectionFrom": ens("extrudeDirectionFrom", "ExtrudeEdgeDirectionType", "VECTOR"),
+             "vectorX": "0", "vectorY": "0", "vectorZ": "1"}
+    given.update(extra)
+    return ee(name, given)
+
+
+def end_type(value):
+    return ens("endType", "ExtrudeEdgeEndType", value)
+
+
+w10 = X.wire("E10 wire line (17000, 0) to (17100, 0)", polyline("l", [(17000, 0), (17100, 0)]))
+ee_new("E10 symmetric, depth 30 -> area 3000, z -15..15", w10, {"endType": end_type("SYMMETRIC"), "depth": "30 mm"})
+
+w11 = X.wire("E11 wire line (18000, 0) to (18100, 0)", polyline("l", [(18000, 0), (18100, 0)]))
+ee_new("E11 up to face: plane z = 40 -> area 4000, z 0..40", w11,
+       {"endType": end_type("UP_TO_SURFACE"), "endFace": X.plane_at("Plane z = 40", 40)})
+
+w12 = X.wire("E12 wire line (19000, 0) to (19100, 0)", polyline("l", [(19000, 0), (19100, 0)]))
+ee_new("E12 up to face below: plane z = -30, direction +Z -> area 3000, z -30..0", w12,
+       {"endType": end_type("UP_TO_SURFACE"), "endFace": X.plane_at("Plane z = -30", -30)})
+
+w13 = X.wire("E13 wire line (20000, 0) to (20100, 0)", polyline("l", [(20000, 0), (20100, 0)]))
+p13 = X.sketch("E13 target point (20050, 60) on plane z = 25", X.plane_at("Plane z = 25", 25), [point("p", *mmv(20050, 60))])
+ee_new("E13 up to vertex at z = 25 -> area 2500, z 0..25", w13,
+       {"endType": end_type("UP_TO_VERTEX"), "endVertex": 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % p13})
+
+w15 = X.wire("E15 wire line (21000, 0) to (21100, 0)", polyline("l", [(21000, 0), (21100, 0)]))
+ee_new("E15 flip, depth 20 -> area 2000, z -20..0", w15, {"flipVector": True, "depth": "20 mm"})
+
+w16 = X.wire("E16 wire line (22000, 0) to (22100, 0)", polyline("l", [(22000, 0), (22100, 0)]))
+ee("E16 legacy signed depth -20 -> area 2000, z -20..0", {
+    "inputType": ens("inputType", "ExtrudeEdgeInputType", "BODIES"), "wireBody": body(w16),
+    "extrudeDirectionFrom": ens("extrudeDirectionFrom", "ExtrudeEdgeDirectionType", "VECTOR"),
+    "vectorX": "0", "vectorY": "0", "vectorZ": "1", "extrudeLength": "-20 mm"})
+
+w17 = X.wire("E17 wire line (23000, 0) to (23100, 0)", polyline("l", [(23000, 0), (23100, 0)]))
+ee_new("E17 Name 'E17 ribbon', depth 20 -> area 2000, z 0..20, named 'E17 ribbon'", w17, {"depth": "20 mm", "bodyName": "E17 ribbon"})
+
+w18 = X.wire("E18 wire line (24000, 0) to (24100, 0)", polyline("l", [(24000, 0), (24100, 0)]))
+ok &= X.temporary("E18 up to face with nothing picked", "E18 temporary", {
+    "extrudeEntities": body(w18), "legacyDepths": False, "endType": end_type("UP_TO_SURFACE"), "endFace": [],
+    "extrudeDirectionFrom": ens("extrudeDirectionFrom", "ExtrudeEdgeDirectionType", "VECTOR"),
+    "vectorX": "0", "vectorY": "0", "vectorZ": "1"})
 print("Utility tests studio", U.E)
 
 # ============================================================================
@@ -383,5 +451,21 @@ rename("R5 lost reference + block -> WARNING, block still renamed 'R5 kept'",
 
 r6 = R.wire("R6 wire line (5000, 0) to (5100, 0)", polyline("l", [(5000, 0), (5100, 0)]))
 rename("R6 wire body renamed -> 'R6 wire'", [(body(r6), "R6 wire")])
+
+
+def find_replace(name, target_expr, captured, find, replace):
+    """Find/replace case; capturedNames as the editing logic would write it (REST inserts skip editing logic)."""
+    return R.custom(name, {"renameArray": [], "useFindReplace": True, "findReplaceBodies": target_expr,
+                           "findText": find, "replaceText": replace, "capturedNames": captured})
+
+
+r7 = R.block("R7 block at (6000, 0, 0)", 6000, 0)
+find_replace("R7 find 'Rib' replace 'Spar' in 'R7 Rib_A_Rib' -> INFO, 'R7 Spar_A_Spar'", body(r7), "R7 Rib_A_Rib", "Rib", "Spar")
+
+r8 = R.block("R8 block at (7000, 0, 0)", 7000, 0)
+find_replace("R8 find '.' replace '_' in 'R8 a.b' -> INFO, 'R8 a_b' (literal)", body(r8), "R8 a.b", ".", "_")
+
+r9 = R.block("R9 block at (8000, 0, 0)", 8000, 0)
+find_replace("R9 find/replace with no captured names -> WARNING, name unchanged", body(r9), "", "Part", "R9 renamed")
 print("Rename tests studio", R.E)
 print("temporary error cases:", "all passed" if ok else "FAILED")

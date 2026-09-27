@@ -12,6 +12,10 @@ export const joinWires = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Name" : "Keep seed bodies" }
         definition.keepSeeds is boolean;
+
+        annotation { "Name" : "Name", "Default" : "", "MaxLength" : 128,
+                    "Description" : "Name for the joined wire (numbered when there are several). Empty keeps the default name." }
+        definition.wireName is string;
     }
     {
         // Selected edges plus every edge of the selected wire bodies.
@@ -39,6 +43,19 @@ export const joinWires = defineFeature(function(context is Context, id is Id, de
             reportFeatureInfo(context, id, "The joined wire is a closed loop.");
         }
 
+        if (definition.wireName != "")
+        {
+            const joined = evaluateQuery(context, wires);
+            for (var i = 0; i < size(joined); i += 1)
+            {
+                setProperty(context, {
+                        "entities" : joined[i],
+                        "propertyType" : PropertyType.NAME,
+                        "value" : size(joined) == 1 ? definition.wireName : definition.wireName ~ " " ~ (i + 1)
+                });
+            }
+        }
+
         // Only wire bodies picked directly are consumed; sketch bodies are never deleted.
         if (!definition.keepSeeds)
         {
@@ -50,4 +67,7 @@ export const joinWires = defineFeature(function(context is Context, id is Id, de
                 });
             }
         }
+    }, {
+        "keepSeeds" : false,
+        "wireName" : ""
     });
