@@ -352,8 +352,9 @@ Every offset is positive toward it (negative away, 0 a copy); the splits use it 
 | **Inside profile + offset** | kept BETWEEN the splits |
 | **Outside profiles** | *Same outside surface* (one surface, kept beyond both splits) or *Different start and end surfaces* (a start surface kept beyond the start split, an end surface beyond the end split), each with its offset |
 | **Start / End fillet** | radius; edge = the loft's joint with the Inside or the Outside surface; *Keep opposite edge* protects the other joint edge (edge overflow on, that edge kept) |
-| **Merge into one surface** | default on; needed for fillets |
 | **Keep input surfaces** | default on; off deletes the profile surfaces used |
+
+The pieces and lofts are always united into one surface; a joint that does not close is an error naming it.
 
 **Outputs:** `output`, `insideSurface`, `startOutside`, `endOutside`, `startLoft`, `endLoft`, the joint edges
 `startInsideEdge`, `startOutsideEdge`, `endInsideEdge`, `endOutsideEdge`, and `boundaryEdges`.

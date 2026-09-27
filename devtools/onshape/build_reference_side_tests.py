@@ -536,7 +536,7 @@ def join_params(start, end, point, inside, inside_off, outside=None, outside_off
               en("startFilletEdge", "JoinFilletEdge", start_fillet[1], NS["join_profile_surfaces"]), b("startKeepOpposite", start_fillet[2])]
     else:
         p += [b("startFillet", False)]
-    return p + [b("endFillet", False), b("merge", True), b("keepInputs", True)]
+    return p + [b("endFillet", False), b("keepInputs", True)]
 
 
 for tag, x0, inside_off, want in (("J1", 21000, "0 mm", "5 faces, area 24000"), ("J2", 21400, "5 mm", "inside at z -5, area 25000"),

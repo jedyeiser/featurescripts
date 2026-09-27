@@ -7,6 +7,8 @@ import(path : "742e5b3f04cc9115de8b6d8a", version : "7a62aeff1d43b811531bb007");
 import(path : "637854639ad04840dc6f998d", version : "511ae1dfefcb5b639728ab8b");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+// IMPORT: join_profile_surfaces_icon.svg (feature icon)
+IconNamespace::import(path : "3749310adb8f74e6e862ad8e", version : "0f493347f757f749e45e12b9");
 
 /**
  * Join profile surfaces (2026-09-27): join an inside profile surface to outside profile surfaces
@@ -48,7 +50,7 @@ export enum JoinFilletEdge
     OUTSIDE
 }
 
-annotation { "Feature Type Name" : "Join profile surfaces",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Join profile surfaces",
         "Feature Type Description" : "Offset an inside profile and outside profile(s) toward an inside point, cut them at a start and an end split (inside keeps the middle, outside the ends), and join the cuts with lofted strips, optionally filleted.",
         "Filter Selector" : "allparts" }
 export const joinProfileSurfaces = defineFeature(function(context is Context, id is Id, definition is map)
