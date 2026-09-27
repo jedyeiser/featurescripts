@@ -6,6 +6,7 @@ TARGETS = [
     ("reference_side", "offset_plus", "offset_plus"),
     ("reference_side", "thicken_plus", "thicken_plus"),
     ("reference_side", "orient_to_reference", "orient_to_reference"),
+    ("reference_side", "move_face_plus", "move_face_plus"),  # 2026-09-26, wired by hand
     ("variable_tools", "extract_variables", "extract_variables"),
     ("curve_tools", "clean_wire", "clean_wire"),
     ("curve_tools", "map_curve", "map_curve"),
