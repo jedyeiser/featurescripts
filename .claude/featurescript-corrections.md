@@ -1693,3 +1693,11 @@ Measured live in the "Case pattern v2 spikes" studio (case_pattern/spike_v2.fs):
   User rule: pass outside references (side references, mate connectors) in through a Define case input,
   never click them inside a repeated feature (T9a still flips on an old Reference_Side version).
 
+
+---
+
+## Correction 51: a parameter "Filter" must be written inline, not as a const (2026-09-27)
+
+**Symptom**: `join_profile_surfaces:70:60 definition.insideProfile: Invalid filter` (warning, one per use) when the
+annotation said `"Filter" : PROFILE_FILTER` with `const PROFILE_FILTER = EntityType.BODY && BodyType.SHEET && ...;`.
+**Fix**: write the filter expression inline in every annotation. fscheck does not catch it; `pushproject --check` does.

@@ -23,7 +23,7 @@ E = studios[STUDIO]
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 TABS = {e["name"]: e for e in ELEMENTS if e["elementType"] == "FEATURESTUDIO"}
 NS = {name: "e%s::m%s" % (TABS[name]["id"], TABS[name]["microversionId"])
-      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference", "move_face_plus", "enclose_plus"]}
+      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference", "move_face_plus", "enclose_plus", "join_profile_surfaces"]}
 
 STATE = {"features": None}
 
@@ -514,4 +514,46 @@ x0 = 19400
 e4 = tube("E4 square tube 100 at x 19400", square(x0))
 enclose("E4 Enclose+ inside point outside the tube -> ERROR", [
     q("surfaces", body(e4)), q("caps", cap_hi, cap_lo), q("insidePoint", ref_top("E4 point outside (19600, 0, 0)", x0 + 200, 0)), b("keepTools", False)])
+print("studio", E)
+
+# ============================================================================
+# Join profile surfaces (2026-09-27)
+# ============================================================================
+def join(name, params):
+    return feature(name, "joinProfileSurfaces", params, NS["join_profile_surfaces"])
+
+
+def join_params(start, end, point, inside, inside_off, outside=None, outside_off="0 mm", start_prof=None, start_off="0 mm",
+                end_prof=None, end_off="0 mm", start_fillet=None):
+    p = [q("startSplit", start), q("endSplit", end), q("insidePoint", point), q("insideProfile", body(inside)), num("insideOffset", inside_off)]
+    if outside is not None:
+        p += [en("outsideMode", "JoinOutsideMode", "SAME", NS["join_profile_surfaces"]), q("outsideProfile", body(outside)), num("outsideOffset", outside_off)]
+    else:
+        p += [en("outsideMode", "JoinOutsideMode", "DIFFERENT", NS["join_profile_surfaces"]), q("startProfile", body(start_prof)),
+              num("startOffset", start_off), q("endProfile", body(end_prof)), num("endOffset", end_off)]
+    if start_fillet is not None:
+        p += [b("startFillet", True), num("startRadius", start_fillet[0]),
+              en("startFilletEdge", "JoinFilletEdge", start_fillet[1], NS["join_profile_surfaces"]), b("startKeepOpposite", start_fillet[2])]
+    else:
+        p += [b("startFillet", False)]
+    return p + [b("endFillet", False), b("merge", True), b("keepInputs", True)]
+
+
+for tag, x0, inside_off, want in (("J1", 21000, "0 mm", "5 faces, area 24000"), ("J2", 21400, "5 mm", "inside at z -5, area 25000"),
+                                  ("J4", 22200, "0 mm", "start fillet r 5 on the inside edge, 6 faces")):
+    ins = sheet("%s inside profile z 0, x %d..%d" % (tag, x0 - 100, x0 + 100), [(x0 - 100, 0), (x0 + 100, 0)])
+    out = sheet("%s outside profile z 20" % tag, [(x0 - 100, 20), (x0 + 100, 20)])
+    st = plane_at("%s start split x = %d" % (tag, x0 - 50), "Right", x0 - 50)
+    en_ = plane_at("%s end split x = %d" % (tag, x0 + 50), "Right", x0 + 50)
+    pt = ref_front("%s inside point (%d, 0, -10)" % (tag, x0), x0, -10)
+    join("%s Join profile surfaces, same outside -> %s" % (tag, want),
+         join_params(st, en_, pt, ins, inside_off, outside=out, start_fillet=("5 mm", "INSIDE", False) if tag == "J4" else None))
+
+x0 = 21800
+ins = sheet("J3 inside profile z 0, x %d..%d" % (x0 - 100, x0 + 100), [(x0 - 100, 0), (x0 + 100, 0)])
+so = sheet("J3 start outside profile z 20, x %d..%d" % (x0 - 100, x0), [(x0 - 100, 20), (x0, 20)])
+eo = sheet("J3 end outside profile z 30, x %d..%d" % (x0, x0 + 100), [(x0, 30), (x0 + 100, 30)])
+join("J3 Join profile surfaces, different start (z 20) / end (z 30) -> area 25000", join_params(
+    plane_at("J3 start split x = %d" % (x0 - 50), "Right", x0 - 50), plane_at("J3 end split x = %d" % (x0 + 50), "Right", x0 + 50),
+    ref_front("J3 inside point (%d, 0, -10)" % x0, x0, -10), ins, "0 mm", start_prof=so, end_prof=eo))
 print("studio", E)

@@ -337,6 +337,30 @@ tube capped at z -20 / +20 with an extra plane at z 0 still gives one solid). Co
 **Tests:** E1 (tube + plane caps: 400000 mm3, 6 faces), E2 (half tube + mirror: one part, 6 faces -- the split faces
 merged), E3 (a stray pocket dropped), E4 (point outside: error).
 
+## 2.4c Join profile surfaces
+
+*Added 2026-09-27.* Joins an inside profile surface to outside profile surface(s) across a start and an end split,
+with a lofted strip at each split -- the Offset+ / Split+ / loft steps done by hand before, in one feature.
+
+**One inside point drives every side decision.** It lies inside every profile surface and between the two splits.
+Every offset is positive toward it (negative away, 0 a copy); the splits use it as their inside reference.
+
+| Parameter | Meaning |
+|---|---|
+| **Start split / End split** | mate connector, surface or face |
+| **Inside point** | vertex or mate connector (see above) |
+| **Inside profile + offset** | kept BETWEEN the splits |
+| **Outside profiles** | *Same outside surface* (one surface, kept beyond both splits) or *Different start and end surfaces* (a start surface kept beyond the start split, an end surface beyond the end split), each with its offset |
+| **Start / End fillet** | radius; edge = the loft's joint with the Inside or the Outside surface; *Keep opposite edge* protects the other joint edge (edge overflow on, that edge kept) |
+| **Merge into one surface** | default on; needed for fillets |
+| **Keep input surfaces** | default on; off deletes the profile surfaces used |
+
+**Outputs:** `output`, `insideSurface`, `startOutside`, `endOutside`, `startLoft`, `endLoft`, the joint edges
+`startInsideEdge`, `startOutsideEdge`, `endInsideEdge`, `endOutsideEdge`, and `boundaryEdges`.
+
+**Tests:** J1 (stepped join, 5 faces, 24000 mm2), J2 (inside offset 5), J3 (different start / end outsides), J4 (start
+fillet).
+
 ## 2.5 Outputs for Extract variables
 
 Each feature publishes its results with the Variable_tools producer library, so **Extract variables** can turn

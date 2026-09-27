@@ -22,10 +22,10 @@ import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b982
  *        or a start surface split at the start and an end surface split at the end (Different).
  *     3. A loft joins each pair of cut edges: inside startCut to outside startCut, and the same at
  *        the end.
- *     4. Merge: everything is united into one surface; then the fillets, which need the merged
- *        joint edges.
+ *     4. Merge: everything is united into one surface (always -- joining is the point; a joint that
+ *        does not close is an error naming it), then the fillets on the merged joint edges.
  *
- * Publishes (Extract variables): output (the joined surface, or the pieces), insideSurface,
+ * Publishes (Extract variables): output (the joined surface), insideSurface,
  * startOutside, endOutside, startLoft, endLoft (faces), the four joint edges startInsideEdge,
  * startOutsideEdge, endInsideEdge, endOutsideEdge, and boundaryEdges.
  */
@@ -122,9 +122,6 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
             definition.endKeepOpposite is boolean;
         }
 
-        annotation { "Name" : "Merge into one surface", "Default" : true, "Description" : "Unite the pieces and the lofts. Needed for fillets." }
-        definition.merge is boolean;
-
         annotation { "Name" : "Keep input surfaces", "Default" : true, "Description" : "Off: delete the profile surfaces this feature used." }
         definition.keepInputs is boolean;
     }
@@ -142,10 +139,6 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         {
             verifyNonemptyQuery(context, definition, "startProfile", "Select the start outside profile surface.");
             verifyNonemptyQuery(context, definition, "endProfile", "Select the end outside profile surface.");
-        }
-        if ((definition.startFillet || definition.endFillet) && !definition.merge)
-        {
-            throw regenError("Fillets need Merge into one surface: the joint edges exist only once the pieces are joined.", ["merge"]);
         }
         const inputs = same ? [definition.insideProfile, definition.outsideProfile]
                             : [definition.insideProfile, definition.startProfile, definition.endProfile];
@@ -205,16 +198,36 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         const pieces = qUnion([qOwnerBody(insideFaces), qOwnerBody(startOutsideFaces), qOwnerBody(endOutsideFaces),
                     qCreatedBy(id + "startLoft", EntityType.BODY), qCreatedBy(id + "endLoft", EntityType.BODY)]);
 
-        // 4. Merge, then the fillets on the merged joint edges.
-        if (definition.merge)
+        // 4. Merge (always: joining is the point), then the fillets on the merged joint edges.
+        var mergeFailed = false;
+        try silent
         {
             opBoolean(context, id + "merge", { "tools" : qUnion(evaluateQuery(context, pieces)), "operationType" : BooleanOperationType.UNION });
+        }
+        catch
+        {
+            mergeFailed = true;
         }
         const result = qUnion(evaluateQuery(context, qOwnerBody(qUnion([insideFaces, startOutsideFaces, endOutsideFaces, startLoftFaces, endLoftFaces]))));
         const jointEdge = function(key is string) returns Query
             {
                 return qIntersection([qEntityFilter(joints[key], EntityType.EDGE), qOwnedByBody(result, EntityType.EDGE)]);
             };
+        // Every joint must have closed: its edge now shared by the loft and the surface it joins.
+        var openJoints = [];
+        for (var joint in [["startInside", "start loft to the inside surface"], ["startOutside", "start loft to the outside surface"],
+                           ["endInside", "end loft to the inside surface"], ["endOutside", "end loft to the outside surface"]])
+        {
+            if (isQueryEmpty(context, qEdgeTopologyFilter(jointEdge(joint[0]), EdgeTopology.TWO_SIDED)))
+            {
+                openJoints = append(openJoints, joint[1]);
+            }
+        }
+        if (mergeFailed || size(evaluateQuery(context, result)) != 1 || size(openJoints) > 0)
+        {
+            throw regenError("The pieces did not join into one surface" ~ (size(openJoints) > 0 ? ": open at the " ~ join(openJoints, ", ") : "")
+                    ~ ". A loft edge does not meet its cut edge -- check that the profiles reach the splits cleanly.", ["startSplit"]);
+        }
         if (definition.startFillet)
         {
             filletJoint(context, id + "startFillet", jointEdge("startInside"), jointEdge("startOutside"), definition.startFilletEdge,
@@ -241,7 +254,7 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
             };
         embedStandardOutputs(context, id, {
                     "output" : result,
-                    "outputDescription" : definition.merge ? "The joined surface" : "The pieces (not merged)",
+                    "outputDescription" : "The joined surface",
                     "inputs" : qUnion(concatenateArrays([inputs, [definition.startSplit, definition.endSplit]])),
                     "queries" : {
                         "insideSurface" : faceKey(insideFaces, "Faces from the inside profile (between the splits)."),
@@ -268,7 +281,6 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         "endOffset" : 0 * meter,
         "startFillet" : false,
         "endFillet" : false,
-        "merge" : true,
         "keepInputs" : true
     });
 

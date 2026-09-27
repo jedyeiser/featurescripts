@@ -416,6 +416,27 @@ for tag, want_faces, x_range in (("E1", 6, None), ("E2", 6, (18350, 18450)), ("E
         return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 1) ~ " (400000), faces " ~ faces ~ " (%d), capFaces " ~ caps ~ " (2), surfaceFaces " ~ sides ~ " (4), x "
             ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0])];''' % (want_faces, xr, want_faces))
 
+# Join profile surfaces (2026-09-27)
+for tag, area, faces in (("J1", 24000, 5), ("J2", 25000, 5), ("J3", 25000, 5), ("J4", None, 6)):
+    case(tag + " ", r'''
+        const out = embedded(SELF);
+        const bodies = evaluateQuery(context, out.query.output.value);
+        if (size(bodies) != 1) { return [false, size(bodies) ~ " bodies (1)"]; }
+        const faces = count(qOwnedByBody(bodies[0], EntityType.FACE));
+        const area = evArea(context, { "entities" : qOwnedByBody(bodies[0], EntityType.FACE) });
+        var keys = "";
+        var keysOk = true;
+        for (var k in ["insideSurface", "startOutside", "endOutside", "startLoft", "endLoft", "startInsideEdge", "startOutsideEdge", "endInsideEdge", "endOutsideEdge"])
+        {
+            const n = count(out.query[k].value);
+            keysOk = keysOk && n >= 1;
+            keys ~= k ~ " " ~ n ~ ", ";
+        }
+        const sq = millimeter * millimeter;
+        const areaOk = %s;
+        return [faces == %d && areaOk && keysOk, "faces " ~ faces ~ " (%d), area " ~ roundToPrecision(area / sq, 2) ~ " (%s); " ~ keys];''' % (
+        "true" if area is None else "abs(area - %d * sq) < 0.01 * sq" % area, faces, faces, "any" if area is None else area))
+
 EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference", "E4 Enclose+"]
 
 
@@ -448,7 +469,7 @@ def main():
 
     for prefix, body, names in CASES:
         cases = [(n, i) for n, i in by_name if n.startswith(prefix) and states.get(i, {}).get("featureStatus") != "ERROR"
-                 and any(k in n for k in ["Split+", "Offset+", "Mutual Trim+", "Thicken+", "Orient to reference", "Move face+", "Enclose+"])]
+                 and any(k in n for k in ["Split+", "Offset+", "Mutual Trim+", "Thicken+", "Orient to reference", "Move face+", "Enclose+", "Join profile surfaces"])]
         if len(cases) != 1:
             print("FAIL", prefix, "-- case feature not found")
             failed += 1
