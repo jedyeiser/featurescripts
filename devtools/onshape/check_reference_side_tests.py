@@ -437,7 +437,31 @@ for tag, area, faces in (("J1", 24000, 5), ("J2", 25000, 5), ("J3", 25000, 5), (
         return [faces == %d && areaOk && keysOk, "faces " ~ faces ~ " (%d), area " ~ roundToPrecision(area / sq, 2) ~ " (%s); " ~ keys];''' % (
         "true" if area is None else "abs(area - %d * sq) < 0.01 * sq" % area, faces, faces, "any" if area is None else area))
 
-EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference", "E4 Enclose+"]
+# Referenced part (2026-09-28): volume, x range (or None), face counts per key.
+for tag, vol, x_range, keys in (
+        ("P1", 100000, None, {"profileFaces": 1, "oppositeFaces": 1, "sideFaces": 0}),
+        ("P2", 60000, None, {"profileFaces": 1, "oppositeFaces": 1}),
+        ("P3", 10000, (24175, 24225), {"profileFaces": 1, "oppositeFaces": 1, "sideFaces": 4}),
+        ("P4", 26400, (24745, 24855), {"profileFaces": 1, "oppositeFaces": 1, "sideFaces": 2, "cap1Faces": 2}),
+        ("P5", 17500, (25375, 25425), {"topFaces": 1, "bottomFaces": 1, "sideFaces": 4}),
+        ("P6", 12000, (25990, 26010), {"topFaces": 1, "bottomFaces": 1, "sideFaces": 2, "cap1Faces": 1, "cap2Faces": 1}),
+        ("P7", 48000, (26560, 26640), {"topFaces": 1, "bottomFaces": 1, "sideFaces": 2, "cap1Faces": 1, "cap2Faces": 1})):
+    xr = "true" if x_range is None else "near(bb.minCorner[0], mm(%g), mm(0.01)) && near(bb.maxCorner[0], mm(%g), mm(0.01))" % x_range
+    key_src = "".join('\n        n = count(out.query.%s.value); keysOk = keysOk && n == %d; keys ~= "%s " ~ n ~ " (%d), ";' % (k, n, k, n) for k, n in keys.items())
+    case(tag + " ", r"""
+        const out = embedded(SELF);
+        const bodies = evaluateQuery(context, out.query.output.value);
+        if (size(bodies) != 1) { return [false, size(bodies) ~ " parts (1)"]; }
+        const v = evVolume(context, { "entities" : bodies[0] });
+        const bb = evBox3d(context, { "topology" : bodies[0] });
+        var keysOk = true;
+        var keys = "";
+        var n = 0;%s
+        const ok = abs(v - %d * millimeter ^ 3) < 0.01 * millimeter ^ 3 && %s && keysOk;
+        return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (%d), x " ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0]) ~ ", z "
+            ~ fmt(bb.minCorner[2]) ~ ".." ~ fmt(bb.maxCorner[2]) ~ "; " ~ keys];""" % (key_src, vol, xr, vol))
+
+EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part"]
 
 
 def strings(result):
@@ -469,7 +493,7 @@ def main():
 
     for prefix, body, names in CASES:
         cases = [(n, i) for n, i in by_name if n.startswith(prefix) and states.get(i, {}).get("featureStatus") != "ERROR"
-                 and any(k in n for k in ["Split+", "Offset+", "Mutual Trim+", "Thicken+", "Orient to reference", "Move face+", "Enclose+", "Join profile surfaces"])]
+                 and any(k in n for k in ["Split+", "Offset+", "Mutual Trim+", "Thicken+", "Orient to reference", "Move face+", "Enclose+", "Join profile surfaces", "Referenced part"])]
         if len(cases) != 1:
             print("FAIL", prefix, "-- case feature not found")
             failed += 1

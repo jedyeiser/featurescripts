@@ -11,6 +11,7 @@ with sync_playwright() as pw:
     p.wait_for_timeout(35000)
     for s in steps:
         if s[0] == "click": p.mouse.click(s[1], s[2]); p.wait_for_timeout(2500)
+        elif s[0] == "rclick": p.mouse.click(s[1], s[2], button="right"); p.wait_for_timeout(2500)
         elif s[0] == "dbl": p.mouse.dblclick(s[1], s[2]); p.wait_for_timeout(2500)
         elif s[0] == "wait": p.wait_for_timeout(s[1] * 1000)
         elif s[0] == "shot": p.screenshot(path=s[1])

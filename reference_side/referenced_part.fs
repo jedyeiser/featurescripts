@@ -366,6 +366,7 @@ function enclosedPart(context is Context, id is Id, boundaries is Query, point i
 /** Split+ of the solids by one or two tools, keeping the reference point's side; the solids left. */
 function keepInside(context is Context, id is Id, solids is Query, startTool is Query, endTool is Query, reference is Query) returns Query
 {
+    println("[refpart dbg] " ~ toString(id) ~ ": solids " ~ size(evaluateQuery(context, solids)) ~ ", start " ~ size(evaluateQuery(context, startTool)) ~ ", end " ~ size(evaluateQuery(context, endTool)));
     splitPlus(context, id, {
                 "splitType" : SplitPlusType.PART,
                 "targets" : solids,

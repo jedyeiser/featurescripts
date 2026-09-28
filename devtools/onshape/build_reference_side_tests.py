@@ -23,7 +23,7 @@ E = studios[STUDIO]
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 TABS = {e["name"]: e for e in ELEMENTS if e["elementType"] == "FEATURESTUDIO"}
 NS = {name: "e%s::m%s" % (TABS[name]["id"], TABS[name]["microversionId"])
-      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference", "move_face_plus", "enclose_plus", "join_profile_surfaces"]}
+      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference", "move_face_plus", "enclose_plus", "join_profile_surfaces", "referenced_part"]}
 
 STATE = {"features": None}
 
@@ -558,3 +558,75 @@ join("J3 Join profile surfaces, different start (z 20) / end (z 30) -> area 2500
     ref_front("J3 inside point (%d, 0, -10)" % x0, x0, -10), ins, "0 mm", start_prof=so, end_prof=eo))
 print("studio", E)
 
+# ============================================================================
+# Referenced part (2026-09-28)
+# ============================================================================
+def refpart(name, part_type, point, profile=None, profile_off="0 mm", thickness="1 mm", top=None, top_off="0 mm", bottom=None,
+            bottom_off="0 mm", periphery=None, periphery_off="0 mm", cap1=None, cap1_off="0 mm", cap2=None, cap2_off="0 mm", mirror=None):
+    def qs(pid, e):
+        return q(pid, e) if e is not None else q(pid)
+    return feature(name, "referencedPart", [
+        en("partType", "ReferencedPartType", part_type, NS["referenced_part"]), q("referencePoint", point),
+        qs("profile", profile), num("profileOffset", profile_off), num("thickness", thickness),
+        qs("top", top), num("topOffset", top_off), qs("bottom", bottom), num("bottomOffset", bottom_off),
+        qs("periphery", periphery), num("peripheryOffset", periphery_off),
+        qs("cap1", cap1), num("cap1Offset", cap1_off), qs("cap2", cap2), num("cap2Offset", cap2_off), qs("mirrorPlane", mirror)],
+        NS["referenced_part"])
+
+
+x0 = 23000
+p1 = sheet("P1 profile z 0, x %d..%d" % (x0 - 100, x0 + 100), [(x0 - 100, 0), (x0 + 100, 0)])
+refpart("P1 Referenced part, thickened 5 toward the point -> volume 100000, profile face z 0, opposite z 5", "THICKENED",
+        ref_front("P1 reference point (%d, 0, 10)" % x0, x0, 10), profile=body(p1), thickness="5 mm")
+
+x0 = 23600
+p2 = sheet("P2 profile z 0, x %d..%d" % (x0 - 100, x0 + 100), [(x0 - 100, 0), (x0 + 100, 0)])
+refpart("P2 Referenced part, profile offset 2 toward, thickness -3 (away) -> z -1..2, volume 60000", "THICKENED",
+        ref_front("P2 reference point (%d, 0, 10)" % x0, x0, 10), profile=body(p2), profile_off="2 mm", thickness="-3 mm")
+
+x0 = 24200
+p3 = sheet("P3 profile z 0, x %d..%d" % (x0 - 100, x0 + 100), [(x0 - 100, 0), (x0 + 100, 0)])
+p3w = tube("P3 periphery square 60 at x %d" % x0, square(x0, 30))
+refpart("P3 Referenced part, thickened 4, periphery offset 5 in -> 50 x 50 x 4, volume 10000, 4 side faces", "THICKENED",
+        ref_front("P3 reference point (%d, 0, 10)" % x0, x0, 10), profile=body(p3), thickness="4 mm", periphery=body(p3w), periphery_off="5 mm")
+
+x0 = 24800
+p4 = sheet("P4 half profile z 0, x %d..%d" % (x0 - 100, x0), [(x0 - 100, 0), (x0, 0)])
+p4w = tube("P4 periphery U open at x %d" % x0, [(x0 + 20, -40), (x0 - 80, -40), (x0 - 80, 40), (x0 + 20, 40)], closed=False)
+refpart("P4 Referenced part, half, cap plane x %d offset 5, mirror x %d -> x %d..%d, volume 26400, 2 cap faces" % (x0 - 60, x0, x0 - 55, x0 + 55),
+        "THICKENED", ref_front("P4 reference point (%d, 0, 10) on the mirror plane" % x0, x0, 10), profile=body(p4), thickness="3 mm",
+        periphery=body(p4w), cap1=plane_at("P4 cap plane x = %d" % (x0 - 60), "Right", x0 - 60), cap1_off="5 mm",
+        mirror=plane_at("P4 mirror plane x = %d" % x0, "Right", x0))
+
+x0 = 25400
+p5t = sheet("P5 top z 10, x %d..%d" % (x0 - 100, x0 + 100), [(x0 - 100, 10), (x0 + 100, 10)])
+p5b = sheet("P5 bottom z 0", [(x0 - 100, 0), (x0 + 100, 0)])
+p5w = tube("P5 periphery square 60 at x %d" % x0, square(x0, 30))
+refpart("P5 Referenced part, constrained, offsets top 1 bottom 2 periphery 5 -> 50 x 50 x 7, volume 17500", "CONSTRAINED",
+        ref_front("P5 reference point (%d, 0, 5)" % x0, x0, 5), top=body(p5t), top_off="1 mm", bottom=body(p5b), bottom_off="2 mm",
+        periphery=body(p5w), periphery_off="5 mm")
+
+x0 = 26000
+p6t = sheet("P6 top z 10, x %d..%d" % (x0 - 100, x0 + 100), [(x0 - 100, 10), (x0 + 100, 10)])
+p6b = sheet("P6 bottom z 0", [(x0 - 100, 0), (x0 + 100, 0)])
+p6w = tube("P6 periphery square 60 at x %d" % x0, square(x0, 30))
+refpart("P6 Referenced part, constrained, caps x +-10 inside a closed volume cut it -> 20 x 60 x 10, volume 12000", "CONSTRAINED",
+        ref_front("P6 reference point (%d, 0, 5)" % x0, x0, 5), top=body(p6t), bottom=body(p6b), periphery=body(p6w),
+        cap1=plane_at("P6 cap plane x = %d" % (x0 - 10), "Right", x0 - 10), cap2=plane_at("P6 cap plane x = %d" % (x0 + 10), "Right", x0 + 10))
+
+x0 = 26600
+p7t = sheet("P7 top z 10, x %d..%d" % (x0 - 100, x0 + 100), [(x0 - 100, 10), (x0 + 100, 10)])
+p7b = sheet("P7 bottom z 0", [(x0 - 100, 0), (x0 + 100, 0)])
+p7w = tube("P7 periphery wall y 30", [(x0 - 100, 30), (x0 + 100, 30)], closed=False)
+refpart("P7 Referenced part, constrained half, caps x +-40 close the ends, mirror y 0 -> 80 x 60 x 10, volume 48000", "CONSTRAINED",
+        ref_front("P7 reference point (%d, 0, 5) on the mirror plane" % x0, x0, 5), top=body(p7t), bottom=body(p7b), periphery=body(p7w),
+        cap1=plane_at("P7 cap plane x = %d" % (x0 - 40), "Right", x0 - 40), cap2=plane_at("P7 cap plane x = %d" % (x0 + 40), "Right", x0 + 40),
+        mirror=FRONT)
+
+x0 = 27200
+p8t = sheet("P8 top z 10, x %d..%d" % (x0 - 100, x0 + 100), [(x0 - 100, 10), (x0 + 100, 10)])
+p8b = sheet("P8 bottom z 0", [(x0 - 100, 0), (x0 + 100, 0)])
+p8w = tube("P8 periphery square 60 at x %d" % x0, square(x0, 30))
+refpart("P8 Referenced part, constrained, point outside the periphery -> ERROR", "CONSTRAINED",
+        ref_front("P8 reference point (%d, 0, 5) outside" % (x0 + 60), x0 + 60, 5), top=body(p8t), bottom=body(p8b), periphery=body(p8w))
+print("studio", E)
