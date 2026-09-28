@@ -23,6 +23,15 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 
 export const STATION_SET_SCHEMA = "stationSet/1";
 
+/**
+ * Attribute every Station geometry view composite ("<prefix> PLAN", ...) carries, so the "Station table"
+ * custom table can find them with qHasAttribute and build one table per part and view:
+ *     { "schema" : STATION_TABLE_SCHEMA, "title" : "<prefix> <VIEW>", "prefix", "view" (PLAN / PROFILE / name),
+ *       "rows" : [{ "id", "x", "lo", "hi", "span" (mm from the datum, plain numbers), "hit" }] }
+ */
+export const STATION_TABLE_ATTRIBUTE = "publishStationTable";
+export const STATION_TABLE_SCHEMA = "stationTable/1";
+
 export const STATION_COUNT_BOUNDS = { (unitless) : [2, 5, 200] } as IntegerBoundSpec;
 
 export enum StationEntryType
@@ -228,6 +237,59 @@ export function readStationSet(context is Context, name is string) returns array
         throw regenError("Variable " ~ name ~ " is not a station set.");
     }
     return value.stations;
+}
+
+/**
+ * The stations of the Station definition features in `features` (a FeatureList), one
+ * definition after another. A Station definition embeds its set in its hidden producer slot
+ * toString(featureId), under variable.stationSet (extract_outputs); the entry is read structurally, as
+ * a plain value or as an extractable-variable descriptor.
+ */
+export function readStationDefinitions(context is Context, features is map) returns array
+{
+    const missing = "__no_station_definition__";
+    var stations = [];
+    for (var featureId in keys(features))
+    {
+        const slot = getVariable(context, toString(featureId), missing);
+        var set = undefined;
+        if (slot is map && slot.variable is map && slot.variable.stationSet != undefined)
+        {
+            // embedStandardOutputs files values under "variable" (queries under "query").
+            set = slot.variable.stationSet;
+            if (set is map && set.extractable != undefined)
+            {
+                set = set.value;
+            }
+        }
+        if (!(set is map) || set.schema != STATION_SET_SCHEMA || !(set.stations is array))
+        {
+            throw regenError("A picked feature gave no stations: pick Station definition features, and check that they regenerate.", ["stationDefinitions"]);
+        }
+        stations = concatenateArrays([stations, set.stations]);
+    }
+    return stations;
+}
+
+/**
+ * Stations from the picked Station definition features, followed by extra entries; ids must be
+ * unique across all of them. `legacySetName` (a variable name, from features saved before the
+ * Station definition pick existed) is read only when no definition is picked.
+ */
+export function collectStations(context is Context, definitions is map, legacySetName is string, entries is array) returns array
+{
+    var stations = [];
+    if (size(definitions) > 0)
+    {
+        stations = readStationDefinitions(context, definitions);
+    }
+    else if (legacySetName != "")
+    {
+        stations = readStationSet(context, legacySetName);
+    }
+    stations = concatenateArrays([stations, resolveStationEntries(context, entries)]);
+    checkUniqueIds(stations);
+    return stations;
 }
 
 /**

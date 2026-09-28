@@ -40,4 +40,7 @@ TARGETS = [
     ("gordonSurface", "modifyCurveEnd", "modify_curve_end"),
     # composite_part_tools document created 2026-09-26.
     ("composite_part_tools", "composite_boolean", "composite_boolean"),
+    # publish_tools, 2026-09-28 (user picked definition B, geometry A; drafts icons/drafts/publish_tools/).
+    ("publish_tools", "station_definition", "station_definition"),
+    ("publish_tools", "station_geometry", "station_geometry"),
 ]

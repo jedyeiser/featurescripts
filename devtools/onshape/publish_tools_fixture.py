@@ -27,6 +27,10 @@ def item(kind, ns, name, pt=(), second=(), edge=(), count=5, reverse=False):
             qids("lineEdge", edge), integer("count", count), b("reverse", reverse)]
 
 
+def flist(pid, ids):
+    return {"btType": "BTMParameterFeatureList-1749", "parameterId": pid, "featureIds": list(ids)}
+
+
 def point(name, pid, ns):
     return item("POINT", ns, name, pt=[pid])
 
@@ -34,7 +38,7 @@ def point(name, pid, ns):
 ns_def = namespace_of(D, W, "station_definition")
 ns_geo = namespace_of(D, W, "station_geometry")
 
-upsert(D, W, E, "stationDefinition", "Stations (test)", [
+defn = upsert(D, W, E, "stationDefinition", "Stations (test)", [
     s("variableName", "stations"),
     arr("stations", [
         point("TAIL", MC0, ns_def),
@@ -46,10 +50,13 @@ upsert(D, W, E, "stationDefinition", "Stations (test)", [
     b("printStations", True),
 ], ns_def)
 
+# Station geometry picks the Station definition feature (2026-09-28; the old "stationSet" variable name is kept hidden).
+DEF_ID = defn["feature"]["featureId"]
+
 upsert(D, W, E, "stationGeometry", "4101 stations (test)", [
     qids("part", [P4101]), qids("datum", [MC0]), s("prefix", "4101"),
     b("planView", True), b("profileView", False), arr("otherViews", []),
-    s("stationSet", "stations"), arr("stations", []),
+    flist("stationDefinitions", [DEF_ID]), s("stationSet", ""), arr("stations", []),
     b("stationLines", True), b("outlineWires", True), b("outlineSurface", False),
     b("datumPoint", True), b("flatCopy", True), b("printTable", True),
 ], ns_geo)
@@ -57,7 +64,7 @@ upsert(D, W, E, "stationGeometry", "4101 stations (test)", [
 upsert(D, W, E, "stationGeometry", "4501 stations (test)", [
     qids("part", [P4501]), qids("datum", [MC0]), s("prefix", "4501"),
     b("planView", True), b("profileView", True), arr("otherViews", []),
-    s("stationSet", "stations"),
+    flist("stationDefinitions", [DEF_ID]), s("stationSet", ""),
     arr("stations", [point("MIDTEST", MC145, ns_geo)]),
     b("stationLines", True), b("outlineWires", True), b("outlineSurface", True),
     b("datumPoint", True), b("flatCopy", False), b("printTable", True),

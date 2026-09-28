@@ -1,9 +1,11 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: station_utils.fs
-export import(path : "8a8c023e223cf0814d973a63", version : "f6270e601799e43830409451");
+export import(path : "8a8c023e223cf0814d973a63", version : "d4307c54b9d72c88604cc3fe");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
+// IMPORT: station_geometry_icon.svg (feature icon)
+IconNamespace::import(path : "4f939c6501b1063acaaa9e08", version : "b34c34d69f99fc93661e1b56");
 
 /**
  * Station geometry: the drawing-aid geometry for one part, generated instead of hand-built
@@ -18,7 +20,7 @@ import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b982
  * and groups them WITH THE PART in an open composite "<prefix> <VIEW>", excluded from the
  * BOM. The part stays its own body; open composites may share it.
  *
- * Stations come from a Station definition variable plus any listed here. Every station's
+ * Stations come from the picked Station definition feature(s) plus any listed here. Every station's
  * operation id is its name, so adding or removing a station never re-binds another
  * station's drawing dimensions.
  *
@@ -35,8 +37,10 @@ const REFINE_ROUNDS = 4;
 const REFINE_POINTS = 9;
 /** View planes are this large; the part must project inside. */
 const VIEW_PLANE_SIZE = 20 * meter;
+/** How far in front of the part (along the view normal) the view geometry is built, so a drawing view shows it. */
+const VIEW_CLEARANCE = 0.01 * millimeter;
 
-annotation { "Feature Type Name" : "Station geometry",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Station geometry",
             "Feature Type Description" : "Outline, station lines and datum for a part's drawing views, grouped with the part in open composites.",
             "Editing Logic Function" : "stationGeometryEditLogic" }
 export const stationGeometry = defineFeature(function(context is Context, id is Id, definition is map)
@@ -71,8 +75,13 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
             view.viewConnector is Query;
         }
 
-        annotation { "Name" : "Station set", "Default" : "", "MaxLength" : 64,
-                    "Description" : "Variable written by a Station definition (e.g. stations). Empty = none." }
+        annotation { "Name" : "Station definition",
+                    "Description" : "The Station definition feature(s) whose stations this part is measured at. Several are read one after another." }
+        definition.stationDefinitions is FeatureList;
+
+        // Before 2026-09-28 the set was named by its variable here; kept hidden so saved features still read it
+        // (used only when no Station definition is picked).
+        annotation { "Name" : "Station set (variable)", "Default" : "", "MaxLength" : 64, "UIHint" : UIHint.ALWAYS_HIDDEN }
         definition.stationSet is string;
 
         annotation { "Name" : "More stations", "Item name" : "station", "Item label template" : "#stationName" }
@@ -112,7 +121,7 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
             throw regenError("Enter a name prefix, e.g. the part number.", ["prefix"]);
         }
         const prefix = definition.prefix;
-        const stations = collectStations(context, definition.stationSet, definition.stations);
+        const stations = collectStations(context, definition.stationDefinitions, definition.stationSet, definition.stations);
         const views = viewFrames(context, definition);
         if (size(views) == 0)
         {
@@ -228,7 +237,12 @@ function viewFrames(context is Context, definition is map) returns array
  */
 function buildView(context is Context, vid is Id, definition is map, view is map, stations is array, prefix is string) returns map
 {
-    const cs = view.cs;
+    // Build on a plane just in FRONT of the part (along the view normal): geometry in the datum plane
+    // lies on or behind the part and a drawing view with hidden lines off does not show it (2026-09-28:
+    // the 4101 PLAN station lines sat on the part's underside, invisible in a top view). Measurements are
+    // in-plane, so the table does not change.
+    const extent = evBox3d(context, { "topology" : definition.part, "cSys" : view.cs, "tight" : true });
+    const cs = coordSystem(toWorld(view.cs, vector(0 * meter, 0 * meter, extent.maxCorner[2] + VIEW_CLEARANCE)), view.cs.xAxis, view.cs.zAxis);
     const n = cs.zAxis;
     const u = cs.xAxis;
     const viewPlane = plane(cs.origin, n, u);
@@ -340,11 +354,26 @@ function buildView(context is Context, vid is Id, definition is map, view is map
         queries[view.key ~ "Flat"] = flat;
     }
 
+    // The view's curves (station lines, outline wires) and datum point go into ONE closed composite
+    // "<prefix> <VIEW> WIRES", so the parts list shows one entry per view instead of a body per station
+    // (2026-09-28, user). Closed hides the members; drawings and queries still reach their edges.
+    var viewBodies = [definition.part];
+    queries[view.key ~ "Wires"] = qNothing();
+    if (size(members) > 0)
+    {
+        opCreateCompositePart(context, vid + "wires", { "bodies" : qUnion(members), "closed" : true });
+        const wiresComposite = qBodyType(qCreatedBy(vid + "wires", EntityType.BODY), BodyType.COMPOSITE);
+        nameBodies(context, wiresComposite, namePrefix ~ " WIRES");
+        setProperty(context, { "entities" : wiresComposite, "propertyType" : PropertyType.EXCLUDE_FROM_BOM, "value" : true });
+        viewBodies = append(viewBodies, wiresComposite);
+        queries[view.key ~ "Wires"] = wiresComposite;
+    }
+
     queries[view.key ~ "Surface"] = qNothing();
     if (definition.outlineSurface)
     {
         nameBodies(context, outlineBody, namePrefix ~ " REGION");
-        members = append(members, outlineBody);
+        viewBodies = append(viewBodies, outlineBody);
         queries[view.key ~ "Surface"] = outlineBody;
     }
     else
@@ -353,12 +382,15 @@ function buildView(context is Context, vid is Id, definition is map, view is map
     }
 
     opCreateCompositePart(context, vid + "composite", {
-                "bodies" : qUnion(concatenateArrays([[definition.part], members])),
+                "bodies" : qUnion(viewBodies),
                 "closed" : false
             });
     const composite = qBodyType(qCreatedBy(vid + "composite", EntityType.BODY), BodyType.COMPOSITE);
     nameBodies(context, composite, namePrefix);
     setProperty(context, { "entities" : composite, "propertyType" : PropertyType.EXCLUDE_FROM_BOM, "value" : true });
+    // Tag the view composite with its station rows: the "Station table" custom table finds it by this attribute.
+    setAttribute(context, { "entities" : composite, "name" : STATION_TABLE_ATTRIBUTE, "attribute" : {
+                    "schema" : STATION_TABLE_SCHEMA, "title" : namePrefix, "prefix" : prefix, "view" : view.label, "rows" : rows } });
     queries[view.key ~ "Composite"] = composite;
     output = append(output, composite);
 
