@@ -71,8 +71,9 @@ Ordinary features using the names. Useful patterns:
 - **Switch features per case** with a Boolean value: suppress a feature by expression (`#pin`). The suppression is
   re-checked for every case (test T6). Case 1 must be the variant you want in the tree.
 - **Numeric fields** take expressions: `#flag ? 3 mm : 0 mm`.
-- **Name parts** yourself with a rename feature using `#caseName` (then turn off *Name parts with the case name* in
-  Close case).
+- **Name parts** by giving them an output: with *Name parts after outputs* (Close case) the part is named like the
+  output's variable (`<case>_<output>`), in every case. To name parts yourself instead, turn it off and rename
+  inside the body (e.g. with `#caseName`).
 
 ## 5. Close case
 
@@ -82,7 +83,7 @@ Ordinary features using the names. Useful patterns:
 | **Features to repeat** | The body's features, in tree order. |
 | **Outputs** | Query variables every case publishes as `#<case>_<name>`, case 1 included (`#A_rib`, `#B_rib`...). **Query**: usually a query variable made inside the body. **Evaluate on use** off (default): the entities are fixed when the case closes and follow identity-preserving edits; **Track downstream changes** also follows entities later derived from them. On: the query is stored and re-evaluated wherever the variable is used. |
 | **Keep** | Which new bodies each case keeps: parts, surfaces, curves and points, mate connectors, planes (on); sketches (off). |
-| **Name parts with the case name** | On: new parts are named after case 1's with the case name as suffix (`Rib_A` -> `Rib_B`). Off: names are left to the body. |
+| **Name parts after outputs** | On (default): a part an output points to is named like the output's variable -- output `rib` gives the part `B_rib` in case B and `A_rib` in case 1 (a second part of the same output gets `_2`, ...). Parts no output points to keep their names. Off: names are left to the body. |
 
 ## 6. Case pattern
 
@@ -148,7 +149,6 @@ it with nothing still leaves the name). So the aim is fewer names, reused.
   Build sketches on geometry derived from the inputs. Untested live.
 - **Not in a pattern**: sheet metal and derived features.
 - **Cost**: every rebuild runs the body once per case.
-- **Part names** come from case 1's parts as cached when the Close case dialog was last edited.
 - **Dialog labels**: after *Update from Define case* the grey slot labels may show old names until the dialog is
   reopened; the stored values are right.
 

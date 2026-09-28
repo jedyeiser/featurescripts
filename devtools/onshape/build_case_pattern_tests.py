@@ -240,13 +240,12 @@ def define_case(name, case1, inputs, values=(), shared=()):
         arr("values", [[s("valueName", n), en("valueKind", "CaseValueKind", k, NS)] + typed("value", k, v) for n, k, v in values])], NS)
 
 
-def close_case(name, define, features, outputs=(), names="", name_parts=True):
+def close_case(name, define, features, outputs=(), name_parts=True):
     """outputs: [(name, query variable name, evaluate on use)]."""
     return feature(name, "closeCase", [b("nameParts", name_parts),
         flist("defineCase", [define]), flist("features", features),
         arr("outputs", [[s("outputName", n), qv("outputQuery", v), b("outputOnUse", on_use), b("outputTrack", False)]
-                        for n, v, on_use in outputs]),
-        s("templateNames", names)], NS)
+                        for n, v, on_use in outputs])], NS)
 
 
 def case_row(case_name, inputs, selections, values=(), row_values=()):
@@ -295,7 +294,7 @@ rimf = feature("T1 Rim: fillet #rim 2 mm (outside the list)", "fillet", [qv("ent
 qv1 = feature("T1 #bossEdges = edges created by Boss (native QV)", "queryVariable", native_qv("bossEdges", [boss], "EDGE"))
 bossf = feature("T1 Boss edges: fillet #bossEdges #edgeR mm", "fillet", [qv("entities", "bossEdges"), num("radius", "#edgeR * 1 mm")])
 qv1f = feature("T1 #bossFaces = faces created by Boss (native QV)", "queryVariable", native_qv("bossFaces", [boss], "FACE"))
-c1 = close_case("T1 Close case: output bossFaces", d1, [boss, rimf, qv1, bossf, qv1f], [("bossFaces", "bossFaces", False)], "0\t0\tBoss_A")
+c1 = close_case("T1 Close case: output bossFaces", d1, [boss, rimf, qv1, bossf, qv1f], [("bossFaces", "bossFaces", False)])
 case_pattern("T1 Case pattern B -> Boss_B 25 mm tall R3, #B_bossFaces", c1,
              [case_row("B", T1_IN, [top(B), rim(B)], T1_VAL, ["25 mm", "3"])])
 case_pattern("T1 Case pattern C -> Boss_C 8 mm tall R2, #C_bossFaces", c1,
@@ -346,12 +345,11 @@ case_pattern("T7 Case pattern D on top of B's stud (chained) -> z 30..40, #D_stu
 A, B, C = blocks("T8", 500)
 d8 = define_case("T8 Define case A: face8", "A", [("face8", top(A))])
 stud8 = feature("T8 Stud: extrude face8 10 mm new", "extrude", extrude_new("", qv("entities", "face8"), "10 mm"))
-c8on = close_case("T8 Close case, name parts ON", d8, [stud8], names="0	0	Stud_A")
-case_pattern("T8 Case pattern B, names on -> Stud_B", c8on, [case_row("B", ["face8"], [top(B)])])
-c8off = close_case("T8 Close case, name parts OFF", d8, [stud8], names="0	0	Stud_A", name_parts=False)
+qv8 = feature("T8 _stud = bodies created by Stud (native QV)", "queryVariable", native_qv("_stud", [stud8], "BODY"))
+c8on = close_case("T8 Close case, output stud, name parts after outputs ON", d8, [stud8, qv8], [("stud", "_stud", False)])
+case_pattern("T8 Case pattern B, names on -> case 1 part A_stud, case B part B_stud", c8on, [case_row("B", ["face8"], [top(B)])])
+c8off = close_case("T8 Close case, output stud, name parts OFF", d8, [stud8, qv8], [("stud", "_stud", False)], name_parts=False)
 case_pattern("T8 Case pattern C, names off -> default name", c8off, [case_row("C", ["face8"], [top(C)])])
-c8pre = close_case("T8 Close case, case 1 part named A_stud (case name first)", d8, [stud8], names="0	0	A_stud")
-case_pattern("T8 Case pattern D, prefix swapped -> D_stud", c8pre, [case_row("D", ["face8"], [bottom(B)])])
 
 # ---- T9 ----
 # Offset+ (Reference_Side) inside a case, side reference = a clicked vertex OUTSIDE the list (the RD 20FOU 28

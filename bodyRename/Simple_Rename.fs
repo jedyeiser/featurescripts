@@ -33,7 +33,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
             annotation { "Name" : "Body or composite part", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE || BodyType.COMPOSITE), "MaxNumberOfPicks" : 1, "UIHint" : UIHint.FOCUS_INNER_QUERY }
             body.query is Query;
 
-            annotation { "Name" : "New name" }
+            annotation { "Name" : "New name", "Description" : "Placed between the prefix and suffix. May be blank when a prefix or suffix is set." }
             body.renameString is string;
         }
 
@@ -87,8 +87,9 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
                 lost = append(lost, i + 1);
                 continue;
             }
-            // A blank name is skipped (it used to rename the body to just the prefix/suffix).
-            if (renameBody.renameString == "")
+            // A blank name with a prefix or suffix names the body prefix ~ suffix; only an all-blank name is skipped.
+            const newName = prefix ~ renameBody.renameString ~ suffix;
+            if (newName == "")
             {
                 blank = append(blank, i + 1);
                 continue;
@@ -96,7 +97,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
             setProperty(context, {
                     "entities" : renameBody.query,
                     "propertyType" : PropertyType.NAME,
-                    "value" : prefix ~ renameBody.renameString ~ suffix
+                    "value" : newName
             });
             renamed += 1;
             renamedBodies = append(renamedBodies, renameBody.query);

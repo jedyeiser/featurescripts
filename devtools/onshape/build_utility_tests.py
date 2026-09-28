@@ -43,7 +43,7 @@ Simple Body Rename (utility.md R1-R6)
   R1  solid                      -> "R1 solid"
   R2  composite part             -> "R2 composite"
   R3  prefix "P_" + suffix "_S"  -> "P_mid_S"
-  R4  blank name + prefix "PRE_" -> INFO, name unchanged (BUG today: renamed to the bare prefix "PRE_")
+  R4  blank name + prefix "PRE_" -> INFO, renamed "PRE_" (2026-09-27: blank + prefix/suffix is a valid name)
   R5  lost reference + a solid   -> WARNING, the solid still renamed "R5 kept" (BUG today: setProperty throws
                                     CANNOT_RESOLVE_ENTITIES on the empty item, so the feature is an ERROR and
                                     nothing is renamed; verified by eval)
@@ -443,7 +443,7 @@ r3 = R.block("R3 block at (2000, 0, 0)", 2000, 0)
 rename("R3 prefix 'P_' + 'mid' + suffix '_S' -> 'P_mid_S'", [(body(r3), "mid")], prefix="P_", suffix="_S")
 
 r4 = R.block("R4 block at (3000, 0, 0)", 3000, 0)
-rename("R4 blank name with prefix 'PRE_' -> INFO, skipped, name unchanged", [(body(r4), "")], prefix="PRE_")
+rename("R4 blank name with prefix 'PRE_' -> INFO, renamed 'PRE_'", [(body(r4), "")], prefix="PRE_")
 
 r5 = R.block("R5 block at (4000, 0, 0)", 4000, 0)
 rename("R5 lost reference + block -> WARNING, block still renamed 'R5 kept'",

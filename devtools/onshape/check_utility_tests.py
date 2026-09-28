@@ -124,9 +124,8 @@ renamed("R6 ", "R6 wire", "R6 wire")
 case("R", "R2 ", r'''
         const n = name(qBodyType(created(@COMP@), BodyType.COMPOSITE));
         return [n == "R2 composite", "composite name '" ~ n ~ "' (expected 'R2 composite')"];''', COMP="R2 composite part")
-case("R", "R4 ", r'''
-        const n = name(created(@BLOCK@));
-        return [count(created(@BLOCK@)) == 1 && n != "PRE_" && n != "", "name '" ~ n ~ "' (expected the default name, not 'PRE_')"];''', BLOCK="R4 block")
+# 2026-09-27: a blank name with a prefix/suffix names the body prefix ~ suffix (user's choice; skipped only if all blank).
+renamed("R4 ", "R4 block", "PRE_")
 case("R", "R5 ", r'''
         const n = name(created(@BLOCK@));
         return [n == "R5 kept", "name '" ~ n ~ "' (expected 'R5 kept')"];''', BLOCK="R5 block")

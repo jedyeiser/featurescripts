@@ -286,3 +286,12 @@ Explainer rewritten for v2 (docs/explainers/case_pattern/case_pattern_explained.
 - The toolbar/search also offers "Case pattern" from Case_Pattern V1 (older version) -- pick the
   workspace one, or version the document and update the toolbar.
 
+### Part naming = output naming (2026-09-27, user decision)
+Replaced the copy-and-swap scheme (case 1's names cached by Close case editing logic, case name swapped as a
+suffix / prefix -- stale when parts were renamed, produced "Surface 28_bf_inside_2d", a second naming rule) with
+"Name parts after outputs" (param id nameParts kept): the bodies an output points to are named exactly like the
+output's variable, `<case>_<output>` (`_2`, `_3` for further bodies), case 1 included (named at the Close case).
+No editing logic on Close case any more; separator and templateNames parameters removed. Naming pattern agreed:
+case names carry the variant (`bf_inside_3d`), output names the kind (`bump`, `surf`), published and part names
+read `<component>_<qualifier>_<2d|3d>_<kind>`; locals `_role`; no `-`, no leading `#` in text fields.
+

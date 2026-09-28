@@ -110,18 +110,18 @@ for prefix in ["T9b Case pattern", "T10 Case pattern"]:
 
 # ---- T1 ----
 r1 = row(0)
-boss_b = [b for b in r1 if b["name"] == "Boss_B"]
-boss_c = [b for b in r1 if b["name"] == "Boss_C"]
-check("T1 Boss_B exists, 25 mm tall (z 20..45)", len(boss_b) == 1 and near(boss_b[0]["z0"], 20) and near(boss_b[0]["z1"], 45),
+boss_b = [b for b in r1 if b["name"] == "B_bossFaces"]
+boss_c = [b for b in r1 if b["name"] == "C_bossFaces"]
+check("T1 boss B (part B_bossFaces) exists, 25 mm tall (z 20..45)", len(boss_b) == 1 and near(boss_b[0]["z0"], 20) and near(boss_b[0]["z1"], 45),
       str(boss_b))
-check("T1 Boss_B edges filleted (12 blends)", len(boss_b) == 1 and boss_b[0]["blends"] == 12, str(boss_b and boss_b[0]["blends"]))
-check("T1 Boss_C exists, 8 mm tall (z 20..28)", len(boss_c) == 1 and near(boss_c[0]["z0"], 20) and near(boss_c[0]["z1"], 28), str(boss_c))
-check("T1 Boss_C edges filleted (15 blends)", len(boss_c) == 1 and boss_c[0]["blends"] == 15, str(boss_c and boss_c[0]["blends"]))
+check("T1 boss B edges filleted (12 blends)", len(boss_b) == 1 and boss_b[0]["blends"] == 12, str(boss_b and boss_b[0]["blends"]))
+check("T1 boss C (part C_bossFaces) exists, 8 mm tall (z 20..28)", len(boss_c) == 1 and near(boss_c[0]["z0"], 20) and near(boss_c[0]["z1"], 28), str(boss_c))
+check("T1 boss C edges filleted (15 blends)", len(boss_c) == 1 and boss_c[0]["blends"] == 15, str(boss_c and boss_c[0]["blends"]))
 blocks_b = [b for b in at_x(r1, 200) if near(b["z1"], 20)]
 blocks_c = [b for b in at_x(r1, 400) if near(b["z1"], 20)]
 check("T1 block B rim filleted (outside-list edit, 4 blends)", len(blocks_b) == 1 and blocks_b[0]["blends"] == 4, str(blocks_b))
 check("T1 block C rim filleted (outside-list edit, 5 blends)", len(blocks_c) == 1 and blocks_c[0]["blends"] == 5, str(blocks_c))
-for case, owner in (("A", None), ("B", "Boss_B"), ("C", "Boss_C")):
+for case, owner in (("A", None), ("B", "B_bossFaces"), ("C", "C_bossFaces")):
     text = outputs["%s_bossFaces" % case]
     ok = text not in ("unset", "?") and not text.startswith("0 ") and (owner is None or text.endswith("on " + owner))
     check("T1 #%s_bossFaces published on case %s's boss" % (case, case), ok, text)
@@ -151,12 +151,12 @@ for n in ("A_stud", "B_stud", "D_stud"):
 
 # ---- T8 ----
 r8 = row(500)
+a8 = [b for b in at_x(r8, 0) if near(b["z0"], 20) and near(b["z1"], 30)]
 b8 = [b for b in at_x(r8, 200) if near(b["z0"], 20) and near(b["z1"], 30)]
 c8 = [b for b in at_x(r8, 400) if near(b["z0"], 20) and near(b["z1"], 30)]
-check("T8 names ON: case B stud named Stud_B", len(b8) == 1 and b8[0]["name"] == "Stud_B", str(b8 and b8[0]["name"]))
-check("T8 names OFF: case C stud keeps a default name", len(c8) == 1 and c8[0]["name"].startswith("Part "), str(c8 and c8[0]["name"]))
-d8 = [b for b in at_x(r8, 200) if near(b["z0"], -10) and near(b["z1"], 0)]
-check("T8 case name first: case 1 A_stud -> case D D_stud", len(d8) == 1 and d8[0]["name"] == "D_stud", str(d8 and d8[0]["name"]))
+check("T8 names ON: case 1 part named after its output (A_stud)", len(a8) >= 1 and "A_stud" in [b["name"] for b in a8], str([b["name"] for b in a8]))
+check("T8 names ON: case B part named after its output (B_stud)", len(b8) == 1 and b8[0]["name"] == "B_stud", str(b8 and b8[0]["name"]))
+check("T8 names OFF: case C part keeps a default name", len(c8) == 1 and c8[0]["name"].startswith("Part "), str(c8 and c8[0]["name"]))
 
 # ---- T9b / T10: offset sheets (Offset+ toward a reference at -X) ----
 SHEETS = '''function(context is Context, queries) {
