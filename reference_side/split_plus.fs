@@ -119,7 +119,11 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
         // The splits: every piece kept; Keep removes pieces afterwards, by region.
         var tempPlanes = [];
         var tools = [];
-        var pieces = faceMode ? qEntityFilter(definition.faceTargets, EntityType.FACE) : definition.targets;
+        // Part targets are tracked: a split's pieces are attributed to the feature that made the original body, and
+        // an EVALUATED target (a Case pattern input, a composite feature's query) resolves to nothing once split
+        // (2026-09-28, Referenced part).
+        var pieces = faceMode ? qEntityFilter(definition.faceTargets, EntityType.FACE)
+                              : qUnion([definition.targets, startTracking(context, definition.targets)]);
         for (var i = 0; i < size(toolInputs); i += 1)
         {
             var tool = toolInputs[i];

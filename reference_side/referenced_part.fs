@@ -176,7 +176,9 @@ export const referencedPart = defineFeature(function(context is Context, id is I
             }
         }
 
-        var solids;
+        // The part so far, as a HISTORY query: a split's pieces are attributed to the feature that made the
+        // original body, and an evaluated query of a split body resolves to nothing afterwards (2026-09-28).
+        const solids = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SOLID);
         if (thickened)
         {
             const profile = offsetSurface(context, id + "profileOffset", definition.profile, definition.profileOffset, definition.referencePoint);
@@ -194,10 +196,9 @@ export const referencedPart = defineFeature(function(context is Context, id is I
                         "checkCurvature" : true,
                         "debugPrint" : false
                     });
-            solids = qBodyType(qCreatedBy(id + "thicken", EntityType.BODY), BodyType.SOLID);
             if (side != undefined)
             {
-                solids = keepInside(context, id + "peripherySplit", solids, side, qNothing(), definition.referencePoint);
+                keepInside(context, id + "peripherySplit", solids, side, qNothing(), definition.referencePoint);
             }
         }
         else
@@ -207,16 +208,16 @@ export const referencedPart = defineFeature(function(context is Context, id is I
             boundaries = concatenateArrays([boundaries, [
                             { "key" : "topFaces", "surface" : top, "distance" : 0 * meter },
                             { "key" : "bottomFaces", "surface" : bottom, "distance" : 0 * meter }]]);
-            solids = enclosedPart(context, id, qUnion(concatenateArrays([[top, bottom, side], caps])), point, mirror);
+            enclosedPart(context, id, qUnion(concatenateArrays([[top, bottom, side], caps])), point, mirror);
         }
 
         // The caps always cut: keep the reference point's side of each.
         if (size(caps) > 0)
         {
-            solids = keepInside(context, id + "capSplit", solids, caps[0], size(caps) > 1 ? caps[1] : qNothing(), definition.referencePoint);
+            keepInside(context, id + "capSplit", solids, caps[0], size(caps) > 1 ? caps[1] : qNothing(), definition.referencePoint);
         }
 
-        var result = solids;
+        var result = qUnion(evaluateQuery(context, solids));
         if (mirror != undefined)
         {
             result = mirrorAndUnite(context, id, solids, mirror);
@@ -318,7 +319,7 @@ function capTool(context is Context, id is Id, cap is Query, offset is ValueWith
  * point. A point on the mirror plane is tested just off it on both sides; a point on the mirrored side is
  * mirrored back.
  */
-function enclosedPart(context is Context, id is Id, boundaries is Query, point is Vector, mirror) returns Query
+function enclosedPart(context is Context, id is Id, boundaries is Query, point is Vector, mirror)
 {
     var entities = [boundaries];
     var candidates = [point];
@@ -360,24 +361,11 @@ function enclosedPart(context is Context, id is Id, boundaries is Query, point i
     {
         opDeleteBodies(context, id + "deleteOthers", { "entities" : others });
     }
-    return qUnion(holding);
 }
 
-/** Split+ of the solids by one or two tools, keeping the reference point's side; the solids left. */
-function keepInside(context is Context, id is Id, solids is Query, startTool is Query, endTool is Query, reference is Query) returns Query
+/** Split+ of the solids (a history query) by one or two tools, keeping the reference point's side. */
+function keepInside(context is Context, id is Id, solids is Query, startTool is Query, endTool is Query, reference is Query)
 {
-    println("[refpart dbg] " ~ toString(id) ~ ": solids " ~ size(evaluateQuery(context, solids)) ~ ", start " ~ size(evaluateQuery(context, startTool)) ~ ", end " ~ size(evaluateQuery(context, endTool)));
-    try
-    {
-        opSplitPart(context, id + "dbgSplit", { "targets" : solids, "tool" : startTool, "keepTools" : true, "useTrimmed" : false, "keepType" : SplitOperationKeepType.KEEP_ALL });
-        println("[refpart dbg] direct split ok, pieces " ~ size(evaluateQuery(context, qUnion([solids, qCreatedBy(id + "dbgSplit", EntityType.BODY)]))));
-    }
-    catch (e)
-    {
-        println("[refpart dbg] direct split THROWS " ~ toString(e) ~ "; tool types: body " ~ size(evaluateQuery(context, qEntityFilter(startTool, EntityType.BODY)))
-            ~ " face " ~ size(evaluateQuery(context, qEntityFilter(startTool, EntityType.FACE))) ~ " construction " ~ size(evaluateQuery(context, qConstructionFilter(startTool, ConstructionObject.YES)))
-            ~ "; solids modifiable " ~ size(evaluateQuery(context, qModifiableEntityFilter(solids))));
-    }
     splitPlus(context, id, {
                 "splitType" : SplitPlusType.PART,
                 "targets" : solids,
@@ -389,12 +377,11 @@ function keepInside(context is Context, id is Id, solids is Query, startTool is 
                 "keepTools" : true,
                 "debugPrintSides" : false
             });
-    return qUnion(evaluateQuery(context, qBodyType(qUnion([solids, qCreatedBy(id, EntityType.BODY)]), BodyType.SOLID)));
 }
 
 /**
- * The half is cut at the mirror plane (its side is where its centroid is, so a point on the plane does not
- * matter), mirrored and united with the mirror copy.
+ * The half (solids: a history query, so it holds the split's pieces) is cut at the mirror plane (its side is
+ * where its centroid is, so a point on the plane does not matter), mirrored and united with the mirror copy.
  */
 function mirrorAndUnite(context is Context, id is Id, solids is Query, mirror is Plane) returns Query
 {
@@ -412,7 +399,7 @@ function mirrorAndUnite(context is Context, id is Id, solids is Query, mirror is
             });
     var kept = [];
     var dropped = [];
-    for (var piece in evaluateQuery(context, qBodyType(qUnion([solids, qCreatedBy(id + "mirrorSplit", EntityType.BODY)]), BodyType.SOLID)))
+    for (var piece in evaluateQuery(context, solids))
     {
         const ps = dot(evApproximateCentroid(context, { "entities" : piece }) - mirror.origin, mirror.normal);
         if (ps * s > 0 * meter * meter)
