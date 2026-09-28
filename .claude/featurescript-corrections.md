@@ -1720,3 +1720,25 @@ resolves every published query to the entities present when the feature finishes
 where their own later steps need it (Mutual Trim+ through its merge, Join through its merge / fillets). Caveat: the
 standard keys embedStandardOutputs derives itself (outputEdges / outputFaces / outputVertices) are rules on the
 settled bodies and see later changes to those bodies -- that lives in Variable_tools.
+
+## Correction 53: strings -- no `<` ordering, no `(?i)` in regex, `${` breaks a string literal (2026-09-28)
+
+**Symptoms** (publish_tools/station_table.fs):
+- `sort(..., function(a, b) { return a.title < b.title ? ... })` -> table error "Can not compare string and string".
+- `match(s, "(?i).*x.*")` -> "@match: Invalid regular expression: Invalid special open parenthesis".
+- A literal containing `${` (a regex escape class) -> "String ... is not a valid token" (eval API; the tab push
+  showed no compile notice, the table then failed at run time).
+
+**Fix**: order by a number (or keep model order); match case-sensitively (or build [aA] classes); avoid regex
+escaping by mapping every non-safe character to `.`: `replace(filter, "[^A-Za-z0-9 _-]", ".")`.
+
+## Correction 54: drawings -- wires, references, and custom tables (2026-09-28)
+
+- A drawing view shows wire bodies only if created with `"includeWires": true` (onshapeCreateViews);
+  onshapeEditViews sets the flag but does not re-render.
+- Dimension references must name edges by the view's `deterministicId` (views/{vid}/jsongeometry); `uniqueId`
+  resolved to other lines. Text positions are sheet mm from the lower-left corner.
+- Geometry lying on a part's far face is hidden in a view (hidden lines off): build drawing aids in FRONT of the
+  part along the view normal.
+- A custom table inserted into a drawing brings EVERY table its function returns; give the table a precondition
+  parameter (e.g. a name filter): it appears in the drawing's "Select a custom table" dialog, per insertion.

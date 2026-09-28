@@ -17,19 +17,21 @@ annotation { "Table Type Name" : "Station table" }
 export const stationTable = defineTable(function(context is Context, definition is map) returns TableArray
     precondition
     {
+        annotation { "Name" : "Views containing", "Default" : "", "MaxLength" : 128,
+                    "Description" : "Only views whose name contains this text, e.g. 4101 PLAN (case matters). Empty = every view. A drawing inserts every table this returns." }
+        definition.viewFilter is string;
     }
     {
         var views = [];
         for (var body in evaluateQuery(context, qHasAttribute(qEverything(EntityType.BODY), STATION_TABLE_ATTRIBUTE)))
         {
             const data = getAttribute(context, { "entity" : body, "name" : STATION_TABLE_ATTRIBUTE });
-            if (data is map && data.schema == STATION_TABLE_SCHEMA && data.rows is array)
+            if (data is map && data.schema == STATION_TABLE_SCHEMA && data.rows is array && titleMatches(data.title, definition.viewFilter))
             {
                 views = append(views, { "data" : data, "body" : body });
             }
         }
-        views = sort(views, function(a, b) { return a.data.title < b.data.title ? -1 : (a.data.title > b.data.title ? 1 : 0); });
-
+        // Model order (the feature tree's); strings cannot be ordered with < in FeatureScript.
         var tables = [];
         for (var v in views)
         {
@@ -37,6 +39,19 @@ export const stationTable = defineTable(function(context is Context, definition 
         }
         return tableArray(tables);
     });
+
+/**
+ * True when `filter` is empty or `title` contains it (case matters: FeatureScript regex has no (?i)). Any character
+ * other than a letter, digit, space, _ or - matches any one character, so the filter needs no regex escaping.
+ */
+function titleMatches(title is string, filter is string) returns boolean
+{
+    if (filter == "")
+    {
+        return true;
+    }
+    return match(title, ".*" ~ replace(filter, "[^A-Za-z0-9 _-]", ".") ~ ".*").hasMatch;
+}
 
 /** The size measured across each station: width in plan, thickness in profile, span in any other view. */
 function spanHeading(view is string) returns string

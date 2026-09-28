@@ -1,0 +1,135 @@
+FeatureScript notices
+Monitor
+  3D_Ski
+Monitor
+  Baseline_Variables
+Monitor
+  Design Master
+Monitor
+  Kartonform
+Monitor
+  Parts
+	
+	
+No approximation found; interpolating spline returned.
+
+		75:12   	
+onshape/std/splineUtils.fs (approximateSpline)
+
+		1973:20   	
+2143812a99089658c704f0bc/75b53dea4a5f869da4b28caa/707d2062cd3680bf9a6466fa (fitSamples)
+
+		1568:37   	
+2143812a99089658c704f0bc/75b53dea4a5f869da4b28caa/707d2062cd3680bf9a6466fa (buildMergedRuns)
+
+		1460:23   	
+2143812a99089658c704f0bc/75b53dea4a5f869da4b28caa/707d2062cd3680bf9a6466fa (emitFromEdges)
+
+		571:49   	
+2143812a99089658c704f0bc/75b53dea4a5f869da4b28caa/707d2062cd3680bf9a6466fa (partProfiles)
+
+		358:16   	
+2143812a99089658c704f0bc/75b53dea4a5f869da4b28caa/707d2062cd3680bf9a6466fa (projectedProfile)
+
+		276:24   	
+2143812a99089658c704f0bc/75b53dea4a5f869da4b28caa/707d2062cd3680bf9a6466fa (const evaluateProfiles)
+
+		61:17   	
+onshape/std/feature.fs (defineFeature)
+
+		   	
+Parts (SW_Profile)
+
+		   	
+Parts
+	
+	
+No approximation found; interpolating spline returned.
+
+		75:12   	
+onshape/std/splineUtils.fs (approximateSpline)
+
+		1973:20   	
+2143812a99089658c704f0bc/75b53dea4a5f869da4b28caa/707d2062cd3680bf9a6466fa (fitSamples)
+
+		1732:41   	
+2143812a99089658c704f0bc/75b53dea4a5f869da4b28caa/707d2062cd3680bf9a6466fa (emitConstructed)
+
+		611:53   	
+2143812a99089658c704f0bc/75b53dea4a5f869da4b28caa/707d2062cd3680bf9a6466fa (partProfiles)
+
+		358:16   	
+2143812a99089658c704f0bc/75b53dea4a5f869da4b28caa/707d2062cd3680bf9a6466fa (projectedProfile)
+
+		276:24   	
+2143812a99089658c704f0bc/75b53dea4a5f869da4b28caa/707d2062cd3680bf9a6466fa (const evaluateProfiles)
+
+		61:17   	
+onshape/std/feature.fs (defineFeature)
+
+		   	
+Parts (SW_Profile)
+
+		   	
+Parts
+	
+	
+Function with a return type returned undefined.
+
+		131:9   	
+51ccc604f1a8c938b48c2f37/ab2f34beab0ccce75ccea4f4/0f9cf9b21a3c654880d3167c (measureCoreAtStation)
+
+		289:35   	
+51ccc604f1a8c938b48c2f37/ab2f34beab0ccce75ccea4f4/54c855061de038e9e9787a94 (const generateQCData)
+
+		61:17   	
+onshape/std/feature.fs (defineFeature)
+
+		   	
+Parts (Generate QC Table Data 1)
+
+		   	
+Parts
+run 2 -> arcs: arc R 22366.217 mm rejected: ends 0.00080 / 0.00080 deg off the true tangents
+run 3 -> arcs: arc R 20596.204 mm rejected: ends 0.00086 / 0.00124 deg off the true tangents
+run 4 -> arcs: arc R 17780.439 mm rejected: ends 0.00128 / 0.00128 deg off the true tangents
+run 5 -> arcs: arc R 15417.211 mm rejected: ends 0.00109 / 0.00048 deg off the true tangents
+run 6 -> arcs: arc R 13736.976 mm rejected: ends 0.00017 / 0.00335 deg off the true tangents
+run 7 -> arcs: arc R 15589.875 mm rejected: ends 0.00075 / 0.00075 deg off the true tangents
+run 8 -> arcs: arc R 17450.157 mm rejected: ends 0.00075 / 0.00075 deg off the true tangents
+NOTE: profile break at -735.000 mm taken as the source vertex 0.000 mm away.
+NOTE: profile break at 735.000 mm taken as the source vertex 0.000 mm away.
+[show] _mid_end_edge: 1 entity (MAGENTA)
+[show] _mid_start_edge: 1 entity (MAGENTA)
+[show] _ext_end_edge: 1 entity (MAGENTA)
+[show] _ext_start_edge: 1 entity (MAGENTA)
+[show] _mid_end_edge: 1 entity (MAGENTA)
+[show] _mid_start_edge: 1 entity (MAGENTA)
+[show] _ext_end_edge: 1 entity (MAGENTA)
+[show] _ext_start_edge: 1 entity (MAGENTA)
+[show] _mid_end_edge: 1 entity (MAGENTA)
+[show] _mid_start_edge: 1 entity (MAGENTA)
+[show] _ext_end_edge: 1 entity (MAGENTA)
+[show] _ext_start_edge: 1 entity (MAGENTA)
+[show] _mid_end_edge: 1 entity (MAGENTA)
+[show] _mid_start_edge: 1 entity (MAGENTA)
+[show] _ext_end_edge: 1 entity (MAGENTA)
+[show] _ext_start_edge: 1 entity (MAGENTA)
+[show] split_interior_edges: 5 entities (CYAN)
+[stations] FCP at (1615, 0, 0) mm
+[stations] MRS at (880, 0, 0) mm
+[stations] ACP at (145, 0, 0) mm
+[stations] XS1_1 at (880, 0, 0) mm across (1, 0, 0)
+[stations] XS1_2 at (1063.75, 0, 0) mm across (1, 0, 0)
+[stations] XS1_3 at (1247.5, 0, 0) mm across (1, 0, 0)
+[stations] XS1_4 at (1431.25, 0, 0) mm across (1, 0, 0)
+[stations] XS1_5 at (1615, 0, 0) mm across (1, 0, 0)
+[stations] XS2_1 at (145, 0, 0) mm across (1, 0, 0)
+[stations] XS2_2 at (328.75, 0, 0) mm across (1, 0, 0)
+[stations] XS2_3 at (512.5, 0, 0) mm across (1, 0, 0)
+[stations] XS2_4 at (696.25, 0, 0) mm across (1, 0, 0)
+[stations] XS2_5 at (880, 0, 0) mm across (1, 0, 0)
+  Result: Regeneration complete
+Monitor
+  RD 20FOU 28 177 Variables
+FeatureScript notices

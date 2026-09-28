@@ -69,3 +69,12 @@ end) and "4501 PLAN + PROFILE (demo)" (widths + thickness) through the Drawings 
   composite `<prefix> <VIEW> WIRES` (excluded from BOM); the open view composite `<prefix> <VIEW>` = part +
   WIRES (+ REGION sheet). Parts list for 4101: PLAN, PLAN WIRES, PLAN FLAT (was ~16 bodies). Query key
   `<view>Wires` added. Demo drawings kept their references (views error-free, wires still rendered).
+
+## Station table (2026-09-28)
+
+`station_table.fs` (tab 07f13dc8a33435e0fb1c5a7f): custom table "Station table". Station geometry tags each view
+composite with attribute `publishStationTable` ({schema stationTable/1, title, prefix, view, rows}); the table finds
+them with qHasAttribute and returns one table per view, rows sorted by x (Station | x from datum | Width /
+Thickness / Span | From | To). Parameter "Views containing" (case-sensitive) filters by view name -- needed in
+drawings, because inserting a custom table brings every table it returns. Verified: Part Studio table panel, and
+drawing "4101 PLAN + table (demo)" (Custom table > Part Studio 1 > Station table, Views containing = 4101 PLAN).
