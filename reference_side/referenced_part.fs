@@ -6,7 +6,7 @@ import(path : "9aebe5ead538258b285aec19", version : "51d2aab9634029141009803d");
 // IMPORT: offset_plus.fs (Offset+, every surface offset)
 import(path : "742e5b3f04cc9115de8b6d8a", version : "cb9c79a1a023c8b7935e4cce");
 // IMPORT: split_plus.fs (Split+, periphery and cap cuts)
-import(path : "637854639ad04840dc6f998d", version : "b139c48ad186a3c36b2bb16a");
+import(path : "637854639ad04840dc6f998d", version : "6828f3e1413feb45737a2464");
 // IMPORT: thicken_plus.fs (Thicken+, the Thickened mode)
 import(path : "0c55868c5058e59d958b7223", version : "79e13566b2db89cc20dbcbfc");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
