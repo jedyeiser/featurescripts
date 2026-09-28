@@ -1715,4 +1715,8 @@ new two-sided edge.
 producer's: producers publish the entities as they leave them (untracked), and Extract variables' Track option
 (Evaluate on use off, Track on) stores freeze + startTracking, which finds the merged edge. A producer that tracks
 silently makes every consumer's key drift (a later fillet's edges join it). Tried and reverted the same day: Split+
-publishing tracked cut keys.
+publishing tracked cut keys. Applied to ALL Reference_Side features: `settledOutputs` (reference_side_utils)
+resolves every published query to the entities present when the feature finishes; features still track INTERNALLY
+where their own later steps need it (Mutual Trim+ through its merge, Join through its merge / fillets). Caveat: the
+standard keys embedStandardOutputs derives itself (outputEdges / outputFaces / outputVertices) are rules on the
+settled bodies and see later changes to those bodies -- that lives in Variable_tools.

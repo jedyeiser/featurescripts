@@ -1723,9 +1723,20 @@ function parseTemplateNames(text is string) returns map
     return result;
 }
 
-/** "Rib_A" -> "Rib_B": strips case 1's suffix when present, then appends this case's. */
+/**
+ * Case 1's part name with case 1's name swapped for this case's:
+ *     "bf_inside_3d_bump" -> "bf_inside_2d_bump"   case name at the START (the naming pattern
+ *                                                   <case>_<kind>, 2026-09-27)
+ *     "Rib_A" -> "Rib_B"                            case name at the END
+ *     "Rib" -> "Rib_B"                              neither: this case's name appended
+ */
 function caseBodyName(templateName is string, templateCase is string, thisCase is string, separator is string) returns string
 {
+    const templatePrefix = templateCase ~ separator;
+    if (startsWith(templateName, templatePrefix) && length(templateName) > length(templatePrefix))
+    {
+        return thisCase ~ separator ~ substring(templateName, length(templatePrefix));
+    }
     const templateSuffix = separator ~ templateCase;
     var base = templateName;
     if (endsWith(templateName, templateSuffix) && length(templateName) > length(templateSuffix))

@@ -115,6 +115,28 @@ different ways -- and nobody picked the reference per case.
 
 The studio holds T1-T11; `devtools/onshape/check_case_pattern_tests.py` checks them all.
 
+## 7b. Keeping the variable list short
+
+Every query variable name stays in the list for the rest of the tree -- FeatureScript cannot delete one (overwriting
+it with nothing still leaves the name). So the aim is fewer names, reused.
+
+- **Local names: short, by role, prefixed `_`, reused in every body.** A query variable made inside the repeated
+  features (Rule 2: "created by Boss") is a local: only that body uses it. Name it by what it is for -- `_body`,
+  `_copy`, `_trim`, `_edges`, `_out` -- and use the same few names in every template. Each body redefines them, so
+  ten templates share five local names instead of adding five each, and the `_` keeps them together, apart from the
+  names other features use. This is safe: after a Case pattern a local holds the last case's value, and nothing
+  outside the body should use it.
+- **Outputs only for what is used later.** Every Close case output makes one name per case (`#B_rib`, `#C_rib`, ...).
+  Declare only the outputs a later feature needs; everything else stays local.
+- **Output names are plain text.** Type `body`, not `#body`: in an Onshape text field a leading `#` makes the field
+  a reference to a variable, so the output is named after whatever that variable holds (seen on RD 20FOU 28: an
+  output named `#name` picked up a Text value `name` and every case published `..._core_3d_glass_periphery`).
+- **Values: specific names.** A value called `name` or `offset` is easy to pick up by accident; `bodyName`,
+  `middleOffset` are not.
+- **Let composite features carry the pieces.** A feature that publishes its own pieces (Join profile surfaces: its
+  faces and joint edges) replaces a chain of helper query variables; extract only the one or two keys you use.
+- **Tree:** give each template (Define case, body, Close case, Case patterns) its own feature-tree folder.
+
 ## 8. Limits
 
 - **Cases run in order and see earlier results**: a case can consume what a later case selects.
