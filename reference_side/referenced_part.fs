@@ -11,6 +11,8 @@ import(path : "637854639ad04840dc6f998d", version : "6828f3e1413feb45737a2464");
 import(path : "0c55868c5058e59d958b7223", version : "79e13566b2db89cc20dbcbfc");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+// IMPORT: referenced_part_icon.svg (feature icon)
+IconNamespace::import(path : "385dde1d1db1fd331e975189", version : "c6ae68c4419cca3f9189e4a0");
 
 /**
  * Referenced part (2026-09-28): a part from reference surfaces, every offset and side read from ONE
@@ -64,7 +66,7 @@ const ON_BOUNDARY_TOL = 1e-5 * meter;
 /** A point on the mirror plane is moved this far off it to test which solid holds it. */
 const MIRROR_NUDGE = 1e-5 * meter;
 
-annotation { "Feature Type Name" : "Referenced part",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Referenced part",
         "Feature Type Description" : "Make a part from reference surfaces, all offsets and sides read from one reference point: Thickened (a profile thickened and cut by a periphery) or Constrained (top, bottom and periphery enclosed); optional caps and mirror plane.",
         "Filter Selector" : "allparts" }
 export const referencedPart = defineFeature(function(context is Context, id is Id, definition is map)

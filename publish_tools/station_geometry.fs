@@ -1,5 +1,6 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 // IMPORT: station_utils.fs
 export import(path : "8a8c023e223cf0814d973a63", version : "d4307c54b9d72c88604cc3fe");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
@@ -249,20 +250,73 @@ function buildView(context is Context, vid is Id, definition is map, view is map
     const namePrefix = prefix ~ " " ~ view.label;
 
     // Silhouette on the view plane. The outline refuses a composite, so give it the members.
-    opPlane(context, vid + "target", { "plane" : viewPlane, "width" : VIEW_PLANE_SIZE, "height" : VIEW_PLANE_SIZE });
-    opCreateOutline(context, vid + "outline", {
-                "tools" : qUnion([qBodyType(definition.part, [BodyType.SOLID, BodyType.SHEET]), qFlattenedCompositeParts(definition.part)]),
-                "target" : qCreatedBy(vid + "target", EntityType.FACE)
-            });
-    opDeleteBodies(context, vid + "deleteTarget", { "entities" : qCreatedBy(vid + "target", EntityType.BODY) });
+    //   solid                    -> opCreateOutline (a region)
+    //   flat sheet seen face-on  -> the sheet IS its silhouette: copied onto the view plane (a region)
+    //   any other sheet          -> its boundary (laminar) edges dropped onto the view plane (edges, no region)
+    // opCreateOutline fails on sheets: face-on, edge-on (a wall in plan) and curved sheets close to the view plane
+    // (2026-09-28, 2D_PERIPHERY and TOP_SURFACE); the dropped boundary gives the same station spans.
+    const tools = evaluateQuery(context, qUnion([qBodyType(definition.part, [BodyType.SOLID, BodyType.SHEET]), qFlattenedCompositeParts(definition.part)]));
+    var outlineTools = [];
+    var dropTools = [];
+    var flatRegions = [];
+    for (var i = 0; i < size(tools); i += 1)
+    {
+        const onPlane = faceOnPoint(context, tools[i], n);
+        if (onPlane != undefined)
+        {
+            opPattern(context, vid + ("faceOn" ~ i), {
+                        "entities" : tools[i],
+                        "transforms" : [transform(n * dot(cs.origin - onPlane, n))],
+                        "instanceNames" : ["faceOn" ~ i]
+                    });
+            flatRegions = append(flatRegions, qCreatedBy(vid + ("faceOn" ~ i), EntityType.BODY));
+        }
+        else if (isQueryEmpty(context, qBodyType(tools[i], BodyType.SHEET)))
+        {
+            outlineTools = append(outlineTools, tools[i]);
+        }
+        else
+        {
+            dropTools = append(dropTools, tools[i]);
+        }
+    }
+    var regions = [];
+    var dropped = qNothing();
+    if (size(outlineTools) > 0 || size(dropTools) > 0)
+    {
+        opPlane(context, vid + "target", { "plane" : viewPlane, "width" : VIEW_PLANE_SIZE, "height" : VIEW_PLANE_SIZE });
+        const target = qCreatedBy(vid + "target", EntityType.FACE);
+        if (size(outlineTools) > 0)
+        {
+            opCreateOutline(context, vid + "outline", { "tools" : qUnion(outlineTools), "target" : target });
+            regions = [qCreatedBy(vid + "outline", EntityType.BODY)];
+        }
+        if (size(dropTools) > 0)
+        {
+            opDropCurve(context, vid + "drop", {
+                        "tools" : qEdgeTopologyFilter(qOwnedByBody(qUnion(dropTools), EntityType.EDGE), EdgeTopology.LAMINAR),
+                        "targets" : target,
+                        "projectionType" : ProjectionType.NORMAL_TO_TARGET
+                    });
+            dropped = qCreatedBy(vid + "drop", EntityType.BODY);
+        }
+        opDeleteBodies(context, vid + "deleteTarget", { "entities" : qCreatedBy(vid + "target", EntityType.BODY) });
+    }
+    regions = concatenateArrays([regions, flatRegions]);
+    if (size(regions) > 1)
+    {
+        opBoolean(context, vid + "unite", { "tools" : qUnion(regions), "operationType" : BooleanOperationType.UNION });
+    }
 
-    const outlineFaces = qCreatedBy(vid + "outline", EntityType.FACE);
-    if (isQueryEmpty(context, outlineFaces))
+    const outlineBody = qUnion(regions);
+    const outlineFaces = qOwnedByBody(outlineBody, EntityType.FACE);
+    const hasRegion = !isQueryEmpty(context, outlineFaces);
+    const droppedEdges = qOwnedByBody(dropped, EntityType.EDGE);
+    if (!hasRegion && isQueryEmpty(context, droppedEdges))
     {
         throw regenError(view.label ~ ": the part has no outline in this view.", ["part"]);
     }
-    const outlineBody = qCreatedBy(vid + "outline", EntityType.BODY);
-    const outlineEdges = qLoopEdges(outlineFaces);
+    const outlineEdges = qUnion([qLoopEdges(outlineFaces), droppedEdges]);
 
     var members = [];
     var queries = {};
@@ -318,12 +372,18 @@ function buildView(context is Context, vid is Id, definition is map, view is map
         }
     }
 
-    // Outline wires from the silhouette's outer loops (holes are not part of it).
+    // Outline wires from the silhouette's outer loops (holes are not part of it), plus the dropped sheet boundaries
+    // (already wires).
     queries[view.key ~ "Outline"] = qNothing();
     if (definition.outlineWires)
     {
-        opExtractWires(context, vid + "outlineWires", { "edges" : outlineEdges });
-        const wires = qCreatedBy(vid + "outlineWires", EntityType.BODY);
+        var wireList = [dropped];
+        if (hasRegion)
+        {
+            opExtractWires(context, vid + "outlineWires", { "edges" : qLoopEdges(outlineFaces) });
+            wireList = append(wireList, qCreatedBy(vid + "outlineWires", EntityType.BODY));
+        }
+        const wires = qUnion(wireList);
         nameBodies(context, wires, namePrefix ~ " OUTLINE");
         members = append(members, wires);
         queries[view.key ~ "Outline"] = wires;
@@ -344,7 +404,7 @@ function buildView(context is Context, vid is Id, definition is map, view is map
     if (definition.flatCopy)
     {
         opPattern(context, vid + "flat", {
-                    "entities" : outlineBody,
+                    "entities" : qUnion([outlineBody, dropped]),
                     "transforms" : [fromWorld(cs)],
                     "instanceNames" : ["flat"]
                 });
@@ -370,15 +430,20 @@ function buildView(context is Context, vid is Id, definition is map, view is map
     }
 
     queries[view.key ~ "Surface"] = qNothing();
-    if (definition.outlineSurface)
+    // A surface part seen edge-on or curved has no region, only its dropped boundary.
+    if (definition.outlineSurface && hasRegion)
     {
         nameBodies(context, outlineBody, namePrefix ~ " REGION");
         viewBodies = append(viewBodies, outlineBody);
         queries[view.key ~ "Surface"] = outlineBody;
     }
-    else
+    else if (hasRegion)
     {
         opDeleteBodies(context, vid + "deleteOutline", { "entities" : outlineBody });
+    }
+    if (!definition.outlineWires && !isQueryEmpty(context, dropped))
+    {
+        opDeleteBodies(context, vid + "deleteDropped", { "entities" : dropped });
     }
 
     opCreateCompositePart(context, vid + "composite", {
@@ -395,6 +460,36 @@ function buildView(context is Context, vid is Id, definition is map, view is map
     output = append(output, composite);
 
     return { "output" : qUnion(output), "queries" : queries, "rows" : rows, "missed" : missed };
+}
+
+/**
+ * A point on the plane of `body` when it is a sheet whose faces all lie in ONE plane facing the view (normal
+ * parallel to `n`); undefined otherwise. Such a sheet is its own silhouette in that view.
+ */
+function faceOnPoint(context is Context, body is Query, n is Vector)
+{
+    if (isQueryEmpty(context, qBodyType(body, BodyType.SHEET)))
+    {
+        return undefined;
+    }
+    var point = undefined;
+    for (var face in evaluateQuery(context, qOwnedByBody(body, EntityType.FACE)))
+    {
+        const surface = evSurfaceDefinition(context, { "face" : face });
+        if (!(surface is Plane) || abs(abs(dot(surface.normal, n)) - 1) > 1e-9)
+        {
+            return undefined;
+        }
+        if (point == undefined)
+        {
+            point = surface.origin;
+        }
+        else if (abs(dot(surface.origin - point, n)) > TOLERANCE.zeroLength * meter)
+        {
+            return undefined;
+        }
+    }
+    return point;
 }
 
 function missRow(viewKey is string, stationId is string, x is ValueWithUnits) returns map

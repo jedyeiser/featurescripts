@@ -69,3 +69,21 @@ upsert(D, W, E, "stationGeometry", "4501 stations (test)", [
     b("stationLines", True), b("outlineWires", True), b("outlineSurface", True),
     b("datumPoint", True), b("flatCopy", False), b("printTable", True),
 ], ns_geo)
+
+# Surfaces as the part (2026-09-28): a flat sheet seen face-on (copied onto the view plane, since opCreateOutline
+# refuses it) and a curved sheet (outline as usual).
+P2D_PERIPHERY, PTOP_SURFACE = "SFXHB", "RFXv"
+upsert(D, W, E, "stationGeometry", "2D_PERIPHERY stations (test)", [
+    qids("part", [P2D_PERIPHERY]), qids("datum", [MC0]), s("prefix", "2D_PERIPHERY"),
+    b("planView", True), b("profileView", False), arr("otherViews", []),
+    flist("stationDefinitions", [DEF_ID]), s("stationSet", ""), arr("stations", []),
+    b("stationLines", True), b("outlineWires", True), b("outlineSurface", False),
+    b("datumPoint", True), b("flatCopy", False), b("printTable", True),
+], ns_geo)
+upsert(D, W, E, "stationGeometry", "TOP_SURFACE stations (test)", [
+    qids("part", [PTOP_SURFACE]), qids("datum", [MC0]), s("prefix", "TOP_SURFACE"),
+    b("planView", True), b("profileView", True), arr("otherViews", []),
+    flist("stationDefinitions", [DEF_ID]), s("stationSet", ""), arr("stations", []),
+    b("stationLines", True), b("outlineWires", True), b("outlineSurface", False),
+    b("datumPoint", True), b("flatCopy", False), b("printTable", True),
+], ns_geo)

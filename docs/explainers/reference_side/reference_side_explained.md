@@ -27,6 +27,7 @@ Figures are in `img/`, made by `img/src/figs.py` (`python docs/explainers/refere
   - [2.2 Split+](#22-split)
   - [2.3 Offset+](#23-offset)
   - [2.4 Thicken+](#24-thicken)
+  - [2.4b Enclose+](#24b-enclose), [2.4c Join profile surfaces](#24c-join-profile-surfaces), [2.4d Referenced part](#24d-referenced-part)
   - [2.5 Outputs for Extract variables](#25-outputs-for-extract-variables)
   - [2.6 Orient to reference](#26-orient-to-reference)
 - [Part 3: The code](#part-3-the-code)
@@ -362,6 +363,54 @@ The pieces and lofts are always united into one surface; a joint that does not c
 **Tests:** J1 (stepped join, 5 faces, 24000 mm2), J2 (inside offset 5), J3 (different start / end outsides), J4 (start
 fillet).
 
+## 2.4d Referenced part
+
+*Added 2026-09-28.* A part from reference surfaces, with every offset and side read from **one reference point** --
+the chains built by hand before (Offset+ x N, Mutual Trim+, Enclose+ or Thicken+, Split+, a mirror) in one feature.
+Meant for Case pattern bodies: one feature instead of ten means one local name instead of ten, and nothing to leave
+out of *Features to repeat*.
+
+**The reference point sets every direction.** Each offset and the thickness are signed: positive toward the point,
+negative away, 0 the surface as it is. So one point -- e.g. a mate connector on the ski's centreline -- serves every
+layer and core. It must not lie *on* a surface it measures (error naming it).
+
+| Part type | For | What it does | Where the point goes |
+|---|---|---|---|
+| **Thickened** | base, mats, glass, top sheet | offset the profile, thicken it, cut by the offset periphery, cut by the caps | inside the periphery, on the side to thicken (a negative thickness goes the other way) |
+| **Constrained** | cores | offset top, bottom and periphery, enclose them with the caps, keep the solid holding the point, cut by the caps | inside the part |
+
+| Parameter | Meaning |
+|---|---|
+| **Part type** | Thickened / Constrained |
+| **Reference point** | vertex or mate connector (see above) |
+| **Profile, Profile offset, Thickness** | Thickened only. Thickness is from the offset profile (default 1 mm). |
+| **Top / Bottom (+ offsets)** | Constrained only |
+| **Periphery (+ offset)** | the side wall; the part keeps the point's side. Required for Constrained, optional for Thickened. |
+| **Cap 1 / Cap 2 (+ offsets)** | optional ends: surface or face (offset with Offset+), or construction plane / mate connector (an infinite plane, moved by the offset). The part keeps the point's side of each. |
+| **Mirror plane** | optional: the surfaces are one half; the half is cut at the plane, mirrored and united. A point ON the plane is fine (the kept half is the side the surfaces are on). |
+
+Design choices worth knowing:
+
+- **Thickened thickens first, then cuts.** Cutting the profile first would make the thicken sweep the edges along
+  the profile's normals, so on rocker the side walls would tilt instead of following the periphery.
+- **Caps always cut.** std Enclose joins pockets that touch and drops the walls between them, so caps that only
+  *divide* a closed volume did nothing in Enclose+ (RD 20FOU 28, the 2D core came out full length). Here the solid
+  is split by the caps after the enclose, so they trim whether or not the surfaces already close the ends.
+- **The inputs are never changed.** Every offset is a new surface (0 = a copy), deleted at the end.
+- **Faces are sorted by where they lie**, not tracked: each face of the part goes to the boundary it lies on
+  (mirrored faces by their mirror image), so the keys survive the splits and the union.
+
+**Outputs** (every key always present, empty when it does not apply): `output`, `profileFaces`, `oppositeFaces`
+(Thickened), `topFaces`, `bottomFaces` (Constrained), `sideFaces`, `cap1Faces`, `cap2Faces`.
+
+**Not covered:** sidewalls (a band outside the core, with the centreline point outside it) -- make the outline part
+and the core, and subtract.
+
+**Tests:** P1 (thickened 5), P2 (profile offset 2, thickness -3), P3 (periphery cut, 4 side faces), P4 (half with
+plane cap offset 5 and mirror, point on the mirror plane), P5 (constrained with three offsets), P6 (caps dividing a
+closed volume cut it), P7 (constrained half, caps closing the ends, mirror, point on the plane), P8 (point outside
+the periphery: error).
+
 ## 2.5 Outputs for Extract variables
 
 Every key holds the entities **as the feature leaves them**. A later edit that replaces them -- a loft merged onto a
@@ -378,6 +427,7 @@ result bodies) and `inputs`; the rest:
 | Split+ | `inside`, `outside`, `start`, `end` and each `<region>Edges`; `startCut`, `endCut`; `splitEdges` (one edge per cut, on a kept piece); `splitFaces`; `pieceCount` |
 | Offset+ | `startVertex`, `endVertex`, `startEdge`, `endEdge` (start = the end at the source's start), `cornerArcs`, `boundaryEdges` (surfaces). Corner counts are in the notice only. |
 | Thicken+ | `towardFaces`, `awayFaces`, `sideFaces` (each tracked through the boolean) |
+| Referenced part | `profileFaces`, `oppositeFaces` (Thickened), `topFaces`, `bottomFaces` (Constrained), `sideFaces`, `cap1Faces`, `cap2Faces` |
 | Orient to reference | `flipped` (the surfaces it flipped), `unchanged` (already facing the right way), `flippedCount`; `output` = every selected surface |
 
 Every key is present on every regeneration, empty when it does not apply, so an Extract variables entry never
@@ -436,6 +486,8 @@ reference on its axis: every normal ends up pointing at the axis (R3). A solid's
 | `orient_to_reference.fs` | Per-body `sideSign` against the reference -> `opFlipOrientation` on the bodies facing the wrong way; `showNormals` (debug arrows on a 3 x 3 face grid). |
 | `thicken_plus.fs` | Per-body `sideSign` -> `opThicken` thickness1/2; `checkCurvature` (9 x 9 grid of `evFaceCurvatures`); `classifyFaces` against a copy taken before the thicken; std `processNewBodyIfNeeded`. |
 
+| `referenced_part.fs` | Composite: Offset+ for every surface, Thicken+ (Thickened) or `opEnclose` + `qContainsPoint` (Constrained), Split+ for the periphery and cap cuts, `mirrorAndUnite`, `sortFaces` (faces by the boundary they lie on). Imports offset_plus, split_plus and thicken_plus by microversion. |
+
 All import `reference_side_utils` and Variable_tools **V1** `extract_outputs`.
 
 ## 3.2 Facts the design rests on (verified 2026-09-23 with the eval API)
@@ -443,6 +495,10 @@ All import `reference_side_utils` and Variable_tools **V1** `extract_outputs`.
 - `opSplitPart` KEEP_FRONT keeps the side the tool face's normal points to.
 - A target wholly on the discarded side of an (extended) tool is **deleted**; a miss with KEEP_FRONT / KEEP_ALL is
   SPLIT_NO_CHANGE (info), not an error.
+- `opSplitPart`'s pieces are attributed to the feature that made the **original** body -- `qCreatedBy(split id)` is
+  empty -- and an **evaluated** query of a split body resolves to nothing afterwards (verified 2026-09-28). Work on
+  a history query (`qCreatedBy(<feature that made it>)`) or a `startTracking` of the targets; Split+ tracks its
+  targets since 2026-09-28, so an evaluated target (a Case pattern input) keeps its pieces.
 - `opThicken` with Keep tools off consumes its input faces, so Thicken+ measures against a copy made first, and
   deletes that copy before the boolean step (which takes every body created under the feature id as a tool).
 

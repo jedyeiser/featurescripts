@@ -1742,3 +1742,20 @@ escaping by mapping every non-safe character to `.`: `replace(filter, "[^A-Za-z0
   part along the view normal.
 - A custom table inserted into a drawing brings EVERY table its function returns; give the table a precondition
   parameter (e.g. a name filter): it appears in the drawing's "Select a custom table" dialog, per insertion.
+
+## Correction 55: opSplitPart pieces belong to the ORIGINAL body's feature; an evaluated target is lost (2026-09-28)
+
+**Symptom** (reference_side/referenced_part.fs, first build): a Split+ subfeature given an evaluated query
+(`qUnion(evaluateQuery(...))`) as its target failed with SPLIT_SELECT_TARGETS on its second tool, or found no
+pieces; the same split with a `qCreatedBy(...)` target worked.
+
+**Measured (eval API)**: after `opSplitPart` (plane or sheet tool, KEEP_ALL):
+- `qCreatedBy(<split id>, BODY)` is EMPTY -- the pieces are attributed to the feature that made the original body
+  (`qCreatedBy(<that feature>, BODY)` returns both pieces);
+- the evaluated (transient) query of the original body resolves to NOTHING;
+- `startTracking(context, target)` taken before the split returns every piece, also through a second split.
+
+**Fix**: split a HISTORY query (`qBodyType(qCreatedBy(id, BODY), SOLID)` for bodies your own feature made), or
+`qUnion([targets, startTracking(context, targets)])`. Split+ does the latter since 2026-09-28, so an evaluated
+target -- a Case pattern input (pre-resolved, correction 50) or a composite feature's query -- keeps its pieces.
+The `qUnion([pieces, qCreatedBy(splitId)])` idiom adds nothing.
