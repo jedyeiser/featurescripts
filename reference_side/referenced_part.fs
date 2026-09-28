@@ -367,6 +367,17 @@ function enclosedPart(context is Context, id is Id, boundaries is Query, point i
 function keepInside(context is Context, id is Id, solids is Query, startTool is Query, endTool is Query, reference is Query) returns Query
 {
     println("[refpart dbg] " ~ toString(id) ~ ": solids " ~ size(evaluateQuery(context, solids)) ~ ", start " ~ size(evaluateQuery(context, startTool)) ~ ", end " ~ size(evaluateQuery(context, endTool)));
+    try
+    {
+        opSplitPart(context, id + "dbgSplit", { "targets" : solids, "tool" : startTool, "keepTools" : true, "useTrimmed" : false, "keepType" : SplitOperationKeepType.KEEP_ALL });
+        println("[refpart dbg] direct split ok, pieces " ~ size(evaluateQuery(context, qUnion([solids, qCreatedBy(id + "dbgSplit", EntityType.BODY)]))));
+    }
+    catch (e)
+    {
+        println("[refpart dbg] direct split THROWS " ~ toString(e) ~ "; tool types: body " ~ size(evaluateQuery(context, qEntityFilter(startTool, EntityType.BODY)))
+            ~ " face " ~ size(evaluateQuery(context, qEntityFilter(startTool, EntityType.FACE))) ~ " construction " ~ size(evaluateQuery(context, qConstructionFilter(startTool, ConstructionObject.YES)))
+            ~ "; solids modifiable " ~ size(evaluateQuery(context, qModifiableEntityFilter(solids))));
+    }
     splitPlus(context, id, {
                 "splitType" : SplitPlusType.PART,
                 "targets" : solids,
