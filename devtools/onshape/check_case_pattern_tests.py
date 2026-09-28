@@ -155,6 +155,8 @@ b8 = [b for b in at_x(r8, 200) if near(b["z0"], 20) and near(b["z1"], 30)]
 c8 = [b for b in at_x(r8, 400) if near(b["z0"], 20) and near(b["z1"], 30)]
 check("T8 names ON: case B stud named Stud_B", len(b8) == 1 and b8[0]["name"] == "Stud_B", str(b8 and b8[0]["name"]))
 check("T8 names OFF: case C stud keeps a default name", len(c8) == 1 and c8[0]["name"].startswith("Part "), str(c8 and c8[0]["name"]))
+d8 = [b for b in at_x(r8, 200) if near(b["z0"], -10) and near(b["z1"], 0)]
+check("T8 case name first: case 1 A_stud -> case D D_stud", len(d8) == 1 and d8[0]["name"] == "D_stud", str(d8 and d8[0]["name"]))
 
 # ---- T9b / T10: offset sheets (Offset+ toward a reference at -X) ----
 SHEETS = '''function(context is Context, queries) {

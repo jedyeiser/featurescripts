@@ -266,7 +266,6 @@ export const defineCase = defineFeature(function(context is Context, id is Id, d
 // ---------------------------------------------------------------------------------------------
 
 annotation { "Feature Type Name" : "Close case", "Icon" : CloseIconNamespace::BLOB_DATA,
-        "Editing Logic Function" : "closeCaseEditLogic",
         "Feature Type Description" : "Ends a repeatable feature chain: names its Define case, lists the features to repeat, and declares the outputs every case publishes as #<case>_<name>. Repeat it with Case pattern." }
 export const closeCase = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -318,21 +317,9 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
             definition.keepSketches is boolean;
         }
 
-        annotation { "Name" : "Name parts with the case name", "Default" : true,
-                    "Description" : "On: each case's new parts are named after case 1's with the case name as suffix (Rib_A -> Rib_B). Off: names are left to the repeated features (e.g. a rename feature using #caseName)." }
+        annotation { "Name" : "Name parts after outputs", "Default" : true,
+                    "Description" : "On: a part an output points to is named like its variable: output 'rib' in case B -> part 'B_rib' (case 1 too). Off: names are left to the repeated features." }
         definition.nameParts is boolean;
-
-        if (definition.nameParts)
-        {
-            annotation { "Name" : "Name separator", "Default" : "_", "MaxLength" : 8,
-                        "Description" : "Between a part's base name and its case name (Rib_A -> Rib_B)." }
-            definition.separator is string;
-        }
-
-        // Case 1 body names, cached by the editing logic (getProperty throws during regen,
-        // correction 36). One line per body: "<feature index>\t<body index>\t<name>".
-        annotation { "Name" : "Template names", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.templateNames is string;
     }
     {
         // Called by a Case pattern: run this case, or (second call) read its outputs.
@@ -383,6 +370,10 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
             const track = !onUse && output.outputTrack == true;
             outputs = append(outputs, { "name" : output.outputName, "onUse" : onUse, "track" : track });
             publishCaseOutput(context, define.signature.caseName, output.outputName, output.outputQuery, onUse, track, "outputs");
+            if (definition.nameParts)
+            {
+                nameOutputParts(context, output.outputQuery, define.signature.caseName ~ "_" ~ output.outputName);
+            }
         }
 
         var signature = define.signature;
@@ -390,9 +381,7 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
         signature.caseClose = true;
         signature.defineKey = toString(define.featureId);
         signature.outputs = outputs;
-        signature.templateNames = definition.templateNames;
         signature.nameParts = definition.nameParts;
-        signature.separator = definition.separator;
         signature.keep = {
                 "keepParts" : definition.keepParts,
                 "keepSurfaces" : definition.keepSurfaces,
@@ -411,9 +400,7 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
         "keepMateConnectors" : true,
         "keepPlanes" : true,
         "keepSketches" : false,
-        "nameParts" : true,
-        "separator" : "_",
-        "templateNames" : ""
+        "nameParts" : true
     });
 
 /**
@@ -508,31 +495,6 @@ function runListedFeature(context is Context, functions is array, i is number, c
         return { "inFrame" : false, "error" : directError };
     }
     return { "inFrame" : false };
-}
-
-/**
- * Close case editing logic: caches the names of the bodies the listed features created for case 1
- * (the feature body cannot read names during regen).
- */
-export function closeCaseEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
-    isCreating is boolean, specifiedParameters is map) returns map
-{
-    const featureIds = sortedFeatureIds(context, definition.features);
-    var lines = [];
-    for (var i = 0; i < size(featureIds); i += 1)
-    {
-        const bodies = evaluateQuery(context, qSketchFilter(qCreatedBy(featureIds[i], EntityType.BODY), SketchObject.NO));
-        for (var j = 0; j < size(bodies); j += 1)
-        {
-            const name = try silent(getProperty(context, { "entity" : bodies[j], "propertyType" : PropertyType.NAME }));
-            if (name is string && name != "")
-            {
-                lines = append(lines, i ~ "\t" ~ j ~ "\t" ~ name);
-            }
-        }
-    }
-    definition.templateNames = join(lines, "\n");
-    return definition;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1005,7 +967,6 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
         {
             usedNames = [signature.caseName];
         }
-        const templateNames = parseTemplateNames(signature.templateNames);
         // Shared references: resolved once here, OUTSIDE the pattern frame, and bound the same for every
         // case (a query naming geometry from before the repeated features is refused inside the frame).
         const sharedNames = signature.sharedNames is array ? signature.sharedNames : [];
@@ -1016,7 +977,6 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
         }
         var failures = [];
         var notes = [];
-        var unnamed = 0;
 
         for (var row in definition.cases)
         {
@@ -1142,30 +1102,15 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
             {
                 opDeleteBodies(context, id + ("drop_" ~ caseName), { "entities" : dropped });
             }
-            for (var origin in (signature.nameParts == false ? [] : result.origins))
-            {
-                if (isQueryEmpty(context, origin.body) || isQueryEmpty(context, qSketchFilter(origin.body, SketchObject.NO)))
-                {
-                    continue;
-                }
-                const templateName = templateNames[origin.key];
-                if (templateName == undefined)
-                {
-                    unnamed += 1;
-                    continue;
-                }
-                setProperty(context, {
-                            "entities" : origin.body,
-                            "propertyType" : PropertyType.NAME,
-                            "value" : caseBodyName(templateName, signature.caseName, caseName, signature.separator)
-                        });
-            }
-
             for (var k = 0; k < size(signature.outputs); k += 1)
             {
                 const output = signature.outputs[k];
                 const q = result.outputs[k];
                 publishCaseOutput(context, caseName, output.name, q, output.onUse, output.track, "cases");
+                if (signature.nameParts != false)
+                {
+                    nameOutputParts(context, q, caseName ~ "_" ~ output.name);
+                }
                 const found = evaluateQuery(context, q);
                 if (size(found) > 0 && isQueryEmpty(context, qIntersection([qUnion(found), qCreatedBy(caseId)])))
                 {
@@ -1206,11 +1151,6 @@ export const casePattern = defineFeature(function(context is Context, id is Id, 
         {
             notes = append(notes, "Sketches are re-solved per case. Dimensions and constraints to the origin or the default planes are not"
                     ~ " reapplied, so those entities keep case 1's position; constrain sketches to geometry derived from the inputs.");
-        }
-        if (unnamed > 0)
-        {
-            notes = append(notes, unnamed ~ " bod" ~ (unnamed == 1 ? "y" : "ies") ~ " kept Onshape's default name: edit the Close case"
-                    ~ " to refresh case 1's names.");
         }
         if (size(notes) > 0)
         {
@@ -1704,46 +1644,19 @@ function findSignature(context is Context, features is map, marker is string)
     return found;
 }
 
-/** Parses the cached case 1 names into a map from "<feature index>.<body index>" to name. */
-function parseTemplateNames(text is string) returns map
-{
-    var result = {};
-    if (text == "")
-    {
-        return result;
-    }
-    for (var line in splitByRegexp(text, "\n"))
-    {
-        const parts = splitByRegexp(line, "\t");
-        if (size(parts) >= 3)
-        {
-            result[parts[0] ~ "." ~ parts[1]] = parts[2];
-        }
-    }
-    return result;
-}
-
 /**
- * Case 1's part name with case 1's name swapped for this case's:
- *     "bf_inside_3d_bump" -> "bf_inside_2d_bump"   case name at the START (the naming pattern
- *                                                   <case>_<kind>, 2026-09-27)
- *     "Rib_A" -> "Rib_B"                            case name at the END
- *     "Rib" -> "Rib_B"                              neither: this case's name appended
+ * Names the parts an output points to after the output's variable ("B_rib"): the bodies holding its
+ * entities, sketches and mate connectors excluded (connectors cannot be named, correction 44). A second
+ * or later part of one output gets "_2", "_3", ... so no two parts share a name.
  */
-function caseBodyName(templateName is string, templateCase is string, thisCase is string, separator is string) returns string
+function nameOutputParts(context is Context, q is Query, name is string)
 {
-    const templatePrefix = templateCase ~ separator;
-    if (startsWith(templateName, templatePrefix) && length(templateName) > length(templatePrefix))
+    const bodies = evaluateQuery(context, qSketchFilter(qBodyType(qUnion([qEntityFilter(q, EntityType.BODY), qOwnerBody(q)]),
+                    [BodyType.SOLID, BodyType.SHEET, BodyType.WIRE, BodyType.POINT]), SketchObject.NO));
+    for (var i = 0; i < size(bodies); i += 1)
     {
-        return thisCase ~ separator ~ substring(templateName, length(templatePrefix));
+        setProperty(context, { "entities" : bodies[i], "propertyType" : PropertyType.NAME, "value" : i == 0 ? name : name ~ "_" ~ (i + 1) });
     }
-    const templateSuffix = separator ~ templateCase;
-    var base = templateName;
-    if (endsWith(templateName, templateSuffix) && length(templateName) > length(templateSuffix))
-    {
-        base = substring(templateName, 0, length(templateName) - length(templateSuffix));
-    }
-    return base ~ separator ~ thisCase;
 }
 
 /** The bodies of a case the Keep options discard. */

@@ -350,6 +350,8 @@ c8on = close_case("T8 Close case, name parts ON", d8, [stud8], names="0	0	Stud_A
 case_pattern("T8 Case pattern B, names on -> Stud_B", c8on, [case_row("B", ["face8"], [top(B)])])
 c8off = close_case("T8 Close case, name parts OFF", d8, [stud8], names="0	0	Stud_A", name_parts=False)
 case_pattern("T8 Case pattern C, names off -> default name", c8off, [case_row("C", ["face8"], [top(C)])])
+c8pre = close_case("T8 Close case, case 1 part named A_stud (case name first)", d8, [stud8], names="0	0	A_stud")
+case_pattern("T8 Case pattern D, prefix swapped -> D_stud", c8pre, [case_row("D", ["face8"], [bottom(B)])])
 
 # ---- T9 ----
 # Offset+ (Reference_Side) inside a case, side reference = a clicked vertex OUTSIDE the list (the RD 20FOU 28
