@@ -59,12 +59,18 @@ const SECTION_FOOT_STEPS = 12;
 const SECTION_FOOT_TOL = 1e-11 * meter;
 /** A foot within this of a section's end still lies on the section (the point is "reached" by it). */
 const SECTION_REACH_TOL = 1e-5 * meter;
+/** Section edges belong to the level within this in y; added levels closer than SECTION_LEVEL_GAP are one. */
+const SECTION_LEVEL_TOL = 1e-7 * meter;
+const SECTION_LEVEL_GAP = 1e-6 * meter;
+/** At most this many levels added for points no section reaches (at the points' own y). */
+const SECTION_EXTRA_MAX = 24;
 
 /**
  * The footprint's source edges in the LOCAL frame: copies of the volume's BASE PERIPHERY (the boundary of the faces
  * the profile's bottom wire lies on -- the volume's own edges, so exact arcs stay exact), or copies of the input
  * wires. From the volume also the base SECTIONS the unwrap maps through (see primitiveBaseSections). Returns
- * { bodies (temporary copies, sections included), edges, sections (empty for input wires) }.
+ * { bodies (temporary copies, sections included), edges, sections ({ sections, levels }; undefined for input wires),
+ * baseArea (area of the base faces; undefined for input wires) }.
  *
  * Not opCreateOutline: it re-fits silhouette edges, and on RD 20TAC an exact R 1.02 m base arc came back as a spline
  * whose end curvature read R 3.93 m, and R 8.82 m on the mirrored copy (correction 57).
@@ -74,8 +80,9 @@ export function primitiveFootprintSource(context is Context, id is Id, fromVolum
 {
     var bodies = qNothing();
     var edges = qNothing();
-    var sections = [];
+    var sections = undefined;
     var sectionBodies = qNothing();
+    var baseArea = undefined;
     if (fromVolume)
     {
         const base = basePeriphery(context, volume, frame.chain, toDatum);
@@ -88,8 +95,9 @@ export function primitiveFootprintSource(context is Context, id is Id, fromVolum
         primitiveMove(context, id + "peripheryToLocal", bodies, toLocal, isIdentity);
         edges = qOwnedByBody(bodies, EntityType.EDGE);
         const built = primitiveBaseSections(context, id + "sections", base.faces, bodies, frame, toDatum, toLocal, isIdentity);
-        sections = built.sections;
+        sections = built;
         sectionBodies = built.bodies;
+        baseArea = evArea(context, { "entities" : qUnion(base.faces) });
     }
     else
     {
@@ -107,7 +115,7 @@ export function primitiveFootprintSource(context is Context, id is Id, fromVolum
     {
         throw regenError("The footprint has no edges.", [fromVolume ? "volume" : "footprintWires"]);
     }
-    return { "bodies" : qUnion([bodies, sectionBodies]), "edges" : list, "sections" : sections };
+    return { "bodies" : qUnion([bodies, sectionBodies]), "edges" : list, "sections" : sections, "baseArea" : baseArea };
 }
 
 /**
@@ -154,102 +162,119 @@ function basePeriphery(context is Context, volume is Query, bottom is map, toDat
 }
 
 /**
- * The base cut at y = 0 and at UNWRAP_SECTION_FRACTIONS of the periphery's largest +y and -y (LOCAL frame): planes
- * through the base FACES only, in one opIntersectFaces. Per level the connected run that crosses x = x(MRS) (the
- * longest if several) becomes a section (unwrapSection); a level whose section misses x(MRS) is left out. Returns
- * { bodies (the section wires, LOCAL), sections (ordered by y) }.
+ * The base cut at y = 0 and at UNWRAP_SECTION_FRACTIONS of the periphery's largest +y and -y (LOCAL frame), see
+ * addSectionLevels. Returns { bodies (the section wires, LOCAL), sections, levels, faces, toDatum, toLocal, isIdentity }
+ * (the rest is what primitiveUnwrap needs to add levels).
  */
 export function primitiveBaseSections(context is Context, id is Id, faces is array, periphery is Query, frame is map,
     toDatum is Transform, toLocal is Transform, isIdentity is boolean) returns map
 {
     const bb = evBox3d(context, { "topology" : periphery, "tight" : true });
-    var levels = [0 * meter];
+    var ys = [0 * meter];
     for (var f in UNWRAP_SECTION_FRACTIONS)
     {
         if (bb.maxCorner[1] > PRIMITIVE_CHAIN_TOLERANCE)
         {
-            levels = append(levels, f * bb.maxCorner[1]);
+            ys = append(ys, f * bb.maxCorner[1]);
         }
         if (bb.minCorner[1] < -PRIMITIVE_CHAIN_TOLERANCE)
         {
-            levels = append(levels, f * bb.minCorner[1]);
+            ys = append(ys, f * bb.minCorner[1]);
         }
     }
-    const yAxis = toDatum.linear * vector(0, 1, 0);
-    const xAxis = toDatum.linear * vector(1, 0, 0);
+    const base = { "sections" : [], "levels" : [], "faces" : faces, "toDatum" : toDatum, "toLocal" : toLocal, "isIdentity" : isIdentity };
+    return addSectionLevels(context, id, base, ys, frame);
+}
+
+/**
+ * Adds the base cut at each y of `ys` (LOCAL) to `base` ({ sections, levels, faces, toDatum, toLocal, isIdentity }):
+ * planes through the base FACES only, in one opIntersectFaces. Every connected run of a level (at least 1 mm long)
+ * becomes a section (unwrapSection), levels from the centre outwards: a run crossing x = x(MRS) is aligned there, any
+ * other run (an outer level misses the waist; a bite or a slot splits a level) to the nearest-in-y section it
+ * overlaps in x. Returns base with sections (flat list) and levels (ordered by y: { y, members (indices into
+ * sections) }) extended, and bodies (the new section wires, LOCAL).
+ */
+function addSectionLevels(context is Context, id is Id, base is map, ys is array, frame is map) returns map
+{
+    const yAxis = base.toDatum.linear * vector(0, 1, 0);
+    const xAxis = base.toDatum.linear * vector(1, 0, 0);
     var planes = [];
-    for (var k = 0; k < size(levels); k += 1)
+    var planeBodies = [];
+    for (var k = 0; k < size(ys); k += 1)
     {
         const pid = id + ("plane" ~ k);
-        opPlane(context, pid, { "plane" : plane(toDatum * vector(0 * meter, levels[k], 0 * meter), yAxis, xAxis),
+        opPlane(context, pid, { "plane" : plane(base.toDatum * vector(0 * meter, ys[k], 0 * meter), yAxis, xAxis),
                     "width" : 20 * meter, "height" : 20 * meter });
         planes = append(planes, qCreatedBy(pid, EntityType.FACE));
+        planeBodies = append(planeBodies, qCreatedBy(pid, EntityType.BODY));
     }
-    opIntersectFaces(context, id + "cut", { "tools" : qUnion(planes), "targets" : qUnion(faces) });
-    var planeBodies = [];
-    for (var k = 0; k < size(levels); k += 1)
-    {
-        planeBodies = append(planeBodies, qCreatedBy(id + ("plane" ~ k), EntityType.BODY));
-    }
+    opIntersectFaces(context, id + "cut", { "tools" : qUnion(planes), "targets" : qUnion(base.faces) });
     opDeleteBodies(context, id + "deletePlanes", { "entities" : qUnion(planeBodies) });
     const bodies = qCreatedBy(id + "cut", EntityType.BODY);
-    primitiveMove(context, id + "cutToLocal", bodies, toLocal, isIdentity);
+    primitiveMove(context, id + "cutToLocal", bodies, base.toLocal, base.isIdentity);
 
-    // Edges by level (their midpoint's y), then one run per level.
+    // Edges by level (their midpoint's y); levels from the centre outwards so inner sections anchor outer runs.
     const records = primitiveUniqueRecords(primitiveEdgeRecords(context, evaluateQuery(context, qOwnedByBody(bodies, EntityType.EDGE))));
-    var sections = [];
-    for (var k = 0; k < size(levels); k += 1)
+    var order = size(ys) == 0 ? [] : range(0, size(ys) - 1);
+    order = sort(order, function(a, b) { return (abs(ys[a]) - abs(ys[b])) / meter; });
+    var sections = base.sections;
+    var levels = base.levels;
+    for (var k in order)
     {
         var mine = [];
         for (var r in records)
         {
-            if (abs(r.mid[1] - levels[k]) < PRIMITIVE_CHAIN_TOLERANCE)
+            if (abs(r.mid[1] - ys[k]) < SECTION_LEVEL_TOL)
             {
                 mine = append(mine, r);
             }
         }
-        var best = undefined;
-        var bestSpan = 0 * meter;
+        var added = [];
         for (var run in primitiveOrderRecords(mine))
         {
-            var lo = run[0].start[0];
-            var hi = lo;
-            for (var link in run)
+            // TAIL -> TIP, like the bottom wire.
+            var oriented = run;
+            if (frame.dirSign * (run[size(run) - 1].end[0] - run[0].start[0]) < 0 * meter)
             {
-                lo = min(lo, link.end[0]);
-                hi = max(hi, link.end[0]);
+                oriented = primitiveReverseRun(run);
             }
-            if (lo <= frame.xMrs && hi >= frame.xMrs && hi - lo > bestSpan)
+            const chain = primitiveChainFromRun(context, oriented);
+            if (chain.total < 1 * millimeter)
             {
-                best = run;
-                bestSpan = hi - lo;
+                continue;
+            }
+            const section = unwrapSection(context, chain, ys[k], frame, sections);
+            if (section != undefined)
+            {
+                added = append(added, section);
             }
         }
-        if (best == undefined)
+        if (size(added) > 0)
         {
-            continue;
-        }
-        // TAIL -> TIP, like the bottom wire.
-        if (frame.dirSign * (best[size(best) - 1].end[0] - best[0].start[0]) < 0 * meter)
-        {
-            best = primitiveReverseRun(best);
-        }
-        const section = unwrapSection(context, primitiveChainFromRun(context, best), levels[k], frame);
-        if (section != undefined)
-        {
-            sections = append(sections, section);
+            var members = [];
+            for (var section in added)
+            {
+                members = append(members, size(sections));
+                sections = append(sections, section);
+            }
+            levels = append(levels, { "y" : ys[k], "members" : members });
         }
     }
-    sections = sort(sections, function(a, b) { return (a.y - b.y) / meter; });
-    return { "bodies" : bodies, "sections" : sections };
+    var out = base;
+    out.sections = sections;
+    out.levels = sort(levels, function(a, b) { return (a.y - b.y) / meter; });
+    out.bodies = bodies;
+    return out;
 }
 
 /**
  * A mapping section: a chain in the plane y = `y` running TAIL -> TIP, with a seed table (a, x, z at
- * SECTION_TABLE_ROWS + 1 even arc positions; sense = +1 / -1 when x is strictly monotonic along it) and aMrs, its arc position at x = x(MRS). undefined when it has no point
- * at x(MRS).
+ * SECTION_TABLE_ROWS + 1 even arc positions; sense = +1 / -1 when x is strictly monotonic along it), its x range and
+ * uOffset (u = uOffset + dirSign * a). Aligned at x(MRS) (u = x(MRS) there) when it reaches it; otherwise at the
+ * overlap point nearest x(MRS) with the nearest-in-y section of `anchored` it overlaps (u equal there). undefined when
+ * it can be aligned to nothing.
  */
-function unwrapSection(context is Context, chain is map, y is ValueWithUnits, frame is map)
+function unwrapSection(context is Context, chain is map, y is ValueWithUnits, frame is map, anchored is array)
 {
     var arcs = [];
     for (var i = 0; i <= SECTION_TABLE_ROWS; i += 1)
@@ -263,10 +288,12 @@ function unwrapSection(context is Context, chain is map, y is ValueWithUnits, fr
         xs = append(xs, r.point[0]);
         zs = append(zs, r.point[2]);
     }
-    const at = primitiveChainAtX(context, chain, { "a" : arcs, "x" : xs }, [frame.xMrs])[0];
-    if (abs(at.point[0] - frame.xMrs) > 1e-6 * meter || at.a < -SECTION_REACH_TOL || at.a > chain.total + SECTION_REACH_TOL)
+    var xLo = xs[0];
+    var xHi = xs[0];
+    for (var x in xs)
     {
-        return undefined;
+        xLo = min(xLo, x);
+        xHi = max(xHi, x);
     }
     // +1 / -1 when x rises / falls strictly along the table (bisection seeds), else 0.
     var sense = xs[size(xs) - 1] > xs[0] ? 1 : -1;
@@ -278,7 +305,34 @@ function unwrapSection(context is Context, chain is map, y is ValueWithUnits, fr
             break;
         }
     }
-    return { "chain" : chain, "y" : y, "a" : arcs, "x" : xs, "z" : zs, "sense" : sense, "aMrs" : at.a };
+    var section = { "chain" : chain, "y" : y, "a" : arcs, "x" : xs, "z" : zs, "sense" : sense, "xLo" : xLo, "xHi" : xHi };
+    if (xLo <= frame.xMrs && xHi >= frame.xMrs)
+    {
+        const at = primitiveChainAtX(context, chain, { "a" : arcs, "x" : xs }, [frame.xMrs])[0];
+        if (abs(at.point[0] - frame.xMrs) < 1e-6 * meter)
+        {
+            section.uOffset = frame.xMrs - frame.dirSign * at.a;
+            return section;
+        }
+    }
+    var inner = undefined;
+    for (var other in anchored)
+    {
+        if (min(xHi, other.xHi) - max(xLo, other.xLo) > 1 * millimeter &&
+            (inner == undefined || abs(other.y - y) < abs(inner.y - y)))
+        {
+            inner = other;
+        }
+    }
+    if (inner == undefined)
+    {
+        return undefined;
+    }
+    const x0 = max(max(xLo, inner.xLo), min(min(xHi, inner.xHi), frame.xMrs));
+    const mine = primitiveChainAtX(context, chain, { "a" : arcs, "x" : xs }, [x0])[0];
+    const theirs = primitiveChainAtX(context, inner.chain, { "a" : inner.a, "x" : inner.x }, [x0])[0];
+    section.uOffset = inner.uOffset + frame.dirSign * (theirs.a - mine.a);
+    return section;
 }
 
 /**
@@ -432,7 +486,7 @@ function sectionFeet(context is Context, section is map, points is array) return
 
 /**
  * u, u' and u'' (along the source edge's arc length) of a point from its foot on one section: P' = `d1` (unit tangent),
- * P'' = `d2` (curvature vector).
+ * P'' = `d2` (curvature vector, 1/m).
  */
 function sectionU(frame is map, section is map, foot is map, d1 is Vector, d2 is Vector) returns map
 {
@@ -451,18 +505,37 @@ function sectionU(frame is map, section is map, foot is map, d1 is Vector, d2 is
     const numP = dot(t, d2) + kappa * ap * np;
     const denP = -kappa * np;
     const app = (numP * den - tp * denP) / (den * den);
-    return { "u" : frame.xMrs + frame.dirSign * (foot.a - section.aMrs), "up" : frame.dirSign * ap, "upp" : frame.dirSign * app };
+    return { "u" : section.uOffset + frame.dirSign * foot.a, "up" : frame.dirSign * ap, "upp" : frame.dirSign * app };
+}
+
+/** The member of a level for a point at x: the one whose x range holds x (within 1 mm), else the nearest in x. */
+function levelMember(sections is array, level is map, x is ValueWithUnits) returns number
+{
+    var best = undefined;
+    var bestD = undefined;
+    for (var m in level.members)
+    {
+        const s = sections[m];
+        const d = max(max(s.xLo - x, x - s.xHi), 0 * meter);
+        if (bestD == undefined || d < bestD - 1 * millimeter || (d <= 1 * millimeter && bestD <= 1 * millimeter && s.xHi - s.xLo > sections[best].xHi - sections[best].xLo))
+        {
+            best = m;
+            bestD = d;
+        }
+    }
+    return best;
 }
 
 /**
- * u, u', u'' of every point (see the header): the two sections around its y that reach it, interpolated in y; else
- * the nearest section in y that reaches it; else the nearest section's end tangent. `d1s` / `d2s` per point as in
- * sectionU, d2 in 1/m.
+ * u, u', u'' of every point (see the header): on the levels just below and above its y (the member there that spans
+ * its x), interpolated in y when both reach it; else the nearest-in-y section that reaches it; else the nearest-in-y
+ * section asked, carried along its end tangent (reached false). `d1s` / `d2s` per point as in sectionU.
  */
-function mapThroughSections(context is Context, frame is map, sections is array, points is array, d1s is array, d2s is array) returns array
+function mapThroughSections(context is Context, frame is map, base is map, points is array, d1s is array, d2s is array) returns array
 {
+    const sections = base.sections;
+    const levels = base.levels;
     const nSec = size(sections);
-    // The sections below / above each point's y.
     var below = [];
     var above = [];
     var askBy = makeArray(nSec, []);
@@ -470,46 +543,32 @@ function mapThroughSections(context is Context, frame is map, sections is array,
     {
         var lo = undefined;
         var hi = undefined;
-        for (var k = 0; k < nSec; k += 1)
+        for (var k = 0; k < size(levels); k += 1)
         {
-            if (sections[k].y <= points[j][1])
+            if (levels[k].y <= points[j][1])
             {
                 lo = k;
             }
-            if (hi == undefined && sections[k].y >= points[j][1])
+            if (hi == undefined && levels[k].y >= points[j][1])
             {
                 hi = k;
             }
         }
-        below = append(below, lo);
-        above = append(above, hi);
-        for (var k in [lo, hi])
+        const sLo = lo == undefined ? undefined : levelMember(sections, levels[lo], points[j][0]);
+        const sHi = hi == undefined ? undefined : levelMember(sections, levels[hi], points[j][0]);
+        below = append(below, sLo);
+        above = append(above, sHi);
+        for (var m in [sLo, sHi])
         {
-            if (k != undefined && (size(askBy[k]) == 0 || askBy[k][size(askBy[k]) - 1] != j))
+            if (m != undefined && (size(askBy[m]) == 0 || askBy[m][size(askBy[m]) - 1] != j))
             {
-                askBy[k] = append(askBy[k], j);
+                askBy[m] = append(askBy[m], j);
             }
         }
     }
     var feet = makeArray(size(points), {});
-    for (var k = 0; k < nSec; k += 1)
-    {
-        if (size(askBy[k]) == 0)
-        {
-            continue;
-        }
-        var pts = [];
-        for (var j in askBy[k])
-        {
-            pts = append(pts, points[j]);
-        }
-        const got = sectionFeet(context, sections[k], pts);
-        for (var i = 0; i < size(askBy[k]); i += 1)
-        {
-            feet[askBy[k][i]][k] = got[i];
-        }
-    }
-    // Points neither neighbour reaches: every other section, nearest in y first.
+    feet = askFeet(context, sections, askBy, points, feet);
+    // Points neither neighbour reaches: every other section.
     var retry = makeArray(nSec, []);
     for (var j = 0; j < size(points); j += 1)
     {
@@ -517,32 +576,16 @@ function mapThroughSections(context is Context, frame is map, sections is array,
         const okHi = above[j] != undefined && feet[j][above[j]].reached;
         if (!okLo && !okHi)
         {
-            for (var k = 0; k < nSec; k += 1)
+            for (var m = 0; m < nSec; m += 1)
             {
-                if (k != below[j] && k != above[j])
+                if (m != below[j] && m != above[j])
                 {
-                    retry[k] = append(retry[k], j);
+                    retry[m] = append(retry[m], j);
                 }
             }
         }
     }
-    for (var k = 0; k < nSec; k += 1)
-    {
-        if (size(retry[k]) == 0)
-        {
-            continue;
-        }
-        var pts = [];
-        for (var j in retry[k])
-        {
-            pts = append(pts, points[j]);
-        }
-        const got = sectionFeet(context, sections[k], pts);
-        for (var i = 0; i < size(retry[k]); i += 1)
-        {
-            feet[retry[k][i]][k] = got[i];
-        }
-    }
+    feet = askFeet(context, sections, retry, points, feet);
     var out = [];
     for (var j = 0; j < size(points); j += 1)
     {
@@ -550,7 +593,7 @@ function mapThroughSections(context is Context, frame is map, sections is array,
         const hi = above[j];
         const okLo = lo != undefined && feet[j][lo].reached;
         const okHi = hi != undefined && feet[j][hi].reached;
-        if (okLo && okHi && lo != hi)
+        if (okLo && okHi && lo != hi && abs(sections[hi].y - sections[lo].y) > PRIMITIVE_CHAIN_TOLERANCE)
         {
             const m0 = sectionU(frame, sections[lo], feet[j][lo], d1s[j], d2s[j]);
             const m1 = sectionU(frame, sections[hi], feet[j][hi], d1s[j], d2s[j]);
@@ -559,6 +602,7 @@ function mapThroughSections(context is Context, frame is map, sections is array,
             const wp = d1s[j][1] / span;
             const wpp = d2s[j][1] / span;
             out = append(out, {
+                        "reached" : true,
                         "u" : m0.u + (m1.u - m0.u) * w,
                         "up" : m0.up + (m1.up - m0.up) * w + wp * (m1.u - m0.u) / meter,
                         "upp" : m0.upp + (m1.upp - m0.upp) * w + 2 * wp * (m1.up - m0.up) + wpp * (m1.u - m0.u) / meter
@@ -568,21 +612,22 @@ function mapThroughSections(context is Context, frame is map, sections is array,
         var use = okLo ? lo : (okHi ? hi : undefined);
         if (use == undefined)
         {
-            // Nearest section in y that reaches the point; none: the nearest section's end tangent.
+            // Nearest section in y that reaches the point; none: the nearest section asked (its end tangent).
             var nearest = undefined;
-            for (var k = 0; k < nSec; k += 1)
+            for (var m = 0; m < nSec; m += 1)
             {
-                if (feet[j][k] == undefined)
+                if (feet[j][m] == undefined)
                 {
                     continue;
                 }
-                if (nearest == undefined || abs(sections[k].y - points[j][1]) < abs(sections[nearest].y - points[j][1]))
+                const dy = abs(sections[m].y - points[j][1]);
+                if (nearest == undefined || dy < abs(sections[nearest].y - points[j][1]))
                 {
-                    nearest = k;
+                    nearest = m;
                 }
-                if (feet[j][k].reached && (use == undefined || abs(sections[k].y - points[j][1]) < abs(sections[use].y - points[j][1])))
+                if (feet[j][m].reached && (use == undefined || dy < abs(sections[use].y - points[j][1])))
                 {
-                    use = k;
+                    use = m;
                 }
             }
             if (use == undefined)
@@ -590,21 +635,50 @@ function mapThroughSections(context is Context, frame is map, sections is array,
                 use = nearest;
             }
         }
-        out = append(out, sectionU(frame, sections[use], feet[j][use], d1s[j], d2s[j]));
+        var single = sectionU(frame, sections[use], feet[j][use], d1s[j], d2s[j]);
+        single.reached = feet[j][use].reached;
+        out = append(out, single);
+    }
+    return out;
+}
+
+/** Feet of the points listed per section in `ask` (one batch per section), stored as feet[point][section]. */
+function askFeet(context is Context, sections is array, ask is array, points is array, feet is array) returns array
+{
+    var out = feet;
+    for (var m = 0; m < size(sections); m += 1)
+    {
+        if (size(ask[m]) == 0)
+        {
+            continue;
+        }
+        var pts = [];
+        for (var j in ask[m])
+        {
+            pts = append(pts, points[j]);
+        }
+        const got = sectionFeet(context, sections[m], pts);
+        for (var i = 0; i < size(ask[m]); i += 1)
+        {
+            out[ask[m][i]][m] = got[i];
+        }
     }
     return out;
 }
 
 /**
- * Unwraps the source edges into the LOCAL z = 0 plane through the base `sections` (primitiveBaseSections; empty =
- * the bottom wire, for input wires). Returns
+ * Unwraps the source edges into the LOCAL z = 0 plane through the base `sections` ({ sections, levels } of
+ * primitiveBaseSections; undefined = the bottom wire alone, for input wires). Returns
  *     bodies    the unwrapped wires (exact copies and fitted edges)
  *     samples   per source edge { u : [], y : [], R : [], K : [] } (R in m, undefined = no radius there (|R| over the
  *               limit); K = signed curvature in 1/m, same sign as R, undefined only where the unwrap has no slope)
  *     exact / fitted   edge counts
+ *     sections         sections mapped through (0: none needed)
+ *     sourceLength / unwrappedLength   total length of the source edges / the unwrapped wires (equal on a base
+ *                      extruded along y: the unwrap is an isometry there)
  */
 export function primitiveUnwrap(context is Context, id is Id, frame is map, edges is array, flatInput is boolean, radiusLimit is ValueWithUnits,
-    sections is array) returns map
+    sections) returns map
 {
     // Pass 1: sample every edge; collect every sample that needs mapping.
     var data = [];
@@ -648,19 +722,82 @@ export function primitiveUnwrap(context is Context, id is Id, frame is map, edge
         }
     }
     var maps = [];
+    var sectionCount = 0;
+    var extraBodies = qNothing();
     if (size(points) > 0)
     {
         var through = sections;
-        if (size(through) == 0)
+        if (through == undefined || size(through.sections) == 0)
         {
-            const bottom = unwrapSection(context, frame.chain, 0 * meter, frame);
-            through = bottom == undefined ? [] : [bottom];
-        }
-        if (size(through) == 0)
-        {
-            throw regenError("The footprint cannot be unwrapped: the bottom wire has no point at the MRS.", ["volume"]);
+            const bottom = unwrapSection(context, frame.chain, 0 * meter, frame, []);
+            if (bottom == undefined)
+            {
+                throw regenError("The footprint cannot be unwrapped: the bottom wire has no point at the MRS.", ["volume"]);
+            }
+            through = { "sections" : [bottom], "levels" : [{ "y" : 0 * meter, "members" : [0] }] };
         }
         maps = mapThroughSections(context, frame, through, points, d1s, d2s);
+        // Points no section reaches (a bite, a notch: the base runs on past every level there): cut the base again at
+        // their own y -- a periphery point lies on the base, so the section at its y reaches it -- and map them again.
+        if (through.faces != undefined)
+        {
+            var missing = [];
+            for (var j = 0; j < size(maps); j += 1)
+            {
+                if (!maps[j].reached)
+                {
+                    missing = append(missing, j);
+                }
+            }
+            var ys = [];
+            for (var j in missing)
+            {
+                ys = append(ys, points[j][1]);
+            }
+            ys = sort(ys, function(a, b) { return (a - b) / meter; });
+            var extra = [];
+            for (var y in ys)
+            {
+                var known = size(extra) > 0 && abs(extra[size(extra) - 1] - y) < SECTION_LEVEL_GAP;
+                for (var level in through.levels)
+                {
+                    known = known || abs(level.y - y) < SECTION_LEVEL_GAP;
+                }
+                if (!known)
+                {
+                    extra = append(extra, y);
+                }
+            }
+            if (size(extra) > SECTION_EXTRA_MAX)
+            {
+                var picked = [];
+                for (var i = 0; i < SECTION_EXTRA_MAX; i += 1)
+                {
+                    picked = append(picked, extra[round(i * (size(extra) - 1) / (SECTION_EXTRA_MAX - 1))]);
+                }
+                extra = picked;
+            }
+            if (size(extra) > 0)
+            {
+                through = addSectionLevels(context, id + "extraSections", through, extra, frame);
+                extraBodies = through.bodies;
+                var subPoints = [];
+                var subD1 = [];
+                var subD2 = [];
+                for (var j in missing)
+                {
+                    subPoints = append(subPoints, points[j]);
+                    subD1 = append(subD1, d1s[j]);
+                    subD2 = append(subD2, d2s[j]);
+                }
+                const again = mapThroughSections(context, frame, through, subPoints, subD1, subD2);
+                for (var i = 0; i < size(missing); i += 1)
+                {
+                    maps[missing[i]] = again[i];
+                }
+            }
+        }
+        sectionCount = size(through.sections);
     }
     const limitK = 1 / (radiusLimit / meter);
 
@@ -726,6 +863,12 @@ export function primitiveUnwrap(context is Context, id is Id, frame is map, edge
             }
         }
         samples = append(samples, { "u" : us, "y" : ys, "R" : radii, "K" : curvatures });
+        var ul = 0 * meter;
+        for (var q = 1; q < size(points2); q += 1)
+        {
+            ul += norm(points2[q] - points2[q - 1]);
+        }
+        println("DBGEDGE len " ~ roundToPrecision(e.len / millimeter, 4) ~ " poly " ~ roundToPrecision(ul / millimeter, 4) ~ " n " ~ size(points2) ~ " p0 " ~ toString(e.results[0].frame.origin / millimeter) ~ " p1 " ~ toString(e.results[size(e.results) - 1].frame.origin / millimeter) ~ " exact " ~ exact);
         if (exact)
         {
             var placed = false;
@@ -772,7 +915,18 @@ export function primitiveUnwrap(context is Context, id is Id, frame is map, edge
             bodies = append(bodies, qCreatedBy(id + ("fit" ~ f), EntityType.BODY));
         }
     }
-    return { "bodies" : qUnion(bodies), "samples" : samples, "exact" : size(exactGroups), "fitted" : size(fitted) };
+    if (!isQueryEmpty(context, extraBodies))
+    {
+        opDeleteBodies(context, id + "deleteExtraSections", { "entities" : extraBodies });
+    }
+    var sourceLength = 0 * meter;
+    for (var e in data)
+    {
+        sourceLength += e.len;
+    }
+    const all = qUnion(bodies);
+    return { "bodies" : all, "samples" : samples, "exact" : size(exactGroups), "fitted" : size(fitted), "sections" : sectionCount,
+            "sourceLength" : sourceLength, "unwrappedLength" : evLength(context, { "entities" : qOwnedByBody(all, EntityType.EDGE) }) };
 }
 
 /** A cubic through the mapped points (chord-length parameters, end tangents kept -- correction 23). */

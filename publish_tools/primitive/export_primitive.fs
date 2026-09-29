@@ -2,9 +2,9 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 // IMPORT: primitive_profiles.fs
-export import(path : "5865b24d55ff270a56088adf", version : "831e1834dacfe40e709f02da");
+export import(path : "5865b24d55ff270a56088adf", version : "4cf12c5da69c51c39a1b4026");
 // IMPORT: primitive_footprint.fs
-export import(path : "fbc957543e769a649f00c5cc", version : "cf58e637ac7a65bc4b35dc59");
+export import(path : "fbc957543e769a649f00c5cc", version : "7d772ee53cb69c1a42fcc4d2");
 // IMPORT: primitive_baseline.fs
 export import(path : "b827b10bc0bdc678c2db28cd", version : "34efb40ab2d8160afd0d369c");
 // IMPORT: primitive_output.fs
@@ -790,7 +790,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                 "keyLocations" : keyRows,
                 "baseline" : baselineRows,
                 "data" : dataRows,
-                "footprint" : footprintSummary(frame, fptPoints, fpt)
+                "footprint" : footprintSummary(frame, fptPoints, fpt, unwrapped, source)
             };
         const composite = primitiveComposite(context, id + "composite", allMembers, title, data);
         queries.primitive = composite;
@@ -1090,8 +1090,8 @@ function metadataRows(fpt is map, fcp is Vector, acp is Vector, volumeBox is Box
     return rows;
 }
 
-/** Footprint points as { u, s, w } in mm (u = unwrapped length coordinate, s as primitiveS). */
-function footprintSummary(frame is map, points is map, fpt is map) returns map
+/** Footprint points as { u, s, w } in mm (u = unwrapped length coordinate, s as primitiveS), the average range and the unwrap diagnostics. */
+function footprintSummary(frame is map, points is map, fpt is map, unwrapped is map, source is map) returns map
 {
     var out = {};
     for (var entry in points)
@@ -1101,5 +1101,13 @@ function footprintSummary(frame is map, points is map, fpt is map) returns map
     }
     out.averageFrom = primitiveMM(primitiveSFromU(frame, fpt.lo));
     out.averageTo = primitiveMM(primitiveSFromU(frame, fpt.hi));
+    // The unwrap (2026-09-28): base sections mapped through, exact / fitted edges, and the isometry check (lengths,
+    // mm; base area, mm^2).
+    out.unwrap = { "sections" : unwrapped.sections, "exact" : unwrapped.exact, "fitted" : unwrapped.fitted,
+            "sourceLength" : primitiveMM(unwrapped.sourceLength), "unwrappedLength" : primitiveMM(unwrapped.unwrappedLength) };
+    if (source.baseArea != undefined)
+    {
+        out.unwrap.baseArea = primitiveRound(source.baseArea / (millimeter * millimeter), 3);
+    }
     return out;
 }

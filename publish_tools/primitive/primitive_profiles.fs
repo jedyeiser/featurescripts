@@ -19,6 +19,8 @@ const SECTION_PLANE_SIZE = 20 * meter;
 const EXTREME_SAMPLES = 33;
 /** Refinement rounds (9 points each) of an extreme point. */
 const EXTREME_ROUNDS = 7;
+/** Points this close along the extreme direction tie; the lower one wins (a vertical end wall ends the BOTTOM at its foot). */
+const EXTREME_TIE = 1e-10 * meter;
 /** A corner sharper than this between two top edges may end a cap. */
 const CAP_CORNER = 20 * degree;
 /** Caps end within this distance (chord) of the extreme point. */
@@ -133,7 +135,11 @@ function longestLoop(context is Context, runs is array) returns map
     return { "run" : best, "count" : count };
 }
 
-/** The loop point farthest along `dir`: { edge, t (edge parameter), point, interior (false = at a vertex) }. */
+/**
+ * The loop point farthest along `dir`: { edge, t (edge parameter), point, interior (false = at a vertex) }. Ties (a
+ * vertical end wall, e.g. a bite cut into the tail, 2026-09-28) go to the lowest point, so the bottom wire ends at the
+ * wall's foot and the wall becomes the end cap (it used to climb the wall, and the wall counted as base).
+ */
 function extremePoint(context is Context, run is array, dir is Vector) returns map
 {
     var best = undefined;
@@ -148,7 +154,7 @@ function extremePoint(context is Context, run is array, dir is Vector) returns m
         for (var i = 0; i < EXTREME_SAMPLES; i += 1)
         {
             const f = dot(tls[i].origin, dir);
-            if (best == undefined || f > best.f)
+            if (best == undefined || extremeBetter(f, tls[i].origin, best.f, best.point))
             {
                 best = { "edge" : link.edge, "t" : ts[i], "f" : f, "point" : tls[i].origin };
             }
@@ -167,7 +173,7 @@ function extremePoint(context is Context, run is array, dir is Vector) returns m
         var kBest = 0;
         for (var k = 1; k < 9; k += 1)
         {
-            if (dot(tls[k].origin, dir) > dot(tls[kBest].origin, dir))
+            if (extremeBetter(dot(tls[k].origin, dir), tls[k].origin, dot(tls[kBest].origin, dir), tls[kBest].origin))
             {
                 kBest = k;
             }
@@ -186,6 +192,12 @@ function extremePoint(context is Context, run is array, dir is Vector) returns m
         best.point = evEdgeTangentLine(context, { "edge" : best.edge, "parameter" : best.t < 0.5 ? 0 : 1 }).origin;
     }
     return best;
+}
+
+/** Whether a point (extreme value f, point p) beats the best so far: farther along, or tied and lower (z). */
+function extremeBetter(f is ValueWithUnits, p is Vector, bestF is ValueWithUnits, bestPoint is Vector) returns boolean
+{
+    return f > bestF + EXTREME_TIE || (abs(f - bestF) <= EXTREME_TIE && p[2] < bestPoint[2]);
 }
 
 /** Splits the edge at an interior extreme point (correction 45: split at a parameter, not with a plane). */
