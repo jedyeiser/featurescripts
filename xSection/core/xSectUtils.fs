@@ -116,7 +116,7 @@ export function buildCrossSectionPath(context is Context, alongQuery is Query) r
  * Orient an array of path tangent lines into cross-section coordinate frames.
  *
  * Each frame is oriented with:
- *   zAxis (tangent)  -> positive world X (tip to tail)
+ *   zAxis (tangent)  -> positive world X (low X to high X; the tip may be at either end)
  *   xAxis (normal)   -> positive world Z (thickness, up from base)
  *   yAxis (binormal) -> world -Y (width, derived)
  *
@@ -238,10 +238,10 @@ export function projectXToPathParameter(context is Context, path is Path, target
  *
  * If both FCP and ACP are defined, cross-section planes are intelligently distributed:
  * - Reference region (FCP to ACP): Evenly spaced with planes at FCP and ACP
- * - Tip region (start to FCP): ≥2 sections, spacing close to reference spacing
- * - Tail region (ACP to end): ≥2 sections, spacing close to reference spacing
+ * - End regions beyond FCP and beyond ACP: bonus sections, spacing close to reference spacing
+ *   (FCP may be the low-X or the high-X end; stations are numbered from FCP either way)
  *
- * Fallback: If FCP or ACP undefined → uniform spacing (current behavior)
+ * Fallback: If FCP or ACP undefined -> uniform spacing (current behavior)
  *
  * @param context {Context}
  * @param alongQuery {Query} : Wire body to cross-section along (its edges are extracted)
@@ -318,8 +318,9 @@ export function getCrossSectionFramesAdaptive(context is Context, alongQuery is 
     }
 
     // Compute region lengths (world-X based, independent of edge parameter direction).
-    // Tip = portion of the edge below the reference band (low world X);
-    // Tail = portion above it (high world X). Because fcpXOrdered/acpXOrdered are the
+    // "Tip" here = portion of the edge below the reference band (low world X);
+    // "Tail" = portion above it (high world X) -- the real tip when FCP is the high-X end;
+    // labels are corrected after the loops. Because fcpXOrdered/acpXOrdered are the
     // ordered (min/max) boundaries and xMin/xMax are the ordered edge extents, both
     // lengths are always non-negative -- regardless of FCP/ACP selection order or the
     // edge's parameter direction.
@@ -404,6 +405,17 @@ export function getCrossSectionFramesAdaptive(context is Context, alongQuery is 
         }
         xPositions = append(xPositions, tailX);
         stationNumbers = append(stationNumbers, numRefSections + i);
+    }
+
+    // Station labels count from FCP (the tip side): station 0 at FCP, N-1 at ACP, negative
+    // stations beyond FCP (tip), >= N beyond ACP (tail). The positions stay ascending in X;
+    // when FCP is the high-X end only the labels are mirrored (k -> N-1-k).
+    if (fcpX > acpX)
+    {
+        for (var k = 0; k < size(stationNumbers); k += 1)
+        {
+            stationNumbers[k] = (numRefSections - 1) - stationNumbers[k];
+        }
     }
 
     // Convert world-X samples to whole-path parameters, keeping station labels aligned.

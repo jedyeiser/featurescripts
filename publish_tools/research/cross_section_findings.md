@@ -67,6 +67,15 @@ All model features regenerate OK -- the breakage is entirely in the drawing laye
 6. **Quick fixes for existing docs:** replace the literal rename with the #Part_Prefix pattern used in Parts; treat
    the FOU/PIR/OEF X-Sect drawings as WRONG (dangling dims display TAC-era values) until rebuilt.
 
+## User decisions (2026-09-28)
+- Sections come from the Part Studio with the real layer parts (like 3D_Ski); the 3D part is to be the source of truth.
+- No dimensions: per-station composites (shaded-view option) + one table per section:
+  X, s, ski_thck, core_thck, sw_height (sidewall height in the section), sw_width (raw sidewall material width),
+  sw_left_in_ski (sidewall width remaining at the TOP of the SW rout -- the minimum, since rout angle > 0 and a
+  positive step-in cut into the ski), cavity_depth.
+- Sheet 1 summary: full ski plan + profile + table (RSL, SW rout specs, est. weight, est. stiffness, est. deflection,
+  total reinforcement thickness, total exposed layers, minimum SW left in ski, ISO min-thickness locations (solved)).
+
 ## Open before building
 - Spike S1: do name-based ids survive a document copy / re-derive in a drawing (build a section composite in
   73271cfc, dimension it via API, add a station, regen, copy workspace, audit)?

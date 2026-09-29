@@ -857,6 +857,17 @@ export function analyzeBaselineGeometry(context is Context,
         }
     }
 
+    if (debug)
+    {
+        println("fb_roll=" ~ (result.fb_roll == undefined ? "UNDEFINED" : toString(result.fb_roll / millimeter))
+            ~ "  ab_roll=" ~ (result.ab_roll == undefined ? "UNDEFINED" : toString(result.ab_roll / millimeter))
+            ~ "  frcpl=" ~ (result.frcpl == undefined ? "UNDEFINED" : toString(result.frcpl / millimeter))
+            ~ "  arcpl=" ~ (result.arcpl == undefined ? "UNDEFINED" : toString(result.arcpl / millimeter)) ~ " (mm)");
+        println("mcl_x=" ~ (result.mcl_x == undefined ? "UNDEFINED" : toString(result.mcl_x / millimeter))
+            ~ "  mcl_s=" ~ (result.mcl_s == undefined ? "UNDEFINED" : toString(result.mcl_s / millimeter))
+            ~ "  camber_height=" ~ toString(camberHeight / millimeter) ~ " (mm)");
+    }
+
     return result;
 }
 
