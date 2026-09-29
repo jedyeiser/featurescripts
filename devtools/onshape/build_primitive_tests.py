@@ -15,11 +15,16 @@ Cases (names carry the expectation):
   P3  FULL_BASELINE / volume, REF_WIRE vertices
   P4  = P3 on the mirrored fixture (tip -X): same values, x negated
   P5  = P1 with the datum Datum_x500_z10: same values, x - 500, z - 10
-  P6  = P1, average radius between the contact points
+  P6  = P1 with Plot region RSL: average radius = P1's (always between the inflections), radius plot cut to FCP..ACP
   P7  = P1 with the datum = the derived MRS connector (Z along the ski), Datum uses ORIGIN: same values, x - 885
   P8  = P1 + Target EI EI_const_150 + typed tip / tail block names: deflection = P L^3 / 48 EI (L = RSL), block rows
   P9  = P5 with Datum uses COORDINATE_SYSTEM (the connector is world-aligned): P5 values
   P10 = P1 with the dashed radius grid on and labels off: P1 values, grid dashes at every 10 m, no text
+  P11 = P1 + extra key points FB_Mass_location (the MP connector, key line) and "Mass AB" (Datum_x500_z10, no key
+        line), Key lines on, Plot region WIDEST: key rows + forced data rows at x 807.97 / 500 (23 rows), points,
+        ticks, key lines at FCP MP MRS ACP FB_Mass_location
+  P12 = P1 with Plot CURVATURE, Plot region INFLECTION: curvature band (1/m) between the inflections, tables = P1
+  P13 = extra key points "FB mass" + "FB_mass" (the same id): ERROR on the item
 
 Studio: "Primitive tests" by default; PRIMITIVE_STUDIO=<name> builds (and creates) another one. NEW=0 leaves out
 the 2026-09-28 parameters (datumUses, targetEI, tip / tail block), for a run against the phase-1 code.
@@ -28,6 +33,7 @@ usage (repo root): PYTHONPATH=. python devtools/onshape/build_primitive_tests.py
 """
 import json
 import os
+import re
 import sys
 
 from sync.core.client import OnshapeClient
@@ -84,7 +90,9 @@ def upsert(name, feature_type, params, namespace=""):
     feature = {"btType": "BTMFeature-134", "featureType": feature_type, "name": name, "namespace": namespace, "parameters": params}
     body = {"btType": "BTFeatureDefinitionCall-1406", "feature": feature,
             "serializationVersion": f["serializationVersion"], "sourceMicroversion": f["sourceMicroversion"]}
-    existing = [x for x in f["features"] if x["name"] == name]
+    # A P case keeps its feature when its name (expectation) changes: match on the case id.
+    case = name.split()[0]
+    existing = [x for x in f["features"] if x["name"] == name or (re.match(r"P\d+$", case) and x["name"].split()[0] == case)]
     if existing:
         feature["featureId"] = existing[0]["featureId"]
         r = c.post(f"{BASE}/features/featureid/{existing[0]['featureId']}", body)
@@ -186,8 +194,8 @@ def ei_sketch():
 
 
 def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseline=None, footprint=None,
-              between="INFLECTION", points=21, qv="", datum_uses="ORIGIN", ei=None, tip_block="", tail_block="",
-              grid=False, labels=True):
+              region="FULL", points=21, qv="", datum_uses="ORIGIN", ei=None, tip_block="", tail_block="",
+              grid=False, labels=True, plot="RADIUS", curvature_scale="5 mm", extras=(), key_lines=False, junctions=True):
     params = [
         q("volume", volume),
         q("fcp", fcp),
@@ -200,7 +208,12 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
         q("baselineWires", *([baseline] if baseline else [])),
         en("footprintFrom", "PrimitiveSource", "INPUT" if footprint else "VOLUME", ns),
         q("footprintWires", *(footprint if footprint else [])),
-        en("radiusBetween", "PrimitiveRadiusBetween", between, ns),
+        {"btType": "BTMParameterArray-2025", "parameterId": "extraPoints", "items": [
+            {"btType": "BTMArrayParameterItem-1843", "parameters": [s("keyName", n), q("keyPoint", pt), b("showKeyLine", line)]}
+            for n, pt, line in extras]},
+        en("plotMode", "PrimitivePlot", plot, ns),
+        en("plotRegion", "PrimitivePlotRegion", region, ns),
+        num("curvatureScale", curvature_scale),
         q("targetEI", *([ei] if ei else [])),
         num("dataPoints", str(points), True),
         b("forceStations", True),
@@ -219,6 +232,8 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
         num("eiScale", "2"),
         b("dashedGrid", grid),
         b("labels", labels),
+        b("keyLines", key_lines),
+        b("junctionTicks", junctions),
         num("textHeight", "20 mm"),
         s("queryVariable", qv),
     ]
@@ -226,7 +241,8 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
         params = [p for p in params if p["parameterId"] not in
                   ("datumUses", "targetEI", "tipBlockWire", "tipBlock", "tailBlockWire", "tailBlock",
                    "dashedGrid", "labels", "textHeight", "stationNumbers", "eiScale", "tipBlockFrom", "tailBlockFrom",
-                   "tipBlockWireName", "tailBlockWireName")]
+                   "tipBlockWireName", "tailBlockWireName", "extraPoints", "plotMode", "plotRegion", "curvatureScale",
+                   "keyLines", "junctionTicks")]
     return upsert(name, "exportPrimitive", params, ns)
 
 
@@ -241,6 +257,7 @@ def cases(dv, mi, dm, ei):
     vol = 'qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.SOLID)'
     fb = wire_named(dv, *FULL_BASELINE_AT)
     fb_m = wire_named(mi, -FULL_BASELINE_AT[0], FULL_BASELINE_AT[1], FULL_BASELINE_AT[2])
+    dm_q = 'qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.MATE_CONNECTOR)' % dm
     return [
         ("P1 TAC volume-volume, MC picks, MP -> avg R 17.05 m, nat 17.48 / 16.18 m, RSL 1480, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P1 TAC", qv="primitive")),
@@ -254,8 +271,8 @@ def cases(dv, mi, dm, ei):
         ("P5 TAC datum x500 z10 (as P1) -> P1 values, x - 500, z - 10, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X),
               datum='qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.MATE_CONNECTOR)' % dm, prefix="P5 TAC datum")),
-        ("P6 TAC as P1, average radius between contacts -> avg R over FCP-ACP, INFO",
-         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), prefix="P6 TAC contacts", between="CONTACTS")),
+        ("P6 TAC as P1, plot region RSL -> avg R = P1, radius plot within FCP-ACP, INFO",
+         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), prefix="P6 TAC contacts", region="CONTACTS")),
         ("P7 TAC datum = MRS connector, Datum uses ORIGIN (as P1) -> P1 values, x - 885, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), datum=mc_at(dv, 885),
               datum_uses="ORIGIN", prefix="P7 TAC MRS datum")),
@@ -269,6 +286,15 @@ def cases(dv, mi, dm, ei):
         ("P10 TAC as P1, dashed radius grid, no labels -> P1 values, GRID dashes, no text, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P10 TAC grid",
               grid=True, labels=False)),
+        ("P11 TAC as P1 + extra key points, key lines, plot region WIDEST -> 23 data rows, extra rows / points / ticks / lines, INFO",
+         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P11 TAC extra",
+              extras=[("FB_Mass_location", mc_at(dv, MP_X), True), ("Mass AB", dm_q, False)], key_lines=True, region="WIDEST")),
+        ("P12 TAC as P1, plot CURVATURE, region INFLECTION -> curvature band 1/m, tables = P1, INFO",
+         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P12 TAC curvature",
+              plot="CURVATURE", region="INFLECTION")),
+        ("P13 TAC extra key points 'FB mass' + 'FB_mass' -> ERROR (duplicate name)",
+         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), prefix="P13 TAC duplicate",
+              extras=[("FB mass", mc_at(dv, MP_X), False), ("FB_mass", dm_q, False)])),
     ]
 
 
@@ -282,6 +308,6 @@ if __name__ == "__main__":
     for name, kw in cases(dv, mi, dm, ei):
         if only and name.split()[0] not in only:
             continue
-        if not NEW and name.split()[0] in ("P7", "P8", "P9", "P10"):
+        if not NEW and name.split()[0] in ("P7", "P8", "P9", "P10", "P11", "P12", "P13"):
             continue
         primitive(name, ns, **kw)

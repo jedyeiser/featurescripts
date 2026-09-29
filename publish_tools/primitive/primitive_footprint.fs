@@ -33,6 +33,8 @@ const UNWRAP_EXACT_TOLERANCE = 1e-7 * meter;
 const FPT_TOLERANCE = 1e-6 * meter;
 /** Two radius-plot runs meeting at an edge junction are joined when their plot heights differ by less than this. */
 const PLOT_JOIN_TOLERANCE = 0.005 * millimeter;
+/** Clipped plot runs shorter than this along u are dropped (slivers at the region's ends). */
+const CLIP_MIN_RUN = 0.1 * millimeter;
 /** Where each bottom-wire edge is probed for the base faces (interior only: an end may sit on a cap edge). */
 const BASE_PROBES = [0.1, 0.3, 0.5, 0.7, 0.9];
 
@@ -521,7 +523,9 @@ export function primitiveClipRuns(runs is array, lo is ValueWithUnits, hi is Val
                 kept = append(kept, p);
             }
         }
-        if (size(kept) >= 2)
+        // A run that only touches the region (e.g. the tip arc starting at an inflection that is also an edge junction,
+        // where the curvature jumps) leaves a sliver: dropped, it would stretch the scale for nothing visible.
+        if (size(kept) >= 2 && abs(kept[size(kept) - 1][0] - kept[0][0]) >= CLIP_MIN_RUN)
         {
             out = append(out, kept);
         }

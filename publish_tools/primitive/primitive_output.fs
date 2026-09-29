@@ -167,7 +167,7 @@ export function primitiveLabel(context is Context, id is Id, text is string, anc
 function levelDigits(level is number, digits is number) returns string
 {
     const n = abs(round(level));
-    if (digits <= 0)
+    if (digits <= 0 || n == 0)
     {
         return "" ~ n;
     }

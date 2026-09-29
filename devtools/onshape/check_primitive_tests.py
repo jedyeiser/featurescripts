@@ -40,19 +40,28 @@ function(context is Context, queries)
         const data = getAttribute(context, { "entity" : body, "name" : "publishPrimitive" });
         var counts = {};
         var colours = {};
+        var extents = {};
         for (var m in evaluateQuery(context, qContainedInCompositeParts(body)))
         {
             const name = getProperty(context, { "entity" : m, "propertyType" : PropertyType.NAME });
             counts[name] = (counts[name] == undefined ? 0 : counts[name]) + 1;
             const a = getProperty(context, { "entity" : m, "propertyType" : PropertyType.APPEARANCE });
             colours[name] = round(a.red * 100) / 100 ~ "/" ~ round(a.green * 100) / 100 ~ "/" ~ round(a.blue * 100) / 100;
+            // x / z ranges (mm) of the plot band's plot, reference line, junction and key-location ticks, per body (world frame).
+            if (match(name, ".* (RADIUS|CURVATURE)( REFERENCE| JUNCTION| TICK .*)?").hasMatch || match(name, ".* FOOTPRINT JUNCTION").hasMatch)
+            {
+                const bb = evBox3d(context, { "topology" : m, "tight" : true });
+                const row = [round(bb.minCorner[0] / millimeter * 1000) / 1000, round(bb.maxCorner[0] / millimeter * 1000) / 1000,
+                             round(bb.minCorner[2] / millimeter * 1000) / 1000, round(bb.maxCorner[2] / millimeter * 1000) / 1000];
+                extents[name] = append(extents[name] == undefined ? [] : extents[name], row);
+            }
         }
         var members = [];
         for (var entry in counts)
         {
             members = append(members, entry.key);
         }
-        out = append(out, "JSON " ~ toString({ "data" : data, "members" : members, "counts" : counts, "colours" : colours,
+        out = append(out, "JSON " ~ toString({ "data" : data, "members" : members, "counts" : counts, "colours" : colours, "extents" : extents,
                     "name" : getProperty(context, { "entity" : body, "propertyType" : PropertyType.NAME }),
                     "bom" : getProperty(context, { "entity" : body, "propertyType" : PropertyType.EXCLUDE_FROM_BOM }) }));
     }
@@ -255,8 +264,9 @@ def strip(d, flat):
 def run_checks(prims, before=None):
     st = statuses()
     for name, status in sorted(st.items()):
-        if name[:2] in ("P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9"):
-            check(name.split()[0], "feature status", "INFO", status, status == "INFO")
+        if re.match(r"P\d+$", name.split()[0]):
+            want = "ERROR" if "-> ERROR" in name else "INFO"
+            check(name.split()[0], "feature status", want, status, status == want)
     d = {k.split()[0]: v["data"] for k, v in prims.items()}
     full = {k.split()[0]: v for k, v in prims.items()}
 
@@ -412,8 +422,9 @@ def run_checks(prims, before=None):
     check("P1", "no EI band without a target EI", "none", no_ei, not no_ei and "ei" not in p1["bands"])
 
     p6 = d["P6"]
-    check("P6", "average radius FCP-ACP m", "valid, differs from P1", meta(p6, "averageRadius"),
-          isinstance(meta(p6, "averageRadius"), float) and abs(meta(p6, "averageRadius") - meta(p1, "averageRadius")) > 0.01)
+    check("P6", "average radius always between the inflections: = P1 (region RSL)", meta(p1, "averageRadius"), meta(p6, "averageRadius"),
+          near(meta(p6, "averageRadius"), meta(p1, "averageRadius"), 1e-4))
+    run_checks_b(d, full)
 
     width = max(len(r[1]) for r in RESULTS)
     fails = 0
@@ -422,6 +433,121 @@ def run_checks(prims, before=None):
         print("%-4s %-9s %-*s expected %-22s actual %s" % ("ok" if ok else "FAIL", case, width, what, expected, actual))
     print("%d / %d pass" % (len(RESULTS) - fails, len(RESULTS)))
     return fails
+
+
+def span(full_case, suffix):
+    """[xmin, xmax, zmin, zmax] (mm) over every body named '<prefix> PRIMITIVE <suffix>'; None when there is none."""
+    rs = [r for name, rows_ in full_case["extents"].items() if name.endswith(" PRIMITIVE " + suffix) for r in rows_]
+    if not rs:
+        return None
+    return [min(r[0] for r in rs), max(r[1] for r in rs), min(r[2] for r in rs), max(r[3] for r in rs)]
+
+
+def count(full_case, suffix):
+    return sum(n for name, n in full_case["counts"].items() if name.endswith(" PRIMITIVE " + suffix))
+
+
+def run_checks_b(d, full):
+    """2026-09-28 (b): plot region, curvature plot, extra key points, key lines, junction ticks, unsigned EI labels."""
+    p1 = d["P1"]
+    fp = {k: v for k, v in p1["footprint"].items() if isinstance(v, dict)}
+    # Plot region: the reference line spans the region, the plot stays inside it (and reaches near both ends).
+    lo_rsl, hi_rsl = 145.0, 1625.0
+    wid = sorted([fp["FB_WIDEST"]["u"], fp["AB_WIDEST"]["u"]])
+    inf = sorted([fp["FB_INFLECTION"]["u"], fp["AB_INFLECTION"]["u"]])
+    for case, band, region, want in (("P1", "RADIUS", "FULL", None), ("P6", "RADIUS", "RSL", [lo_rsl, hi_rsl]),
+                                     ("P11", "RADIUS", "WIDEST", wid), ("P12", "CURVATURE", "INFLECTION", inf)):
+        b = d[case]["bands"]
+        ref = span(full[case], band + " REFERENCE")
+        plot = span(full[case], band)
+        got = [b.get("plotFrom"), b.get("plotTo")]
+        ok = bool(d[case]["settings"].get("plotRegion") == region and ref and plot)
+        if ok and want:
+            ok = near(got[0], want[0], 0.01) and near(got[1], want[1], 0.01)
+        if ok:
+            ok = near(ref[0], got[0], 0.01) and near(ref[1], got[1], 0.01) and plot[0] >= got[0] - 0.01 and plot[1] <= got[1] + 0.01
+        if ok and region == "FULL":
+            ok = plot[0] < lo_rsl - 1 or plot[1] > hi_rsl + 1  # the full plot runs on past the contacts
+        if ok and region != "FULL":
+            ok = plot[0] < got[0] + 30 and plot[1] > got[1] - 30
+        ticks = [r[0] for name, rs in full[case]["extents"].items() if " %s TICK " % band in name and not re.search(r"TICK [-+]?[\d.]+ (TIP|TAIL)$", name) for r in rs]
+        ok = ok and all(got[0] - 0.01 <= x <= got[1] + 0.01 for x in ticks)
+        check(case, "plot region %s: reference = region, plot + key ticks inside" % region, "%s %s" % (region, want and [round(v, 2) for v in want]),
+              "region %s, ref %s, plot %s, %d key ticks" % (got, ref and ref[:2], plot and plot[:2], len(ticks)), ok)
+    # Curvature (P12): band, 1/m scale, values ~ 1/R of the sidecut, continuous (few runs), tables = P1
+    m12 = full["P12"]["members"]
+    names = ["CURVATURE", "CURVATURE REFERENCE", "CURVATURE TITLE", "CURVATURE DATUM", "CURVATURE AXIS TIP", "CURVATURE TICK 0 TIP",
+             "CURVATURE TICK +0.01 TIP", "CURVATURE LABEL 0", "CURVATURE TICK MRS"]
+    missing = [n for n in names if "P12 TAC curvature PRIMITIVE " + n not in m12]
+    radius_left = [m for m in m12 if " PRIMITIVE RADIUS" in m]
+    check("P12", "curvature band: plot, reference, title, 0.01 1/m ticks, labels; no radius band", "present",
+          missing or radius_left or "all", not missing and not radius_left)
+    b12 = d["P12"]["bands"]
+    plot = span(full["P12"], "CURVATURE")
+    kmax = (plot[3] - b12["curvature"]) / b12["plotLevelHeight"] * 0.01
+    kmin = (plot[2] - b12["curvature"]) / b12["plotLevelHeight"] * 0.01
+    check("P12", "curvature between inflections (1/m): max ~ 1/R sidecut, min >= ~0 (TAC: arcs, the tip arc starts at the inflection)",
+          "0.05..0.08 / -0.01..max", "%.4f / %.4f" % (kmax, kmin), 0.05 <= kmax <= 0.08 and -0.01 <= kmin <= kmax)
+    check("P12", "curvature level step 0.01 1/m, 5 mm", "1, 5 mm", "%s, %s" % (b12.get("plotLevelStep"), b12.get("plotLevelHeight")),
+          b12.get("plotLevelStep") == 1.0 and near(b12.get("plotLevelHeight"), 5.0, 1e-6))
+    labels = sorted(m.split(" LABEL ")[1] for m in m12 if " CURVATURE LABEL " in m)
+    c05 = full["P12"]["counts"].get("P12 TAC curvature PRIMITIVE CURVATURE LABEL +0.05")
+    check("P12", "curvature numbers every 0.05 1/m (label spacing); '0.05' drawn without '+' (6 glyph loops)", "0, +0.05; 6",
+          "%s; %s" % (labels, c05), labels == ["+0.05", "0"] and c05 == 6)
+    runs = full["P12"]["counts"].get("P12 TAC curvature PRIMITIVE CURVATURE", 0)
+    cj12 = full["P12"]["extents"].get("P12 TAC curvature PRIMITIVE CURVATURE JUNCTION", [])
+    check("P12", "curvature breaks only at edge junctions (no sign breaks): runs <= junctions + 1", "<= %d" % (len(cj12) + 1), runs,
+          1 <= runs <= len(cj12) + 1)
+    compare("P12 vs P1", p1, d["P12"], 1e-6)
+    # Extra key points (P11)
+    p11 = d["P11"]
+    k11 = rows(p11, "keyLocations")
+    fb, ab = k11.get("FB_Mass_location", {}), k11.get("Mass_AB", {})
+    check("P11", "extra key rows: FB_Mass_location x 807.97 / 'Mass AB' x 500 z 10, flagged extra", "rows",
+          "%s %s / %s %s %s" % (fb.get("x"), fb.get("extra"), ab.get("name"), ab.get("x"), ab.get("z")),
+          near(fb.get("x"), 807.9668, 1e-3) and fb.get("extra") is True and ab.get("name") == "Mass AB"
+          and near(ab.get("x"), 500.0, 1e-3) and near(ab.get("z"), 10.0, 1e-3))
+    xs = [r["x"] for r in p11["keyLocations"]]
+    st = [r["station"] for r in p11["keyLocations"]]
+    check("P11", "key locations sorted by x incl. extras, stations 0..", "sorted, P1 + 2", "%d rows" % len(xs),
+          xs == sorted(xs) and st == [float(i) for i in range(len(xs))] and len(xs) == len(p1["keyLocations"]) + 2)
+    dx = [r["x"] for r in p11["data"]]
+    check("P11", "extra points forced into the data table (x 807.97, 500): 23 rows", 23,
+          "%d rows, 807.97 %s, 500 %s" % (len(dx), any(near(x, 807.9668, 1e-3) for x in dx), any(near(x, 500.0, 1e-3) for x in dx)),
+          len(dx) == 23 and any(near(x, 807.9668, 1e-3) for x in dx) and any(near(x, 500.0, 1e-3) for x in dx))
+    common = [(r, q) for r in p11["data"] for q in p1["data"] if near(r["x"], q["x"], 1e-6)]
+    same = all(near(r[f], q[f], 1e-6) or r[f] == q[f] for r, q in common for f in q if f != "station")
+    check("P11", "other data rows and metadata = P1", "equal, 21 common", "%d common rows" % len(common),
+          same and len(common) == 21 and p11["metadata"] == p1["metadata"])
+    m11 = full["P11"]["members"]
+    want = ["PROFILE FB_Mass_location", "PROFILE Mass AB", "RADIUS TICK FB_Mass_location", "RADIUS TICK Mass AB"]
+    missing = [n for n in want if "P11 TAC extra PRIMITIVE " + n not in m11]
+    check("P11", "extra points: profile points + radius ticks", "present", missing or "all", not missing)
+    lines = sorted(m.split(" KEY LINE ")[1] for m in m11 if " KEY LINE " in m)
+    dashes = [count(full["P11"], "KEY LINE " + n) for n in lines]
+    check("P11", "key lines FCP MP MRS ACP + FB_Mass_location (not Mass AB), dashed", "5 lines, > 50 dashes",
+          "%s %s" % (lines, dashes), lines == sorted(["FCP", "MP", "MRS", "ACP", "FB_Mass_location"]) and min(dashes or [0]) > 50)
+    no_lines = [m for m in full["P1"]["members"] if " KEY LINE " in m]
+    check("P1", "key lines off by default", "none", no_lines, not no_lines)
+    check("P13", "duplicate extra key point name: no primitive", "no composite", "composite" if "P13" in d else "none", "P13" not in d)
+    # Junction ticks (default on): footprint and plot band, same x
+    fj = sorted(r[0] for r in full["P1"]["extents"].get("P1 TAC PRIMITIVE FOOTPRINT JUNCTION", []))
+    rj = sorted(r[0] for r in full["P1"]["extents"].get("P1 TAC PRIMITIVE RADIUS JUNCTION", []))
+    check("P1", "junction ticks: footprint + radius band at the same x", ">= 2, equal x",
+          "%d / %d, bands.junctions %s" % (len(fj), len(rj), p1["bands"].get("junctions")),
+          len(fj) >= 2 and len(fj) == len(rj) == p1["bands"].get("junctions") and all(abs(a - b) < 1e-3 for a, b in zip(fj, rj)))
+    cj = [r[0] for r in full["P12"]["extents"].get("P12 TAC curvature PRIMITIVE CURVATURE JUNCTION", [])]
+    check("P12", "curvature junction ticks inside the region only", "inside, fewer than P1", "%d ticks" % len(cj),
+          all(inf[0] - 0.01 <= x <= inf[1] + 0.01 for x in cj) and len(cj) < len(fj))
+    # EI numbers without "+" (glyph loops: "150" = 4, "50" = 3); radius numbers keep their sign ("+10" = 4, "-10" = 4)
+    e150 = full["P8"]["counts"].get("P8 TAC EI PRIMITIVE EI LABEL +150")
+    e50 = full["P8"]["counts"].get("P8 TAC EI PRIMITIVE EI LABEL +50")
+    r10 = full["P1"]["counts"].get("P1 TAC PRIMITIVE RADIUS LABEL +10")
+    rm10 = full["P1"]["counts"].get("P1 TAC PRIMITIVE RADIUS LABEL -10")
+    check("P8", "EI numbers without '+' (150 = 4 loops, 50 = 3); radius keeps signs (+10 = 4, -10 = 4)", "4 3 / 4 4",
+          "%s %s / %s %s" % (e150, e50, r10, rm10), e150 == 4 and e50 == 3 and r10 == 4 and rm10 == 4)
+    et = full["P8"]["counts"].get("P8 TAC EI PRIMITIVE EI TITLE")
+    check("P8", "EI title 'EI (Nm^2)': E I ( N m ) 2 = 7 glyph loops (no '*')", 7, et, et == 7)
 
 
 if __name__ == "__main__":
