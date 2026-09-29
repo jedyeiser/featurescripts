@@ -26,12 +26,16 @@ keeps the CSV out of the lookup.
   X12 X1 plus a 100x5 IGNORE body on top      -> EI 83.33, NA 5 (the ignored body adds nothing)
   B1  Generate baseline FCP -800 < ACP 700, B2 its mirror (FCP 800 > ACP -700) -> B2 = mirror of B1 (baseline,
       weighted baseline, measurement sketch), FRCP / ARCP at the camber/rocker joins
+  D1-D4 Estimate Deflection reaction moment: D2 (FCP picked, tip +X) = D1 (no FCP); D3 (mirrored ski, FCP picked) =
+      mirror of D1; D4 (mirrored, no FCP) is not (the old moment always acts about +Y)
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_xsection_tests.py
+       XS_ONLY="D" ... builds/updates only features whose name starts with D (others reused as they are)
 """
 import copy
 import json
 import math
+import os
 
 from sync.core.client import OnshapeClient
 
@@ -96,11 +100,17 @@ def s(pid, v):
     return {"btType": "BTMParameterString-149", "parameterId": pid, "value": v}
 
 
+ONLY = [p for p in os.environ.get("XS_ONLY", "").split(",") if p]
+
+
 def upsert(feature):
     if STATE["features"] is None:
         STATE["features"] = c.get(f"{BASE}/features")
     f = STATE["features"]
     existing = [x for x in f["features"] if x["name"] == feature["name"]]
+    if ONLY and existing and not any(feature["name"].startswith(p) for p in ONLY):
+        # XS_ONLY="D,B": leave every other existing feature untouched (reuse its id as a fixture).
+        return existing[0]["featureId"]
     body = {"btType": "BTFeatureDefinitionCall-1406", "feature": feature,
             "serializationVersion": f["serializationVersion"], "sourceMicroversion": f["sourceMicroversion"]}
     if existing:
@@ -395,5 +405,55 @@ def baseline_case(name, sign, y):
 
 baseline_case("B1 generate_baseline FCP_lt_ACP (FCP -800, ACP 700, mount -30)", 1, case_y(13))
 baseline_case("B2 generate_baseline FCP_gt_ACP mirror of B1 (FCP 800, ACP -700, mount 30)", -1, case_y(14))
+
+# ---- Estimate Deflection reaction moment sense, both ski directions (2026-09-28) ----
+# One asymmetric EI profile (Front-plane polyline, z mm = EI N m^2) and its X mirror. Supports at the FCP (x 800 s)
+# and ACP (-700 s), 500 N at the mount (-30 s), reaction moment 30 N m at the mount; s = +1 tip toward +X, -1 mirror.
+#   D1 tip +X, no FCP pick (old behaviour)          D2 = D1 + FCP picked at x 800 -> identical to D1
+#   D3 mirror, FCP picked at x -800 -> mirror of D1  D4 mirror, no FCP -> NOT the mirror (old: moment always +Y)
+# check_xsection_tests.py compares the deflection curves. Run only these with XS_ONLY="D" (other features untouched).
+ED_TAB = [e for e in ELEMENTS if e["name"] == "estimateDeflection" and e["elementType"] == "FEATURESTUDIO"][0]
+ED_SPEC = [x for x in c.get(f"/api/v10/featurestudios/d/{D}/w/{W}/e/{ED_TAB['id']}/featurespecs")["featureSpecs"]
+           if x["featureType"] == "estimateDeflection"][0]
+ED_NS = ED_SPEC.get("namespace") or "e%s::m%s" % (ED_TAB["id"], ED_TAB["microversionId"])
+EI_PTS = [(-900, 40), (-300, 120), (200, 150), (900, 60)]
+ei_tip_pos = sketch("D EI profile tip +X (Front, z mm = EI)", FRONT, polyline("l", EI_PTS))
+ei_tip_neg = sketch("D EI profile mirrored (Front, z mm = EI)", FRONT, polyline("l", [(-x, z) for x, z in EI_PTS[::-1]]))
+
+
+def deflection_case(name, sign, fcp_y=None):
+    """sign +1: tip toward +X; -1: the X mirror. fcp_y: place an FCP mate connector at (800 sign, fcp_y)."""
+    given = {"selEI": q("selEI", edges(ei_tip_pos if sign > 0 else ei_tip_neg)),
+             "numEvalPoints": num("numEvalPoints", "500", True),
+             "addPlateConditions": b("addPlateConditions", True),
+             "reactionMoment": num("reactionMoment", "30"), "reactionMomentX": num("reactionMomentX", "%g mm" % (-30 * sign)),
+             "fcpReference": q("fcpReference", *([body(connector(name + " FCP", 800 * sign, fcp_y))] if fcp_y is not None else [])),
+             "appliedLoad": num("appliedLoad", "500"),
+             "applied1LocationType": en("applied1LocationType", "LocationType", "X_VAL", ED_NS),
+             "applied1IsQuery": b("applied1IsQuery", False), "applied1NeedsWidth": b("applied1NeedsWidth", False),
+             "applied1X": num("applied1X", "%g mm" % (-30 * sign)),
+             "support1LocationType": en("support1LocationType", "LocationType", "X_VAL", ED_NS),
+             "support1IsQuery": b("support1IsQuery", False), "support1NeedsWidth": b("support1NeedsWidth", False),
+             "support1X": num("support1X", "%g mm" % (800 * sign)),
+             "support2LocationType": en("support2LocationType", "LocationType", "X_VAL", ED_NS),
+             "support2IsQuery": b("support2IsQuery", False), "support2NeedsWidth": b("support2NeedsWidth", False),
+             "support2X": num("support2X", "%g mm" % (-700 * sign))}
+    params = []
+    for p in ED_SPEC["parameters"]:
+        pid = p["parameterId"]
+        d = p.get("defaultValue")
+        if pid in given:
+            params.append(given[pid])
+        elif isinstance(d, dict):
+            d = copy.deepcopy(d)
+            d.pop("nodeId", None)
+            params.append(dict(d, parameterId=pid))
+    return feature(name, "estimateDeflection", params, ED_NS)
+
+
+deflection_case("D1 deflection tip +X, no FCP (old behaviour)", 1)
+deflection_case("D2 deflection tip +X, FCP at x 800 -> same as D1", 1, case_y(15))
+deflection_case("D3 deflection mirrored, FCP at x -800 -> mirror of D1", -1, case_y(16))
+deflection_case("D4 deflection mirrored, no FCP -> not the mirror (old +Y moment)", -1)
 
 print("studio", E)
