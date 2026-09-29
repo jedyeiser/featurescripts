@@ -48,7 +48,44 @@ export function primitiveBaseline(context is Context, id is Id, fromVolume is bo
     opDeleteBodies(context, id + "deletePoints", { "entities" : qUnion([qCreatedBy(id + "fcp", EntityType.BODY), qCreatedBy(id + "acp", EntityType.BODY)]) });
 
     const chain = primitiveChain(context, edges, tail, "Baseline");
-    return { "body" : body, "result" : result, "chain" : chain, "lookup" : primitiveChainTable(context, chain) };
+    const lookup = primitiveChainTable(context, chain);
+    return { "body" : body, "result" : exactContacts(context, result, chain, lookup, fcp, acp), "chain" : chain, "lookup" : lookup };
+}
+
+/**
+ * analyzeBaselineGeometry (xSection V57) takes fcp_pt / acp_pt from its 200 midpoint samples unless FCP / ACP is a
+ * chain END, so on a baseline that runs past the contacts (FULL_BASELINE with tip / tail) FRCPl, ARCPl, FCPh and
+ * ACPh were off by up to half a sample spacing (RD 20TAC: FRCPl 131.25 for 130, ARCPl 49.26 for 50). Re-measured
+ * here from the baseline point exactly at the FCP / ACP x, with analyzeBaseline's own formulas (|dx|, and the
+ * distance to the rocker tangent line).
+ */
+function exactContacts(context is Context, result, chain is map, lookup is map, fcp is Vector, acp is Vector)
+{
+    if (result == undefined)
+    {
+        return undefined;
+    }
+    const at = primitiveChainAtX(context, chain, lookup, [fcp[0], acp[0]]);
+    var r = result;
+    r.fcp_pt = at[0].point;
+    r.acp_pt = at[1].point;
+    if (r.frcp_pt is Vector && r.frcp_dir is Vector)
+    {
+        r.frcpl = abs(r.frcp_pt[0] - r.fcp_pt[0]);
+        r.fcph = distanceToLine(r.fcp_pt, r.frcp_pt, r.frcp_dir);
+    }
+    if (r.arcp_pt is Vector && r.arcp_dir is Vector)
+    {
+        r.arcpl = abs(r.acp_pt[0] - r.arcp_pt[0]);
+        r.acph = distanceToLine(r.acp_pt, r.arcp_pt, r.arcp_dir);
+    }
+    return r;
+}
+
+function distanceToLine(point is Vector, origin is Vector, direction is Vector) returns ValueWithUnits
+{
+    const d = point - origin;
+    return norm(d - dot(d, direction) * direction);
 }
 
 /**

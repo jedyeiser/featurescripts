@@ -12,6 +12,9 @@ export import(path : "6f122edb2547a6a46991d9fd", version : "d4a7ffe539e681788f1e
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs) -- same pin as station_geometry
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
+/** The data table's radius is read this far inside the RSL, so a row on an edge junction takes the RSL-side edge. */
+const RADIUS_SIDE_STEP = 1e-3 * millimeter;
+
 /**
  * Export primitive (phase 1): the ski's "primitive drawing" geometry and data from its volume.
  *
@@ -229,7 +232,11 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             const s = primitiveS(frame, b.a);
             const up = primitiveUp(frame, b.tangent);
             const topHit = primitiveChainCrossing(context, profile.topChain, b.point, up);
-            const across = primitiveFootprintAt(unwrapped.samples, primitiveU(frame, b.a));
+            const u = primitiveU(frame, b.a);
+            const across = primitiveFootprintAt(unwrapped.samples, u);
+            // At an edge junction (FCP / ACP often are) the radius is taken on the RSL side.
+            const inward = abs(u - frame.xMrs) > RADIUS_SIDE_STEP ? (frame.xMrs > u ? 1 : -1) * RADIUS_SIDE_STEP : 0 * meter;
+            const radius = primitiveFootprintAt(unwrapped.samples, u + inward).radius;
             dataRows = append(dataRows, {
                         "x" : primitiveMM(dataX[j]),
                         "s" : primitiveMM(s),
@@ -238,7 +245,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                         "z" : primitiveMM(b.point[2]),
                         "skiThck" : topHit == undefined ? PRIMITIVE_NOT_FOUND : primitiveMM(dot(topHit.point - b.point, up)),
                         "baselineHeight" : primitiveMM(dataHeights[j]),
-                        "radius" : across.radius == undefined ? "" : primitiveRound(across.radius, 4)
+                        "radius" : radius == undefined ? "" : primitiveRound(radius, 4)
                     });
         }
 
