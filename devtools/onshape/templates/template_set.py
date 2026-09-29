@@ -169,3 +169,54 @@ if __name__ == "__main__":
         print(to_png(sys.argv[2], sys.argv[3]))
     elif cmd == "rename":
         rename(sys.argv[2], sys.argv[3])
+
+
+# ---------------------------------------------------------------- size change repair
+# Sheet properties > Size regenerates the Border frame and Border zones format layers: our frame, centring marks,
+# title-block top / left edges and the NOTES label are replaced by Onshape's own 4-line border, and the
+# Title block layer content is shifted. rebuild_format_layers() deletes the generated border, recreates those
+# 11 items (on the Drawing layer; ui moves them to their layers) and records their new ids per size.
+FORMAT_ALIASES = ("fr_b", "fr_r", "fr_t", "fr_l", "cm_b", "cm_t", "cm_l", "cm_r", "tb_top", "tb_left", "lb_notes")
+
+
+def size_ids(size):
+    """logicalIds for a size master and its copies (the A3 ids with that size's recreated format items)."""
+    ids = dict(IDS)
+    p = HERE / ("format_ids_%s.json" % size.lower())
+    if p.exists():
+        ids.update(json.loads(p.read_text()))
+    return ids
+
+
+def rebuild_format_layers(eid, size):
+    from export_drawing import export
+    tmp = HERE / "__pycache__" / "_dj.json"
+    export(TD, TW, eid, "DRAWING_JSON", str(tmp))
+    d = json.loads(tmp.read_text())
+    known = {v[1] for v in IDS.values()}
+    extra = []
+    for a in d["sheets"][0]["annotations"]:
+        t = a["type"].split("::")[1].lower()
+        lid = a[t].get("logicalId")
+        if lid not in known:
+            extra.append(lid)
+    if extra:
+        modify(TD, TW, eid, [{"messageName": "onshapeDeleteEntities", "formatVersion": "2021-01-01",
+                              "entities": extra}], "delete generated border")
+    spec = sheet_layout(size)
+    anns, order = [], []
+    for _layer, x1, y1, x2, y2, alias in spec["lines"]:
+        if alias in FORMAT_ALIASES:
+            anns.append({"type": "Onshape::Line", "line": {"startPoint": pt(x1, y1), "endPoint": pt(x2, y2)}})
+            order.append(alias)
+    for _layer, x, y, s, h, alias, bold in spec["notes"]:
+        if alias in FORMAT_ALIASES:
+            anns.append({"type": "Onshape::Note", "note": {"position": pt(x, y), "contents": txt(s, bold),
+                                                            "textHeight": h}})
+            order.append(alias)
+    s = modify(TD, TW, eid, [{"messageName": "onshapeCreateAnnotations", "formatVersion": "2021-01-01",
+                              "annotations": anns}], "recreate frame / zones")
+    res = json.loads(s["output"])["results"]
+    new = {a: [("frame" if a.startswith(("fr_", "cm_")) else "zones"), r.get("logicalId")] for a, r in zip(order, res)}
+    (HERE / ("format_ids_%s.json" % size.lower())).write_text(json.dumps(new, indent=1))
+    return extra, new

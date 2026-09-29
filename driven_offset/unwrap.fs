@@ -900,8 +900,7 @@ function unwrapPart(context is Context, id is Id, definition is map, chart is ma
     const result = unwrapSolid(context, id, chart, cs, part, {
                 "squareWalls" : definition.squareWalls,
                 "faceMode" : (definition.partFaces == UnwrapPartFaces.MERGE) ? "merge" : "keep",
-                "shapeTolerance" : definition.shapeTolerance,
-                "keepFailed" : definition.nameSuffix == "__keepfail"
+                "shapeTolerance" : definition.shapeTolerance
             });
     if (settings.print)
     {
