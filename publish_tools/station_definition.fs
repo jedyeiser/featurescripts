@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: station_utils.fs
-export import(path : "8a8c023e223cf0814d973a63", version : "d4307c54b9d72c88604cc3fe");
+export import(path : "8a8c023e223cf0814d973a63", version : "69ef3fba88e8faac245dc31e");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: station_definition_icon.svg (feature icon)
@@ -25,6 +25,10 @@ export const stationDefinition = defineFeature(function(context is Context, id i
                     "Description" : "Optional: also store the set in this # variable. Publish features pick this Station definition itself. Empty = no variable." }
         definition.variableName is string;
 
+        annotation { "Name" : "Language", "Default" : StationLanguage.ENGLISH, "UIHint" : UIHint.SHOW_LABEL,
+                    "Description" : "Column names of the Station table (English / Deutsch) for geometry built from these stations." }
+        definition.language is StationLanguage;
+
         annotation { "Name" : "Stations", "Item name" : "station", "Item label template" : "#stationName" }
         definition.stations is array;
         for (var entry in definition.stations)
@@ -37,7 +41,7 @@ export const stationDefinition = defineFeature(function(context is Context, id i
     }
     {
         const stations = resolveStationEntries(context, definition.stations);
-        const set = { "schema" : STATION_SET_SCHEMA, "stations" : stations };
+        const set = { "schema" : STATION_SET_SCHEMA, "stations" : stations, "language" : stationLanguageCode(definition.language) };
         if (definition.variableName != "")
         {
             setVariable(context, definition.variableName, set, "Station set: " ~ size(stations) ~ " stations");

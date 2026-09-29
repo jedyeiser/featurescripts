@@ -68,7 +68,11 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
         annotation { "Name" : "RSL Line", "Filter" : EntityType.EDGE && GeometryType.LINE, "MaxNumberOfPicks" : 1 }
         definition.rslQuery is Query;
 
-        annotation { "Name" : "Tip toward +X", "Default" : false, "Description" : "Off: the tip is the lower-X end of the RSL line. On: the higher-X end (the tip/tail points and their FCP/ACP origins swap)." }
+        annotation { "Name" : "FCP (optional)", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                    "Description" : "The forebody contact point. When picked, the RSL end nearest it is the FCP and the tip is on its side, whichever way the ski points; Tip toward +X is then ignored." }
+        definition.fcpReference is Query;
+
+        annotation { "Name" : "Tip toward +X", "Default" : false, "Description" : "Used only when no FCP is picked. Off: the tip is the lower-X end of the RSL line. On: the higher-X end (the tip/tail points and their FCP/ACP origins swap)." }
         definition.tipAtPositiveX is boolean;
 
         annotation { "Name" : "Include Points", "Filter" : EntityType.VERTEX }
@@ -313,7 +317,14 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
 
         // The regions above are found by X (tip = below the lower-X contact point). A footprint whose tip
         // points to +X swaps the roles here (it used to be reported tip-for-tail -- footprint test GP2).
-        if (definition.tipAtPositiveX)
+        // The tip side: from the picked FCP when there is one (the RSL end nearest it), else from the flag.
+        var tipAtPositiveX = definition.tipAtPositiveX;
+        if (!isQueryEmpty(context, definition.fcpReference))
+        {
+            const fcpPickX = footprintPointX(context, definition.fcpReference);
+            tipAtPositiveX = abs(fcpPickX - acpX) < abs(fcpPickX - fcpX);
+        }
+        if (tipAtPositiveX)
         {
             var swapParts = tipBodyParts;
             tipBodyParts = tailBodyParts;
@@ -442,7 +453,19 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
                         "tailCurve" : extractableQuery(tailCurve, "Tail curve (ACP to tail); empty unless Retain curves is on.", DebugColor.GREEN)
                     }
                 });
-    });
+    }, { "fcpReference" : qNothing() });
+
+/**
+ * World X of a picked vertex or mate connector origin.
+ */
+function footprintPointX(context is Context, q is Query) returns ValueWithUnits
+{
+    if (!isQueryEmpty(context, qBodyType(q, BodyType.MATE_CONNECTOR)))
+    {
+        return evMateConnector(context, { "mateConnector" : q }).origin[0];
+    }
+    return evVertexPoint(context, { "vertex" : q })[0];
+}
 
 function genPointArray(context is Context, id is Id, targetCurve is Query, curveName is string, numPoints is number, includePoints is Query, refOrigin is Vector, reverseOrder is boolean, createSketch is boolean, sketchID is string)
 {

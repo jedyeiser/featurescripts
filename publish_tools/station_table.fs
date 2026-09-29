@@ -1,7 +1,20 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: station_utils.fs
-import(path : "8a8c023e223cf0814d973a63", version : "d4307c54b9d72c88604cc3fe");
+export import(path : "8a8c023e223cf0814d973a63", version : "69ef3fba88e8faac245dc31e");
+// IMPORT: station_table_icon.svg (table icon)
+IconNamespace::import(path : "87946e777d7b592c8d681392", version : "a856cda4eb0b4d440499a4d4");
+
+/** Heading language: the Station definition's, or forced here (one model on an English and a German drawing). */
+export enum StationTableLanguage
+{
+    annotation { "Name" : "As station definition" }
+    AS_DEFINED,
+    annotation { "Name" : "English" }
+    ENGLISH,
+    annotation { "Name" : "Deutsch" }
+    GERMAN
+}
 
 /**
  * Station table: one table per Station geometry view ("4101 PLAN", "4501 PROFILE", ...), for the Part Studio's
@@ -13,13 +26,20 @@ import(path : "8a8c023e223cf0814d973a63", version : "d4307c54b9d72c88604cc3fe");
  * measuring axis (x from the datum). Nothing is read from feature parameters, so the table follows every
  * regeneration.
  */
-annotation { "Table Type Name" : "Station table" }
+annotation { "Table Type Name" : "Station table", "Icon" : IconNamespace::BLOB_DATA }
 export const stationTable = defineTable(function(context is Context, definition is map) returns TableArray
     precondition
     {
         annotation { "Name" : "Views containing", "Default" : "", "MaxLength" : 128,
                     "Description" : "Only views whose name contains this text, e.g. 4101 PLAN (case matters). Empty = every view. A drawing inserts every table this returns." }
         definition.viewFilter is string;
+
+        annotation { "Name" : "Show edge positions", "Default" : false,
+                    "Description" : "Add where each station line starts and ends, measured across the view from the datum axis (plan: -58 / +58 for a 116 mm width centred on the datum)." }
+        definition.showEdges is boolean;
+
+        annotation { "Name" : "Language", "Default" : StationTableLanguage.AS_DEFINED, "UIHint" : UIHint.SHOW_LABEL }
+        definition.language is StationTableLanguage;
     }
     {
         var views = [];
@@ -35,7 +55,7 @@ export const stationTable = defineTable(function(context is Context, definition 
         var tables = [];
         for (var v in views)
         {
-            tables = append(tables, viewTable(v.data, v.body));
+            tables = append(tables, viewTable(v.data, v.body, definition.showEdges, tableLanguage(definition.language, v.data)));
         }
         return tableArray(tables);
     });
@@ -53,29 +73,57 @@ function titleMatches(title is string, filter is string) returns boolean
     return match(title, ".*" ~ replace(filter, "[^A-Za-z0-9 _-]", ".") ~ ".*").hasMatch;
 }
 
+/** "en" or "de": forced by the table, else the view's (from its Station definition), else English. */
+function tableLanguage(language is StationTableLanguage, data is map) returns string
+{
+    if (language == StationTableLanguage.GERMAN)
+    {
+        return "de";
+    }
+    if (language == StationTableLanguage.ENGLISH || data.language != "de")
+    {
+        return "en";
+    }
+    return "de";
+}
+
+/** Headings and notes by language (ASCII only). */
+const WORDS = {
+        "en" : { "station" : "Station", "stations" : "stations", "width" : "Width (mm)", "thickness" : "Thickness (mm)",
+                "span" : "Span (mm)", "lower" : "Lower edge (mm)", "upper" : "Upper edge (mm)", "miss" : "misses the part" },
+        "de" : { "station" : "Station", "stations" : "Stationen", "width" : "Breite (mm)", "thickness" : "Dicke (mm)",
+                "span" : "Abmessung (mm)", "lower" : "Untere Kante (mm)", "upper" : "Obere Kante (mm)", "miss" : "verfehlt das Teil" }
+    };
+
 /** The size measured across each station: width in plan, thickness in profile, span in any other view. */
-function spanHeading(view is string) returns string
+function spanHeading(view is string, words is map) returns string
 {
     if (view == "PLAN")
     {
-        return "Width (mm)";
+        return words.width;
     }
     if (view == "PROFILE")
     {
-        return "Thickness (mm)";
+        return words.thickness;
     }
-    return "Span (mm)";
+    return words.span;
 }
 
-function viewTable(data is map, body is Query) returns Table
+function viewTable(data is map, body is Query, showEdges is boolean, language is string) returns Table
 {
-    const columns = [
-            tableColumnDefinition("station", "Station"),
-            tableColumnDefinition("x", "x from datum (mm)", TableTextAlignment.RIGHT),
-            tableColumnDefinition("span", spanHeading(data.view), TableTextAlignment.RIGHT),
-            tableColumnDefinition("lo", "From (mm)", TableTextAlignment.RIGHT),
-            tableColumnDefinition("hi", "To (mm)", TableTextAlignment.RIGHT)
+    const words = WORDS[language];
+    var columns = [
+            tableColumnDefinition("station", words.station, TableTextAlignment.CENTER),
+            tableColumnDefinition("x", "x (mm)", TableTextAlignment.CENTER),
+            tableColumnDefinition("span", spanHeading(data.view, words), TableTextAlignment.CENTER)
         ];
+    if (showEdges)
+    {
+        columns = concatenateArrays([columns, [
+                        tableColumnDefinition("lo", words.lower, TableTextAlignment.CENTER),
+                        tableColumnDefinition("hi", words.upper, TableTextAlignment.CENTER)
+                    ]]);
+    }
     const ordered = sort(data.rows, function(a, b) { return a.x - b.x; });
     var rows = [];
     for (var r in ordered)
@@ -87,10 +135,10 @@ function viewTable(data is map, body is Query) returns Table
         }
         else
         {
-            rows = append(rows, tableRow({ "station" : r.id, "x" : round2(r.x), "span" : "misses the part", "lo" : "", "hi" : "" }));
+            rows = append(rows, tableRow({ "station" : r.id, "x" : round2(r.x), "span" : words.miss, "lo" : "", "hi" : "" }));
         }
     }
-    return table(data.title ~ " stations", columns, rows, body);
+    return table(data.title ~ " " ~ words.stations, columns, rows, body);
 }
 
 function round2(value is number) returns number

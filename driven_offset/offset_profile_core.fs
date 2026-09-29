@@ -264,7 +264,7 @@ export predicate offsetProfilePointsPredicate(definition is map)
 /**
  * The editing-logic update: copies stations picked from points into their value fields (so switching back to
  * Value keeps the number, and item labels show it), and with `isRegions` names unnamed regions "Region n" and
- * rebuilds the intersection list: one entry per consecutive pair (by start station), each keeping the settings
+ * rebuilds the intersection list: one entry per consecutive pair (by low-X station; a region may run either way along X), each keeping the settings
  * of an existing entry for the same region-name pair.
  *
  * @param isRegions {boolean} : the Regions arrays are in use (else the Points array).
@@ -447,7 +447,10 @@ export function resolveOffsetProfileStations(context is Context, definition is m
     return result;
 }
 
-/** Indices of the regions in order of start station (then end station). */
+/**
+ * Indices of the regions in order of their low-X station (then their high-X station). A region may be entered
+ * either way round along X (see regionData), so the order is by extent, not by which end was called "start".
+ */
 function sortedRegionOrder(regions is array) returns array
 {
     var order = [];
@@ -457,12 +460,12 @@ function sortedRegionOrder(regions is array) returns array
     }
     return sort(order, function(a, b)
         {
-            const d = regions[a].startStation - regions[b].startStation;
+            const d = min(regions[a].startStation, regions[a].endStation) - min(regions[b].startStation, regions[b].endStation);
             if (abs(d) > OFFSET_PROFILE_TOLERANCE)
             {
                 return d / meter;
             }
-            return (regions[a].endStation - regions[b].endStation) / meter;
+            return (max(regions[a].startStation, regions[a].endStation) - max(regions[b].startStation, regions[b].endStation)) / meter;
         });
 }
 
@@ -523,14 +526,38 @@ function regionValue(region is map, channel is string, x is number) returns arra
 function regionData(region is map, index is number) returns map
 {
     const constant = region.shape == OffsetProfileShape.CONSTANT;
-    const xs = region.startStation / meter;
-    const xe = region.endStation / meter;
-    const b0 = constant ? 0 : region.startBuffer / meter;
-    const b1 = constant ? 0 : region.endBuffer / meter;
+    var xs = region.startStation / meter;
+    var xe = region.endStation / meter;
+    var b0 = constant ? 0 : region.startBuffer / meter;
+    var b1 = constant ? 0 : region.endBuffer / meter;
+    var w0 = (constant ? region.constantWidth : region.startWidth) / meter;
+    var w1 = (constant ? region.constantWidth : region.endWidth) / meter;
+    var h0 = (constant ? region.constantHeight : region.startHeight) / meter;
+    var h1 = (constant ? region.constantHeight : region.endHeight) / meter;
+    var flatEnd = region.shape == OffsetProfileShape.QUADRATIC && region.quadraticFlat == OffsetQuadraticFlat.END;
     const tol = OFFSET_PROFILE_TOLERANCE / meter;
+    if (xs - xe > tol)
+    {
+        // Entered toward -X (e.g. start at the FCP with the tip at +X): the same region stated low -> high. Each
+        // end keeps its own values and buffer; the shape mirrors onto itself (linear and smooth are symmetric
+        // under u -> 1 - u, a quadratic's flat end moves to the other end). Nothing changes for a region entered
+        // toward +X.
+        xs = region.endStation / meter;
+        xe = region.startStation / meter;
+        const bs = b0;
+        b0 = b1;
+        b1 = bs;
+        const ws = w0;
+        w0 = w1;
+        w1 = ws;
+        const hs = h0;
+        h0 = h1;
+        h1 = hs;
+        flatEnd = region.shape == OffsetProfileShape.QUADRATIC && !flatEnd;
+    }
     if (xe - xs <= tol)
     {
-        throw regenError("Region '" ~ region.regionName ~ "': the end station must be past the start station.",
+        throw regenError("Region '" ~ region.regionName ~ "': the start and end stations coincide.",
             [faultyArrayParameterId("regions", index, "endStation")]);
     }
     if (b0 + b1 > xe - xs - tol)
@@ -542,12 +569,9 @@ function regionData(region is map, index is number) returns map
             "name" : region.regionName,
             "index" : index,
             "xs" : xs, "xe" : xe, "b0" : b0, "b1" : b1,
-            "w0" : (constant ? region.constantWidth : region.startWidth) / meter,
-            "w1" : (constant ? region.constantWidth : region.endWidth) / meter,
-            "h0" : (constant ? region.constantHeight : region.startHeight) / meter,
-            "h1" : (constant ? region.constantHeight : region.endHeight) / meter,
+            "w0" : w0, "w1" : w1, "h0" : h0, "h1" : h1,
             "shape" : region.shape,
-            "quadraticFlatEnd" : region.shape == OffsetProfileShape.QUADRATIC && region.quadraticFlat == OffsetQuadraticFlat.END
+            "quadraticFlatEnd" : flatEnd
         };
 }
 

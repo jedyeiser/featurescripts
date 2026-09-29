@@ -78,3 +78,32 @@ them with qHasAttribute and returns one table per view, rows sorted by x (Statio
 Thickness / Span | From | To). Parameter "Views containing" (case-sensitive) filters by view name -- needed in
 drawings, because inserting a custom table brings every table it returns. Verified: Part Studio table panel, and
 drawing "4101 PLAN + table (demo)" (Custom table > Part Studio 1 > Station table, Views containing = 4101 PLAN).
+
+### Surface parts (2026-09-28)
+Station geometry accepts sheet bodies (and composites holding them). Per body:
+* solid -> `opCreateOutline` region (as before);
+* flat sheet seen face-on -> the sheet is copied onto the view plane (a region);
+* any other sheet (a wall seen edge-on, a curved top surface) -> its boundary (laminar) edges are dropped onto
+  the view plane with `opDropCurve` NORMAL_TO_TARGET. `opCreateOutline` refuses these (REGEN_ERROR).
+Dropped boundaries are edges only: no REGION body, and they join `<prefix> <VIEW> OUTLINE`.
+When the part has no region and a station crosses it once (the surface is edge-on: 2D_PERIPHERY in plan,
+TOP_SURFACE in profile), the station is measured from the datum axis to the crossing: half-width or height.
+Fixture: "2D_PERIPHERY stations (test)" (plan half-widths 48.7..68.1) and "TOP_SURFACE stations (test)"
+(profile heights 5.75..14.7; plan 72.5 everywhere because that sheet is an untrimmed rectangle in y).
+
+### Station table icon (2026-09-28)
+User picked draft B (Station geometry outline + stations over a small grid; drafts icons/drafts/publish_tools/station_table_*.svg). Tab station_table_icon.svg 87946e777d7b592c8d681392, wired with "Icon" on the "Table Type Name" annotation (install_icons.py only wires "Feature Type Name", so it was wired by hand).
+
+### Table cleanup, numbering, language (2026-09-28)
+* Table: columns Station | x (mm) | Width / Thickness / Span, all centred. "Show edge positions" (default off) adds
+  Lower / Upper edge (mm): where the station line starts and ends, across the view from the datum axis.
+* Station entries: an Along a line / Between two points entry with an EMPTY name numbers its stations 1 .. N (no
+  prefix); "First number" (default 1, so saved features keep their ids) starts the numbering anywhere, e.g. 0.
+  A Point entry still needs a name.
+* Language: Station definition "Language" (English / Deutsch) is stored in the set ("language" : "en" / "de"),
+  copied by Station geometry into the view attribute; Station table "Language" = As station definition (default) /
+  English / Deutsch. German headings: Station | x (mm) | Breite / Dicke / Abmessung (mm) | Untere / Obere Kante (mm);
+  misses "verfehlt das Teil"; title "<view> Stationen".
+* Fixture: "Numbered 0-4 DE (test)" + "4101N numbered DE (test)" -> stations 0..4, language de (verified by eval).
+* The test studio's Station table is added from Publish & Drawing tools V2: its panel shows the new table only
+  after a version + Update table.

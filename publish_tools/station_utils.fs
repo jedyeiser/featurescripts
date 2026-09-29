@@ -14,7 +14,8 @@ import(path : "onshape/std/common.fs", version : "3083.0");
  * A station with no direction measures across the view's measuring axis (datum X).
  *
  * A station SET is the map a "Station definition" feature writes to a variable:
- *     { "schema" : STATION_SET_SCHEMA, "stations" : [ station, ... ] }
+ *     { "schema" : STATION_SET_SCHEMA, "stations" : [ station, ... ], "language" : "en" | "de" }
+ * (language: sets saved before 2026-09-28 have none and read as "en").
  * Plain values only -- queries are resolved to points when the set is defined.
  *
  * Ids come from names, never from positions in a list: operation ids (and so the drawing
@@ -33,6 +34,21 @@ export const STATION_TABLE_ATTRIBUTE = "publishStationTable";
 export const STATION_TABLE_SCHEMA = "stationTable/1";
 
 export const STATION_COUNT_BOUNDS = { (unitless) : [2, 5, 200] } as IntegerBoundSpec;
+/** Language of the station table's headings and notes; a station set stores it as its code ("en", "de"). */
+export enum StationLanguage
+{
+    annotation { "Name" : "English" }
+    ENGLISH,
+    annotation { "Name" : "Deutsch" }
+    GERMAN
+}
+
+export function stationLanguageCode(language is StationLanguage) returns string
+{
+    return language == StationLanguage.GERMAN ? "de" : "en";
+}
+
+export const STATION_FIRST_NUMBER_BOUNDS = { (unitless) : [0, 1, 1000] } as IntegerBoundSpec;
 
 export enum StationEntryType
 {
@@ -54,7 +70,7 @@ export predicate stationEntryPredicate(entry is map)
     entry.stationType is StationEntryType;
 
     annotation { "Name" : "Name", "Default" : "", "MaxLength" : 64,
-                "Description" : "Station id. Along a line / between two points: stations are named <name>_1 .. <name>_N." }
+                "Description" : "Station id. Along a line / between two points: stations are named <name>_1 .. <name>_N, or just 1 .. N when the name is empty." }
     entry.stationName is string;
 
     if (entry.stationType == StationEntryType.POINT || entry.stationType == StationEntryType.BETWEEN)
@@ -80,6 +96,9 @@ export predicate stationEntryPredicate(entry is map)
         annotation { "Name" : "Stations", "Description" : "Evenly spaced; both ends included. Each measures perpendicular to the line." }
         isInteger(entry.count, STATION_COUNT_BOUNDS);
 
+        annotation { "Name" : "First number", "Description" : "Number of the first station: 0 gives <name>_0 .. <name>_(N-1)." }
+        isInteger(entry.firstNumber, STATION_FIRST_NUMBER_BOUNDS);
+
         annotation { "Name" : "Reverse numbering", "Default" : false,
                     "Description" : "Numbering runs toward +X (else +Y, else +Z) unless reversed." }
         entry.reverse is boolean;
@@ -104,10 +123,12 @@ export function resolveStationEntries(context is Context, entries is array) retu
 function resolveStationEntry(context is Context, entry is map, index is number) returns array
 {
     const group = stationIdFromName(entry.stationName);
-    if (group == "")
+    if (group == "" && entry.stationType == StationEntryType.POINT)
     {
         throw regenError("Station " ~ (index + 1) ~ " has no name.");
     }
+    // An unnamed line / between entry numbers its stations plainly: 1 .. N (or from First number).
+    const label = group == "" ? toString(index + 1) : group;
 
     if (entry.stationType == StationEntryType.POINT)
     {
@@ -120,7 +141,7 @@ function resolveStationEntry(context is Context, entry is map, index is number) 
     {
         if (isQueryEmpty(context, entry.lineEdge))
         {
-            throw regenError("Station " ~ group ~ ": select a line.");
+            throw regenError("Station " ~ label ~ ": select a line.");
         }
         const ends = evEdgeTangentLines(context, { "edge" : entry.lineEdge, "parameters" : [0, 1] });
         a = ends[0].origin;
@@ -128,13 +149,13 @@ function resolveStationEntry(context is Context, entry is map, index is number) 
     }
     else
     {
-        a = entryPoint(context, entry.point, group);
-        b = entryPoint(context, entry.secondPoint, group);
+        a = entryPoint(context, entry.point, label);
+        b = entryPoint(context, entry.secondPoint, label);
     }
 
     if (norm(b - a) < TOLERANCE.zeroLength * meter)
     {
-        throw regenError("Station " ~ group ~ ": the two ends coincide.");
+        throw regenError("Station " ~ label ~ ": the two ends coincide.");
     }
 
     // Number in a direction that does not depend on how the edge happens to be parameterised.
@@ -146,11 +167,14 @@ function resolveStationEntry(context is Context, entry is map, index is number) 
     }
 
     const direction = normalize(b - a);
+    // Saved before First number existed: numbering starts at 1, as it did.
+    const first = entry.firstNumber == undefined ? 1 : entry.firstNumber;
+    const prefix = group == "" ? "" : group ~ "_";
     var out = [];
     for (var k = 0; k < entry.count; k += 1)
     {
         const f = k / (entry.count - 1);
-        out = append(out, makeStation(group ~ "_" ~ (k + 1), group, a + (b - a) * f, direction));
+        out = append(out, makeStation(prefix ~ (k + first), group, a + (b - a) * f, direction));
     }
     return out;
 }
@@ -269,6 +293,30 @@ export function readStationDefinitions(context is Context, features is map) retu
         stations = concatenateArrays([stations, set.stations]);
     }
     return stations;
+}
+
+/**
+ * The table language ("en" / "de") of the first picked Station definition that states one; "en" otherwise.
+ */
+export function readStationLanguage(context is Context, features is map) returns string
+{
+    for (var featureId in keys(features))
+    {
+        const slot = getVariable(context, toString(featureId), "__no_station_definition__");
+        if (slot is map && slot.variable is map && slot.variable.stationSet != undefined)
+        {
+            var set = slot.variable.stationSet;
+            if (set is map && set.extractable != undefined)
+            {
+                set = set.value;
+            }
+            if (set is map && set.language is string)
+            {
+                return set.language;
+            }
+        }
+    }
+    return "en";
 }
 
 /**

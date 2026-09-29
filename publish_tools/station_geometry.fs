@@ -2,7 +2,7 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 // IMPORT: station_utils.fs
-export import(path : "8a8c023e223cf0814d973a63", version : "d4307c54b9d72c88604cc3fe");
+export import(path : "8a8c023e223cf0814d973a63", version : "69ef3fba88e8faac245dc31e");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: station_geometry_icon.svg (feature icon)
@@ -123,6 +123,8 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
         }
         const prefix = definition.prefix;
         const stations = collectStations(context, definition.stationDefinitions, definition.stationSet, definition.stations);
+        // Table language from the Station definition; the Station table reads it from the view's attribute.
+        definition.tableLanguage = readStationLanguage(context, definition.stationDefinitions);
         const views = viewFrames(context, definition);
         if (size(views) == 0)
         {
@@ -343,7 +345,14 @@ function buildView(context is Context, vid is Id, definition is map, view is map
             w = normalize(cross(n, inPlane));
         }
 
-        const ends = spanAcross(context, outlineEdges, p, w, n);
+        const v = cross(n, u);
+        var ends = spanAcross(context, outlineEdges, p, w, n, !hasRegion);
+        if (ends != undefined && norm(ends[1] - ends[0]) < TOLERANCE.zeroLength * meter)
+        {
+            // A surface seen edge-on (a wall in plan, a top surface in profile) is one curve here: measure from
+            // the datum axis (through the datum along x) to where the station crosses it -- half-width, height.
+            ends = fromDatumAxis(ends[0], p, w, cs.origin, v);
+        }
         if (ends == undefined)
         {
             missed = append(missed, s.id);
@@ -351,7 +360,6 @@ function buildView(context is Context, vid is Id, definition is map, view is map
             continue;
         }
 
-        const v = cross(n, u);
         rows = append(rows, {
                     "view" : view.key,
                     "id" : s.id,
@@ -455,7 +463,7 @@ function buildView(context is Context, vid is Id, definition is map, view is map
     setProperty(context, { "entities" : composite, "propertyType" : PropertyType.EXCLUDE_FROM_BOM, "value" : true });
     // Tag the view composite with its station rows: the "Station table" custom table finds it by this attribute.
     setAttribute(context, { "entities" : composite, "name" : STATION_TABLE_ATTRIBUTE, "attribute" : {
-                    "schema" : STATION_TABLE_SCHEMA, "title" : namePrefix, "prefix" : prefix, "view" : view.label, "rows" : rows } });
+                    "schema" : STATION_TABLE_SCHEMA, "title" : namePrefix, "prefix" : prefix, "view" : view.label, "language" : definition.tableLanguage, "rows" : rows } });
     queries[view.key ~ "Composite"] = composite;
     output = append(output, composite);
 
@@ -492,6 +500,26 @@ function faceOnPoint(context is Context, body is Query, n is Vector)
     return point;
 }
 
+/**
+ * [axis point, crossing] ordered low to high along `v`, where the axis point is where the station line (through
+ * `p` along `w`) meets the datum axis (through `origin`, perpendicular to `v`). Undefined when the line runs along
+ * the axis or the crossing lies on it.
+ */
+function fromDatumAxis(crossing is Vector, p is Vector, w is Vector, origin is Vector, v is Vector)
+{
+    const wv = dot(w, v);
+    if (abs(wv) < 1e-9)
+    {
+        return undefined;
+    }
+    const onAxis = p - w * (dot(p - origin, v) / wv);
+    if (norm(crossing - onAxis) < TOLERANCE.zeroLength * meter)
+    {
+        return undefined;
+    }
+    return dot(crossing - onAxis, v) > 0 * meter ? [onAxis, crossing] : [crossing, onAxis];
+}
+
 function missRow(viewKey is string, stationId is string, x is ValueWithUnits) returns map
 {
     return { "view" : viewKey, "id" : stationId, "x" : x / millimeter, "lo" : 0, "hi" : 0, "span" : 0, "hit" : false };
@@ -507,7 +535,8 @@ function nameBodies(context is Context, bodies is Query, name is string)
  * silhouette: the extreme crossings of the outline edges with the plane through that line.
  * Returns [low end, high end] along w, or undefined when the line misses the part.
  */
-function spanAcross(context is Context, outlineEdges is Query, p is Vector, w is Vector, n is Vector)
+// With `allowPoint` a single crossing (a surface seen edge-on) returns [crossing, crossing].
+function spanAcross(context is Context, outlineEdges is Query, p is Vector, w is Vector, n is Vector, allowPoint is boolean)
 {
     const sp = plane(p, normalize(cross(w, n)));
     var lo = undefined;
@@ -527,7 +556,7 @@ function spanAcross(context is Context, outlineEdges is Query, p is Vector, w is
             }
         }
     }
-    if (lo == undefined || hi - lo < TOLERANCE.zeroLength * meter)
+    if (lo == undefined || (!allowPoint && hi - lo < TOLERANCE.zeroLength * meter))
     {
         return undefined;
     }

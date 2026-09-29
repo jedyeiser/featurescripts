@@ -44,4 +44,5 @@ TARGETS = [
     # publish_tools, 2026-09-28 (user picked definition B, geometry A; drafts icons/drafts/publish_tools/).
     ("publish_tools", "station_definition", "station_definition"),
     ("publish_tools", "station_geometry", "station_geometry"),
+    ("publish_tools", "station_table", "station_table"),  # 2026-09-28, table annotation wired by hand (user picked B)
 ]

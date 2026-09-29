@@ -70,7 +70,9 @@ export function mergeStationData(
             "station" : 0,
             callout: station.callout,
             x_mrs: x - tableOriginX,
-            x_acp: x - boundaries.acp
+            // Signed so the FCP (tip) side of the ACP reads negative whichever way the part points in X;
+            // equal to x - ACP when FCP is at the lower X.
+            x_acp: acpAtLargerX ? (x - boundaries.acp) : (boundaries.acp - x)
         };
 
         // Add core measurements if present

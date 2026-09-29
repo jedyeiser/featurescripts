@@ -116,6 +116,10 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         annotation { "Name" : "New RSL line", "Filter" : EntityType.EDGE, "MaxNumberOfPicks" : 1,
                      "Description" : "New RSL line to scale toward. FCP/ACP positions determine the output ski length." }
         definition.newRslEdge is Query;
+
+        annotation { "Name" : "Reference FCP (optional)", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                     "Description" : "The reference ski's forebody contact point. The RSL end nearest it is the FCP, on both RSL lines, so the tip may point either way along X. Empty: the lower-X end of each RSL line is the FCP." }
+        definition.refFcpReference is Query;
         
         // --- Symmetry mode ---
         annotation { "Name" : "Symmetry mode",
@@ -225,12 +229,28 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         // STEP 1: Extract RSL data
         // =====================================================================
         var refRslData = extractRslData(context, definition.refRslEdge);
+        var newRslData = extractRslData(context, definition.newRslEdge);
+
+        // Tip toward +X (the picked FCP is nearer the higher-X end of the reference RSL): the whole
+        // computation runs on the footprint mirrored in X (x -> -x), where the tip is toward -X as the
+        // pipeline expects, and the finished curves are mirrored back before they are built.
+        var mirrorX = false;
+        if (!isQueryEmpty(context, definition.refFcpReference))
+        {
+            const fcpPickX = scalePointX(context, definition.refFcpReference);
+            mirrorX = abs(fcpPickX - refRslData.acp[0]) < abs(fcpPickX - refRslData.fcp[0]);
+        }
+        if (mirrorX)
+        {
+            refRslData = mirrorRslDataX(refRslData);
+            newRslData = mirrorRslDataX(newRslData);
+        }
+
         var refFcp = refRslData.fcp;
         var refAcp = refRslData.acp;
         var refMrs = refRslData.mrs;
         var refLength = abs(refAcp[0] - refFcp[0]);
         
-        var newRslData = extractRslData(context, definition.newRslEdge);
         var newFcp = newRslData.fcp;
         var newAcp = newRslData.acp;
         var newMrs = newRslData.mrs;
@@ -241,6 +261,10 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         // =====================================================================
         var tolerance = 0.001 * millimeter;
         var bsplines = edgesToBSplines(context, definition.refEdges, tolerance);
+        if (mirrorX)
+        {
+            bsplines = mirrorCurvesX(bsplines);
+        }
 
         // Authoritative per-edge arc classification: an input edge is an arc ONLY if its
         // kernel geometry is an analytic Circle (what the designer drew). This must NOT be a
@@ -459,6 +483,12 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
         var taggedNeg = buildTaggedCurves(context, id + "tagNeg", negCurves, negIsArc, negStrict,
             endpointWeight, definition.debugPrintArcs, "neg");
 
+        if (mirrorX)
+        {
+            taggedPos = mirrorTaggedX(taggedPos);
+            taggedNeg = mirrorTaggedX(taggedNeg);
+        }
+
         emitScaledSide(context, id + "posOut", taggedPos, definition.debugSkipMerge);
         emitScaledSide(context, id + "negOut", taggedNeg, definition.debugSkipMerge);
         
@@ -496,7 +526,7 @@ export const scaleFootprint = defineFeature(function(context is Context, id is I
                         "negativeSide" : extractableQuery(negativeSide, "The scaled -Y side wire.", DebugColor.BLUE)
                     }
                 });
-    });
+    }, { "refFcpReference" : qNothing() });
 
 /**
  * DEBUG helper: highlight each edge by its analytic curve type. Uses evCurveDefinition
@@ -1477,6 +1507,78 @@ function transformTipTail(curves is array, refContactX is ValueWithUnits, newCon
 // =============================================================================
 // MIRRORING UTILITY
 // =============================================================================
+
+/**
+ * World X of a picked vertex or mate connector origin.
+ */
+function scalePointX(context is Context, q is Query) returns ValueWithUnits
+{
+    if (!isQueryEmpty(context, qBodyType(q, BodyType.MATE_CONNECTOR)))
+    {
+        return evMateConnector(context, { "mateConnector" : q }).origin[0];
+    }
+    return evVertexPoint(context, { "vertex" : q })[0];
+}
+
+function mirrorPointX(p is Vector) returns Vector
+{
+    return vector(-p[0], p[1], p[2]);
+}
+
+/**
+ * RSL data of the X-mirrored footprint: the FCP (tip side, the higher-X end before mirroring) becomes the
+ * lower-X end, as extractRslData would report for a footprint drawn tip toward -X.
+ */
+function mirrorRslDataX(rsl is map) returns map
+{
+    return { "fcp" : mirrorPointX(rsl.acp), "acp" : mirrorPointX(rsl.fcp), "mrs" : mirrorPointX(rsl.mrs) };
+}
+
+/**
+ * Mirror BSpline curves across X=0 (negate X of every control point). Knots, weights and degree kept.
+ */
+function mirrorCurvesX(curves is array) returns array
+{
+    var mirrored = [];
+    for (var bspline in curves)
+    {
+        var newControlPoints = [];
+        for (var pt in bspline.controlPoints)
+        {
+            newControlPoints = append(newControlPoints, mirrorPointX(pt));
+        }
+        mirrored = append(mirrored, withControlPoints(bspline, newControlPoints));
+    }
+    return mirrored;
+}
+
+/**
+ * Mirror tagged output segments (arc / line / spline) across X=0.
+ */
+function mirrorTaggedX(tagged is array) returns array
+{
+    var out = [];
+    for (var t in tagged)
+    {
+        if (t.kind == "spline")
+        {
+            out = append(out, mergeMaps(t, { "bspline" : mirrorCurvesX([t.bspline])[0] }));
+        }
+        else
+        {
+            var m = t;
+            for (var k in ["start", "mid", "end"])
+            {
+                if (t[k] != undefined)
+                {
+                    m[k] = mirrorPointX(t[k]);
+                }
+            }
+            out = append(out, m);
+        }
+    }
+    return out;
+}
 
 /**
  * Mirror BSpline curves across Y=0 by negating the Y component of

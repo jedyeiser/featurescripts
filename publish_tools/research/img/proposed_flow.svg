@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="470" viewBox="0 0 1000 470" font-family="Segoe UI, Arial, sans-serif" font-size="12">
+  <defs>
+    <marker id="ar" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#444"/></marker>
+  </defs>
+  <rect width="1000" height="470" fill="#ffffff"/>
+  <text x="20" y="28" font-size="18" font-weight="bold" fill="#222">Proposed flow: studios as functions, typed by one "Studio role" feature</text>
+  <text x="20" y="46" fill="#555">The stamp is data the model owns (regenerates with it); the REST audit only reads.</text>
+
+  <!-- three studios -->
+  <g>
+    <rect x="20" y="70" width="280" height="200" rx="8" fill="#eef3fb" stroke="#1651B0"/>
+    <text x="32" y="92" font-weight="bold" font-size="14">DM_ Design Master</text>
+    <text x="32" y="112">variables -> composites (exports)</text>
+    <rect x="32" y="124" width="256" height="62" rx="5" fill="#1651B0"/>
+    <text x="42" y="142" fill="#fff" font-weight="bold">Studio role = DESIGN_MASTER</text>
+    <text x="42" y="158" fill="#fff">#studioRole variable, origin attribute,</text>
+    <text x="42" y="174" fill="#fff">Title 1 / custom prop on output parts</text>
+    <text x="32" y="206">Drawing: none / optional overview</text>
+    <text x="32" y="224">Outputs: extract_outputs map, composites</text>
+  </g>
+  <g>
+    <rect x="360" y="70" width="280" height="200" rx="8" fill="#eef8ef" stroke="#2e8b57"/>
+    <text x="372" y="92" font-weight="bold" font-size="14">PRIM_ Primitive</text>
+    <text x="372" y="112">footprint, profile, rocker, radius plot</text>
+    <rect x="372" y="124" width="256" height="62" rx="5" fill="#2e8b57"/>
+    <text x="382" y="142" fill="#fff" font-weight="bold">Studio role = PRIMITIVE</text>
+    <text x="382" y="158" fill="#fff">same stamp + role-specific FS tables</text>
+    <text x="382" y="174" fill="#fff">(RSL, radii, taper, key locs, heights)</text>
+    <text x="372" y="206">Drawing: PRIMITIVE template (views +</text>
+    <text x="372" y="222">"Custom table" inserts, filtered by role)</text>
+  </g>
+  <g>
+    <rect x="700" y="70" width="280" height="200" rx="8" fill="#fbf4e6" stroke="#b8860b"/>
+    <text x="712" y="92" font-weight="bold" font-size="14">PARTS_ Parts</text>
+    <text x="712" y="112">production flat parts</text>
+    <rect x="712" y="124" width="256" height="62" rx="5" fill="#b8860b"/>
+    <text x="722" y="142" fill="#fff" font-weight="bold">Studio role = PARTS</text>
+    <text x="722" y="158" fill="#fff">part no. / Title / custom props on</text>
+    <text x="722" y="174" fill="#fff">each released part (setProperty)</text>
+    <text x="712" y="206">Drawing: PARTS template, one per part;</text>
+    <text x="712" y="222">title block = sheet-reference part props</text>
+  </g>
+  <line x1="300" y1="170" x2="358" y2="170" stroke="#444" stroke-width="2" marker-end="url(#ar)"/>
+  <line x1="640" y1="170" x2="698" y2="170" stroke="#444" stroke-width="2" marker-end="url(#ar)"/>
+  <text x="304" y="162" font-size="11" fill="#444">derive</text>
+  <text x="644" y="162" font-size="11" fill="#444">derive</text>
+
+  <!-- audit -->
+  <rect x="20" y="300" width="960" height="150" rx="8" fill="#f7f7f7" stroke="#888"/>
+  <text x="32" y="322" font-weight="bold" font-size="14">Read-only audit (Python / EOC Data Tools) -- no enforcement inside Onshape needed</text>
+  <text x="32" y="344">1. GET /documents/d/{d}/w/{w}/elements -> tab names match ^(DM|PRIM|PARTS)_ ?</text>
+  <text x="32" y="362">2. POST /partstudios/.../featurescript (eval, no side effects) -> getVariable(context, "studioRole") + origin attribute present and == name prefix ?</text>
+  <text x="32" y="380">3. GET /metadata/d/{d}/w/{w}/e/{e}/p -> every PARTS_ part has part no. / role property ?</text>
+  <text x="32" y="398">4. Drawings: GET /metadata/.../e/{drawing} -> drawing references a studio whose role matches its template ?</text>
+  <text x="32" y="422" fill="#1651B0">Optional later: admin adds ONE custom part property "Studio role" (scope Part, computed from the variable) so the role shows in BOMs/drawings/search</text>
+  <text x="32" y="440" fill="#1651B0">without the feature touching each body -- or plain (non-computed) and set by the feature via setProperty CUSTOM.</text>
+</svg>

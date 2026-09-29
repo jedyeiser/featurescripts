@@ -22,9 +22,9 @@ def st(kind, ns):
     return en("stationType", "StationEntryType", kind, ns)
 
 
-def item(kind, ns, name, pt=(), second=(), edge=(), count=5, reverse=False):
+def item(kind, ns, name, pt=(), second=(), edge=(), count=5, reverse=False, first=1):
     return [st(kind, ns), s("stationName", name), qids("point", pt), qids("secondPoint", second),
-            qids("lineEdge", edge), integer("count", count), b("reverse", reverse)]
+            qids("lineEdge", edge), integer("count", count), integer("firstNumber", first), b("reverse", reverse)]
 
 
 def flist(pid, ids):
@@ -39,7 +39,7 @@ ns_def = namespace_of(D, W, "station_definition")
 ns_geo = namespace_of(D, W, "station_geometry")
 
 defn = upsert(D, W, E, "stationDefinition", "Stations (test)", [
-    s("variableName", "stations"),
+    s("variableName", "stations"), en("language", "StationLanguage", "ENGLISH", ns_def),
     arr("stations", [
         point("TAIL", MC0, ns_def),
         point("EDA", MC145, ns_def),
@@ -85,5 +85,20 @@ upsert(D, W, E, "stationGeometry", "TOP_SURFACE stations (test)", [
     b("planView", True), b("profileView", True), arr("otherViews", []),
     flist("stationDefinitions", [DEF_ID]), s("stationSet", ""), arr("stations", []),
     b("stationLines", True), b("outlineWires", True), b("outlineSurface", False),
+    b("datumPoint", True), b("flatCopy", False), b("printTable", True),
+], ns_geo)
+
+# Unnamed stations numbered from 0, German headings (2026-09-28): expect stations 0..4 and a "4101N PLAN Stationen"
+# table with Station | x (mm) | Breite (mm).
+defn_de = upsert(D, W, E, "stationDefinition", "Numbered 0-4 DE (test)", [
+    s("variableName", ""), en("language", "StationLanguage", "GERMAN", ns_def),
+    arr("stations", [item("BETWEEN", ns_def, "", pt=[MC145], second=[MC1625], count=5, first=0)]),
+    b("printStations", False),
+], ns_def)
+upsert(D, W, E, "stationGeometry", "4101N numbered DE (test)", [
+    qids("part", [P4101]), qids("datum", [MC0]), s("prefix", "4101N"),
+    b("planView", True), b("profileView", False), arr("otherViews", []),
+    flist("stationDefinitions", [defn_de["feature"]["featureId"]]), s("stationSet", ""), arr("stations", []),
+    b("stationLines", True), b("outlineWires", False), b("outlineSurface", False),
     b("datumPoint", True), b("flatCopy", False), b("printTable", True),
 ], ns_geo)

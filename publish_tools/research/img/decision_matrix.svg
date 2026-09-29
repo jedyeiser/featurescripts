@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="430" viewBox="0 0 1000 430" font-family="Segoe UI, Arial, sans-serif" font-size="12">
+  <rect width="1000" height="430" fill="#ffffff"/>
+  <text x="20" y="28" font-size="18" font-weight="bold" fill="#222">Decision matrix: how to "type" a Part Studio</text>
+  <text x="20" y="46" fill="#555">green = good, amber = partial, red = no. Row B/C is the recommendation.</text>
+
+  <!-- header -->
+  <g font-weight="bold" fill="#222">
+    <text x="20" y="80">Option</text>
+    <text x="300" y="80">Admin setup</text>
+    <text x="410" y="80">FS writes it</text>
+    <text x="520" y="80">In drawing/BOM</text>
+    <text x="640" y="80">Search/filter</text>
+    <text x="750" y="80">Enforceable</text>
+    <text x="860" y="80">Upkeep</text>
+  </g>
+  <line x1="20" y1="88" x2="980" y2="88" stroke="#999"/>
+
+  <!-- helper: cells are 100x40 -->
+  <!-- Row A -->
+  <text x="20" y="118" font-weight="bold">A. Naming convention only</text>
+  <text x="20" y="132" fill="#555">"PRIM_", "DM_", "PARTS_" tab names</text>
+  <rect x="295" y="100" width="100" height="40" fill="#cdeccd"/><text x="305" y="124">none</text>
+  <rect x="405" y="100" width="100" height="40" fill="#f6c9c9"/><text x="415" y="124">no</text>
+  <rect x="515" y="100" width="115" height="40" fill="#fbe5b6"/><text x="525" y="124">name only</text>
+  <rect x="635" y="100" width="100" height="40" fill="#fbe5b6"/><text x="645" y="124">text search</text>
+  <rect x="745" y="100" width="100" height="40" fill="#fbe5b6"/><text x="755" y="118">doc names:</text><text x="755" y="132">regex (admin)</text>
+  <rect x="855" y="100" width="120" height="40" fill="#cdeccd"/><text x="865" y="124">~zero</text>
+
+  <!-- Row B -->
+  <rect x="15" y="148" width="965" height="44" fill="none" stroke="#1651B0" stroke-width="2" rx="4"/>
+  <text x="20" y="168" font-weight="bold" fill="#1651B0">B. Names + "Studio role" FS feature</text>
+  <text x="20" y="182" fill="#555">setVariable + origin attribute + part props</text>
+  <rect x="295" y="150" width="100" height="40" fill="#cdeccd"/><text x="305" y="168">none (or 1</text><text x="305" y="182">custom prop)</text>
+  <rect x="405" y="150" width="100" height="40" fill="#cdeccd"/><text x="415" y="174">yes, at regen</text>
+  <rect x="515" y="150" width="115" height="40" fill="#cdeccd"/><text x="525" y="168">part props, FS</text><text x="525" y="182">tables, notes</text>
+  <rect x="635" y="150" width="100" height="40" fill="#fbe5b6"/><text x="645" y="168">REST audit</text><text x="645" y="182">script</text>
+  <rect x="745" y="150" width="100" height="40" fill="#fbe5b6"/><text x="755" y="168">audit, not</text><text x="755" y="182">blocking</text>
+  <rect x="855" y="150" width="120" height="40" fill="#cdeccd"/><text x="865" y="168">1 feature in a</text><text x="865" y="182">library doc</text>
+
+  <!-- Row C -->
+  <text x="20" y="218" font-weight="bold">C. B + computed part property</text>
+  <text x="20" y="232" fill="#555">"Studio role" reads the variable</text>
+  <rect x="295" y="200" width="100" height="40" fill="#fbe5b6"/><text x="305" y="218">admin: prop +</text><text x="305" y="232">computed fn</text>
+  <rect x="405" y="200" width="100" height="40" fill="#cdeccd"/><text x="415" y="218">automatic on</text><text x="415" y="232">every part</text>
+  <rect x="515" y="200" width="115" height="40" fill="#cdeccd"/><text x="525" y="218">BOM + drawing</text><text x="525" y="232">part props</text>
+  <rect x="635" y="200" width="100" height="40" fill="#fbe5b6"/><text x="645" y="218">parts only</text><text x="645" y="232">(not studios)</text>
+  <rect x="745" y="200" width="100" height="40" fill="#fbe5b6"/><text x="755" y="224">audit</text>
+  <rect x="855" y="200" width="120" height="40" fill="#fbe5b6"/><text x="865" y="218">fn doc version</text><text x="865" y="232">pinned by admin</text>
+
+  <!-- Row D -->
+  <text x="20" y="268" font-weight="bold">D. Part Studio categories</text>
+  <text x="20" y="282" fill="#555">Primitive / Design Master / Parts</text>
+  <rect x="295" y="250" width="100" height="40" fill="#f6c9c9"/><text x="305" y="268">admin: 3 cats</text><text x="305" y="282">+ props</text>
+  <rect x="405" y="250" width="100" height="40" fill="#f6c9c9"/><text x="415" y="268">no -- UI or</text><text x="415" y="282">REST only</text>
+  <rect x="515" y="250" width="115" height="40" fill="#fbe5b6"/><text x="525" y="268">sheet ref only</text><text x="525" y="282">(unverified)</text>
+  <rect x="635" y="250" width="100" height="40" fill="#cdeccd"/><text x="645" y="268">yes (category</text><text x="645" y="282">filter/export)</text>
+  <rect x="745" y="250" width="100" height="40" fill="#fbe5b6"/><text x="755" y="268">no "required"</text><text x="755" y="282">category</text>
+  <rect x="855" y="250" width="120" height="40" fill="#f6c9c9"/><text x="865" y="268">manual per tab;</text><text x="865" y="282">drifts</text>
+
+  <!-- Row E -->
+  <text x="20" y="318" font-weight="bold">E. Custom document "type"</text>
+  <text x="20" y="332" fill="#555">doc category + doc props + template doc</text>
+  <rect x="295" y="300" width="100" height="40" fill="#f6c9c9"/><text x="305" y="318">admin + a</text><text x="305" y="332">template doc</text>
+  <rect x="405" y="300" width="100" height="40" fill="#f6c9c9"/><text x="415" y="324">no</text>
+  <rect x="515" y="300" width="115" height="40" fill="#f6c9c9"/><text x="525" y="324">no (unverified)</text>
+  <rect x="635" y="300" width="100" height="40" fill="#cdeccd"/><text x="645" y="324">yes</text>
+  <rect x="745" y="300" width="100" height="40" fill="#fbe5b6"/><text x="755" y="324">name regex</text>
+  <rect x="855" y="300" width="120" height="40" fill="#f6c9c9"/><text x="865" y="318">copy-template</text><text x="865" y="332">discipline</text>
+
+  <!-- Row F -->
+  <text x="20" y="368" font-weight="bold">F. Custom app tab (EOC app)</text>
+  <text x="20" y="382" fill="#555">true new element type, REST-driven</text>
+  <rect x="295" y="350" width="100" height="40" fill="#fbe5b6"/><text x="305" y="368">app already</text><text x="305" y="382">registered</text>
+  <rect x="405" y="350" width="100" height="40" fill="#f6c9c9"/><text x="415" y="374">no</text>
+  <rect x="515" y="350" width="115" height="40" fill="#f6c9c9"/><text x="525" y="374">no</text>
+  <rect x="635" y="350" width="100" height="40" fill="#fbe5b6"/><text x="645" y="374">by app</text>
+  <rect x="745" y="350" width="100" height="40" fill="#fbe5b6"/><text x="755" y="374">by app</text>
+  <rect x="855" y="350" width="120" height="40" fill="#f6c9c9"/><text x="865" y="374">web dev</text>
+
+  <text x="20" y="415" fill="#555" font-size="11">Sources: K2 metadata probes, FS eval API probes, Onshape help (custom properties, categories, preferences), FsDoc computed-part-properties. See report.</text>
+</svg>
