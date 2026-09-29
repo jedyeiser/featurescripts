@@ -101,10 +101,10 @@ export const UNWRAP_PART_SHAPE_TOL = 0.005 * millimeter;
 export const UNWRAP_PART_PRISM_GRID = 5;
 
 /**
- * viewFit: a face whose grid lines travel less than this (metres) along the extrusion direction in both parameter
- * directions (a face facing along it) keeps the old choice of station direction, by spread in the view.
+ * viewFit: a face whose grid lines make less than this share of their travel along the extrusion direction in both
+ * parameter directions (a face facing along it) keeps the old choice of station direction, by spread in the view.
  */
-export const UNWRAP_PART_EXTRUSION_MOVE = 1e-6;
+export const UNWRAP_PART_EXTRUSION_SHARE = 0.01;
 
 /** Rows: adaptive (seed every UNWRAP_PART_ROW_SEED_SPACING m, at least UNWRAP_PART_ROW_SEED_MIN, then split every
  * span whose mapped midpoint misses the cubic through its neighbours by more than shapeTolerance *
@@ -1639,14 +1639,17 @@ export function gridSpread(flat is array, alongU is boolean, ib is number) retur
     return best;
 }
 
-/** Longest travel in one flat coordinate (plain metres) of the grid lines running along u (alongU) or v. */
-export function gridCoordinateSpread(flat is array, alongU is boolean, coordinate is number) returns number
+/**
+ * Which share of their travel the grid lines running along u (alongU) or v make along one flat coordinate: the summed
+ * |change of that coordinate| over the summed chord length (0 when they do not move).
+ */
+export function gridExtrusionShare(flat is array, alongU is boolean, coordinate is number) returns number
 {
     const G = UNWRAP_PART_PRISM_GRID;
-    var best = 0;
+    var along = 0;
+    var total = 0;
     for (var t = 0; t < G; t += 1)
     {
-        var length = 0;
         var last = undefined;
         for (var s = 0; s < G; s += 1)
         {
@@ -1657,19 +1660,19 @@ export function gridCoordinateSpread(flat is array, alongU is boolean, coordinat
             }
             if (last != undefined)
             {
-                length += abs(p[coordinate] - last[coordinate]);
+                along += abs(p[coordinate] - last[coordinate]);
+                total += sqrt((p[0] - last[0]) ^ 2 + (p[1] - last[1]) ^ 2 + (p[2] - last[2]) ^ 2);
             }
             last = p;
         }
-        best = max(best, length);
     }
-    return best;
+    return (total > 1e-12) ? along / total : 0;
 }
 
 /**
  * How far a face departs from a pure extrusion in one view: the side view (ib = 2, the image extruded along flat Y,
  * a PROFILE) or the plan view (ib = 1, extruded along flat Z, a WALL). The curve direction is the grid direction
- * moving least along the extrusion direction (by spread in the view when neither moves along it). At each grid station along it, the points across the face are measured along the view
+ * whose travel is least along the extrusion direction (by spread in the view when neither travels along it). At each grid station along it, the points across the face are measured along the view
  * normal of the middle one (so parameter slip along the curve does not count): the best-fit tool passes through the
  * middle of their range, and the face departs from it by half the range. The tool row is the face's middle row
  * shifted by "mids" (interpolated along the row); an envelope row by "outs" (the outermost point of each station).
@@ -1688,9 +1691,9 @@ export function viewFit(samples is map, ib is number) returns map
     // small, nearly square face skewed in plan pass as a profile, measured along its height: 4103's tip cap over
     // FULL_BASELINE (flat normal y share 0.29) came out a vertical wall and missed its lean by 0.083 mm.
     const extrusion = (ib == 2) ? 1 : 2;
-    const moveU = gridCoordinateSpread(flat, true, extrusion);
-    const moveV = gridCoordinateSpread(flat, false, extrusion);
-    const alongU = (max(moveU, moveV) > UNWRAP_PART_EXTRUSION_MOVE) ? (moveV >= moveU) : (spreadU >= spreadV);
+    const moveU = gridExtrusionShare(flat, true, extrusion);
+    const moveV = gridExtrusionShare(flat, false, extrusion);
+    const alongU = (max(moveU, moveV) > UNWRAP_PART_EXTRUSION_SHARE) ? (moveV >= moveU) : (spreadU >= spreadV);
     const noFit = { "dev" : UNWRAP_PART_NO_FIT, "mids" : makeArray(G, 0), "outs" : makeArray(G, 0), "alongU" : alongU,
         "spread" : max(spreadU, spreadV) };
     const m = (G - 1) / 2;
