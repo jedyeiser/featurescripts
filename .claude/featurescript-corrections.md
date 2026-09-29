@@ -1857,3 +1857,19 @@ both because they are bound as resolved entities before the call.
   frame on its own sub-id (identity transform) and replays: outside clicks resolve, in-list QV "created by" remaps,
   and an outside-geometry edit (fillet of a case input's edges) succeeds through the pop-and-retry. So the fix is the
   call shape (the executor must own the list), not the transform.
+
+
+---
+
+## Correction 62: a NEW length parameter's default is migrated into saved features in MILLIMETRES (2026-09-29)
+
+**Symptom** (publish_tools Export primitive): a new `isLength(definition.radiusAxisMin, { (meter) : [0, 10, 10000] })`
+showed up in every SAVED feature as the expression `10.0*mm` (REST features list), so the radius axis ran from -10 mm and
+the plot below it was cut away. New isReal parameters added in the same pass migrated correctly (`0.02`, `450.0`), and an
+existing parameter whose default changed (curvatureScale 5 -> 50 mm, Station definition variableName "stations" -> "")
+kept its saved value.
+**Cause**: correction 25's migration writes the bound spec's default NUMBER with the document's length unit (mm), not
+the bound spec's unit.
+**Fix**: give a new length parameter a millimetre bound spec, or (done here) make it a plain number in the unit it names
+("Radius axis min (m)", isReal) under a fresh id (`radiusAxisLow`) so the stale `10.0*mm` is ignored. Check a new
+parameter's migrated value in the REST feature list of an existing feature before trusting the default.

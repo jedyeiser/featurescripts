@@ -8,27 +8,26 @@ import(path : "52724f3a857fa52d3ecceb77/b105c12d5094d99215293e38/71d853c0fd2f10c
 /**
  * Export Primitive -- the unwrapped footprint and the radius plot.
  *
- * Unwrapping (2026-09-28, the user's tail bite): a footprint point P moves to u = x(MRS) + s, where s is measured
- * along the BASE ITSELF at P's own transverse position y, towards the tip; y (across) is kept. The base is cut at
- * several y (0 and fractions of the periphery's half-widths, UNWRAP_SECTION_FRACTIONS) through the base faces only
- * (not the volume: its end walls are no base); on each section chain a point is mapped by its FOOT in XZ (nearest point,
- * Newton), and u is interpolated in y between the two sections around P that reach it. Every section is aligned at
- * x = x(MRS) (u = x(MRS) there on all of them). A point no section reaches is carried along the nearest section's end
- * tangent (last resort, beyond all base geometry). On a base extruded along y (a ski base) this is an isometry:
- * lengths and areas on the base are kept, a bite cut into the tail keeps its shape, and the steep ends are mapped by
- * the base's own slope (the old mapping took u from the mid-plane BOTTOM wire at the same x and clamped at its end:
- * a tail bite collapsed into a vertical line, and the section's rounded nose made the tip / tail corners noisy).
- * Where the base is flat and straight u = x, and such edges are copied exactly (arcs stay arcs); elsewhere the edge
- * is sampled, mapped and fitted (1 um). A FLAT input wire (constant z) is taken as already unwrapped (u = x): the
- * primitive aligns it at MRS; a wrapped input wire is mapped on the bottom wire (the only section there is).
+ * Unwrapping (2026-09-28, the user's tail bite; simplified 2026-09-29): a footprint point P moves to u = x(MRS) + s,
+ * where s is measured along the BASE towards the tip; y (across) is kept. The base is taken as DEVELOPABLE along y (its
+ * profile is the same at every y, as on a ski base extruded across), so one profile maps every point: the profile's
+ * BOTTOM wire (the centreline section, aligned at x = x(MRS)). A point is mapped by its FOOT on it in XZ (nearest
+ * point: Newton on a cubic-Hermite table in plain numbers, then one exact kernel step). Where the centreline is cut back
+ * (a bite into the tail: the base runs on past the bottom wire's end at other y), the base faces are cut at ONE y per
+ * end -- where the base reaches furthest -- and the points past the centreline map on that section (aligned to the
+ * centreline where they overlap); no interpolation in y. A point no section reaches is carried along the end tangent
+ * (last resort, beyond all base geometry). On such a base the unwrap is an isometry: lengths and areas are kept and a
+ * bite keeps its shape (the pre-2026-09-28 mapping clamped at the bottom wire's end: a tail bite collapsed into a
+ * vertical line). Where the base is flat and straight u = x, and such edges are copied exactly (arcs stay arcs);
+ * elsewhere the edge is sampled, mapped and fitted (1 um). A FLAT input wire (constant z) is taken as already unwrapped
+ * (u = x): the primitive aligns it at MRS; a wrapped input wire is mapped on the bottom wire alone.
  *
  * Radius / curvature: from the exact source curve and the mapping's derivatives (chain rule, no fitting). Along a
  * source edge (arc length t, P' = T, P'' = k N) the foot a on a section (tangent t, curvature kappa, normal n, height
  * h = n . (P - C)) moves with
  *     a' = (t . P') / D,   a'' = (N' D - (t . P') D') / D^2,   D = 1 - kappa h,  N' = t . P'' + kappa a' (n . P'),
  *     D' = -kappa (n . P')
- * and u between two sections at y0 < y1 (w = (y - y0) / (y1 - y0)) is u = (1 - w) u0 + w u1, differentiated with
- * w' = y' / (y1 - y0), w'' = y'' / (y1 - y0). Then with X' = u', X'' = u'', and y', y'' from the edge,
+ * and u = uOffset + dirSign a on the section the point maps on. Then with X' = u', X'' = u'', and y', y'' from the edge,
  *     k = (X' y'' - y' X'') / (X'^2 + y'^2)^1.5,
  * and the SIGN: positive when the centre of curvature lies away from the centreline (sidecut), negative towards it
  * (taper, tip, tail). |R| above the radius limit (flat, or next to an inflection) is "no value": the plot breaks.
@@ -50,25 +49,21 @@ const PLOT_JOIN_TOLERANCE = 0.005 * millimeter;
 const CLIP_MIN_RUN = 0.1 * millimeter;
 /** Where each bottom-wire edge is probed for the base faces (interior only: an end may sit on a cap edge). */
 const BASE_PROBES = [0.1, 0.3, 0.5, 0.7, 0.9];
-/** Base sections besides y = 0: these fractions of the periphery's largest +y and -y. */
-const UNWRAP_SECTION_FRACTIONS = [0.45, 0.9];
 /** Rows of a section's seed table. */
 const SECTION_TABLE_ROWS = 200;
 /** Newton steps for a point's foot on a section's Hermite table (tableFoot; converged at 1e-11 m). */
 const TABLE_FOOT_STEPS = 8;
 /** A foot within this of a section's end still lies on the section (the point is "reached" by it). */
 const SECTION_REACH_TOL = 1e-5 * meter;
-/** Section edges belong to the level within this in y; added levels closer than SECTION_LEVEL_GAP are one. */
+/** Section edges belong to the level within this in y; an end section closer than SECTION_LEVEL_GAP to y = 0 is none. */
 const SECTION_LEVEL_TOL = 1e-7 * meter;
 const SECTION_LEVEL_GAP = 1e-6 * meter;
-/** At most this many levels added for points no section reaches (at the points' own y). */
-const SECTION_EXTRA_MAX = 24;
 
 /**
  * The footprint's source edges in the LOCAL frame: copies of the volume's BASE PERIPHERY (the boundary of the faces
  * the profile's bottom wire lies on -- the volume's own edges, so exact arcs stay exact), or copies of the input
- * wires. From the volume also the base SECTIONS the unwrap maps through (see primitiveBaseSections). Returns
- * { bodies (temporary copies, sections included), edges, sections ({ sections, levels }; undefined for input wires),
+ * wires. From the volume also the base the unwrap maps through (see primitiveBaseSections). Returns
+ * { bodies (temporary copies), edges, sections ({ sections, levels, faces, ... }; undefined for input wires),
  * baseArea (area of the base faces; undefined for input wires) }.
  *
  * Not opCreateOutline: it re-fits silhouette edges, and on RD 20TAC an exact R 1.02 m base arc came back as a spline
@@ -93,7 +88,7 @@ export function primitiveFootprintSource(context is Context, id is Id, fromVolum
         bodies = qCreatedBy(id + "periphery", EntityType.BODY);
         primitiveMove(context, id + "peripheryToLocal", bodies, toLocal, isIdentity);
         edges = qOwnedByBody(bodies, EntityType.EDGE);
-        const built = primitiveBaseSections(context, id + "sections", base.faces, bodies, frame, toDatum, toLocal, isIdentity);
+        const built = primitiveBaseSections(context, base.faces, frame, toDatum, toLocal, isIdentity);
         sections = built;
         sectionBodies = built.bodies;
         baseArea = evArea(context, { "entities" : qUnion(base.faces) });
@@ -161,28 +156,26 @@ function basePeriphery(context is Context, volume is Query, bottom is map, toDat
 }
 
 /**
- * The base cut at y = 0 and at UNWRAP_SECTION_FRACTIONS of the periphery's largest +y and -y (LOCAL frame), see
- * addSectionLevels. Returns { bodies (the section wires, LOCAL), sections, levels, faces, toDatum, toLocal, isIdentity }
- * (the rest is what primitiveUnwrap needs to add levels).
+ * The unwrap's base: the centreline section only -- the profile's bottom wire, which lies on the base faces -- plus
+ * what primitiveUnwrap needs to cut end sections where the centreline is cut back: { bodies (none yet), sections
+ * ([centre]), levels, faces, toDatum, toLocal, isIdentity }.
  */
-export function primitiveBaseSections(context is Context, id is Id, faces is array, periphery is Query, frame is map,
-    toDatum is Transform, toLocal is Transform, isIdentity is boolean) returns map
+export function primitiveBaseSections(context is Context, faces is array, frame is map, toDatum is Transform, toLocal is Transform,
+    isIdentity is boolean) returns map
 {
-    const bb = evBox3d(context, { "topology" : periphery, "tight" : true });
-    var ys = [0 * meter];
-    for (var f in UNWRAP_SECTION_FRACTIONS)
+    return { "sections" : [centreSection(context, frame)], "levels" : [{ "y" : 0 * meter, "members" : [0] }], "faces" : faces,
+            "toDatum" : toDatum, "toLocal" : toLocal, "isIdentity" : isIdentity, "bodies" : qNothing() };
+}
+
+/** The bottom wire as a section, aligned at x(MRS). */
+function centreSection(context is Context, frame is map) returns map
+{
+    const centre = unwrapSection(context, frame.chain, 0 * meter, frame, []);
+    if (centre == undefined)
     {
-        if (bb.maxCorner[1] > PRIMITIVE_CHAIN_TOLERANCE)
-        {
-            ys = append(ys, f * bb.maxCorner[1]);
-        }
-        if (bb.minCorner[1] < -PRIMITIVE_CHAIN_TOLERANCE)
-        {
-            ys = append(ys, f * bb.minCorner[1]);
-        }
+        throw regenError("The footprint cannot be unwrapped: the bottom wire has no point at the MRS.", ["volume"]);
     }
-    const base = { "sections" : [], "levels" : [], "faces" : faces, "toDatum" : toDatum, "toLocal" : toLocal, "isIdentity" : isIdentity };
-    return addSectionLevels(context, id, base, ys, frame);
+    return centre;
 }
 
 /**
@@ -650,142 +643,16 @@ function levelMember(sections is array, level is map, x is ValueWithUnits) retur
     return best;
 }
 
-/**
- * u, u', u'' of every point (see the header): on the levels just below and above its y (the member there that spans
- * its x), interpolated in y when both reach it; else the nearest-in-y section that reaches it; else the nearest-in-y
- * section asked, carried along its end tangent (reached false). `d1s` / `d2s` per point as in sectionU.
- */
-function mapThroughSections(context is Context, frame is map, base is map, points is array, d1s is array, d2s is array) returns array
+/** u, u', u'' and reached (the foot lies on the section) of every point on one section; `d1s` / `d2s` as in sectionU. */
+function mapOnSection(context is Context, frame is map, section is map, points is array, d1s is array, d2s is array) returns array
 {
-    const sections = base.sections;
-    const levels = base.levels;
-    const nSec = size(sections);
-    var below = [];
-    var above = [];
-    var askBy = makeArray(nSec, []);
-    for (var j = 0; j < size(points); j += 1)
-    {
-        var lo = undefined;
-        var hi = undefined;
-        for (var k = 0; k < size(levels); k += 1)
-        {
-            if (levels[k].y <= points[j][1])
-            {
-                lo = k;
-            }
-            if (hi == undefined && levels[k].y >= points[j][1])
-            {
-                hi = k;
-            }
-        }
-        const sLo = lo == undefined ? undefined : levelMember(sections, levels[lo], points[j][0]);
-        const sHi = hi == undefined ? undefined : levelMember(sections, levels[hi], points[j][0]);
-        below = append(below, sLo);
-        above = append(above, sHi);
-        for (var m in [sLo, sHi])
-        {
-            if (m != undefined && (size(askBy[m]) == 0 || askBy[m][size(askBy[m]) - 1] != j))
-            {
-                askBy[m] = append(askBy[m], j);
-            }
-        }
-    }
-    var feet = makeArray(size(points), {});
-    feet = askFeet(context, sections, askBy, points, feet);
-    // Points neither neighbour reaches: every other section.
-    var retry = makeArray(nSec, []);
-    for (var j = 0; j < size(points); j += 1)
-    {
-        const okLo = below[j] != undefined && feet[j][below[j]].reached;
-        const okHi = above[j] != undefined && feet[j][above[j]].reached;
-        if (!okLo && !okHi)
-        {
-            for (var m = 0; m < nSec; m += 1)
-            {
-                if (m != below[j] && m != above[j])
-                {
-                    retry[m] = append(retry[m], j);
-                }
-            }
-        }
-    }
-    feet = askFeet(context, sections, retry, points, feet);
+    const feet = sectionFeet(context, section, points);
     var out = [];
     for (var j = 0; j < size(points); j += 1)
     {
-        const lo = below[j];
-        const hi = above[j];
-        const okLo = lo != undefined && feet[j][lo].reached;
-        const okHi = hi != undefined && feet[j][hi].reached;
-        if (okLo && okHi && lo != hi && abs(sections[hi].y - sections[lo].y) > PRIMITIVE_CHAIN_TOLERANCE)
-        {
-            const m0 = sectionU(frame, sections[lo], feet[j][lo], d1s[j], d2s[j]);
-            const m1 = sectionU(frame, sections[hi], feet[j][hi], d1s[j], d2s[j]);
-            const span = (sections[hi].y - sections[lo].y) / meter;
-            const w = (points[j][1] - sections[lo].y) / meter / span;
-            const wp = d1s[j][1] / span;
-            const wpp = d2s[j][1] / span;
-            out = append(out, {
-                        "reached" : true,
-                        "u" : m0.u + (m1.u - m0.u) * w,
-                        "up" : m0.up + (m1.up - m0.up) * w + wp * (m1.u - m0.u) / meter,
-                        "upp" : m0.upp + (m1.upp - m0.upp) * w + 2 * wp * (m1.up - m0.up) + wpp * (m1.u - m0.u) / meter
-                    });
-            continue;
-        }
-        var use = okLo ? lo : (okHi ? hi : undefined);
-        if (use == undefined)
-        {
-            // Nearest section in y that reaches the point; none: the nearest section asked (its end tangent).
-            var nearest = undefined;
-            for (var m = 0; m < nSec; m += 1)
-            {
-                if (feet[j][m] == undefined)
-                {
-                    continue;
-                }
-                const dy = abs(sections[m].y - points[j][1]);
-                if (nearest == undefined || dy < abs(sections[nearest].y - points[j][1]))
-                {
-                    nearest = m;
-                }
-                if (feet[j][m].reached && (use == undefined || dy < abs(sections[use].y - points[j][1])))
-                {
-                    use = m;
-                }
-            }
-            if (use == undefined)
-            {
-                use = nearest;
-            }
-        }
-        var single = sectionU(frame, sections[use], feet[j][use], d1s[j], d2s[j]);
-        single.reached = feet[j][use].reached;
-        out = append(out, single);
-    }
-    return out;
-}
-
-/** Feet of the points listed per section in `ask` (one batch per section), stored as feet[point][section]. */
-function askFeet(context is Context, sections is array, ask is array, points is array, feet is array) returns array
-{
-    var out = feet;
-    for (var m = 0; m < size(sections); m += 1)
-    {
-        if (size(ask[m]) == 0)
-        {
-            continue;
-        }
-        var pts = [];
-        for (var j in ask[m])
-        {
-            pts = append(pts, points[j]);
-        }
-        const got = sectionFeet(context, sections[m], pts);
-        for (var i = 0; i < size(ask[m]); i += 1)
-        {
-            out[ask[m][i]][m] = got[i];
-        }
+        var m = sectionU(frame, section, feet[j], d1s[j], d2s[j]);
+        m.reached = feet[j].reached;
+        out = append(out, m);
     }
     return out;
 }
@@ -853,71 +720,83 @@ export function primitiveUnwrap(context is Context, id is Id, frame is map, edge
         var through = sections;
         if (through == undefined || size(through.sections) == 0)
         {
-            const bottom = unwrapSection(context, frame.chain, 0 * meter, frame, []);
-            if (bottom == undefined)
-            {
-                throw regenError("The footprint cannot be unwrapped: the bottom wire has no point at the MRS.", ["volume"]);
-            }
-            through = { "sections" : [bottom], "levels" : [{ "y" : 0 * meter, "members" : [0] }] };
+            through = { "sections" : [centreSection(context, frame)], "levels" : [{ "y" : 0 * meter, "members" : [0] }] };
         }
-        maps = mapThroughSections(context, frame, through, points, d1s, d2s);
-        // Points no section reaches (a bite, a notch: the base runs on past every level there): cut the base again at
-        // their own y -- a periphery point lies on the base, so the section at its y reaches it -- and map them again.
+        maps = mapOnSection(context, frame, through.sections[0], points, d1s, d2s);
+        // The centreline cut back (a bite, a notch): per end, ONE base section at the y where the base reaches furthest
+        // towards that end (the base is developable: every y has the same profile), and the points past the centreline
+        // are mapped on it.
         if (through.faces != undefined)
         {
-            var missing = [];
-            for (var j = 0; j < size(maps); j += 1)
-            {
-                if (!maps[j].reached)
-                {
-                    missing = append(missing, j);
-                }
-            }
             var ys = [];
-            for (var j in missing)
+            var endOf = {};
+            for (var side in [-1, 1])
             {
-                ys = append(ys, points[j][1]);
-            }
-            ys = sort(ys, function(a, b) { return (a - b) / meter; });
-            var extra = [];
-            for (var y in ys)
-            {
-                var known = size(extra) > 0 && abs(extra[size(extra) - 1] - y) < SECTION_LEVEL_GAP;
-                for (var level in through.levels)
+                var missing = false;
+                var far = undefined;
+                for (var j = 0; j < size(maps); j += 1)
                 {
-                    known = known || abs(level.y - y) < SECTION_LEVEL_GAP;
+                    if (side * (points[j][0] - frame.xMrs) <= 0 * meter)
+                    {
+                        continue;
+                    }
+                    missing = missing || !maps[j].reached;
+                    if (far == undefined || side * (points[j][0] - points[far][0]) > 0 * meter)
+                    {
+                        far = j;
+                    }
                 }
-                if (!known)
+                if (missing && abs(points[far][1]) > SECTION_LEVEL_GAP)
                 {
-                    extra = append(extra, y);
+                    endOf[side] = size(ys);
+                    ys = append(ys, points[far][1]);
                 }
             }
-            if (size(extra) > SECTION_EXTRA_MAX)
+            if (size(ys) > 0)
             {
-                var picked = [];
-                for (var i = 0; i < SECTION_EXTRA_MAX; i += 1)
-                {
-                    picked = append(picked, extra[round(i * (size(extra) - 1) / (SECTION_EXTRA_MAX - 1))]);
-                }
-                extra = picked;
-            }
-            if (size(extra) > 0)
-            {
-                through = addSectionLevels(context, id + "extraSections", through, extra, frame);
+                through = addSectionLevels(context, id + "endSections", through, ys, frame);
                 extraBodies = through.bodies;
-                var subPoints = [];
-                var subD1 = [];
-                var subD2 = [];
-                for (var j in missing)
+                // Missing points per end section (the level member spanning the point's x).
+                var askBy = makeArray(size(through.sections), []);
+                for (var j = 0; j < size(maps); j += 1)
                 {
-                    subPoints = append(subPoints, points[j]);
-                    subD1 = append(subD1, d1s[j]);
-                    subD2 = append(subD2, d2s[j]);
+                    const side = points[j][0] > frame.xMrs ? 1 : -1;
+                    if (maps[j].reached || endOf[side] == undefined)
+                    {
+                        continue;
+                    }
+                    for (var level in through.levels)
+                    {
+                        if (abs(level.y - ys[endOf[side]]) < SECTION_LEVEL_TOL)
+                        {
+                            const m = levelMember(through.sections, level, points[j][0]);
+                            askBy[m] = append(askBy[m], j);
+                        }
+                    }
                 }
-                const again = mapThroughSections(context, frame, through, subPoints, subD1, subD2);
-                for (var i = 0; i < size(missing); i += 1)
+                for (var m = 1; m < size(through.sections); m += 1)
                 {
-                    maps[missing[i]] = again[i];
+                    if (size(askBy[m]) == 0)
+                    {
+                        continue;
+                    }
+                    var subPoints = [];
+                    var subD1 = [];
+                    var subD2 = [];
+                    for (var j in askBy[m])
+                    {
+                        subPoints = append(subPoints, points[j]);
+                        subD1 = append(subD1, d1s[j]);
+                        subD2 = append(subD2, d2s[j]);
+                    }
+                    const again = mapOnSection(context, frame, through.sections[m], subPoints, subD1, subD2);
+                    for (var i = 0; i < size(askBy[m]); i += 1)
+                    {
+                        if (again[i].reached)
+                        {
+                            maps[askBy[m][i]] = again[i];
+                        }
+                    }
                 }
             }
         }

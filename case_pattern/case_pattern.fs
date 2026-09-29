@@ -879,11 +879,12 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
         // later one finds case 1's name already used and leaves them.
         const namesKey = caseNamesKey(defineKey);
         var usedNames = getVariable(context, namesKey, MISSING);
-        const first = !(usedNames is array);
-        if (first)
+        if (!(usedNames is array))
         {
             usedNames = [signature.caseName];
         }
+        const publishedKey = namesKey ~ "-caseOnePublished";
+        const first = getVariable(context, publishedKey, MISSING) != true;
         var caseOneOutputs = [];
         for (var output in definition.outputs)
         {
@@ -1045,6 +1046,7 @@ export const closeCase = defineFeature(function(context is Context, id is Id, de
         setVariable(context, "caseName", signature.caseName);
         setVariable(context, "caseIndex", 1);
         setVariable(context, namesKey, usedNames);
+        setVariable(context, publishedKey, true);
 
         if (size(records) > 0 && size(failures) == size(records))
         {

@@ -1,4 +1,4 @@
-"""Build the Case Pattern v2 tests (Define case / Close case / Case pattern) as real features in the
+"""Build the Case Pattern v3 tests (Define case / Case / Close case) as real features in the
 "Case pattern tests" Part Studio of the case_pattern document. The studio is ours alone: every run
 deletes its features and rebuilds them. Check with check_case_pattern_tests.py.
 
@@ -240,12 +240,12 @@ def define_case(name, case1, inputs, values=(), shared=()):
         arr("values", [[s("valueName", n), en("valueKind", "CaseValueKind", k, NS)] + typed("value", k, v) for n, k, v in values])], NS)
 
 
-def close_case(name, define, features, outputs=(), name_parts=True):
-    """outputs: [(name, query variable name, evaluate on use)]."""
+def close_case(name, define, features, cases=(), outputs=(), name_parts=True):
+    """outputs: [(name, query variable the body sets, evaluate on use)]."""
     return feature(name, "closeCase", [b("nameParts", name_parts),
-        flist("defineCase", [define]), flist("features", features),
-        arr("outputs", [[s("outputName", n), qv("outputQuery", v), b("outputOnUse", on_use), b("outputTrack", False)]
-                        for n, v, on_use in outputs])], NS)
+        flist("defineCase", [define]), flist("features", features), flist("cases", cases),
+        arr("outputs", [[s("outputName", n), s("outputVariable", v), b("outputOnUse", on_use), b("outputTrack", False)]
+                        for n, v, on_use in outputs]), b("debug", False)], NS)
 
 
 def case_row(case_name, inputs, selections, values=(), row_values=()):
@@ -267,8 +267,9 @@ def case_row(case_name, inputs, selections, values=(), row_values=()):
     return p
 
 
-def case_pattern(name, close, rows):
-    return feature(name, "casePattern", [flist("closeCase", [close]), arr("cases", rows), b("debug", False)], NS)
+def case_feature(name, define, case_name, inputs, selections, values=(), row_values=()):
+    """A Case feature laid out as caseEditLogic lays it out (see case_row)."""
+    return feature(name, "caseFeature", [flist("defineCase", [define])] + case_row(case_name, inputs, selections, values, row_values), NS)
 
 
 def extrude_new(name, entities, depth, opposite=False):
@@ -283,6 +284,19 @@ def extrude_new(name, entities, depth, opposite=False):
 for f in reversed(c.get(f"{BASE}/features")["features"]):
     c._request("DELETE", f"{BASE}/features/featureid/{f['featureId']}")
 
+
+def tower(name, x, y, h):
+    sk = sketch(name + " (sketch)", polygon("p", [(x - 10, y - 10), (x + 10, y - 10), (x + 10, y + 10), (x - 10, y + 10)]))
+    return feature(name, "extrude", [
+        en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
+        q("entities", 'qSketchRegion(makeId("%s"))' % sk), en("endBound", "BoundingType", "BLIND"), num("depth", h)])
+
+
+def up_to(name, entities, face_expr):
+    return feature(name, "extrude", [en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
+                                     entities, en("endBound", "BoundingType", "UP_TO_SURFACE"), sel("endBoundEntityFace", face_expr)])
+
+
 # ---- T1 ----
 A, B, C = blocks("T1", 0)
 T1_IN = ["top", "rim"]
@@ -294,21 +308,19 @@ rimf = feature("T1 Rim: fillet #rim 2 mm (outside the list)", "fillet", [qv("ent
 qv1 = feature("T1 #bossEdges = edges created by Boss (native QV)", "queryVariable", native_qv("bossEdges", [boss], "EDGE"))
 bossf = feature("T1 Boss edges: fillet #bossEdges #edgeR mm", "fillet", [qv("entities", "bossEdges"), num("radius", "#edgeR * 1 mm")])
 qv1f = feature("T1 #bossFaces = faces created by Boss (native QV)", "queryVariable", native_qv("bossFaces", [boss], "FACE"))
-c1 = close_case("T1 Close case: output bossFaces", d1, [boss, rimf, qv1, bossf, qv1f], [("bossFaces", "bossFaces", False)])
-case_pattern("T1 Case pattern B -> Boss_B 25 mm tall R3, #B_bossFaces", c1,
-             [case_row("B", T1_IN, [top(B), rim(B)], T1_VAL, ["25 mm", "3"])])
-case_pattern("T1 Case pattern C -> Boss_C 8 mm tall R2, #C_bossFaces", c1,
-             [case_row("C", T1_IN, [top(C), rim(C)], T1_VAL, ["8 mm", "2"])])
+k1b = case_feature("T1 Case B (25 mm, 3)", d1, "B", T1_IN, [top(B), rim(B)], T1_VAL, ["25 mm", "3"])
+k1c = case_feature("T1 Case C (8 mm, 2)", d1, "C", T1_IN, [top(C), rim(C)], T1_VAL, ["8 mm", "2"])
+close_case("T1 Close case B, C -> Boss_B 25 mm R3, Boss_C 8 mm R2, #X_bossFaces", d1, [boss, rimf, qv1, bossf, qv1f], [k1b, k1c],
+           [("bossFaces", "bossFaces", False)])
 
 # ---- T2 ----
 A, B, C = blocks("T2", 100)
 d2 = define_case("T2 Define case A: #side", "A", [("side", side_at(A, 30, 100))])
 move = feature("T2 Move face #side offset 5 mm (first repeated feature)", "moveFace", [
     qv("moveFaces", "side"), en("moveFaceType", "MoveFaceType", "OFFSET"), num("offsetDistance", "5 mm")])
-c2 = close_case("T2 Close case", d2, [move])
-case_pattern("T2 Case pattern, two cases B and C -> B +X face and C 54 deg face offset 5 mm", c2, [
-    case_row("B", ["side"], [side_at(B, 245, 100)]),
-    case_row("C", ["side"], [side_at(C, 400 + AP * math.cos(math.radians(54)), 100 + AP * math.sin(math.radians(54)))])])
+k2b = case_feature("T2 Case B", d2, "B", ["side"], [side_at(B, 245, 100)])
+k2c = case_feature("T2 Case C", d2, "C", ["side"], [side_at(C, 400 + AP * math.cos(math.radians(54)), 100 + AP * math.sin(math.radians(54)))])
+close_case("T2 Close case B, C -> B +X face and C 54 deg face offset 5 mm", d2, [move], [k2b, k2c])
 
 # ---- T3 ----
 A, B, C = blocks("T3", 200)
@@ -317,9 +329,8 @@ post3 = feature("T3 Post: extrude #cap 10 mm up, new", "extrude", extrude_new(""
 post3f = feature("T3 Post edges: fillet 2 mm, clicked", "fillet", [
     sel("entities", 'qAdjacent(qCapEntity(makeId("%s"), CapType.END, EntityType.FACE), AdjacencyType.EDGE, EntityType.EDGE)' % post3),
     num("radius", "2 mm")])
-c3 = close_case("T3 Close case", d3, [post3, post3f])
-case_pattern("T3 Case pattern B -> expect ERROR: a clicked in-list edge stays on case 1", c3,
-             [case_row("B", ["cap"], [bottom(B)])])
+k3 = case_feature("T3 Case B", d3, "B", ["cap"], [bottom(B)])
+close_case("T3 Close case B -> expect ERROR: a clicked in-list edge stays on case 1", d3, [post3, post3f], [k3])
 
 # ---- T6 ----
 A, B, C = blocks("T6", 300)
@@ -327,35 +338,38 @@ d6 = define_case("T6 Define case A: #cap6, #pin (boolean true)", "A", [("cap6", 
 post6 = feature("T6 Post: extrude #cap6 5 mm down, new", "extrude", extrude_new("", qv("entities", "cap6"), "5 mm"))
 pin6 = feature("T6 Pin: extrude #cap6 12 mm down, new (active while #pin)", "extrude",
                extrude_new("", qv("entities", "cap6"), "12 mm"), suppress_unless="#pin")
-c6 = close_case("T6 Close case", d6, [post6, pin6])
-case_pattern("T6 Case pattern B, #pin false -> post only", c6, [case_row("B", ["cap6"], [bottom(B)], [("pin", "BOOLEAN")], ["false"])])
-case_pattern("T6 Case pattern C, #pin true -> post and pin", c6, [case_row("C", ["cap6"], [bottom(C)], [("pin", "BOOLEAN")], ["true"])])
+k6b = case_feature("T6 Case B, #pin false", d6, "B", ["cap6"], [bottom(B)], [("pin", "BOOLEAN")], ["false"])
+k6c = case_feature("T6 Case C, #pin true", d6, "C", ["cap6"], [bottom(C)], [("pin", "BOOLEAN")], ["true"])
+close_case("T6 Close case B, C -> post only under B, post and pin under C", d6, [post6, pin6], [k6b, k6c])
 
-# ---- T7 ----
+# ---- T7: re-close ----
 A, B, C = blocks("T7", 400)
 d7 = define_case("T7 Define case A: #face7", "A", [("face7", top(A))])
 stud = feature("T7 Stud: extrude #face7 10 mm new", "extrude", extrude_new("", qv("entities", "face7"), "10 mm"))
 qv7 = feature("T7 #studBody = bodies created by Stud (native QV)", "queryVariable", native_qv("studBody", [stud], "BODY"))
-c7 = close_case("T7 Close case: output stud", d7, [stud, qv7], [("stud", "studBody", False)])
-case_pattern("T7 Case pattern B -> stud on block B, #B_stud", c7, [case_row("B", ["face7"], [top(B)])])
+k7b = case_feature("T7 Case B", d7, "B", ["face7"], [top(B)])
+close_case("T7 Close case B -> stud on block B, #A_stud, #B_stud", d7, [stud, qv7], [k7b], [("stud", "studBody", False)])
 stud_b_top = 'qContainsPoint(qEverything(EntityType.FACE), vector(200, 400, 30) * millimeter)'
-case_pattern("T7 Case pattern D on top of B's stud (chained) -> z 30..40, #D_stud", c7, [case_row("D", ["face7"], [stud_b_top])])
+k7d = case_feature("T7 Case D on top of B's stud (made by the first Close case)", d7, "D", ["face7"], [stud_b_top])
+close_case("T7 Close case again (same Define case and body), D -> z 30..40, #D_stud", d7, [stud, qv7], [k7d], [("stud", "studBody", False)])
 
 # ---- T8 ----
 A, B, C = blocks("T8", 500)
 d8 = define_case("T8 Define case A: face8", "A", [("face8", top(A))])
 stud8 = feature("T8 Stud: extrude face8 10 mm new", "extrude", extrude_new("", qv("entities", "face8"), "10 mm"))
 qv8 = feature("T8 _stud = bodies created by Stud (native QV)", "queryVariable", native_qv("_stud", [stud8], "BODY"))
-c8on = close_case("T8 Close case, output stud, name parts after outputs ON", d8, [stud8, qv8], [("stud", "_stud", False)])
-case_pattern("T8 Case pattern B, names on -> case 1 part A_stud, case B part B_stud", c8on, [case_row("B", ["face8"], [top(B)])])
-c8off = close_case("T8 Close case, output stud, name parts OFF", d8, [stud8, qv8], [("stud", "_stud", False)], name_parts=False)
-case_pattern("T8 Case pattern C, names off -> default name", c8off, [case_row("C", ["face8"], [top(C)])])
+k8 = case_feature("T8 Case B", d8, "B", ["face8"], [top(B)])
+close_case("T8 Close case, names ON -> case 1 part A_stud8, case B part B_stud8", d8, [stud8, qv8], [k8], [("stud8", "_stud", False)])
+d8off = define_case("T8off Define case F: face8off (block C)", "F", [("face8off", top(C))])
+stud8off = feature("T8off Stud: extrude face8off 10 mm new", "extrude", extrude_new("", qv("entities", "face8off"), "10 mm"))
+qv8off = feature("T8off _stud8off = bodies created by Stud (native QV)", "queryVariable", native_qv("_stud8off", [stud8off], "BODY"))
+close_case("T8off Close case, no further cases, names OFF -> default name", d8off, [stud8off, qv8off], [], [("studoff", "_stud8off", False)],
+           name_parts=False)
 
 # ---- T9 ----
-# Offset+ (Reference_Side) inside a case, side reference = a clicked vertex OUTSIDE the list (the RD 20FOU 28
-# setup, 2026-09-26). Wall = the block's +X face; reference = block A's (-X, -Y, top) corner, so "toward the
-# reference" is -X for every case. T9a clicks the reference in Offset+; T9b routes it through a Define case input.
-# Reference_Side V5 (2026-09-27): a picked reference that cannot be read is an error, Move face+ exists.
+# Offset+ (Reference_Side) inside a case, side reference = a vertex OUTSIDE the list (the RD 20FOU 28 setup).
+# Wall = the block's +X face; reference = block A's (-X, -Y, top) corner, so "toward the reference" is -X for every case.
+# T9a clicks the reference in Offset+ (v2: ERROR; v3: works, correction 60); T9b routes it through a Define case input.
 OFFSET_PLUS_NS = "d22764764a00a7f607dbc1c4d::vfe155aeed546628ec5b3fba7::e742e5b3f04cc9115de8b6d8a::m94ab915a1bf0099353c19a6a"
 MOVE_FACE_PLUS_NS = "d22764764a00a7f607dbc1c4d::vfe155aeed546628ec5b3fba7::efb7f7776686f955d15ce4262::mb340dd3d29eee73b047e7ea5"
 
@@ -374,31 +388,29 @@ A, B, C = blocks("T9", 600)
 corner_a = 'qContainsPoint(qCreatedBy(makeId("%s"), EntityType.VERTEX), vector(-30, 580, 20) * millimeter)' % A
 d9a = define_case("T9a Define case A: wall9 (+X face)", "A", [("wall9", side_at(A, 30, 600))])
 op9a = offset_plus("T9a Offset+ wall9 2 mm toward CLICKED corner", qv("surfaces", "wall9"), sel("sideReference", corner_a))
-c9a = close_case("T9a Close case", d9a, [op9a], name_parts=False)
-case_pattern("T9a Case pattern B -> expect ERROR: reference clicked inside the repeated features cannot be read", c9a, [case_row("B", ["wall9"], [side_at(B, 245, 600)])])
+k9a = case_feature("T9a Case B", d9a, "B", ["wall9"], [side_at(B, 245, 600)])
+close_case("T9a Close case B -> reference clicked inside the body works: offset toward -X (x 243)", d9a, [op9a], [k9a], name_parts=False)
 d9b = define_case("T9b Define case A: wall9b, ref9b (corner)", "A", [("wall9b", side_at(A, 30, 600)), ("ref9b", corner_a)])
 op9b = offset_plus("T9b Offset+ wall9b 2 mm toward ref9b", qv("surfaces", "wall9b"), qv("sideReference", "ref9b"))
-c9b = close_case("T9b Close case", d9b, [op9b], name_parts=False)
-case_pattern("T9b Case pattern C -> offset toward -X (x 431.3)", c9b,
-             [case_row("C", ["wall9b", "ref9b"], [side_at(C, 400 + AP * math.cos(math.radians(54)), 600 + AP * math.sin(math.radians(54))), corner_a])])
+k9b = case_feature("T9b Case C", d9b, "C", ["wall9b", "ref9b"],
+                   [side_at(C, 400 + AP * math.cos(math.radians(54)), 600 + AP * math.sin(math.radians(54))), corner_a])
+close_case("T9b Close case C -> offset toward -X (x 398.8..432.1)", d9b, [op9b], [k9b], name_parts=False)
 
 # ---- T10 ----
 A, B, C = blocks("T10", 700)
 corner10 = 'qContainsPoint(qCreatedBy(makeId("%s"), EntityType.VERTEX), vector(-30, 680, 20) * millimeter)' % A
 d10 = define_case("T10 Define case A: wall10; shared ref10 (A's corner)", "A", [("wall10", side_at(A, 30, 700))], shared=[("ref10", corner10)])
 op10 = offset_plus("T10 Offset+ wall10 2 mm toward shared ref10", qv("surfaces", "wall10"), qv("sideReference", "ref10"))
-c10 = close_case("T10 Close case", d10, [op10], name_parts=False)
-case_pattern("T10 Case pattern B and C, shared reference -> both offset toward -X", c10, [
-    case_row("B", ["wall10"], [side_at(B, 245, 700)]),
-    case_row("C", ["wall10"], [side_at(C, 400 + AP * math.cos(math.radians(54)), 700 + AP * math.sin(math.radians(54)))])])
+k10b = case_feature("T10 Case B", d10, "B", ["wall10"], [side_at(B, 245, 700)])
+k10c = case_feature("T10 Case C", d10, "C", ["wall10"], [side_at(C, 400 + AP * math.cos(math.radians(54)), 700 + AP * math.sin(math.radians(54)))])
+close_case("T10 Close case B, C, shared reference -> both offset toward -X", d10, [op10], [k10b, k10c], name_parts=False)
 
 # ---- T11 ----
 A, B, C = blocks("T11", 800)
 d11 = define_case("T11 Define case A: face11; h11 (length 10 mm)", "A", [("face11", top(A))], values=[("h11", "LENGTH", "10 mm")])
 stud11 = feature("T11 Stud: extrude face11 h11 new", "extrude", extrude_new("", qv("entities", "face11"), "#h11"))
-c11 = close_case("T11 Close case", d11, [stud11], name_parts=False)
-row11 = case_row("B", ["face11"], [top(B)])  # laid out WITHOUT the value slot: the case has no value for #h11
-case_pattern("T11 Case pattern B, value slot empty -> expect ERROR: #h11 has no value", c11, [row11])
+k11 = case_feature("T11 Case B, value slot missing -> expect ERROR: #h11 has no value", d11, "B", ["face11"], [top(B)])
+close_case("T11 Close case B -> expect ERROR (its Case failed)", d11, [stud11], [k11], name_parts=False)
 
 # ---- T12 ----
 A, B, C = blocks("T12", 900)
@@ -407,7 +419,26 @@ d12 = define_case("T12 Define case A: face12; shared ref12 (A's -X corner)", "A"
 mf12 = feature("T12 Move face+ face12 2 mm toward shared ref12", "moveFacePlus", [
     qv("faces", "face12"), num("distance", "2 mm"), qv("sideReference", "ref12"), b("towardReference", True),
     b("reFillet", False), b("debugPrint", False)], MOVE_FACE_PLUS_NS)
-c12 = close_case("T12 Close case", d12, [mf12], name_parts=False)
-case_pattern("T12 Case pattern B and C -> both faces move 2 mm toward the reference (blocks shrink)", c12, [
-    case_row("B", ["face12"], [side_at(B, 245, 900)]),
-    case_row("C", ["face12"], [side_at(C, 400 + AP * math.cos(math.radians(54)), 900 + AP * math.sin(math.radians(54)))])])
+k12b = case_feature("T12 Case B", d12, "B", ["face12"], [side_at(B, 245, 900)])
+k12c = case_feature("T12 Case C", d12, "C", ["face12"], [side_at(C, 400 + AP * math.cos(math.radians(54)), 900 + AP * math.sin(math.radians(54)))])
+close_case("T12 Close case B, C -> both faces move 2 mm toward the reference (blocks shrink)", d12, [mf12], [k12b, k12c], name_parts=False)
+
+# ---- T13: clicked outside references (correction 60) ----
+A, B, C = blocks("T13", 1000)
+tw13 = tower("T13 tower (outside, 60 mm)", 600, 1000, "60 mm")
+d13 = define_case("T13 Define case A: #top13", "A", [("top13", top(A))])
+boss13 = up_to("T13 Boss: extrude #top13 up to the CLICKED tower top", qv("entities", "top13"), top(tw13))
+qv13 = feature("T13 #boss13 = bodies created by Boss (native QV)", "queryVariable", native_qv("boss13", [boss13], "BODY"))
+k13 = case_feature("T13 Case B", d13, "B", ["top13"], [top(B)])
+close_case("T13 Close case B -> B_boss13 up to the tower top (z 20..60)", d13, [boss13, qv13], [k13], [("boss13", "boss13", False)])
+
+# ---- T14: clicked outside reference AND an edit of outside geometry in one case ----
+A, B, C = blocks("T14", 1100)
+tw14 = tower("T14 tower (outside, 60 mm)", 600, 1100, "60 mm")
+d14 = define_case("T14 Define case A: #top14, #rim14", "A", [("top14", top(A)), ("rim14", rim(A))])
+boss14 = up_to("T14 Boss: extrude #top14 up to the CLICKED tower top", qv("entities", "top14"), top(tw14))
+rim14 = feature("T14 Rim: fillet #rim14 2 mm (edits the block)", "fillet", [qv("entities", "rim14"), num("radius", "2 mm")])
+qv14 = feature("T14 #bossEdges14 = edges created by Boss (native QV)", "queryVariable", native_qv("bossEdges14", [boss14], "EDGE"))
+f14 = feature("T14 Boss edges: fillet #bossEdges14 1 mm", "fillet", [qv("entities", "bossEdges14"), num("radius", "1 mm")])
+k14 = case_feature("T14 Case B", d14, "B", ["top14", "rim14"], [top(B), rim(B)])
+close_case("T14 Close case B -> boss up to tower, B's rim filleted, boss edges filleted", d14, [boss14, rim14, qv14, f14], [k14], name_parts=False)

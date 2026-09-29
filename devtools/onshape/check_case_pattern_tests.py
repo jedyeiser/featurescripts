@@ -1,4 +1,4 @@
-"""Check the Case Pattern v2 tests built by build_case_pattern_tests.py ("Case pattern tests" studio).
+"""Check the Case Pattern v3 tests built by build_case_pattern_tests.py ("Case pattern tests" studio).
 
 Reads feature statuses over REST and the geometry, part names and published output variables through
 the FeatureScript eval API, then prints PASS/FAIL per expectation. Exit code 1 on any FAIL.
@@ -16,7 +16,7 @@ D, W = DOC["document_id"], DOC["workspace_id"]
 E = [e for e in c.list_elements(D, W) if e["name"] == "Case pattern tests"][0]["id"]
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 
-OUTPUTS = ["A_bossFaces", "B_bossFaces", "C_bossFaces", "A_stud", "B_stud", "D_stud"]
+OUTPUTS = ["A_bossFaces", "B_bossFaces", "C_bossFaces", "A_stud", "B_stud", "D_stud", "A_stud8", "B_stud8", "A_boss13", "B_boss13"]
 SCRIPT = '''function(context is Context, queries) {
   var bodies = [];
   for (var b in evaluateQuery(context, qBodyType(qEverything(EntityType.BODY), BodyType.SOLID))) {
@@ -96,17 +96,14 @@ def status_of(prefix):
 
 
 # ---- statuses ----
-for prefix in ["T1 Case pattern", "T2 Case pattern", "T6 Case pattern", "T7 Case pattern", "T8 Case pattern"]:
+for prefix in ["T1 Close", "T2 Close", "T6 Close", "T7 Close", "T8 Close", "T8off Close", "T9a Close", "T9b Close", "T10 Close",
+               "T12 Close", "T13 Close", "T14 Close"]:
     st = status_of(prefix)
-    check(prefix + " statuses OK/INFO", st and all(s in ("OK", "INFO") for s in st), str(st))
-check("T3 Case pattern status ERROR (clicked in-list edge)", status_of("T3 Case pattern") == ["ERROR"], str(status_of("T3 Case pattern")))
-check("T11 Case pattern status ERROR (value left empty)", status_of("T11 Case pattern") == ["ERROR"], str(status_of("T11 Case pattern")))
-check("T9a Case pattern status ERROR (reference clicked inside the body)", status_of("T9a Case pattern") == ["ERROR"], str(status_of("T9a Case pattern")))
-st12 = status_of("T12 Case pattern")
-check("T12 Case pattern status OK/INFO", st12 and all(x in ("OK", "INFO") for x in st12), str(st12))
-for prefix in ["T9b Case pattern", "T10 Case pattern"]:
-    st = status_of(prefix)
-    check(prefix + " status OK/INFO", st and all(x in ("OK", "INFO") for x in st), str(st))
+    check(prefix + " statuses OK/INFO", st and all(x in ("OK", "INFO") for x in st), str(st))
+check("T3 Close case status ERROR (clicked in-list edge)", status_of("T3 Close") == ["ERROR"], str(status_of("T3 Close")))
+check("T11 Case status ERROR (value slot missing)", status_of("T11 Case B") == ["ERROR"], str(status_of("T11 Case B")))
+check("T11 Close case status ERROR", status_of("T11 Close") == ["ERROR"], str(status_of("T11 Close")))
+check("T7 two Close cases (re-close)", len(status_of("T7 Close")) == 2, str(status_of("T7 Close")))
 
 # ---- T1 ----
 r1 = row(0)
@@ -154,9 +151,9 @@ r8 = row(500)
 a8 = [b for b in at_x(r8, 0) if near(b["z0"], 20) and near(b["z1"], 30)]
 b8 = [b for b in at_x(r8, 200) if near(b["z0"], 20) and near(b["z1"], 30)]
 c8 = [b for b in at_x(r8, 400) if near(b["z0"], 20) and near(b["z1"], 30)]
-check("T8 names ON: case 1 part named after its output (A_stud)", len(a8) >= 1 and "A_stud" in [b["name"] for b in a8], str([b["name"] for b in a8]))
-check("T8 names ON: case B part named after its output (B_stud)", len(b8) == 1 and b8[0]["name"] == "B_stud", str(b8 and b8[0]["name"]))
-check("T8 names OFF: case C part keeps a default name", len(c8) == 1 and c8[0]["name"].startswith("Part "), str(c8 and c8[0]["name"]))
+check("T8 names ON: case 1 part named after its output (A_stud8)", len(a8) == 1 and a8[0]["name"] == "A_stud8", str([b["name"] for b in a8]))
+check("T8 names ON: case B part named after its output (B_stud8)", len(b8) == 1 and b8[0]["name"] == "B_stud8", str(b8 and b8[0]["name"]))
+check("T8off names OFF: part keeps a default name", len(c8) == 1 and c8[0]["name"].startswith("Part "), str(c8 and c8[0]["name"]))
 
 # ---- T9b / T10: offset sheets (Offset+ toward a reference at -X) ----
 SHEETS = '''function(context is Context, queries) {
@@ -176,6 +173,7 @@ def sheet_near(x0, x1, y_centre):
     return any(near(a, x0, 0.05) and near(b, x1, 0.05) and abs((y0 + y1) / 2 - y_centre) < 60 for a, b, y0, y1 in sheets)
 
 
+check("T9a case B +X face offset toward the CLICKED reference (x 243)", sheet_near(243, 243, 600))
 check("T9b case C 54 deg face offset toward the reference (x 398.82..432.11)", sheet_near(398.82, 432.11, 600))
 check("T10 case B +X face offset toward the shared reference (x 243)", sheet_near(243, 243, 700))
 check("T10 case C 54 deg face offset toward the shared reference (x 398.82..432.11)", sheet_near(398.82, 432.11, 700))
