@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_frame.fs
-export import(path : "5808546b3b3d863d82796d24", version : "122020fc4f18916d98126988");
+export import(path : "5808546b3b3d863d82796d24", version : "b87978ed126ce4219e6a9b1d");
 
 /**
  * Export Primitive -- output geometry helpers: named point bodies and segments, band stacking and the closed
@@ -163,16 +163,43 @@ export function primitiveLabel(context is Context, id is Id, text is string, anc
     return all;
 }
 
-/** A scale level (whole units) as a key fragment ("P10", "M20", "P0"). */
-function levelKey(level is number) returns string
+/** |level| (whole level units) as text with `digits` decimals: 5, 2 -> "0.05"; 10, 0 -> "10". */
+function levelDigits(level is number, digits is number) returns string
 {
-    return (level < 0 ? "M" : "P") ~ abs(level);
+    const n = abs(round(level));
+    if (digits <= 0)
+    {
+        return "" ~ n;
+    }
+    const f = round(10 ^ digits);
+    var frac = "" ~ (n % f);
+    while (length(frac) < digits)
+    {
+        frac = "0" ~ frac;
+    }
+    return floor(n / f) ~ "." ~ frac;
 }
 
-/** A scale level as a name / label ("+10", "-20", "0"). */
-function levelName(level is number) returns string
+/** A scale level as a key fragment ("P10", "M20", "P0"; with decimals "P0_05"). */
+function levelKey(level is number, digits is number) returns string
 {
-    return level > 0 ? "+" ~ level : "" ~ level;
+    return (level < 0 ? "M" : "P") ~ replace(levelDigits(level, digits), "[.]", "_");
+}
+
+/** A scale level as a body name fragment ("+10", "-20", "0", "+0.05"). */
+function levelName(level is number, digits is number) returns string
+{
+    if (round(level) == 0)
+    {
+        return levelDigits(0, digits);
+    }
+    return (level > 0 ? "+" : "-") ~ levelDigits(level, digits);
+}
+
+/** A scale level as label text: levelName, or without the "+" when `signed` is false ("150", "0.05", "-0.02"). */
+function levelText(level is number, digits is number, signed is boolean) returns string
+{
+    return (signed || level < 0) ? levelName(level, digits) : levelDigits(level, digits);
 }
 
 /**
@@ -192,19 +219,85 @@ export function primitiveLevels(lo is number, hi is number, step is number, cap 
     return levels;
 }
 
+/** The first of 1, 2, 5, 10, 20, 50, ... that is a multiple of `step` and at least `least` (whole level units). */
+export function primitiveNiceStep(step is number, least is number) returns number
+{
+    var decade = 1;
+    while (true)
+    {
+        for (var m in [1, 2, 5])
+        {
+            const candidate = m * decade;
+            if (candidate >= step && candidate >= least && candidate % step == 0)
+            {
+                return candidate;
+            }
+        }
+        decade *= 10;
+    }
+}
+
 /**
- * A scale band's frame in the LOCAL XZ plane (band "RADIUS" or "EI"): a vertical axis at each end of the band (x = xLo
- * / xHi, named by the ski end it is on: "<band> AXIS TIP" / "<band> AXIS TAIL") over the levels, a PRIMITIVE_AXIS_TICK
- * tick outward at every level on both axes ("<band> TICK +10 TIP"), optionally a dashed line at every level but 0
- * ("<band> GRID -20", PRIMITIVE_GRID_DASH dashes, PRIMITIVE_GRID_GAP apart) and, with a text height, the level numbers
- * left of the low-x axis ("<band> LABEL +10"). `perLevel` = plot height of one level unit. Operation ids and names
- * come from the level and the end, never from list positions. Returns the bodies (all grey).
+ * The label step (whole level units, a multiple of `step`) that keeps a scale's numbers at least 1.25 label heights
+ * apart: `step` itself when they already are (radius 10 m = 100 mm, EI 50 N*m^2 = 25 mm at the default scales).
+ */
+export function primitiveLabelStep(step is number, perLevel is ValueWithUnits, labelHeight) returns number
+{
+    if (!(labelHeight is ValueWithUnits) || step * perLevel >= 1.25 * labelHeight)
+    {
+        return step;
+    }
+    return primitiveNiceStep(step, ceil(1.25 * labelHeight / perLevel - 1e-9));
+}
+
+/**
+ * A dashed straight line from `start` along the unit `direction` over `span`: a PRIMITIVE_GRID_DASH seed dash named
+ * `name` (grey first: the pattern copies name and colour) and opPattern copies one dash + gap apart. Returns the
+ * bodies (none when not even one dash fits).
+ */
+export function primitiveDashedLine(context is Context, id is Id, start is Vector, direction is Vector, span is ValueWithUnits,
+    name is string) returns array
+{
+    const pitch = PRIMITIVE_GRID_DASH + PRIMITIVE_GRID_GAP;
+    const count = floor((span + PRIMITIVE_GRID_GAP) / pitch);
+    if (count < 1)
+    {
+        return [];
+    }
+    const dash = primitiveSegment(context, id + "dash", start, start + direction * PRIMITIVE_GRID_DASH, name);
+    primitiveColour(context, dash, PRIMITIVE_COLOURS.frame);
+    var bodies = [dash];
+    var transforms = [];
+    var names = [];
+    for (var k = 1; k < count; k += 1)
+    {
+        transforms = append(transforms, transform(direction * (k * pitch)));
+        names = append(names, "d" ~ k);
+    }
+    if (size(transforms) > 0)
+    {
+        opPattern(context, id + "copies", { "entities" : dash, "transforms" : transforms, "instanceNames" : names });
+        bodies = append(bodies, qCreatedBy(id + "copies", EntityType.BODY));
+    }
+    return bodies;
+}
+
+/**
+ * A scale band's frame in the LOCAL XZ plane (band "RADIUS", "CURVATURE" or "EI"): a vertical axis at each end of the
+ * band (x = xLo / xHi, named by the ski end it is on: "<band> AXIS TIP" / "<band> AXIS TAIL") over the levels, a
+ * PRIMITIVE_AXIS_TICK tick outward at every level on both axes ("<band> TICK +10 TIP"), optionally a dashed line at
+ * every level but 0 ("<band> GRID -20", PRIMITIVE_GRID_DASH dashes, PRIMITIVE_GRID_GAP apart) and, with a text height,
+ * the level numbers left of the low-x axis ("<band> LABEL +10"). Levels are whole level units, `perLevel` = plot height
+ * of one unit. `format` = { digits (decimals of one level unit: 0 for radius m / EI N*m^2, 2 for curvature in 0.01
+ * 1/m), signed (the label TEXT keeps its "+"; body names always do), labelStep (numbers only on its multiples) }.
+ * Operation ids and names come from the level and the end, never from list positions. Returns the bodies (all grey).
  */
 export function primitiveScaleFrame(context is Context, id is Id, band is string, levels is array, perLevel is ValueWithUnits,
     xLo is ValueWithUnits, xHi is ValueWithUnits, zRef is ValueWithUnits, dirSign is number, dashed is boolean, textHeight,
-    prefix is string) returns array
+    prefix is string, format is map) returns array
 {
     const zero = 0 * meter;
+    const digits = format.digits;
     var bodies = [];
     if (size(levels) < 2)
     {
@@ -222,48 +315,34 @@ export function primitiveScaleFrame(context is Context, id is Id, band is string
         for (var level in levels)
         {
             const z = zRef + level * perLevel;
-            bodies = append(bodies, primitiveSegment(context, id + ("tick" ~ levelKey(level) ~ e.end), vector(e.x, zero, z),
-                        vector(e.x + e.out * PRIMITIVE_AXIS_TICK, zero, z), prefix ~ " " ~ band ~ " TICK " ~ levelName(level) ~ " " ~ e.end));
+            bodies = append(bodies, primitiveSegment(context, id + ("tick" ~ levelKey(level, digits) ~ e.end), vector(e.x, zero, z),
+                        vector(e.x + e.out * PRIMITIVE_AXIS_TICK, zero, z), prefix ~ " " ~ band ~ " TICK " ~ levelName(level, digits) ~ " " ~ e.end));
         }
     }
     if (dashed)
     {
-        const pitch = PRIMITIVE_GRID_DASH + PRIMITIVE_GRID_GAP;
-        const count = floor((xHi - xLo + PRIMITIVE_GRID_GAP) / pitch);
         for (var level in levels)
         {
-            if (level == 0 || count < 1)
+            if (level == 0)
             {
                 continue;
             }
-            const z = zRef + level * perLevel;
-            const gid = id + ("grid" ~ levelKey(level));
-            const dash = primitiveSegment(context, gid + "dash", vector(xLo, zero, z), vector(xLo + PRIMITIVE_GRID_DASH, zero, z),
-                prefix ~ " " ~ band ~ " GRID " ~ levelName(level));
-            // Name and colour first: the pattern copies them.
-            primitiveColour(context, dash, PRIMITIVE_COLOURS.frame);
-            bodies = append(bodies, dash);
-            var transforms = [];
-            var names = [];
-            for (var k = 1; k < count; k += 1)
-            {
-                transforms = append(transforms, transform(vector(k * pitch, zero, zero)));
-                names = append(names, "d" ~ k);
-            }
-            if (size(transforms) > 0)
-            {
-                opPattern(context, gid + "copies", { "entities" : dash, "transforms" : transforms, "instanceNames" : names });
-                bodies = append(bodies, qCreatedBy(gid + "copies", EntityType.BODY));
-            }
+            bodies = concatenateArrays([bodies, primitiveDashedLine(context, id + ("grid" ~ levelKey(level, digits)),
+                                vector(xLo, zero, zRef + level * perLevel), vector(1, 0, 0), xHi - xLo,
+                                prefix ~ " " ~ band ~ " GRID " ~ levelName(level, digits))]);
         }
     }
     if (textHeight is ValueWithUnits)
     {
         for (var level in levels)
         {
-            bodies = append(bodies, primitiveText(context, id + ("label" ~ levelKey(level)), levelName(level),
+            if (round(level) % format.labelStep != 0)
+            {
+                continue;
+            }
+            bodies = append(bodies, primitiveText(context, id + ("label" ~ levelKey(level, digits)), levelText(level, digits, format.signed),
                         vector(xLo - PRIMITIVE_AXIS_TICK - textHeight / 4, zero, zRef + level * perLevel), textHeight, "RIGHT",
-                        prefix ~ " " ~ band ~ " LABEL " ~ levelName(level)));
+                        prefix ~ " " ~ band ~ " LABEL " ~ levelName(level, digits)));
         }
     }
     primitiveColour(context, qUnion(bodies), PRIMITIVE_COLOURS.frame);

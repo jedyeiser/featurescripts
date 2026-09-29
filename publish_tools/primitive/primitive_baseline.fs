@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_frame.fs
-export import(path : "5808546b3b3d863d82796d24", version : "122020fc4f18916d98126988");
+export import(path : "5808546b3b3d863d82796d24", version : "b87978ed126ce4219e6a9b1d");
 // IMPORT: xSection V57 analyzeBaseline.fs (analyzeBaselineGeometry)
 import(path : "f8deedeb1fbd819a8fa20113/1113d16a32de3db613416436/f0717a1116fee7304957da5b", version : "8e18336b63be0ae8baa68042");
 
@@ -25,10 +25,12 @@ const FLAT_SAMPLES = 201;
 /**
  * Copies the baseline into the LOCAL frame and analyses it. Returns { body (the local copy, a wire), result
  * (analyzeBaselineGeometry's map, undefined when it found nothing), chain, lookup, flat (true when the baseline is
- * flat within the RSL), deviation (its largest |height| above the FCP - ACP chord there) }.
+ * flat within the RSL), deviation (its largest |height| above the FCP - ACP chord there) }. From the volume the copy is
+ * the bottom wire itself, so the bottom frame's chain and x lookup (`bottomFrame`, primitiveFrame) are reused instead
+ * of rebuilt: same curves, same TAIL -> TIP order, until the profile band is moved.
  */
 export function primitiveBaseline(context is Context, id is Id, fromVolume is boolean, bottom is Query, inputEdges is Query,
-    toLocal is Transform, isIdentity is boolean, fcp is Vector, acp is Vector, tail is Vector) returns map
+    toLocal is Transform, isIdentity is boolean, fcp is Vector, acp is Vector, tail is Vector, bottomFrame is map) returns map
 {
     if (fromVolume)
     {
@@ -53,8 +55,8 @@ export function primitiveBaseline(context is Context, id is Id, fromVolume is bo
         qOwnedByBody(qCreatedBy(id + "acp", EntityType.BODY), EntityType.VERTEX), false);
     opDeleteBodies(context, id + "deletePoints", { "entities" : qUnion([qCreatedBy(id + "fcp", EntityType.BODY), qCreatedBy(id + "acp", EntityType.BODY)]) });
 
-    const chain = primitiveChain(context, edges, tail, "Baseline");
-    const lookup = primitiveChainTable(context, chain);
+    const chain = fromVolume ? bottomFrame.chain : primitiveChain(context, edges, tail, "Baseline");
+    const lookup = fromVolume ? bottomFrame.lookup : primitiveChainTable(context, chain);
     var out = { "body" : body, "result" : exactContacts(context, result, chain, lookup, fcp, acp), "chain" : chain, "lookup" : lookup };
     var xs = [];
     for (var i = 0; i < FLAT_SAMPLES; i += 1)

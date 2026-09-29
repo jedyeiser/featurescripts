@@ -2,13 +2,13 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 // IMPORT: primitive_profiles.fs
-export import(path : "5865b24d55ff270a56088adf", version : "15dd1e0cd199c6c2006e1538");
+export import(path : "5865b24d55ff270a56088adf", version : "2b8c24e65351772f3cd3763c");
 // IMPORT: primitive_footprint.fs
-export import(path : "fbc957543e769a649f00c5cc", version : "c889ddfeb49b84e8c736f5a5");
+export import(path : "fbc957543e769a649f00c5cc", version : "a38c3617681d22d3003b95ef");
 // IMPORT: primitive_baseline.fs
-export import(path : "b827b10bc0bdc678c2db28cd", version : "b5e4152dabbf7d3c9694a0fc");
+export import(path : "b827b10bc0bdc678c2db28cd", version : "23dda42932cda1765fc422df");
 // IMPORT: primitive_output.fs
-export import(path : "6f122edb2547a6a46991d9fd", version : "010d05776e74fa9eecfe1267");
+export import(path : "6f122edb2547a6a46991d9fd", version : "a82c114d20098e37e77d7e3e");
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs) -- same pin as station_geometry
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: xSection V57 xSectBeamAnalysis.fs (getEIFromEdges, computeBeamStiffness; direction-safe)
@@ -18,29 +18,39 @@ IconNamespace::import(path : "b9dc4aaf067afeb58293caed", version : "efb139f3e58d
 
 /** The data table's radius is read this far inside the RSL, so a row on an edge junction takes the RSL-side edge. */
 const RADIUS_SIDE_STEP = 1e-3 * millimeter;
+/** A key-location tick within this of the plot region's ends is drawn. */
+const REGION_TOLERANCE = 1e-6 * meter;
 
 /**
- * Export primitive (phase 1): the ski's "primitive drawing" geometry and data from its volume.
+ * Export primitive: the ski's "primitive drawing" geometry and data from its volume.
  *
  * Builds ONE closed composite "<prefix> PRIMITIVE" (excluded from the BOM) in the datum XZ plane, below the part,
- * with four bands stacked top to bottom, `Band gap` apart:
+ * with bands stacked top to bottom, `Band gap` apart:
+ *     0 EI          (with a Target EI) the EI profile, a zero reference and its scale frame
  *     1 BASELINE    the baseline (x, z), with points FCP / ACP / TIP / TAIL (the baseline's ends) and, unless it
  *                   is flat within the RSL, FRCP / ARCP / MCL / FB_MIN / AB_MIN
  *     2 PROFILE     the volume cut by the datum XZ plane: BOTTOM, TOP, TIP END, TAIL END wires, with points at
- *                   FCP / ACP / MRS / XS1 / XS2 / MP on the bottom wire and TIP / TAIL at the section's extreme
- *                   points along X (by construction also the bottom wire's ends)
+ *                   FCP / ACP / MRS / XS1 / XS2 / MP / the extra key points on the bottom wire and TIP / TAIL at the
+ *                   section's extreme points along X (by construction also the bottom wire's ends)
  *     3 FOOTPRINT   the footprint unwrapped along s (u = x(MRS) + s towards the tip), y across drawn as height,
- *                   with points at the widest points, the waist and the inflections
- *     4 RADIUS      the sidecut radius along u, 10 mm per 1 m (integrateFootprint's input format), sidecut
- *                   positive, taper / tip / tail negative, breaking where |R| > "Radius plot limit"; a REFERENCE
- *                   (0) line and TICK marks at the key locations
- * Each band has a DATUM point at x = 0 on its reference line. All bodies are points and wires, so the composite
- * can be moved or copied as a unit.
+ *                   with points at the widest points, the waist and the inflections, and (Junction ticks) a short
+ *                   tick at every edge junction of the +y side
+ *     4 RADIUS      (Plot Radius) the sidecut radius along u, 10 mm per 1 m (integrateFootprint's input format),
+ *                   sidecut positive, taper / tip / tail negative, breaking where |R| > "Radius plot limit"
+ *    or CURVATURE   (Plot Curvature) the signed curvature (1/m, same signs), continuous through inflections and
+ *                   across edge joins where the curvature is continuous (arcs = flat lines), "Curvature scale" mm
+ *                   per 0.01 1/m
+ *                   Both over the "Plot region" x-range, with a REFERENCE (0) line, TICK marks at the key locations,
+ *                   junction ticks and a scale frame (end axes, ticks, numbers)
+ * Each band has a DATUM point at x = 0 on its reference line; "Key lines" adds dashed vertical lines through every
+ * band at FCP, MP(s), MRS, ACP and the extra key points that ask for one. All bodies are points and wires, so the
+ * composite can be moved or copied as a unit.
  *
  * Tables: every row is stored in the composite's attribute (schema primitive/1, primitive_types.fs) and shown by
  * the "Primitive tables" custom table; the same map and the headline values are embedded for Extract variables.
  * Only rows with data are stored: deflection / stiffness with a Target EI, Tip / Tail block when named, the rocker /
- * camber rows unless the baseline is flat within the RSL, radii only where found.
+ * camber rows unless the baseline is flat within the RSL, radii only where found. The average radius is always taken
+ * between the inflection points.
  *
  * Frames: datum = the world origin (X along the ski, Z up) when empty; else, per "Datum uses", the picked point with
  * world axes (ORIGIN, default) or the picked mate connector's own axes (COORDINATE_SYSTEM). x from the datum; s =
@@ -49,81 +59,155 @@ const RADIUS_SIDE_STEP = 1e-3 * millimeter;
  * bottom wire's normal into the ski. XS1 / XS2 = halfway FCP..MRS / MRS..ACP in x. FCP may lie on either side.
  */
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Export primitive",
-            "Feature Type Description" : "The ski's primitive drawing: baseline, profile, unwrapped footprint and radius plot in one closed composite, plus the primitive tables' data.",
+            "Feature Type Description" : "The ski's primitive drawing: baseline, profile, unwrapped footprint and radius or curvature plot in one closed composite, plus the primitive tables' data.",
             "Editing Logic Function" : "exportPrimitiveEditLogic" }
 export const exportPrimitive = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Volume", "Filter" : EntityType.BODY && BodyType.SOLID, "MaxNumberOfPicks" : 1,
-                    "Description" : "The ski / board volume (one solid part)." }
-        definition.volume is Query;
-
-        annotation { "Name" : "FCP", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
-                    "Description" : "Forebody contact point. The tip is on the FCP side: MRS -> FCP points to the tip." }
-        definition.fcp is Query;
-
-        annotation { "Name" : "ACP", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
-                    "Description" : "Aftbody contact point." }
-        definition.acp is Query;
-
-        annotation { "Name" : "MP (optional)", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR,
-                    "Description" : "Mounting point(s), in order (several for a snowboard): MP, MP2, ..." }
-        definition.mp is Query;
-
-        annotation { "Name" : "Datum", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
-                    "Description" : "Measuring and drawing frame: X along the ski, Z up, profiles in its XZ plane. Empty = the world origin with world X / Y / Z." }
-        definition.datum is Query;
-
-        annotation { "Name" : "Datum uses", "Default" : PrimitiveDatumUse.ORIGIN, "UIHint" : [UIHint.SHOW_LABEL],
-                    "Description" : "Origin only: the datum point moves the frame, the axes stay world X / Y / Z (x measured along world X from the datum). Coordinate system: the mate connector's own axes (its X must run along the ski and Z up)." }
-        definition.datumUses is PrimitiveDatumUse;
-
-        annotation { "Name" : "Name prefix", "Default" : "", "MaxLength" : 128,
-                    "Description" : "Starts every body name: <prefix> PRIMITIVE, <prefix> PRIMITIVE PROFILE TOP, ... Filled with the volume's name when it is picked." }
-        definition.prefix is string;
-
-        annotation { "Name" : "Baseline from", "Default" : PrimitiveSource.VOLUME, "UIHint" : [UIHint.SHOW_LABEL, UIHint.HORIZONTAL_ENUM],
-                    "Description" : "Volume: the profile's bottom wire. Input wires: e.g. FULL_BASELINE." }
-        definition.baselineFrom is PrimitiveSource;
-
-        if (definition.baselineFrom == PrimitiveSource.INPUT)
+        annotation { "Group Name" : "Inputs", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "Baseline wires", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE),
-                        "Description" : "One connected chain in (or near) the datum XZ plane." }
-            definition.baselineWires is Query;
+            annotation { "Name" : "Volume", "Filter" : EntityType.BODY && BodyType.SOLID, "MaxNumberOfPicks" : 1,
+                        "Description" : "The ski / board volume (one solid part)." }
+            definition.volume is Query;
+
+            annotation { "Name" : "FCP", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                        "Description" : "Forebody contact point. The tip is on the FCP side: MRS -> FCP points to the tip." }
+            definition.fcp is Query;
+
+            annotation { "Name" : "ACP", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                        "Description" : "Aftbody contact point." }
+            definition.acp is Query;
+
+            annotation { "Name" : "MP (optional)", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR,
+                        "Description" : "Mounting point(s), in order (several for a snowboard): MP, MP2, ..." }
+            definition.mp is Query;
+
+            annotation { "Name" : "Datum", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                        "Description" : "Measuring and drawing frame: X along the ski, Z up, profiles in its XZ plane. Empty = the world origin with world X / Y / Z." }
+            definition.datum is Query;
+
+            annotation { "Name" : "Datum uses", "Default" : PrimitiveDatumUse.ORIGIN, "UIHint" : [UIHint.SHOW_LABEL],
+                        "Description" : "Origin only: the datum point moves the frame, the axes stay world X / Y / Z (x measured along world X from the datum). Coordinate system: the mate connector's own axes (its X must run along the ski and Z up)." }
+            definition.datumUses is PrimitiveDatumUse;
+
+            annotation { "Name" : "Name prefix", "Default" : "", "MaxLength" : 128,
+                        "Description" : "Starts every body name: <prefix> PRIMITIVE, <prefix> PRIMITIVE PROFILE TOP, ... Filled with the volume's name when it is picked." }
+            definition.prefix is string;
         }
 
-        annotation { "Name" : "Footprint from", "Default" : PrimitiveSource.VOLUME, "UIHint" : [UIHint.SHOW_LABEL, UIHint.HORIZONTAL_ENUM],
-                    "Description" : "Volume: the edges around the part's base, unwrapped along the bottom wire. Input wires: a flat footprint (constant z, taken as unwrapped, aligned at MRS) or a wrapped one." }
-        definition.footprintFrom is PrimitiveSource;
-
-        if (definition.footprintFrom == PrimitiveSource.INPUT)
+        annotation { "Group Name" : "Sources", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Footprint wires", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE),
-                        "Description" : "Both sides of the footprint (e.g. FPT_L and FPT_R)." }
-            definition.footprintWires is Query;
+            annotation { "Name" : "Baseline from", "Default" : PrimitiveSource.VOLUME, "UIHint" : [UIHint.SHOW_LABEL, UIHint.HORIZONTAL_ENUM],
+                        "Description" : "Volume: the profile's bottom wire. Input wires: e.g. FULL_BASELINE." }
+            definition.baselineFrom is PrimitiveSource;
+
+            if (definition.baselineFrom == PrimitiveSource.INPUT)
+            {
+                annotation { "Name" : "Baseline wires", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE),
+                            "Description" : "One connected chain in (or near) the datum XZ plane." }
+                definition.baselineWires is Query;
+            }
+
+            annotation { "Name" : "Footprint from", "Default" : PrimitiveSource.VOLUME, "UIHint" : [UIHint.SHOW_LABEL, UIHint.HORIZONTAL_ENUM],
+                        "Description" : "Volume: the edges around the part's base, unwrapped along the bottom wire. Input wires: a flat footprint (constant z, taken as unwrapped, aligned at MRS) or a wrapped one." }
+            definition.footprintFrom is PrimitiveSource;
+
+            if (definition.footprintFrom == PrimitiveSource.INPUT)
+            {
+                annotation { "Name" : "Footprint wires", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE),
+                            "Description" : "Both sides of the footprint (e.g. FPT_L and FPT_R)." }
+                definition.footprintWires is Query;
+            }
         }
 
-        annotation { "Name" : "Average radius between", "Default" : PrimitiveRadiusBetween.INFLECTION, "UIHint" : [UIHint.SHOW_LABEL],
-                    "Description" : "Table 2 average radius = arc-length weighted mean of |R| (parts flatter than 100 m left out) over the unwrapped footprint between this station pair: FCP-ACP, the FB/AB widest points, or the FB/AB inflections (the ones nearest the widest points, on the MRS side). Natural radii and taper angles are named by their own pair." }
-        definition.radiusBetween is PrimitiveRadiusBetween;
+        annotation { "Group Name" : "Key locations", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Extra key points", "Item name" : "key point", "Item label template" : "#keyName",
+                        "Description" : "Named points of your own (e.g. FB_Mass_location): a row in Key locations (sorted and numbered with the rest), a point on the profile's bottom wire and a tick in the radius / curvature band, and a data-table row with Force key locations." }
+            definition.extraPoints is array;
+            for (var item in definition.extraPoints)
+            {
+                annotation { "Name" : "Name", "Default" : "", "MaxLength" : 64,
+                            "Description" : "The key location's name. Operation ids use it with every character other than letters, digits and _ turned into _, so names must differ in those; FCP, ACP, MRS, MP.., XS1, XS2, TIP, TAIL and the footprint points are taken." }
+                item.keyName is string;
 
-        annotation { "Name" : "Target EI (optional)", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE),
-                    "Description" : "An EI profile wire in the xSection convention (EI and Cross Section's EI curve): x = world X along the ski, height z = EI with 1 mm = 1 N*m^2. Adds Table 2 theoretical deflection (mm / 30 kg) and stiffness (lb/in): 3-point bending, rollers at FCP and ACP, load at MRS." }
-        definition.targetEI is Query;
+                annotation { "Name" : "Point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                            "Description" : "A vertex, point or mate connector." }
+                item.keyPoint is Query;
 
-        annotation { "Name" : "Data points", "Description" : "Rows of the data table: evenly spaced in x from FCP to ACP, both included." }
-        isInteger(definition.dataPoints, PRIMITIVE_DATA_POINTS_BOUNDS);
+                annotation { "Name" : "Show key line", "Default" : false,
+                            "Description" : "With Key lines (Plot) on: a dashed vertical line through every band at this point." }
+                item.showKeyLine is boolean;
+            }
 
-        annotation { "Name" : "Force XS1 / MRS / XS2", "Default" : true,
-                    "Description" : "Add rows at XS1, MRS and XS2 when no data point falls there (within 0.01 mm)." }
-        definition.forceStations is boolean;
+            annotation { "Name" : "Force key locations", "Default" : true,
+                        "Description" : "Data table: add rows at XS1, MRS, XS2 and every extra key point inside the RSL when no data point falls there (within 0.01 mm)." }
+            definition.forceStations is boolean;
 
-        annotation { "Name" : "Station numbers", "Default" : true,
-                    "Description" : "Number the Key locations and Data rows (both sorted by x, ascending): 0 at the lowest x (nearest the datum's -X side), increasing with +x. The numbers are always stored; this shows the # column." }
-        definition.stationNumbers is boolean;
+            annotation { "Name" : "Station numbers", "Default" : true,
+                        "Description" : "Number the Key locations and Data rows (both sorted by x, ascending): 0 at the lowest x (nearest the datum's -X side), increasing with +x. The numbers are always stored; this shows the # column." }
+            definition.stationNumbers is boolean;
+        }
 
-        annotation { "Group Name" : "Tooling blocks", "Collapsed By Default" : false }
+        annotation { "Group Name" : "Plot", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Plot", "Default" : PrimitivePlot.RADIUS, "UIHint" : [UIHint.SHOW_LABEL, UIHint.HORIZONTAL_ENUM],
+                        "Description" : "The last band. Radius: sidecut radius (m), 10 mm per 1 m. Curvature: curvature (1/m) of the footprint edges, continuous through inflections; Full ski includes the tip / tail's high curvature, which flattens the sidecut: RSL or Inflection points is usually what you want. Tables stay in radius." }
+            definition.plotMode is PrimitivePlot;
+
+            annotation { "Name" : "Plot region", "Default" : PrimitivePlotRegion.FULL, "UIHint" : [UIHint.SHOW_LABEL],
+                        "Description" : "The x-range the radius / curvature band shows (plot, reference line, axes, ticks): the full ski, the RSL (FCP - ACP), between the widest points or between the inflection points (even beyond FCP / ACP). The average radius is always taken between the inflection points." }
+            definition.plotRegion is PrimitivePlotRegion;
+
+            if (definition.plotMode == PrimitivePlot.CURVATURE)
+            {
+                annotation { "Name" : "Curvature scale (per 0.01 1/m)", "Description" : "Plot height per 0.01 1/m of curvature. 5 mm: a 14 m sidecut (0.071 1/m) plots 36 mm high, a 30 m one 17 mm." }
+                isLength(definition.curvatureScale, PRIMITIVE_CURVATURE_SCALE_BOUNDS);
+            }
+
+            annotation { "Name" : "Radius plot limit", "Description" : "The radius plot breaks where |R| is larger (flat parts, next to an inflection); the data table's radius is empty there. 50 m = 500 mm of plot." }
+            isLength(definition.radiusLimit, PRIMITIVE_RADIUS_LIMIT_BOUNDS);
+
+            annotation { "Name" : "Tick length", "Description" : "Half length of the radius / curvature band's key-location tick marks." }
+            isLength(definition.tickLength, PRIMITIVE_TICK_BOUNDS);
+
+            annotation { "Name" : "EI scale (N*m^2 per mm)", "Description" : "EI band (with a Target EI): N*m^2 per 1 mm of plot height. 2 = a 150 N*m^2 ski plots 75 mm high. Ticks every 50 N*m^2." }
+            isReal(definition.eiScale, PRIMITIVE_EI_SCALE_BOUNDS);
+
+            annotation { "Name" : "Labels", "Default" : true,
+                        "Description" : "Band titles (EI, BASELINE, PROFILE, FOOTPRINT, RADIUS (m) / CURVATURE (1/m)) left of the bands and the scales' numbers, as outline text geometry in the composite." }
+            definition.labels is boolean;
+
+            if (definition.labels)
+            {
+                annotation { "Name" : "Text height", "Description" : "Height of the band titles; the scales' numbers are 0.6 of it. Model size: at 1:5 on the sheet, 20 mm prints 4 mm." }
+                isLength(definition.textHeight, PRIMITIVE_TEXT_HEIGHT_BOUNDS);
+            }
+
+            annotation { "Name" : "Dashed grid", "Default" : false,
+                        "Description" : "Horizontal grid lines at every tick level (10 m of radius, the curvature ticks, 50 N*m^2 of EI) across the plot and EI bands, drawn as short dashes (4 mm dash, 4 mm gap) so they read lighter than the plots." }
+            definition.dashedGrid is boolean;
+
+            annotation { "Name" : "Key lines", "Default" : false,
+                        "Description" : "Dashed vertical lines (4 mm dash, 4 mm gap) through every band, top to bottom, at FCP, MP(s), MRS, ACP and the extra key points with Show key line." }
+            definition.keyLines is boolean;
+
+            annotation { "Name" : "Junction ticks", "Default" : true,
+                        "Description" : "A short tick at every edge junction of the +y footprint and at the same x in the radius / curvature band, so each edge lines up with its plot segment in black and white." }
+            definition.junctionTicks is boolean;
+
+            annotation { "Name" : "Band gap", "Description" : "Clear space between the part and the first band, and between bands." }
+            isLength(definition.bandGap, PRIMITIVE_BAND_GAP_BOUNDS);
+        }
+
+        annotation { "Group Name" : "Stiffness", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Target EI (optional)", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE),
+                        "Description" : "An EI profile wire in the xSection convention (EI and Cross Section's EI curve): x = world X along the ski, height z = EI with 1 mm = 1 N*m^2. Adds the EI band and Table 2 theoretical deflection (mm / 30 kg) and stiffness (lb/in): 3-point bending, rollers at FCP and ACP, load at MRS." }
+            definition.targetEI is Query;
+        }
+
+        annotation { "Group Name" : "Tooling blocks", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Tip block name from", "Default" : PrimitiveNameFrom.TYPED, "UIHint" : [UIHint.SHOW_LABEL, UIHint.HORIZONTAL_ENUM],
                         "Description" : "Typed: enter the tip tooling block's name. Picked wire's name: pick the block's wire, its name is used." }
@@ -166,38 +250,18 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             definition.tailBlockWireName is string;
         }
 
-        annotation { "Group Name" : "Layout", "Collapsed By Default" : true }
+        annotation { "Group Name" : "Data table", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Band gap", "Description" : "Clear space between the part and the first band, and between bands." }
-            isLength(definition.bandGap, PRIMITIVE_BAND_GAP_BOUNDS);
-
-            annotation { "Name" : "Radius plot limit", "Description" : "The radius plot breaks where |R| is larger (flat parts, next to an inflection). 50 m = 500 mm of plot." }
-            isLength(definition.radiusLimit, PRIMITIVE_RADIUS_LIMIT_BOUNDS);
-
-            annotation { "Name" : "Tick length", "Description" : "Half length of the radius plot's key-location tick marks." }
-            isLength(definition.tickLength, PRIMITIVE_TICK_BOUNDS);
-
-            annotation { "Name" : "EI scale (N*m^2 per mm)", "Description" : "EI band (with a Target EI): N*m^2 per 1 mm of plot height. 2 = a 150 N*m^2 ski plots 75 mm high. Ticks every 50 N*m^2." }
-            isReal(definition.eiScale, PRIMITIVE_EI_SCALE_BOUNDS);
-
-            annotation { "Name" : "Dashed grid", "Default" : false,
-                        "Description" : "Horizontal grid lines at every tick level (10 m of radius, 50 N*m^2 of EI) across the radius and EI bands, drawn as short dashes (4 mm dash, 4 mm gap) so they read lighter than the plots." }
-            definition.dashedGrid is boolean;
-
-            annotation { "Name" : "Labels", "Default" : true,
-                        "Description" : "Band titles (EI, BASELINE, PROFILE, FOOTPRINT, RADIUS (m)) left of the bands and the scales' numbers, as outline text geometry in the composite." }
-            definition.labels is boolean;
-
-            if (definition.labels)
-            {
-                annotation { "Name" : "Text height", "Description" : "Height of the band titles; the radius scale's numbers are 0.6 of it. Model size: at 1:5 on the sheet, 20 mm prints 4 mm." }
-                isLength(definition.textHeight, PRIMITIVE_TEXT_HEIGHT_BOUNDS);
-            }
+            annotation { "Name" : "Data points", "Description" : "Rows of the data table: evenly spaced in x from FCP to ACP, both included." }
+            isInteger(definition.dataPoints, PRIMITIVE_DATA_POINTS_BOUNDS);
         }
 
-        annotation { "Name" : "Query variable", "Default" : "primitive", "MaxLength" : 64,
-                    "Description" : "Also publish the composite as this query variable (the app contract's required name). Empty = none." }
-        definition.queryVariable is string;
+        annotation { "Group Name" : "Output", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Query variable", "Default" : "primitive", "MaxLength" : 64,
+                        "Description" : "Also publish the composite as this query variable (the app contract's required name). Empty = none." }
+            definition.queryVariable is string;
+        }
     }
     {
         if (isQueryEmpty(context, definition.volume))
@@ -211,9 +275,13 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         const title = definition.prefix ~ " PRIMITIVE";
         const fromVolumeBaseline = definition.baselineFrom == PrimitiveSource.VOLUME;
         const fromVolumeFootprint = definition.footprintFrom == PrimitiveSource.VOLUME;
+        const curvatureMode = definition.plotMode == PrimitivePlot.CURVATURE;
+        const plotBand = curvatureMode ? "curvature" : "radius";
+        const plotLabel = PRIMITIVE_BAND_LABELS[plotBand];
         var notes = [];
 
         // ---- Frames and points (LOCAL frame: the datum on the world origin) ----
+        const extras = extraKeyPoints(context, definition.extraPoints);
         const datum = primitiveDatum(context, definition.datum, definition.datumUses);
         const isIdentity = isQueryEmpty(context, definition.datum);
         const toLocal = fromWorld(datum);
@@ -247,29 +315,34 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         const xXs2 = (mrs[0] + acp[0]) / 2;
         const xsBottom = primitiveChainAtX(context, frame.chain, frame.lookup, [xXs1, xXs2]);
         var keyPoints = [
-            { "key" : "FCP", "point" : fcp },
-            { "key" : "ACP", "point" : acp },
-            { "key" : "MRS", "point" : mrs }
+            { "key" : "FCP", "name" : "FCP", "point" : fcp },
+            { "key" : "ACP", "name" : "ACP", "point" : acp },
+            { "key" : "MRS", "name" : "MRS", "point" : mrs }
         ];
         for (var i = 0; i < size(mps); i += 1)
         {
-            keyPoints = append(keyPoints, { "key" : i == 0 ? "MP" : "MP" ~ (i + 1), "point" : mps[i] });
+            const mpKey = i == 0 ? "MP" : "MP" ~ (i + 1);
+            keyPoints = append(keyPoints, { "key" : mpKey, "name" : mpKey, "point" : mps[i] });
         }
         keyPoints = concatenateArrays([keyPoints, [
-                        { "key" : "XS1", "point" : xsBottom[0].point },
-                        { "key" : "XS2", "point" : xsBottom[1].point },
-                        { "key" : "TIP", "point" : profile.tip },
-                        { "key" : "TAIL", "point" : profile.tail }
+                        { "key" : "XS1", "name" : "XS1", "point" : xsBottom[0].point },
+                        { "key" : "XS2", "name" : "XS2", "point" : xsBottom[1].point },
+                        { "key" : "TIP", "name" : "TIP", "point" : profile.tip },
+                        { "key" : "TAIL", "name" : "TAIL", "point" : profile.tail }
                     ]]);
+        for (var e in extras)
+        {
+            keyPoints = append(keyPoints, { "key" : e.key, "name" : e.name, "point" : toLocal * e.world, "extra" : true });
+        }
         var keys = {};
         var keyRows = [];
         for (var kp in keyPoints)
         {
             const loc = primitiveLocate(context, frame, kp.point);
             keys[kp.key] = loc;
-            keyRows = append(keyRows, { "key" : kp.key, "name" : kp.key,
+            keyRows = append(keyRows, { "key" : kp.key, "name" : kp.name,
                         "x" : primitiveMM(loc.x), "y" : primitiveMM(loc.y), "z" : primitiveMM(loc.z),
-                        "s" : primitiveMM(loc.s), "w" : primitiveMM(loc.w), "h" : primitiveMM(loc.h) });
+                        "s" : primitiveMM(loc.s), "w" : primitiveMM(loc.w), "h" : primitiveMM(loc.h), "extra" : kp.extra == true });
         }
         // Table 3 in x order (ascending), numbered from 0 at the lowest x.
         keyRows = sort(keyRows, function(a, b) { return a.x - b.x; });
@@ -283,7 +356,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
 
         // ---- Table 5: baseline ----
         const baseline = primitiveBaseline(context, id + "baseline", fromVolumeBaseline, profile.bottom,
-            fromVolumeBaseline ? qNothing() : wireEdges(definition.baselineWires), toLocal, isIdentity, fcp, acp, profile.tail);
+            fromVolumeBaseline ? qNothing() : wireEdges(definition.baselineWires), toLocal, isIdentity, fcp, acp, profile.tail, frame);
         if (baseline.result == undefined)
         {
             notes = append(notes, "the baseline could not be analysed");
@@ -329,7 +402,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         opDeleteBodies(context, id + "deleteFootprintSource", { "entities" : source.bodies });
         const uFcp = primitiveU(frame, keys.FCP.a);
         const uAcp = primitiveU(frame, keys.ACP.a);
-        const fpt = primitiveFootprintAnalysis(context, unwrapped.bodies, uFcp, uAcp, frame.xMrs, definition.radiusBetween);
+        const fpt = primitiveFootprintAnalysis(context, unwrapped.bodies, uFcp, uAcp, frame.xMrs);
         const fr = fpt.result;
         const fptPoints = {
                 "FB_WIDEST" : fr.fbWidestData.point,
@@ -344,9 +417,34 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         }
 
         // ---- Data table (within RSL) ----
-        const dataX = dataStations(definition, fcp[0], acp[0], [xXs1, mrs[0], xXs2]);
+        var forced = [xXs1, mrs[0], xXs2];
+        for (var e in extras)
+        {
+            const x = keys[e.key].x;
+            if (x >= min(fcp[0], acp[0]) - 0.01 * millimeter && x <= max(fcp[0], acp[0]) + 0.01 * millimeter)
+            {
+                forced = append(forced, x);
+            }
+            else if (definition.forceStations)
+            {
+                notes = append(notes, "extra key point " ~ e.name ~ " lies outside the RSL: no data-table row");
+            }
+        }
+        const dataX = dataStations(definition, fcp[0], acp[0], forced);
         const dataBottom = primitiveChainAtX(context, frame.chain, frame.lookup, dataX);
         const dataHeights = primitiveBaselineHeights(context, baseline, dataX, fcp[0], acp[0]);
+        // Footprint crossings for every row in one batch: first the rows' u, then the u the radius is read at.
+        var rowU = [];
+        var radiusU = [];
+        for (var j = 0; j < size(dataX); j += 1)
+        {
+            const u = primitiveU(frame, dataBottom[j].a);
+            // At an edge junction (FCP / ACP often are) the radius is taken on the RSL side.
+            const inward = abs(u - frame.xMrs) > RADIUS_SIDE_STEP ? (frame.xMrs > u ? 1 : -1) * RADIUS_SIDE_STEP : 0 * meter;
+            rowU = append(rowU, u);
+            radiusU = append(radiusU, u + inward);
+        }
+        const crossings = primitiveFootprintAtMany(unwrapped.samples, concatenateArrays([rowU, radiusU]));
         var dataRows = [];
         for (var j = 0; j < size(dataX); j += 1)
         {
@@ -354,11 +452,8 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             const s = primitiveS(frame, b.a);
             const up = primitiveUp(frame, b.tangent);
             const topHit = primitiveChainCrossing(context, profile.topChain, b.point, up);
-            const u = primitiveU(frame, b.a);
-            const across = primitiveFootprintAt(unwrapped.samples, u);
-            // At an edge junction (FCP / ACP often are) the radius is taken on the RSL side.
-            const inward = abs(u - frame.xMrs) > RADIUS_SIDE_STEP ? (frame.xMrs > u ? 1 : -1) * RADIUS_SIDE_STEP : 0 * meter;
-            const radius = primitiveFootprintAt(unwrapped.samples, u + inward).radius;
+            const across = crossings[j];
+            const radius = crossings[size(dataX) + j].radius;
             dataRows = append(dataRows, {
                         "station" : j,
                         "x" : primitiveMM(dataX[j]),
@@ -373,20 +468,50 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         }
 
         // ---- Table 2: metadata ----
-        const metaRows = metadataRows(fpt, fcp, acp, volumeBox, definition.radiusBetween, beam);
+        const metaRows = metadataRows(fpt, fcp, acp, volumeBox, beam);
+
+        // ---- Plot band: region, runs, scale ----
+        const fpBox = evBox3d(context, { "topology" : unwrapped.bodies, "tight" : true });
+        const region = plotRegion(definition.plotRegion, fpBox, uFcp, uAcp, fr);
+        var perUnit = PRIMITIVE_RADIUS_PLOT_SCALE * meter;
+        var perLevel = perUnit;
+        var runs = [];
+        if (curvatureMode)
+        {
+            perLevel = definition.curvatureScale;
+            perUnit = perLevel / PRIMITIVE_CURVATURE_UNIT;
+            runs = primitivePlotRuns(unwrapped.samples, "K", false, perUnit);
+        }
+        else
+        {
+            runs = primitiveRadiusRuns(unwrapped.samples);
+        }
+        if (region.clip)
+        {
+            runs = primitiveClipRuns(runs, region.lo, region.hi);
+        }
+        const plotExtent = primitiveRadiusExtent(runs, perUnit);
+        const labelHeight = definition.labels ? definition.textHeight * 0.6 : undefined;
+        var levelStep = PRIMITIVE_RADIUS_GRID_STEP;
+        var levels = [];
+        if (curvatureMode)
+        {
+            levelStep = primitiveNiceStep(1, ceil((plotExtent.hi - plotExtent.lo) / perLevel / PRIMITIVE_MAX_LEVELS - 1e-9));
+            levels = primitiveLevels(plotExtent.lo / perLevel, plotExtent.hi / perLevel, levelStep, 1e9);
+        }
+        else
+        {
+            levels = primitiveLevels(plotExtent.lo / perLevel, plotExtent.hi / perLevel, levelStep, definition.radiusLimit / meter);
+        }
+        const plotFormat = { "digits" : curvatureMode ? 2 : 0, "signed" : !curvatureMode,
+                "labelStep" : primitiveLabelStep(levelStep, perLevel, labelHeight) };
 
         // ---- Bands: extents, stacking ----
-        const runs = primitiveRadiusRuns(unwrapped.samples);
-        const radiusExtent = primitiveRadiusExtent(runs);
-        const perMetre = PRIMITIVE_RADIUS_PLOT_SCALE * meter;
-        const levels = primitiveLevels(radiusExtent.lo / perMetre, radiusExtent.hi / perMetre, PRIMITIVE_RADIUS_GRID_STEP, definition.radiusLimit / meter);
-        const labelHeight = definition.labels ? definition.textHeight * 0.6 : undefined;
         const labelHalf = definition.labels && size(levels) > 1 ? labelHeight / 2 : 0 * meter;
         const eiLevels = eiPlot == undefined ? [] : primitiveLevels(0, eiPlot.hi, PRIMITIVE_EI_GRID_STEP, 1e9);
         const eiLabelHalf = definition.labels && size(eiLevels) > 1 ? labelHeight / 2 : 0 * meter;
         const tick = definition.tickLength;
         const profileBodies = qUnion([profile.bottom, profile.top, profile.tipEnd, profile.tailEnd]);
-        const fpBox = evBox3d(context, { "topology" : unwrapped.bodies, "tight" : true });
         var bandKeys = [];
         var extents = [];
         if (eiPlot != undefined)
@@ -394,13 +519,13 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             bandKeys = ["ei"];
             extents = [{ "lo" : -eiLabelHalf, "hi" : max(eiPlot.hi * eiPerUnit, eiLevels[size(eiLevels) - 1] * eiPerUnit + eiLabelHalf) }];
         }
-        bandKeys = concatenateArrays([bandKeys, ["baseline", "profile", "footprint", "radius"]]);
+        bandKeys = concatenateArrays([bandKeys, ["baseline", "profile", "footprint", plotBand]]);
         extents = concatenateArrays([extents, [
             primitiveZExtent(context, baseline.body),
             primitiveZExtent(context, profileBodies),
             { "lo" : fpBox.minCorner[1], "hi" : fpBox.maxCorner[1] },
-            { "lo" : min([radiusExtent.lo, -tick, levels[0] * perMetre - labelHalf]),
-              "hi" : max([radiusExtent.hi, tick, levels[size(levels) - 1] * perMetre + labelHalf]) }
+            { "lo" : min([plotExtent.lo, -tick, levels[0] * perLevel - labelHalf]),
+              "hi" : max([plotExtent.hi, tick, levels[size(levels) - 1] * perLevel + labelHalf]) }
         ]]);
         const offsets = primitiveStack(extents, volumeBox.minCorner[2], definition.bandGap);
         var bandZ = {};
@@ -411,7 +536,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         const zBaseline = bandZ.baseline;
         const zProfile = bandZ.profile;
         const zFootprint = bandZ.footprint;
-        const zRadius = bandZ.radius;
+        const zPlot = bandZ[plotBand];
         const zero = 0 * meter;
         var members = [];
         var queries = {};
@@ -431,7 +556,8 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             primitiveColour(context, eiReference, PRIMITIVE_COLOURS.frame);
             members = append(members, eiReference);
             members = concatenateArrays([members, primitiveScaleFrame(context, id + "eiFrame", "EI", eiLevels, eiPerUnit, eiPlot.xLo, eiPlot.xHi,
-                            zEI, dirSign, definition.dashedGrid, labelHeight, title)]);
+                            zEI, dirSign, definition.dashedGrid, labelHeight, title,
+                            { "digits" : 0, "signed" : false, "labelStep" : primitiveLabelStep(PRIMITIVE_EI_GRID_STEP, eiPerUnit, labelHeight) })]);
         }
 
         // Band 1: baseline
@@ -488,7 +614,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             // TIP / TAIL: the extreme points themselves; the others at their foot on the bottom wire.
             const at = (kp.key == "TIP" || kp.key == "TAIL") ? kp.point : keys[kp.key].foot;
             members = append(members, primitivePointBody(context, id + ("profilePt" ~ primitiveKey(kp.key)),
-                        profileMove * at, title ~ " PROFILE " ~ kp.key));
+                        profileMove * at, title ~ " PROFILE " ~ kp.name));
         }
         if (scale.topFcp != undefined)
         {
@@ -513,40 +639,78 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                         flatToBand * entry.value, title ~ " FOOTPRINT " ~ entry.key));
         }
         primitiveColour(context, qUnion(subArray(members, bandStart)), PRIMITIVE_COLOURS.footprint);
+        // Junction ticks across the +y outline (grey), keyed by their u.
+        var junctions = [];
+        if (definition.junctionTicks)
+        {
+            var seenKeys = {};
+            for (var jt in primitiveJunctions(unwrapped.samples))
+            {
+                var key = uKey(jt.u);
+                if (seenKeys[key] != undefined)
+                {
+                    key = key ~ "Y" ~ round(jt.y / millimeter * 1000);
+                }
+                seenKeys[key] = true;
+                junctions = append(junctions, { "u" : jt.u, "y" : jt.y, "key" : key });
+            }
+        }
+        bandStart = size(members);
+        for (var jt in junctions)
+        {
+            members = append(members, primitiveSegment(context, id + ("footprintJunction" ~ jt.key),
+                        flatToBand * vector(jt.u, jt.y - PRIMITIVE_AXIS_TICK, zero), flatToBand * vector(jt.u, jt.y + PRIMITIVE_AXIS_TICK, zero),
+                        title ~ " FOOTPRINT JUNCTION"));
+        }
+        primitiveColour(context, qUnion(subArray(members, bandStart)), PRIMITIVE_COLOURS.frame);
 
-        // Band 4: radius plot (red); reference line, key-location ticks, scale frame, grid and numbers (grey)
-        const plot = qUnion(primitiveRadiusPlot(context, id + "radiusPlot", runs, zRadius));
+        // Band 4: radius or curvature plot (red); reference line, key-location and junction ticks, scale frame, grid and numbers (grey)
+        const plot = qUnion(primitiveRadiusPlot(context, id + "radiusPlot", runs, zPlot, perUnit));
         if (!isQueryEmpty(context, plot))
         {
-            primitiveName(context, plot, title ~ " RADIUS");
-            primitiveColour(context, plot, PRIMITIVE_COLOURS.radius);
+            primitiveName(context, plot, title ~ " " ~ plotLabel);
+            primitiveColour(context, plot, PRIMITIVE_COLOURS[plotBand]);
         }
         members = append(members, plot);
-        queries.radius = plot;
+        queries[plotBand] = plot;
         bandStart = size(members);
-        const reference = primitiveSegment(context, id + "radiusReference", vector(fpBox.minCorner[0], zero, zRadius),
-            vector(fpBox.maxCorner[0], zero, zRadius), title ~ " RADIUS REFERENCE");
+        const reference = primitiveSegment(context, id + "radiusReference", vector(region.lo, zero, zPlot),
+            vector(region.hi, zero, zPlot), title ~ " " ~ plotLabel ~ " REFERENCE");
         members = append(members, reference);
-        var tickU = {};
+        var ticks = [];
         for (var kp in keyPoints)
         {
             if (kp.key != "TIP" && kp.key != "TAIL")
             {
-                tickU[kp.key] = primitiveU(frame, keys[kp.key].a);
+                ticks = append(ticks, { "key" : kp.key, "name" : kp.name, "u" : primitiveU(frame, keys[kp.key].a) });
             }
         }
         for (var name in ["FB_WIDEST", "AB_WIDEST", "FB_INFLECTION", "AB_INFLECTION"])
         {
-            tickU[name] = fptPoints[name][0];
+            ticks = append(ticks, { "key" : name, "name" : name, "u" : fptPoints[name][0] });
         }
-        for (var entry in tickU)
+        for (var t in ticks)
         {
-            members = append(members, primitiveSegment(context, id + ("tick" ~ primitiveKey(entry.key)),
-                        vector(entry.value, zero, zRadius - tick), vector(entry.value, zero, zRadius + tick), title ~ " RADIUS TICK " ~ entry.key));
+            if (inRegion(region, t.u))
+            {
+                members = append(members, primitiveSegment(context, id + ("tick" ~ primitiveKey(t.key)),
+                            vector(t.u, zero, zPlot - tick), vector(t.u, zero, zPlot + tick), title ~ " " ~ plotLabel ~ " TICK " ~ t.name));
+            }
+        }
+        var plotSeen = {};
+        for (var jt in junctions)
+        {
+            if (inRegion(region, jt.u) && plotSeen[uKey(jt.u)] == undefined)
+            {
+                plotSeen[uKey(jt.u)] = true;
+                members = append(members, primitiveSegment(context, id + ("plotJunction" ~ uKey(jt.u)),
+                            vector(jt.u, zero, zPlot - PRIMITIVE_AXIS_TICK), vector(jt.u, zero, zPlot + PRIMITIVE_AXIS_TICK),
+                            title ~ " " ~ plotLabel ~ " JUNCTION"));
+            }
         }
         primitiveColour(context, qUnion(subArray(members, bandStart)), PRIMITIVE_COLOURS.frame);
-        members = concatenateArrays([members, primitiveScaleFrame(context, id + "radiusFrame", "RADIUS", levels, perMetre, fpBox.minCorner[0],
-                        fpBox.maxCorner[0], zRadius, dirSign, definition.dashedGrid, labelHeight, title)]);
+        members = concatenateArrays([members, primitiveScaleFrame(context, id + "radiusFrame", plotLabel, levels, perLevel, region.lo,
+                        region.hi, zPlot, dirSign, definition.dashedGrid, labelHeight, title, plotFormat)]);
 
         // Band datum points (x = 0 on each band's reference line), for ordinate dimensions.
         for (var band in bandKeys)
@@ -555,6 +719,24 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             const datumPoint = primitivePointBody(context, id + ("datum" ~ label), vector(zero, zero, bandZ[band]), title ~ " " ~ label ~ " DATUM");
             primitiveColour(context, datumPoint, PRIMITIVE_COLOURS.frame);
             members = append(members, datumPoint);
+        }
+
+        // Key lines: dashed verticals through every band, from the top band's top to the bottom band's bottom.
+        var keyLineNames = [];
+        if (definition.keyLines)
+        {
+            const zTop = offsets[0] + extents[0].hi;
+            const zBottom = offsets[size(offsets) - 1] + extents[size(extents) - 1].lo;
+            for (var kp in keyPoints)
+            {
+                const wanted = kp.extra == true ? extraShowsLine(extras, kp.key) : (kp.key == "FCP" || kp.key == "ACP" || kp.key == "MRS" || match(kp.key, "MP[0-9]*").hasMatch);
+                if (wanted)
+                {
+                    members = concatenateArrays([members, primitiveDashedLine(context, id + ("keyLine" ~ primitiveKey(kp.key)),
+                                        vector(keys[kp.key].x, zero, zTop), vector(0, 0, -1), zTop - zBottom, title ~ " KEY LINE " ~ kp.name)]);
+                    keyLineNames = append(keyLineNames, kp.name);
+                }
+            }
         }
 
         // Band titles: one right-aligned column left of everything, centred on each band's reference line.
@@ -574,24 +756,34 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         const allMembers = qUnion(members);
         primitiveMove(context, id + "toDatum", allMembers, toWorld(datum), isIdentity);
 
+        var extraNames = [];
+        for (var e in extras)
+        {
+            extraNames = append(extraNames, e.name);
+        }
         const data = {
                 "schema" : PRIMITIVE_SCHEMA,
                 "title" : title,
                 "prefix" : definition.prefix,
-                "units" : { "length" : "mm", "radius" : "m", "angle" : "deg" },
+                "units" : { "length" : "mm", "radius" : "m", "angle" : "deg", "curvature" : "1/m" },
                 "settings" : {
                     "datumUses" : definition.datumUses == PrimitiveDatumUse.ORIGIN ? "ORIGIN" : "COORDINATE_SYSTEM",
                     "targetEI" : beam != undefined,
                     "baselineFlat" : baseline.flat,
                     "baselineFrom" : fromVolumeBaseline ? "VOLUME" : "INPUT",
                     "footprintFrom" : fromVolumeFootprint ? "VOLUME" : "INPUT",
-                    "radiusBetween" : betweenLabel(definition.radiusBetween),
+                    "radiusBetween" : AVERAGE_BETWEEN,
+                    "plot" : curvatureMode ? "CURVATURE" : "RADIUS",
+                    "plotRegion" : region.name,
                     "dataPoints" : definition.dataPoints,
                     "forceStations" : definition.forceStations,
                     "stationNumbers" : definition.stationNumbers,
+                    "extraKeyPoints" : extraNames,
+                    "keyLines" : keyLineNames,
+                    "junctionTicks" : definition.junctionTicks,
                     "tipTowards" : dirSign > 0 ? "+X" : "-X"
                 },
-                "bands" : bandsData(bandZ, definition.eiScale),
+                "bands" : bandsData(bandZ, definition, region, levels, levelStep, perLevel, curvatureMode, size(junctions)),
                 "scaleFactors" : scale.rows,
                 "metadata" : metaRows,
                 "keyLocations" : keyRows,
@@ -614,7 +806,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                     "variables" : {
                         "primitive" : extractableVariable(data, "All primitive tables (schema " ~ PRIMITIVE_SCHEMA ~ "): scaleFactors, metadata, keyLocations, baseline, data rows; mm / m / deg."),
                         "rsl" : extractableVariable(abs(acp[0] - fcp[0]), "RSL: FCP to ACP along the datum X."),
-                        "averageRadius" : extractableVariable(fpt.average.valid ? fpt.average.avgRadius : 0 * meter, "Average sidecut radius (" ~ betweenLabel(definition.radiusBetween) ~ "); 0 = none."),
+                        "averageRadius" : extractableVariable(fpt.average.valid ? fpt.average.avgRadius : 0 * meter, "Average sidecut radius (" ~ AVERAGE_BETWEEN ~ "); 0 = none."),
                         "naturalRadiusWidest" : extractableVariable(fr.naturalRadiusWidest.valid ? fr.naturalRadiusWidest.R : 0 * meter, "Natural radius through the widest points; 0 = none."),
                         "naturalRadiusInflection" : extractableVariable(fr.naturalRadiusInflection.valid ? fr.naturalRadiusInflection.R : 0 * meter, "Natural radius through the inflection points; 0 = none."),
                         "taperAngleWidest" : extractableVariable(fr.foundTaperAngle, "Taper angle between the widest points (+ = forebody wider)."),
@@ -627,7 +819,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
 
         const avgText = fpt.average.valid ? primitiveRound(fpt.average.avgRadius / meter, 3) ~ " m" : "n/a";
         var summary = title ~ ": RSL " ~ primitiveRound(abs(acp[0] - fcp[0]) / millimeter, 2) ~ " mm, average radius " ~ avgText ~
-            " (" ~ betweenLabel(definition.radiusBetween) ~ "), " ~ size(dataRows) ~ " data rows; footprint " ~
+            " (" ~ AVERAGE_BETWEEN ~ "), " ~ size(dataRows) ~ " data rows; footprint " ~
             unwrapped.exact ~ " exact group(s), " ~ unwrapped.fitted ~ " fitted edge(s).";
         if (size(notes) > 0)
         {
@@ -635,6 +827,9 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         }
         reportFeatureInfo(context, id, summary);
     }, {});
+
+/** Where the Table 2 average radius is always taken (user, 2026-09-28). */
+const AVERAGE_BETWEEN = "between the inflection points";
 
 /**
  * Fills names from picks (getProperty throws in the feature body, correction 36): the name prefix from the volume
@@ -679,8 +874,89 @@ function blockName(context is Context, definition is map, end is string) returns
     return definition[end ~ "Block"];
 }
 
-/** The bands' reference heights (mm, local frame) and scales for the attribute. */
-function bandsData(bandZ is map, eiScale is number) returns map
+/**
+ * The extra key points, checked before any geometry: [{ key (the name as an id fragment, primitiveKey), name, world
+ * (point), keyLine }]. An empty name, a key another item or a built-in location already has, or no point is a
+ * regenError on that item.
+ */
+function extraKeyPoints(context is Context, items is array) returns array
+{
+    var out = [];
+    var used = {};
+    for (var i = 0; i < size(items); i += 1)
+    {
+        const item = items[i];
+        const path = "extraPoints[" ~ i ~ "]";
+        const name = item.keyName;
+        if (match(name, "^\\s*$").hasMatch)
+        {
+            throw regenError("Extra key point " ~ (i + 1) ~ ": enter a name.", [path ~ ".keyName"]);
+        }
+        const key = primitiveKey(name);
+        if (isIn(key, PRIMITIVE_RESERVED_KEYS) || match(key, "^MP[0-9]*$").hasMatch)
+        {
+            throw regenError("Extra key point \"" ~ name ~ "\": that name is a built-in key location.", [path ~ ".keyName"]);
+        }
+        if (used[key] != undefined)
+        {
+            throw regenError("Extra key point \"" ~ name ~ "\" has the same name as \"" ~ used[key] ~
+                "\" (names are compared with every character other than letters, digits and _ read as _).", [path ~ ".keyName"]);
+        }
+        used[key] = name;
+        out = append(out, { "key" : key, "name" : name, "keyLine" : item.showKeyLine,
+                    "world" : primitivePoint(context, item.keyPoint, "extra key point \"" ~ name ~ "\"", path ~ ".keyPoint") });
+    }
+    return out;
+}
+
+/** True when the extra key point with `key` asks for a key line. */
+function extraShowsLine(extras is array, key is string) returns boolean
+{
+    for (var e in extras)
+    {
+        if (e.key == key)
+        {
+            return e.keyLine;
+        }
+    }
+    return false;
+}
+
+/**
+ * The plot band's x-range (u, local): { lo, hi, clip (false for the full ski: the whole footprint, nothing cut), name }.
+ */
+function plotRegion(choice is PrimitivePlotRegion, fpBox is Box3d, uFcp is ValueWithUnits, uAcp is ValueWithUnits, fr is map) returns map
+{
+    if (choice == PrimitivePlotRegion.CONTACTS)
+    {
+        return { "lo" : min(uFcp, uAcp), "hi" : max(uFcp, uAcp), "clip" : true, "name" : "RSL" };
+    }
+    if (choice == PrimitivePlotRegion.WIDEST)
+    {
+        return { "lo" : min(fr.widestXMin, fr.widestXMax), "hi" : max(fr.widestXMin, fr.widestXMax), "clip" : true, "name" : "WIDEST" };
+    }
+    if (choice == PrimitivePlotRegion.INFLECTION)
+    {
+        return { "lo" : min(fr.inflectionXMin, fr.inflectionXMax), "hi" : max(fr.inflectionXMin, fr.inflectionXMax), "clip" : true, "name" : "INFLECTION" };
+    }
+    return { "lo" : fpBox.minCorner[0], "hi" : fpBox.maxCorner[0], "clip" : false, "name" : "FULL" };
+}
+
+/** True when u is inside the plot region (always for the full ski). */
+function inRegion(region is map, u is ValueWithUnits) returns boolean
+{
+    return !region.clip || (u >= region.lo - REGION_TOLERANCE && u <= region.hi + REGION_TOLERANCE);
+}
+
+/** An operation-id fragment from a u position (whole micrometres): "P1625000", "M145000". */
+function uKey(u is ValueWithUnits) returns string
+{
+    return (u < 0 * meter ? "M" : "P") ~ round(abs(u) / millimeter * 1000);
+}
+
+/** The bands' reference heights (mm, local frame), scales and the plot region / levels for the attribute. */
+function bandsData(bandZ is map, definition is map, region is map, levels is array, levelStep is number, perLevel is ValueWithUnits,
+    curvatureMode is boolean, junctionCount is number) returns map
 {
     var out = { "radiusScale" : "10 mm per 1 m" };
     for (var entry in bandZ)
@@ -689,8 +965,19 @@ function bandsData(bandZ is map, eiScale is number) returns map
     }
     if (bandZ.ei != undefined)
     {
-        out.eiScale = eiScale ~ " N*m^2 per 1 mm";
+        out.eiScale = definition.eiScale ~ " N*m^2 per 1 mm";
     }
+    if (curvatureMode)
+    {
+        out.curvatureScale = primitiveRound(definition.curvatureScale / millimeter, 4) ~ " mm per 0.01 1/m";
+    }
+    // Plot region (u, local mm) and the scale's tick levels (m of radius, or 0.01 1/m of curvature).
+    out.plotFrom = primitiveMM(region.lo);
+    out.plotTo = primitiveMM(region.hi);
+    out.plotLevels = levels;
+    out.plotLevelStep = levelStep;
+    out.plotLevelHeight = primitiveMM(perLevel);
+    out.junctions = junctionCount;
     return out;
 }
 
@@ -724,7 +1011,7 @@ function wireEdges(pick is Query) returns Query
     return qUnion([qEntityFilter(pick, EntityType.EDGE), qOwnedByBody(qBodyType(qEntityFilter(pick, EntityType.BODY), BodyType.WIRE), EntityType.EDGE)]);
 }
 
-/** Data-table x positions: N evenly spaced FCP..ACP (both included), plus XS1 / MRS / XS2 when forced; ascending x. */
+/** Data-table x positions: N evenly spaced FCP..ACP (both included), plus the `forced` x when forced; ascending x. */
 function dataStations(definition is map, xFcp is ValueWithUnits, xAcp is ValueWithUnits, forced is array) returns array
 {
     const n = definition.dataPoints;
@@ -755,21 +1042,8 @@ function dataStations(definition is map, xFcp is ValueWithUnits, xAcp is ValueWi
     return sort(xs, function(a, b) { return (a - b) / meter; });
 }
 
-function betweenLabel(between is PrimitiveRadiusBetween) returns string
-{
-    if (between == PrimitiveRadiusBetween.CONTACTS)
-    {
-        return "between FCP and ACP";
-    }
-    if (between == PrimitiveRadiusBetween.WIDEST)
-    {
-        return "between the widest points";
-    }
-    return "between the inflection points";
-}
-
 /** Table 2 rows: { key, name, value (number or text), unit, note }; only rows with data. */
-function metadataRows(fpt is map, fcp is Vector, acp is Vector, volumeBox is Box3d, between is PrimitiveRadiusBetween, beam) returns array
+function metadataRows(fpt is map, fcp is Vector, acp is Vector, volumeBox is Box3d, beam) returns array
 {
     const r = fpt.result;
     const dims = volumeBox.maxCorner - volumeBox.minCorner;
@@ -785,7 +1059,7 @@ function metadataRows(fpt is map, fcp is Vector, acp is Vector, volumeBox is Box
     if (fpt.average.valid)
     {
         rows = append(rows, { "key" : "averageRadius", "name" : "Average radius", "value" : primitiveRound(fpt.average.avgRadius / meter, 4),
-                    "unit" : "m", "note" : "Arc-length weighted mean |R| " ~ betweenLabel(between) ~ " (flatter than 100 m left out)" });
+                    "unit" : "m", "note" : "Arc-length weighted mean |R| " ~ AVERAGE_BETWEEN ~ " (flatter than 100 m left out)" });
     }
     if (r.naturalRadiusWidest.valid)
     {

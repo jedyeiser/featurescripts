@@ -37,15 +37,29 @@ export enum PrimitiveNameFrom
     WIRE
 }
 
-/** The station pair the Table 2 average radius is taken between. */
-export enum PrimitiveRadiusBetween
+/**
+ * The x-range the radius / curvature band shows (2026-09-28: was "Average radius between"; the average radius is now
+ * always taken between the inflection points). Value ids kept; CONTACTS reads "RSL".
+ */
+export enum PrimitivePlotRegion
 {
-    annotation { "Name" : "Contact points (FCP - ACP)" }
+    annotation { "Name" : "Full ski" }
+    FULL,
+    annotation { "Name" : "RSL" }
     CONTACTS,
     annotation { "Name" : "Widest points" }
     WIDEST,
     annotation { "Name" : "Inflection points" }
     INFLECTION
+}
+
+/** What the plot band draws along the footprint. */
+export enum PrimitivePlot
+{
+    annotation { "Name" : "Radius" }
+    RADIUS,
+    annotation { "Name" : "Curvature" }
+    CURVATURE
 }
 
 /** Which of the primitive's tables a "Primitive tables" instance returns (a drawing inserts all it returns). */
@@ -61,7 +75,7 @@ export enum PrimitiveTableKind
     KEY_LOCATIONS,
     annotation { "Name" : "5 Baseline" }
     BASELINE,
-    annotation { "Name" : "Data (within RSL)" }
+    annotation { "Name" : "6 Data (RSL)" }
     DATA
 }
 
@@ -86,6 +100,12 @@ export const PRIMITIVE_TEXT_HEIGHT_BOUNDS = { (millimeter) : [1, 20, 500] } as L
 export const PRIMITIVE_EI_SCALE_BOUNDS = { (unitless) : [0.01, 2, 100000] } as RealBoundSpec;
 /** EI band ticks every 50 N*m^2. */
 export const PRIMITIVE_EI_GRID_STEP = 50;
+/** Curvature band: plot height per 0.01 1/m (5 mm -> a 14 m sidecut plots 36 mm high, a 30 m one 17 mm). */
+export const PRIMITIVE_CURVATURE_SCALE_BOUNDS = { (millimeter) : [0.1, 5, 1000] } as LengthBoundSpec;
+/** The curvature scale's level unit: 0.01 1/m (levels are whole multiples, labels with 2 decimals). */
+export const PRIMITIVE_CURVATURE_UNIT = 0.01;
+/** At most about this many tick levels on a scale whose step adapts (curvature). */
+export const PRIMITIVE_MAX_LEVELS = 20;
 
 /** Radius plot frame: ticks (and the optional dashed grid) every 10 m of radius, short ticks on the two end axes. */
 export const PRIMITIVE_RADIUS_GRID_STEP = 10;
@@ -99,16 +119,22 @@ export const PRIMITIVE_COLOURS = {
         "profile" : color(0.0, 0.5, 0.25),
         "footprint" : color(0.85, 0.4, 0.0),
         "radius" : color(0.75, 0.1, 0.1),
+        "curvature" : color(0.75, 0.1, 0.1),
         "ei" : color(0.45, 0.2, 0.6),
         "frame" : color(0.5, 0.5, 0.5)
     };
 
 /** Band titles (text geometry, "Labels"). */
-export const PRIMITIVE_BAND_TITLES = { "ei" : "EI (N*m^2)", "baseline" : "BASELINE", "profile" : "PROFILE", "footprint" : "FOOTPRINT", "radius" : "RADIUS (m)" };
+export const PRIMITIVE_BAND_TITLES = { "ei" : "EI (Nm^2)", "baseline" : "BASELINE", "profile" : "PROFILE", "footprint" : "FOOTPRINT", "radius" : "RADIUS (m)",
+        "curvature" : "CURVATURE (1/m)" };
 
-/** Band keys, in stacking order (top to bottom; "ei" only with a target EI), and their body-name labels. */
-export const PRIMITIVE_BANDS = ["ei", "baseline", "profile", "footprint", "radius"];
-export const PRIMITIVE_BAND_LABELS = { "ei" : "EI", "baseline" : "BASELINE", "profile" : "PROFILE", "footprint" : "FOOTPRINT", "radius" : "RADIUS" };
+/** Band keys, in stacking order (top to bottom; "ei" only with a target EI; the last band is "radius" or "curvature" per Plot), and their body-name labels. */
+export const PRIMITIVE_BANDS = ["ei", "baseline", "profile", "footprint", "radius", "curvature"];
+export const PRIMITIVE_BAND_LABELS = { "ei" : "EI", "baseline" : "BASELINE", "profile" : "PROFILE", "footprint" : "FOOTPRINT", "radius" : "RADIUS",
+        "curvature" : "CURVATURE" };
+
+/** Names an extra key point may not take (after primitiveKey): the built-in key locations and footprint points. */
+export const PRIMITIVE_RESERVED_KEYS = ["FCP", "ACP", "MRS", "XS1", "XS2", "TIP", "TAIL", "FB_WIDEST", "AB_WIDEST", "WAIST", "FB_INFLECTION", "AB_INFLECTION"];
 
 /** An operation-id / key fragment from a display name: letters, digits and _ only. */
 export function primitiveKey(name is string) returns string

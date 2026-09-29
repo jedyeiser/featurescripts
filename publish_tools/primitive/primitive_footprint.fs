@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_frame.fs
-export import(path : "5808546b3b3d863d82796d24", version : "122020fc4f18916d98126988");
+export import(path : "5808546b3b3d863d82796d24", version : "b87978ed126ce4219e6a9b1d");
 // IMPORT: footprint V32 fpt_analyze.fs (prepareFootprintCurves, analyzeFootprintCurves, computeAverageRadius)
 import(path : "52724f3a857fa52d3ecceb77/b105c12d5094d99215293e38/71d853c0fd2f10ca3bb20a4b", version : "3b2e4e5538b5a476b5486c1d");
 
@@ -14,7 +14,7 @@ import(path : "52724f3a857fa52d3ecceb77/b105c12d5094d99215293e38/71d853c0fd2f10c
  * sampled, mapped and fitted (1 um). A FLAT input wire (constant z) is taken as already unwrapped (u = x): the
  * primitive aligns it at MRS.
  *
- * Radius: from the exact source curve and the bottom wire's derivatives (chain rule, no fitting): with x', y',
+ * Radius / curvature: from the exact source curve and the bottom wire's derivatives (chain rule, no fitting): with x', y',
  * x'', y'' the plan derivatives along the edge and u'(x), u''(x) the unwrap,
  *     X' = u' x',  X'' = u'' x'^2 + u' x'',  k = (X' y'' - y' X'') / (X'^2 + y'^2)^1.5,
  * and the SIGN: positive when the centre of curvature lies away from the centreline (sidecut), negative towards it
@@ -124,7 +124,8 @@ function basePeriphery(context is Context, volume is Query, bottom is map, toDat
 /**
  * Unwraps the source edges into the LOCAL z = 0 plane. Returns
  *     bodies    the unwrapped wires (exact copies and fitted edges)
- *     samples   per source edge { u : [], y : [], R : [] } (m for R; undefined = no radius there)
+ *     samples   per source edge { u : [], y : [], R : [], K : [] } (R in m, undefined = no radius there (|R| over the
+ *               limit); K = signed curvature in 1/m, same sign as R, undefined only where the unwrap has no slope)
  *     exact / fitted   edge counts
  */
 export function primitiveUnwrap(context is Context, id is Id, frame is map, edges is array, flatInput is boolean, radiusLimit is ValueWithUnits) returns map
@@ -178,6 +179,7 @@ export function primitiveUnwrap(context is Context, id is Id, frame is map, edge
         var us = [];
         var ys = [];
         var radii = [];
+        var curvatures = [];
         var points = [];
         var derivs = [];
         var exact = e.planarZ;
@@ -213,17 +215,21 @@ export function primitiveUnwrap(context is Context, id is Id, frame is map, edge
             const ypp = kc * r.frame.xAxis[1];
             const speed2 = xp * xp + yp * yp;
             var radius = undefined;
+            var signed = undefined;
             if (usable && speed2 > 1e-24 && abs(p[1]) > TOLERANCE.zeroLength * meter)
             {
                 const ku = (xp * ypp - yp * xpp) / (speed2 * sqrt(speed2));
+                const side = (ku * xp * (p[1] / meter)) > 0 ? 1 : -1;
+                signed = side * abs(ku);
                 if (abs(ku) > limitK)
                 {
-                    radius = ((ku * xp * (p[1] / meter)) > 0 ? 1 : -1) / abs(ku);
+                    radius = side / abs(ku);
                 }
             }
             us = append(us, u);
             ys = append(ys, p[1]);
             radii = append(radii, radius);
+            curvatures = append(curvatures, signed);
             points = append(points, vector(u, p[1], 0 * meter));
             derivs = append(derivs, vector(xp, yp, 0));
             const c = u - p[0];
@@ -236,7 +242,7 @@ export function primitiveUnwrap(context is Context, id is Id, frame is map, edge
                 exact = false;
             }
         }
-        samples = append(samples, { "u" : us, "y" : ys, "R" : radii });
+        samples = append(samples, { "u" : us, "y" : ys, "R" : radii, "K" : curvatures });
         if (exact)
         {
             var placed = false;
@@ -335,11 +341,11 @@ function fitUnwrapped(context is Context, points is array, derivs is array)
 
 /**
  * fpt_analyze on the unwrapped footprint (u along, y across): waist, widest, inflections, natural radii, taper,
- * and the average radius between the pair picked by `between`. Returns { result (analyzeFootprintCurves map),
- * average ({ valid, avgRadius }), lo, hi (the u range of the average) }.
+ * and the average radius, ALWAYS between the inflection points (user, 2026-09-28). Returns { result
+ * (analyzeFootprintCurves map), average ({ valid, avgRadius }), lo, hi (the u range of the average) }.
  */
 export function primitiveFootprintAnalysis(context is Context, unwrapped is Query, uFcp is ValueWithUnits, uAcp is ValueWithUnits,
-    uMrs is ValueWithUnits, between is PrimitiveRadiusBetween) returns map
+    uMrs is ValueWithUnits) returns map
 {
     const prepared = prepareFootprintCurves(context, qOwnedByBody(unwrapped, EntityType.EDGE), uFcp, uAcp, FPT_TOLERANCE);
     const zero = 0 * meter;
@@ -349,61 +355,76 @@ export function primitiveFootprintAnalysis(context is Context, unwrapped is Quer
                 "acpPoint" : vector(uAcp, zero, zero),
                 "mrsPoint" : vector(uMrs, zero, zero)
             });
-    var lo = result.inflectionXMin;
-    var hi = result.inflectionXMax;
-    if (between == PrimitiveRadiusBetween.CONTACTS)
-    {
-        lo = min(uFcp, uAcp);
-        hi = max(uFcp, uAcp);
-    }
-    else if (between == PrimitiveRadiusBetween.WIDEST)
-    {
-        lo = result.widestXMin;
-        hi = result.widestXMax;
-    }
+    const lo = result.inflectionXMin;
+    const hi = result.inflectionXMax;
     const average = computeAverageRadius(prepared.curveData, lo, hi, {});
     return { "result" : result, "average" : average, "lo" : lo, "hi" : hi };
 }
 
 /**
- * Where the unwrapped footprint crosses u (from the samples; 5 mm spacing, < 1 um on sidecut radii):
- * { hit, yMax, yMin, radius (m, at the +y crossing; undefined = none) }.
+ * Where the unwrapped footprint crosses each u of `us` (from the samples; 5 mm spacing, < 1 um on sidecut radii): per
+ * u { hit, yMax, yMin, radius (m, at the +y crossing; undefined = none) }. One pass per edge over only the u values
+ * inside that edge's u range (an edge whose range misses a u cannot cross it); the same results as u by u.
  */
-export function primitiveFootprintAt(samples is array, u is ValueWithUnits) returns map
+export function primitiveFootprintAtMany(samples is array, us is array) returns array
 {
-    var yMax = undefined;
-    var yMin = undefined;
-    var radius = undefined;
+    var yMax = makeArray(size(us));
+    var yMin = makeArray(size(us));
+    var radius = makeArray(size(us));
     for (var e in samples)
     {
-        for (var k = 0; k < size(e.u) - 1; k += 1)
+        if (size(e.u) < 2)
         {
-            const d0 = e.u[k] - u;
-            const d1 = e.u[k + 1] - u;
-            if (!((d0 <= 0 * meter && d1 >= 0 * meter) || (d0 >= 0 * meter && d1 <= 0 * meter)))
+            continue;
+        }
+        var lo = e.u[0];
+        var hi = lo;
+        for (var v in e.u)
+        {
+            lo = min(lo, v);
+            hi = max(hi, v);
+        }
+        for (var q = 0; q < size(us); q += 1)
+        {
+            const u = us[q];
+            if (u < lo || u > hi)
             {
                 continue;
             }
-            const span = e.u[k + 1] - e.u[k];
-            const f = abs(span) > 1e-12 * meter ? (u - e.u[k]) / span : 0;
-            const y = e.y[k] + (e.y[k + 1] - e.y[k]) * f;
-            var r = undefined;
-            if (e.R[k] != undefined && e.R[k + 1] != undefined)
+            for (var k = 0; k < size(e.u) - 1; k += 1)
             {
-                r = e.R[k] + (e.R[k + 1] - e.R[k]) * f;
-            }
-            if (yMax == undefined || y > yMax)
-            {
-                yMax = y;
-                radius = r;
-            }
-            if (yMin == undefined || y < yMin)
-            {
-                yMin = y;
+                const d0 = e.u[k] - u;
+                const d1 = e.u[k + 1] - u;
+                if (!((d0 <= 0 * meter && d1 >= 0 * meter) || (d0 >= 0 * meter && d1 <= 0 * meter)))
+                {
+                    continue;
+                }
+                const span = e.u[k + 1] - e.u[k];
+                const f = abs(span) > 1e-12 * meter ? (u - e.u[k]) / span : 0;
+                const y = e.y[k] + (e.y[k + 1] - e.y[k]) * f;
+                var r = undefined;
+                if (e.R[k] != undefined && e.R[k + 1] != undefined)
+                {
+                    r = e.R[k] + (e.R[k + 1] - e.R[k]) * f;
+                }
+                if (yMax[q] == undefined || y > yMax[q])
+                {
+                    yMax[q] = y;
+                    radius[q] = r;
+                }
+                if (yMin[q] == undefined || y < yMin[q])
+                {
+                    yMin[q] = y;
+                }
             }
         }
     }
-    return { "hit" : yMax != undefined, "yMax" : yMax, "yMin" : yMin, "radius" : radius };
+    var out = [];
+    for (var q = 0; q < size(us); q += 1)
+    {
+        out = append(out, { "hit" : yMax[q] != undefined, "yMax" : yMax[q], "yMin" : yMin[q], "radius" : radius[q] });
+    }
+    return out;
 }
 
 /**
@@ -411,6 +432,17 @@ export function primitiveFootprintAt(samples is array, u is ValueWithUnits) retu
  * sign change). Runs meeting at an edge junction with (nearly) the same radius are joined end to end.
  */
 export function primitiveRadiusRuns(samples is array) returns array
+{
+    return primitivePlotRuns(samples, "R", true, PRIMITIVE_RADIUS_PLOT_SCALE * meter);
+}
+
+/**
+ * The +y side's plot runs of sample field `field` ("R" radius in m, "K" signed curvature in 1/m), ordered along u:
+ * each run is [[u, value], ...] between breaks: no value, and with `breakOnSign` a sign change (the radius passes
+ * infinity there; the curvature passes 0 and stays one run). Runs meeting at an edge junction whose plot heights
+ * (value * perUnit) differ by less than PLOT_JOIN_TOLERANCE -- continuous curvature -- are joined at the average point.
+ */
+export function primitivePlotRuns(samples is array, field is string, breakOnSign is boolean, perUnit is ValueWithUnits) returns array
 {
     var runs = [];
     for (var e in samples)
@@ -420,14 +452,14 @@ export function primitiveRadiusRuns(samples is array) returns array
         {
             if (e.y[k] > TOLERANCE.zeroLength * meter)
             {
-                pts = append(pts, { "u" : e.u[k], "R" : e.R[k] });
+                pts = append(pts, { "u" : e.u[k], "v" : e[field][k] });
             }
         }
         pts = sort(pts, function(a, b) { return (a.u - b.u) / meter; });
         var run = [];
         for (var pt in pts)
         {
-            if (pt.R == undefined || (size(run) > 0 && (run[size(run) - 1][1] > 0) != (pt.R > 0)))
+            if (pt.v == undefined || (breakOnSign && size(run) > 0 && (run[size(run) - 1][1] > 0) != (pt.v > 0)))
             {
                 if (size(run) >= 2)
                 {
@@ -435,9 +467,9 @@ export function primitiveRadiusRuns(samples is array) returns array
                 }
                 run = [];
             }
-            if (pt.R != undefined)
+            if (pt.v != undefined)
             {
-                run = append(run, [pt.u, pt.R]);
+                run = append(run, [pt.u, pt.v]);
             }
         }
         if (size(run) >= 2)
@@ -451,7 +483,7 @@ export function primitiveRadiusRuns(samples is array) returns array
     {
         const a = runs[i][size(runs[i]) - 1];
         const b = runs[i + 1][0];
-        if (abs(a[0] - b[0]) < 1e-6 * meter && abs(a[1] - b[1]) * PRIMITIVE_RADIUS_PLOT_SCALE * meter < PLOT_JOIN_TOLERANCE)
+        if (abs(a[0] - b[0]) < 1e-6 * meter && abs(a[1] - b[1]) * perUnit < PLOT_JOIN_TOLERANCE)
         {
             const mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
             runs[i][size(runs[i]) - 1] = mid;
@@ -461,11 +493,47 @@ export function primitiveRadiusRuns(samples is array) returns array
     return runs;
 }
 
+/** The runs cut to lo <= u <= hi (a run crossing a bound ends on it, value interpolated); runs left with < 2 points dropped. */
+export function primitiveClipRuns(runs is array, lo is ValueWithUnits, hi is ValueWithUnits) returns array
+{
+    var out = [];
+    for (var run in runs)
+    {
+        var kept = [];
+        for (var k = 0; k < size(run); k += 1)
+        {
+            const p = run[k];
+            if (k > 0)
+            {
+                const q = run[k - 1];
+                for (var bound in (p[0] >= q[0] ? [lo, hi] : [hi, lo]))
+                {
+                    // Crossing a bound between two samples: the point on it.
+                    if ((q[0] < bound && p[0] > bound) || (q[0] > bound && p[0] < bound))
+                    {
+                        const f = (bound - q[0]) / (p[0] - q[0]);
+                        kept = append(kept, [bound, q[1] + (p[1] - q[1]) * f]);
+                    }
+                }
+            }
+            if (p[0] >= lo && p[0] <= hi)
+            {
+                kept = append(kept, p);
+            }
+        }
+        if (size(kept) >= 2)
+        {
+            out = append(out, kept);
+        }
+    }
+    return out;
+}
+
 /**
- * The radius plot in the LOCAL XZ plane: one wire per run at (u, 0, zRef + R * 10 mm/m); a run of constant radius
- * (an arc) is a straight line. Returns the bodies.
+ * The plot in the LOCAL XZ plane: one wire per run at (u, 0, zRef + value * perUnit); a run of constant value (an arc)
+ * is a straight line. Returns the bodies.
  */
-export function primitiveRadiusPlot(context is Context, id is Id, runs is array, zRef is ValueWithUnits) returns array
+export function primitiveRadiusPlot(context is Context, id is Id, runs is array, zRef is ValueWithUnits, perUnit is ValueWithUnits) returns array
 {
     var bodies = [];
     for (var i = 0; i < size(runs); i += 1)
@@ -480,16 +548,16 @@ export function primitiveRadiusPlot(context is Context, id is Id, runs is array,
             sum += p[1];
         }
         var points = [];
-        if ((hi - lo) * PRIMITIVE_RADIUS_PLOT_SCALE * meter < 1e-6 * meter)
+        if ((hi - lo) * perUnit < 1e-6 * meter)
         {
-            const level = zRef + sum / size(runs[i]) * PRIMITIVE_RADIUS_PLOT_SCALE * meter;
+            const level = zRef + sum / size(runs[i]) * perUnit;
             points = [vector(runs[i][0][0], 0 * meter, level), vector(runs[i][size(runs[i]) - 1][0], 0 * meter, level)];
         }
         else
         {
             for (var p in runs[i])
             {
-                const q = vector(p[0], 0 * meter, zRef + p[1] * PRIMITIVE_RADIUS_PLOT_SCALE * meter);
+                const q = vector(p[0], 0 * meter, zRef + p[1] * perUnit);
                 if (size(points) == 0 || norm(q - points[size(points) - 1]) > 1e-8 * meter)
                 {
                     points = append(points, q);
@@ -507,8 +575,8 @@ export function primitiveRadiusPlot(context is Context, id is Id, runs is array,
     return bodies;
 }
 
-/** Lowest and highest plot height (relative to the reference line) of the runs. */
-export function primitiveRadiusExtent(runs is array) returns map
+/** Lowest and highest plot height (relative to the reference line) of the runs; 0 is always inside. */
+export function primitiveRadiusExtent(runs is array, perUnit is ValueWithUnits) returns map
 {
     var lo = 0 * meter;
     var hi = 0 * meter;
@@ -516,10 +584,61 @@ export function primitiveRadiusExtent(runs is array) returns map
     {
         for (var p in run)
         {
-            const h = p[1] * PRIMITIVE_RADIUS_PLOT_SCALE * meter;
+            const h = p[1] * perUnit;
             lo = min(lo, h);
             hi = max(hi, h);
         }
     }
     return { "lo" : lo, "hi" : hi };
+}
+
+/**
+ * The +y footprint's edge junctions, [{ u, y }] ordered along u: an unwrapped edge end shared with another edge's end
+ * (within 1 um). Open ends (input wires) and ends on the centreline (y = 0) are not junctions.
+ */
+export function primitiveJunctions(samples is array) returns array
+{
+    var ends = [];
+    for (var e in samples)
+    {
+        const n = size(e.u);
+        if (n < 2)
+        {
+            continue;
+        }
+        for (var k in [0, n - 1])
+        {
+            if (e.y[k] > TOLERANCE.zeroLength * meter)
+            {
+                ends = append(ends, { "u" : e.u[k], "y" : e.y[k] });
+            }
+        }
+    }
+    var out = [];
+    for (var i = 0; i < size(ends); i += 1)
+    {
+        var shared = false;
+        for (var j = 0; j < size(ends); j += 1)
+        {
+            if (j != i && abs(ends[i].u - ends[j].u) < 1e-6 * meter && abs(ends[i].y - ends[j].y) < 1e-6 * meter)
+            {
+                shared = true;
+                break;
+            }
+        }
+        var seen = false;
+        for (var have in out)
+        {
+            if (abs(have.u - ends[i].u) < 1e-6 * meter && abs(have.y - ends[i].y) < 1e-6 * meter)
+            {
+                seen = true;
+                break;
+            }
+        }
+        if (shared && !seen)
+        {
+            out = append(out, ends[i]);
+        }
+    }
+    return sort(out, function(a, b) { return (a.u - b.u) / meter; });
 }

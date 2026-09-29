@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_types.fs
-export import(path : "ecde24520874030ab412c981", version : "2c729a6472d927e790fb3792");
+export import(path : "ecde24520874030ab412c981", version : "a892bef0baf7a49d670c5fa2");
 
 /**
  * Export Primitive -- frames and chains.
@@ -21,6 +21,8 @@ export const PRIMITIVE_CHAIN_TOLERANCE = 1e-5 * meter;
 const CHAIN_TABLE_ROWS = 200;
 /** Newton steps when finding the chain point at a given x. */
 const CHAIN_NEWTON_STEPS = 5;
+/** A chain-at-x point is converged (no further Newton step) when its x is this close. */
+const CHAIN_CONVERGED = 1e-11 * meter;
 
 /** World point of a vertex, point body or mate connector pick (a connector can arrive as its vertex, correction 44). */
 export function primitivePoint(context is Context, pick is Query, label is string, parameter is string) returns Vector
@@ -342,21 +344,65 @@ export function primitiveChainTable(context is Context, chain is map) returns ma
 export function primitiveChainAtX(context is Context, chain is map, lookup is map, xs is array) returns array
 {
     const n = size(lookup.x);
+    // Strictly monotonic table (the usual bottom wire / baseline): the first bracketing row by bisection, the same row
+    // the linear scan finds; otherwise the linear scan.
+    var sense = 0;
+    if (n > 1)
+    {
+        sense = lookup.x[n - 1] > lookup.x[0] ? 1 : -1;
+        for (var j = 0; j < n - 1; j += 1)
+        {
+            if (sense * (lookup.x[j + 1] - lookup.x[j]) <= 0 * meter)
+            {
+                sense = 0;
+                break;
+            }
+        }
+    }
     var arcs = [];
     for (var x in xs)
     {
         var guess = undefined;
-        for (var j = 0; j < n - 1; j += 1)
+        var row = undefined;
+        if (sense != 0)
         {
-            const d0 = lookup.x[j] - x;
-            const d1 = lookup.x[j + 1] - x;
-            if ((d0 <= 0 * meter && d1 >= 0 * meter) || (d0 >= 0 * meter && d1 <= 0 * meter))
+            if (sense * (x - lookup.x[0]) >= 0 * meter && sense * (lookup.x[n - 1] - x) >= 0 * meter)
             {
-                const span = lookup.x[j + 1] - lookup.x[j];
-                const f = abs(span) > 1e-12 * meter ? (x - lookup.x[j]) / span : 0;
-                guess = lookup.a[j] + (lookup.a[j + 1] - lookup.a[j]) * f;
-                break;
+                var lo = 0;
+                var hi = n - 1;
+                while (hi - lo > 1)
+                {
+                    const mid = floor((lo + hi) / 2);
+                    if (sense * (lookup.x[mid] - x) < 0 * meter)
+                    {
+                        lo = mid;
+                    }
+                    else
+                    {
+                        hi = mid;
+                    }
+                }
+                row = lo;
             }
+        }
+        else
+        {
+            for (var j = 0; j < n - 1; j += 1)
+            {
+                const d0 = lookup.x[j] - x;
+                const d1 = lookup.x[j + 1] - x;
+                if ((d0 <= 0 * meter && d1 >= 0 * meter) || (d0 >= 0 * meter && d1 <= 0 * meter))
+                {
+                    row = j;
+                    break;
+                }
+            }
+        }
+        if (row != undefined)
+        {
+            const span = lookup.x[row + 1] - lookup.x[row];
+            const f = abs(span) > 1e-12 * meter ? (x - lookup.x[row]) / span : 0;
+            guess = lookup.a[row] + (lookup.a[row + 1] - lookup.a[row]) * f;
         }
         if (guess == undefined)
         {
@@ -368,20 +414,33 @@ export function primitiveChainAtX(context is Context, chain is map, lookup is ma
     {
         return [];
     }
-    var results = [];
-    for (var step = 0; step < CHAIN_NEWTON_STEPS; step += 1)
+    // Newton on x; a point whose x is within CHAIN_CONVERGED is final (its evaluation is kept), the rest go on.
+    var results = makeArray(size(arcs));
+    var active = range(0, size(arcs) - 1);
+    for (var step = 0; step <= CHAIN_NEWTON_STEPS && size(active) > 0; step += 1)
     {
-        results = primitiveChainEvaluate(context, chain, arcs);
-        for (var j = 0; j < size(arcs); j += 1)
+        var activeArcs = [];
+        for (var j in active)
         {
-            const tx = results[j].tangent[0];
-            if (abs(tx) > 1e-9)
-            {
-                arcs[j] = arcs[j] + (xs[j] - results[j].point[0]) / tx;
-            }
+            activeArcs = append(activeArcs, arcs[j]);
         }
+        const evaluated = primitiveChainEvaluate(context, chain, activeArcs);
+        var next = [];
+        for (var k = 0; k < size(active); k += 1)
+        {
+            const j = active[k];
+            results[j] = evaluated[k];
+            const dx = xs[j] - evaluated[k].point[0];
+            const tx = evaluated[k].tangent[0];
+            if (step == CHAIN_NEWTON_STEPS || abs(dx) < CHAIN_CONVERGED || abs(tx) <= 1e-9)
+            {
+                continue;
+            }
+            arcs[j] = arcs[j] + dx / tx;
+            next = append(next, j);
+        }
+        active = next;
     }
-    results = primitiveChainEvaluate(context, chain, arcs);
     for (var j = 0; j < size(arcs); j += 1)
     {
         results[j].a = arcs[j];
