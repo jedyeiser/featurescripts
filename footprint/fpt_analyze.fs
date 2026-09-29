@@ -2,19 +2,19 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: tools/math_utils.fs (for safeSign)
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/280a24d76f52bdbf44cd941d", version : "d9e09196718b914b96e84924");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/280a24d76f52bdbf44cd941d", version : "43549bf2d5a2bb2e92fb44bd");
 
 // IMPORT: tools/solvers.fs (for bracketFromSamples, solveRootHybrid)
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/99e84dbe2a4e2350792fa693", version : "91ebe2327e2b0654bb603e52");
 
 // IMPORT: tools/bspline_data.fs (for getBSplineParamRange, getBSplineBounds)
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
 
 //import fpt_geometry
-import(path : "67c190b80e8b74dcee72e7ff", version : "b3607c6e2325cd91e25313f2");
+import(path : "67c190b80e8b74dcee72e7ff", version : "d76dff5e3a45ad1f43439664");
 
 // IMPORT: footprint_math.fs (for getBSplineCurvatureAtParam)
-import(path : "d3ad341f5b87924b36b5aba8", version : "fdd989cbbf4082b8c7c4e55f");
+import(path : "d3ad341f5b87924b36b5aba8", version : "b67dd4ede072b1ec3f088772");
 
 
 
@@ -85,6 +85,30 @@ export function edgesToBSplines(context is Context, edges is Query, tolerance is
     }
     
     return bsplines;
+}
+
+/**
+ * Exact curvature magnitude of each edge (same order as evaluateQuery): 1 / radius for a circle, 0 for a line,
+ * undefined for anything else (its B-spline is exact enough, or the edge is a spline).
+ */
+export function edgeExactCurvatures(context is Context, edges is Query) returns array
+{
+    var out = [];
+    for (var edge in evaluateQuery(context, edges))
+    {
+        var definition = evCurveDefinition(context, { "edge" : edge });
+        var k = undefined;
+        if (definition is Circle)
+        {
+            k = 1 / definition.radius;
+        }
+        else if (definition is Line)
+        {
+            k = 0 / meter;
+        }
+        out = append(out, k);
+    }
+    return out;
 }
 
 // NOTE: getBSplineParamRange() and getBSplineBounds() removed (Phase 2)
@@ -349,13 +373,30 @@ export function prepareFootprintCurves(context is Context, edges is Query, fcpX 
 {
     // 1. Convert edges to BSplines (requires context)
     var bsplines = edgesToBSplines(context, edges, tolerance);
-    
-    // 2. Filter and trim for Y >= 0 (pure math)
-    var filtered = filterAndTrimBSplines(context, bsplines, tolerance);
-    
+    // Exact curvature of analytic edges (arcs 1/R, lines 0), used by the average radius instead of the
+    // curvature of their non-rational approximation.
+    var exactCurvatures = edgeExactCurvatures(context, edges);
+
+    // 2. Filter and trim for Y >= 0 (pure math), edge by edge so each piece keeps its edge's exact curvature
+    var filtered = [];
+    var filteredCurvatures = [];
+    for (var i = 0; i < size(bsplines); i += 1)
+    {
+        var pieces = filterAndTrimBSplines(context, [bsplines[i]], tolerance);
+        filtered = concatenateArrays([filtered, pieces]);
+        for (var j = 0; j < size(pieces); j += 1)
+        {
+            filteredCurvatures = append(filteredCurvatures, exactCurvatures[i]);
+        }
+    }
+
     // 3. Build curve data with bounds (pure math)
     var curveData = buildCurveDataArray(filtered);
-    
+    for (var i = 0; i < size(curveData); i += 1)
+    {
+        curveData[i].exactCurvature = filteredCurvatures[i];
+    }
+
     // 4. Detect tip/tail (pure math)
     var tipTail = detectTipTail(curveData, fcpX, acpX, tolerance);
     
@@ -851,17 +892,39 @@ export function arcThroughThreePoints(p1 is Vector, p2 is Vector, p3 is Vector) 
     return { "valid" : true, "center" : vector(xC, yC, 0 * meter), "R" : R };
 }
 
-// Stations for the average radius: fixed so the result is reproducible and independent of how the
-// sidecut is split into edges.
-const AVG_RADIUS_STATIONS = 200;
-// Dense per-curve samples used to locate each station's parameter from its x.
-const AVG_RADIUS_LOOKUP_SAMPLES = 100;
+// -----------------------------------------------------------------------------------------------------------
+// Sidecut radii. The definitions are beamBuilder's (eocProductData backend/beam_builder/api/analysis.py:
+// _arc_length_weighted_radius and _natural_radius; user decision 2026-09-28), evaluated exactly on the curves
+// rather than on beamBuilder's 900 samples. Every radius published here is a positive magnitude.
+// -----------------------------------------------------------------------------------------------------------
+
+// beamBuilder FLAT_CURVATURE = 1e-7 / mm: where |curvature| is at or below this (radius 10 km or more) the
+// curve is straight and takes no part in the average radius, neither its radius nor its length.
+export const SIDECUT_FLAT_CURVATURE = 1e-4 / meter;
+
+// Samples per knot span used only to bracket where x reaches the bounds and where |k| crosses the threshold.
+const AVG_RADIUS_SAMPLES_PER_SPAN = 6;
+// Adaptive Gauss-Legendre: a panel is accepted when it agrees with its two halves to this relative tolerance.
+const AVG_RADIUS_REL_TOL = 1e-9;
+const AVG_RADIUS_MAX_DEPTH = 40;
+// 7-point Gauss-Legendre rule on [-1, 1]
+const GL7_NODES = [-0.9491079123427585, -0.7415311855993945, -0.4058451513773972, 0,
+    0.4058451513773972, 0.7415311855993945, 0.9491079123427585];
+const GL7_WEIGHTS = [0.1294849661688697, 0.2797053914892766, 0.3818300505051189, 0.4179591836734694,
+    0.3818300505051189, 0.2797053914892766, 0.1294849661688697];
 
 /**
- * Average radius of curvature of the sidecut between x = xMin and x = xMax (the inflection points):
- * the mean of R = 1/|k| at AVG_RADIUS_STATIONS stations evenly spaced in x, at the midpoints of equal
- * intervals (so no station sits exactly on an inflection, where R is infinite). Each station is placed
- * on whichever curve spans its x, so the value does not depend on the edge split.
+ * Average radius of the sidecut between x = xMin and x = xMax (the inflection points): the ARC-LENGTH
+ * weighted mean of the radius of curvature,
+ *     avgRadius = integral(1 / |k| ds) / integral(ds),
+ * both integrals over the parts of the curves with xMin <= x <= xMax and |k| > SIDECUT_FLAT_CURVATURE
+ * (beamBuilder _arc_length_weighted_radius: straight samples are left out of both sums). An exact arc uses
+ * 1 / R, an exact line is straight; any other curve uses its B-spline curvature.
+ *
+ * Evaluated by adaptive Gauss-Legendre quadrature on every knot span, split where x reaches xMin / xMax and
+ * where |k| crosses the threshold (bisection), so the value depends neither on sampling nor on how the sidecut
+ * is split into edges. Next to a SMOOTH inflection 1 / |k| grows without bound and the integral is finite
+ * only because of the threshold (a logarithmic end contribution) -- the same cut-off beamBuilder applies.
  */
 export function computeAverageRadius(curveDataArray is array, xMin is ValueWithUnits,
     xMax is ValueWithUnits, config is map) returns map
@@ -870,82 +933,300 @@ export function computeAverageRadius(curveDataArray is array, xMin is ValueWithU
     {
         return { "valid" : false, "avgRadius" : 0 * meter };
     }
-
-    // Station s sits at x = xMin + (s + 0.5) * dx. Walk each overlapping curve's dense samples once and
-    // hand every sample segment the stations whose x it spans (O(samples + stations), not their product).
-    var dx = (xMax - xMin) / AVG_RADIUS_STATIONS;
-    var filled = makeArray(AVG_RADIUS_STATIONS, false);
-    var radiusSum = 0 * meter;
-    var count = 0;
+    const flat = SIDECUT_FLAT_CURVATURE * meter;
+    var num = 0;
+    var den = 0;
     for (var cd in curveDataArray)
     {
-        if (cd.xMax < xMin || cd.xMin > xMax)
+        var exactR = undefined;
+        if (cd.exactCurvature is ValueWithUnits)
         {
-            continue;
-        }
-        var range = getBSplineParamRange(cd.bspline);
-        var params = [];
-        for (var i = 0; i < AVG_RADIUS_LOOKUP_SAMPLES; i += 1)
-        {
-            params = append(params, range.uMin + (range.uMax - range.uMin) * i / (AVG_RADIUS_LOOKUP_SAMPLES - 1));
-        }
-        var points = evaluateSpline({ "spline" : cd.bspline, "parameters" : params })[0];
-
-        // Parameters of the stations this curve spans (linear in u between the dense samples).
-        var stationParams = [];
-        for (var i = 0; i < size(points) - 1; i += 1)
-        {
-            var x0 = points[i][0];
-            var x1 = points[i + 1][0];
-            if (x0 == x1)
+            const kExact = cd.exactCurvature * meter;
+            if (kExact <= flat)
             {
-                continue;
+                continue; // an exact line, or an arc of 10 km or more: straight
             }
-            var sLo = max(0, ceil((min(x0, x1) - xMin) / dx - 0.5));
-            var sHi = min(AVG_RADIUS_STATIONS - 1, floor((max(x0, x1) - xMin) / dx - 0.5));
-            for (var st = sLo; st <= sHi; st += 1)
-            {
-                if (!filled[st])
-                {
-                    filled[st] = true;
-                    var x = xMin + (st + 0.5) * dx;
-                    stationParams = append(stationParams, params[i] + (params[i + 1] - params[i]) * (x - x0) / (x1 - x0));
-                }
-            }
+            exactR = 1 / kExact;
         }
-        if (size(stationParams) == 0)
-        {
-            continue;
-        }
-
-        // One evaluation for all of this curve's stations; planar curvature as getBSplineCurvatureAtParam.
-        var derivs = evaluateSpline({ "spline" : cd.bspline, "parameters" : stationParams, "nDerivatives" : 2 });
-        for (var j = 0; j < size(stationParams); j += 1)
-        {
-            var xP = derivs[1][j][0] / meter;
-            var yP = derivs[1][j][1] / meter;
-            var xPP = derivs[2][j][0] / meter;
-            var yPP = derivs[2][j][1] / meter;
-            var speedSquared = xP * xP + yP * yP;
-            var denom = speedSquared * sqrt(speedSquared);
-            if (denom < 1e-15)
-            {
-                continue;
-            }
-            var kMag = abs(xP * yPP - yP * xPP) / denom;
-            if (kMag > 1e-9)
-            {
-                radiusSum += meter / kMag;
-                count += 1;
-            }
-        }
+        const sums = sidecutRadiusIntegrals(cd.bspline, xMin / meter, xMax / meter, exactR, flat);
+        num += sums[0];
+        den += sums[1];
     }
-
-    if (count == 0)
+    if (den <= 0)
     {
         return { "valid" : false, "avgRadius" : 0 * meter };
     }
-    return { "valid" : true, "avgRadius" : radiusSum / count };
+    return { "valid" : true, "avgRadius" : num / den * meter };
+}
+
+/**
+ * [integral(R ds), integral(ds)] (m^2, m) over the part of one curve with lo <= x <= hi (m) and |k| > flat
+ * (1/m). exactR (m) replaces the B-spline curvature when the edge is an exact arc.
+ */
+function sidecutRadiusIntegrals(bspline is BSplineCurve, lo is number, hi is number, exactR, flat is number) returns array
+{
+    const range = getBSplineParamRange(bspline);
+    const eps = 1e-12 * (range.uMax - range.uMin);
+    var breaks = [range.uMin];
+    for (var kn in bspline.knots)
+    {
+        if (kn > breaks[size(breaks) - 1] + eps && kn < range.uMax - eps)
+        {
+            breaks = append(breaks, kn);
+        }
+    }
+    breaks = append(breaks, range.uMax);
+
+    // Bracketing samples: every knot plus AVG_RADIUS_SAMPLES_PER_SPAN - 1 points inside each span.
+    var params = [];
+    for (var i = 0; i < size(breaks) - 1; i += 1)
+    {
+        for (var j = 0; j < AVG_RADIUS_SAMPLES_PER_SPAN; j += 1)
+        {
+            params = append(params, breaks[i] + (breaks[i + 1] - breaks[i]) * j / AVG_RADIUS_SAMPLES_PER_SPAN);
+        }
+    }
+    params = append(params, range.uMax);
+    const values = sidecutBoundaryValues(bspline, params, lo, hi, flat);
+
+    // Cut every sample interval where x - lo, x - hi or |k| - flat changes sign.
+    var cuts = [];
+    for (var i = 0; i < size(params) - 1; i += 1)
+    {
+        var here = [params[i]];
+        for (var f = 0; f < 3; f += 1)
+        {
+            if (f == 2 && exactR != undefined)
+            {
+                continue;
+            }
+            const f0 = values[i][f];
+            const f1 = values[i + 1][f];
+            if (f0 * f1 < 0)
+            {
+                here = append(here, bisectSidecutBoundary(bspline, lo, hi, flat, f, params[i], params[i + 1], f0));
+            }
+        }
+        cuts = concatenateArrays([cuts, sort(here, function(a, b) { return a - b; })]);
+    }
+    cuts = append(cuts, range.uMax);
+
+    // Keep the pieces whose middle is inside [lo, hi] and curved; integrate each one.
+    var pieces = [];
+    var mids = [];
+    for (var i = 0; i < size(cuts) - 1; i += 1)
+    {
+        if (cuts[i + 1] > cuts[i])
+        {
+            pieces = append(pieces, [cuts[i], cuts[i + 1]]);
+            mids = append(mids, (cuts[i] + cuts[i + 1]) / 2);
+        }
+    }
+    if (size(pieces) == 0)
+    {
+        return [0, 0];
+    }
+    const midValues = sidecutBoundaryValues(bspline, mids, lo, hi, flat);
+    var num = 0;
+    var den = 0;
+    for (var i = 0; i < size(pieces); i += 1)
+    {
+        const v = midValues[i];
+        if (v[0] >= 0 && v[1] <= 0 && (exactR != undefined || v[2] > 0))
+        {
+            const sums = adaptiveRadiusIntegrals(bspline, pieces[i][0], pieces[i][1], exactR, flat, 0);
+            num += sums[0];
+            den += sums[1];
+        }
+    }
+    return [num, den];
+}
+
+/**
+ * [x - lo, x - hi, |k| - flat] (m, m, 1/m) at each parameter.
+ */
+function sidecutBoundaryValues(bspline is BSplineCurve, params is array, lo is number, hi is number, flat is number) returns array
+{
+    const d = evaluateSpline({ "spline" : bspline, "parameters" : params, "nDerivatives" : 2 });
+    var out = [];
+    for (var i = 0; i < size(params); i += 1)
+    {
+        const x = d[0][i][0] / meter;
+        out = append(out, [x - lo, x - hi, planarCurvatureMagnitude(d[1][i], d[2][i]) - flat]);
+    }
+    return out;
+}
+
+/**
+ * |x'y'' - y'x''| / (x'^2 + y'^2)^(3/2) in 1/m from first and second derivative vectors (length units); 0 where
+ * the parametrisation stalls (as getBSplineCurvatureAtParam).
+ */
+function planarCurvatureMagnitude(d1 is Vector, d2 is Vector) returns number
+{
+    const xP = d1[0] / meter;
+    const yP = d1[1] / meter;
+    const speedSquared = xP * xP + yP * yP;
+    const denom = speedSquared * sqrt(speedSquared);
+    if (denom < 1e-15)
+    {
+        return 0;
+    }
+    return abs(xP * (d2[1] / meter) - yP * (d2[0] / meter)) / denom;
+}
+
+/**
+ * Root in [a, b] of boundary value `which` (0: x - lo, 1: x - hi, 2: |k| - flat), by bisection to the parameter
+ * resolution (fa = the value at a; the value changes sign over [a, b]).
+ */
+function bisectSidecutBoundary(bspline is BSplineCurve, lo is number, hi is number, flat is number, which is number,
+    a is number, b is number, fa is number) returns number
+{
+    var uLo = a;
+    var uHi = b;
+    var fLo = fa;
+    for (var i = 0; i < 64; i += 1)
+    {
+        const mid = (uLo + uHi) / 2;
+        if (mid <= uLo || mid >= uHi)
+        {
+            break;
+        }
+        const fm = sidecutBoundaryValues(bspline, [mid], lo, hi, flat)[0][which];
+        if (fm == 0)
+        {
+            return mid;
+        }
+        if ((fm > 0) == (fLo > 0))
+        {
+            uLo = mid;
+            fLo = fm;
+        }
+        else
+        {
+            uHi = mid;
+        }
+    }
+    return (uLo + uHi) / 2;
+}
+
+/**
+ * [integral(R ds), integral(ds)] over [a, b] (inside one knot span): 7-point Gauss-Legendre on the panel and
+ * on its two halves; accept the halves when both integrals agree to AVG_RADIUS_REL_TOL, else recurse.
+ */
+function adaptiveRadiusIntegrals(bspline is BSplineCurve, a is number, b is number, exactR, flat is number, depth is number) returns array
+{
+    const m = (a + b) / 2;
+    const panels = [[a, b], [a, m], [m, b]];
+    var params = [];
+    for (var p in panels)
+    {
+        for (var t in GL7_NODES)
+        {
+            params = append(params, (p[0] + p[1]) / 2 + (p[1] - p[0]) / 2 * t);
+        }
+    }
+    const d = evaluateSpline({ "spline" : bspline, "parameters" : params, "nDerivatives" : 1 + (exactR == undefined ? 1 : 0) });
+    var sums = [[0, 0], [0, 0], [0, 0]];
+    for (var pk = 0; pk < 3; pk += 1)
+    {
+        const half = (panels[pk][1] - panels[pk][0]) / 2;
+        for (var j = 0; j < 7; j += 1)
+        {
+            const i = pk * 7 + j;
+            const xP = d[1][i][0] / meter;
+            const yP = d[1][i][1] / meter;
+            const speed = sqrt(xP * xP + yP * yP);
+            var radius = exactR;
+            if (radius == undefined)
+            {
+                const k = planarCurvatureMagnitude(d[1][i], d[2][i]);
+                radius = k > flat ? 1 / k : 0;
+            }
+            if (radius > 0)
+            {
+                sums[pk][0] += GL7_WEIGHTS[j] * half * radius * speed;
+                sums[pk][1] += GL7_WEIGHTS[j] * half * speed;
+            }
+        }
+    }
+    const numH = sums[1][0] + sums[2][0];
+    const denH = sums[1][1] + sums[2][1];
+    if (depth >= AVG_RADIUS_MAX_DEPTH ||
+        (abs(numH - sums[0][0]) <= AVG_RADIUS_REL_TOL * abs(numH) && abs(denH - sums[0][1]) <= AVG_RADIUS_REL_TOL * abs(denH)))
+    {
+        return [numH, denH];
+    }
+    const left = adaptiveRadiusIntegrals(bspline, a, m, exactR, flat, depth + 1);
+    const right = adaptiveRadiusIntegrals(bspline, m, b, exactR, flat, depth + 1);
+    return [left[0] + right[0], left[1] + right[1]];
+}
+
+/**
+ * Natural radius: the arc through the two stations p1, p2 (the widest pair, or the inflection pair) that is
+ * TANGENT to the waist line y = waistHalfWidth -- not a circumradius through three points (beamBuilder
+ * _natural_radius, reproduced exactly, in mm with its absolute thresholds). With a_i = |y_i| - w and the centre
+ * at (cx, w + R), each station gives (x_i - cx)^2 + a_i^2 = 2 a_i R; eliminating R leaves
+ *     (a2 - a1) cx^2 - 2 (a2 x1 - a1 x2) cx + (a2 x1^2 - a1 x2^2) - a1 a2 (a2 - a1) = 0,
+ * linear when a1 == a2 (the symmetric ski: the centre on the perpendicular bisector). Root choice as beamBuilder:
+ * the first valid root, replaced by the second only when that one's centre lies within one station spacing of the
+ * stations and its radius is smaller. Invalid (R = inf) when a station is not wider than the waist or the solve
+ * degenerates. Returns { valid, center (on the +Y side), R }.
+ */
+export function naturalRadiusTangentToWaist(p1 is Vector, p2 is Vector, waistHalfWidth is ValueWithUnits) returns map
+{
+    const invalid = { "valid" : false, "center" : undefined, "R" : inf * meter };
+    const w = abs(waistHalfWidth / millimeter);
+    const x1 = p1[0] / millimeter;
+    const x2 = p2[0] / millimeter;
+    const a1 = abs(p1[1] / millimeter) - w;
+    const a2 = abs(p2[1] / millimeter) - w;
+    if (a1 <= 1e-9 || a2 <= 1e-9 || abs(x2 - x1) < 1e-9)
+    {
+        return invalid;
+    }
+    const A = a2 - a1;
+    const B = -2 * (a2 * x1 - a1 * x2);
+    const C = (a2 * x1 * x1 - a1 * x2 * x2) - a1 * a2 * (a2 - a1);
+    var candidates = [];
+    if (abs(A) < 1e-12)
+    {
+        if (abs(B) < 1e-12)
+        {
+            return invalid;
+        }
+        candidates = [-C / B];
+    }
+    else
+    {
+        const disc = B * B - 4 * A * C;
+        if (disc < 0)
+        {
+            return invalid;
+        }
+        const root = sqrt(disc);
+        candidates = [(-B + root) / (2 * A), (-B - root) / (2 * A)];
+    }
+    var bestR = undefined;
+    var bestCx = undefined;
+    for (var cx in candidates)
+    {
+        const r = ((x1 - cx) * (x1 - cx) + a1 * a1) / (2 * a1);
+        if (r <= 0 || r == inf)
+        {
+            continue;
+        }
+        const inside = min(x1, x2) - abs(x2 - x1) <= cx && cx <= max(x1, x2) + abs(x2 - x1);
+        if (bestR == undefined || (inside && r < bestR))
+        {
+            bestR = r;
+            bestCx = cx;
+        }
+    }
+    if (bestR == undefined)
+    {
+        return invalid;
+    }
+    return { "valid" : true, "center" : vector(bestCx, w + bestR, 0) * millimeter, "R" : bestR * millimeter };
 }
 
 /**
@@ -1087,8 +1368,9 @@ export function analyzeFootprintCurves(context is Context, args is map) returns 
     }
 
     // === Compute Derived Values ===
-    var natRadiusWidest = arcThroughThreePoints(fbWidest.point, waist.point, abWidest.point);
-    var natRadiusInflection = arcThroughThreePoints(fbInflection.point, waist.point, abInflection.point);
+    // Natural radii: the arc through each pair of stations tangent to the waist line (beamBuilder definition).
+    var natRadiusWidest = naturalRadiusTangentToWaist(fbWidest.point, abWidest.point, waist.width);
+    var natRadiusInflection = naturalRadiusTangentToWaist(fbInflection.point, abInflection.point, waist.width);
 
     var avgRadiusResult = computeAverageRadius(curveData,
         min([fbInflection.x, abInflection.x]),

@@ -28,13 +28,13 @@ export predicate footprintDataPredicate(definition is map)
         
         annotation { "Group Name" : "Radius calculations", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Average radius:", "Description" : "Mean radius of curvature at 200 stations evenly spaced in x between the inflection points", "UIHint" : UIHint.READ_ONLY }
+            annotation { "Name" : "Average radius:", "Description" : "Arc-length weighted mean radius of curvature between the inflection points; straight parts (radius 10 km or more) are left out", "UIHint" : UIHint.READ_ONLY }
             definition.avgRadiusStr is string;
             
-            annotation { "Name" : "Natural radius - widest:", "Description" : "Radius of arc connecting widest FB and AB points at the specified waist width. NOTE: If a FB or AB inflection point is not found, this value may change once tip/tail shapes are drawn.", "UIHint" : UIHint.READ_ONLY }
+            annotation { "Name" : "Natural radius - widest:", "Description" : "Radius of the arc through the widest FB and AB points that is tangent to the waist line. NOTE: If a FB or AB inflection point is not found, this value may change once tip/tail shapes are drawn.", "UIHint" : UIHint.READ_ONLY }
             definition.natRadiusWidestStr is string;
             
-            annotation { "Name" : "Natural radius - inflection:", "Description" : "Radius of arc connecting FB and AB inflection points at the specified waist width. NOTE: If a FB or AB inflection point is not found, this value may change once tip/tail shapes are drawn.", "UIHint" : UIHint.READ_ONLY }
+            annotation { "Name" : "Natural radius - inflection:", "Description" : "Radius of the arc through the FB and AB inflection points that is tangent to the waist line. NOTE: If a FB or AB inflection point is not found, this value may change once tip/tail shapes are drawn.", "UIHint" : UIHint.READ_ONLY }
             definition.natRadiusInflectionStr is string;
         }
         

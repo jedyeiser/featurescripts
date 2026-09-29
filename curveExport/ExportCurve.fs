@@ -2,7 +2,7 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: ExportCurveCore.fs
-export import(path : "666228ba3514cc062764888b", version : "2251252bc0519b86ac5e82ba");
+export import(path : "666228ba3514cc062764888b", version : "1bae72760283e43ede1d8ce6");
 IconNamespace::import(path : "560e3f8338425e540d0270ba", version : "f93cae02d6118be9d4557727");
 ImageNamespace::import(path : "13b759b4e5246c3f2da05727", version : "db3f34a93d3f50b51d63ad0f");
 

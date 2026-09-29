@@ -2,7 +2,7 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 //import fpt_analyze
-import(path : "71d853c0fd2f10ca3bb20a4b", version : "d30593b1d10021e1a6b5b134");
+import(path : "71d853c0fd2f10ca3bb20a4b", version : "72eb18a0de3e0501d4122f42");
 
 
 //import predicates
@@ -239,8 +239,18 @@ function footprintVariables(footprintData is map) returns map
             "tipLength" : extractableVariable(tipLength, "FCP to the tip end along X; 0 when there is no tip beyond the FCP."),
             "tailLength" : extractableVariable(tailLength, "ACP to the tail end along X; 0 when there is no tail beyond the ACP."),
             "taperAngle" : extractableVariable(footprintData.foundTaperAngle, "Taper angle widest to widest; positive when the tip is wider than the tail."),
-            "sidecutRadius" : extractableVariable(footprintData.avgRadius, "Average sidecut radius: mean radius of curvature at evenly spaced X stations between the inflection points (the widest points when no inflection is found); 0 when it cannot be computed.")
+            "sidecutRadius" : extractableVariable(footprintData.avgRadius, "Average sidecut radius: arc-length weighted mean radius of curvature between the inflection points (the widest point on a side with no inflection), straight parts (radius 10 km or more) left out; 0 when it cannot be computed."),
+            "naturalRadiusWidest" : extractableVariable(naturalRadiusValue(footprintData.naturalRadiusWidest), "Natural radius (widest): radius of the arc through the two widest points tangent to the waist line; 0 when there is no such arc."),
+            "naturalRadiusInflection" : extractableVariable(naturalRadiusValue(footprintData.naturalRadiusInflection), "Natural radius (inflection): radius of the arc through the two inflection points (the widest point on a side with no inflection) tangent to the waist line; 0 when there is no such arc.")
         };
+}
+
+/**
+ * The radius of a natural-radius result, 0 when it is not valid.
+ */
+function naturalRadiusValue(natural is map) returns ValueWithUnits
+{
+    return natural.valid ? natural.R : 0 * meter;
 }
 
 export function checkInputData(context is Context, definition is map) returns map
