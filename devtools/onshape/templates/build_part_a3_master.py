@@ -81,9 +81,9 @@ def note(layer, x, y, s, h, alias, bold=False):
 
 
 def cell(x, ytop, label, alias, value="", vbold=False, vh=VAL):
-    note("tb", x + 1.5, ytop - 0.9, label, LBL, "lb_" + alias)
+    note("tb", x + 1.5, ytop - 0.6, label, LBL, "lb_" + alias)
     if value:
-        note("tb", x + 1.5, ytop - 4.2, value, vh, "v_" + alias, vbold)
+        note("tb", x + 1.5, ytop - 4.4, value, vh, "v_" + alias, vbold)
 
 
 note("tb", 232.6, 21.0, BRANDS[BRAND]["dept"], LBL, "lb_dept", bold=True)
@@ -97,7 +97,7 @@ cell(302, 19, "DATE", "date")
 cell(332, 19, "SIZE", "size")
 cell(346, 19, "SHEET", "sheet")
 cell(362, 19, "REV", "rev")
-note("tb", 375.5, 27.1, "UNITS / PROJECTION", LBL, "lb_units")
+note("tb", 375.5, 27.4, "UNITS / PROJECTION", LBL, "lb_units")
 note("tb", 375.8, 21.0, "mm", TTL, "st_units")
 note("zones", 22, 48.8, "NOTES", LBL, "lb_notes", bold=True)
 
@@ -109,14 +109,14 @@ note("zones", 22, 48.8, "NOTES", LBL, "lb_notes", bold=True)
 VALUES = [
     ("v_title", 267.5, 45.6, TTL, True, 140, [("sheet", "Name")]),
     ("v_desc", 267.5, 33.6, VAL, False, 140, [("sheet", "Description")]),
-    ("v_mat", 267.5, 24.2, VAL, False, 60, [("sheet", "Material")]),
-    ("v_mass", 323.5, 24.2, VAL, False, 25, [("sheet", "Mass")]),
-    ("v_rev", 363.5, 15.2, VAL, False, 13, [("sheet", "Revision")]),
-    ("v_drawn", 267.5, 15.2, VAL, False, 33, [("drawing", "Drawing drawn by")]),
-    ("v_date", 303.5, 15.2, VAL, False, 22, [("drawing", "Drawing date drawn")]),
-    ("v_scale", 351.5, 24.2, VAL, False, 13, [("drawing", "Sheet scale")]),
-    ("v_size", 333.5, 15.2, VAL, False, 11, [("drawing", "Sheet size")]),
-    ("v_sheet", 347.5, 15.2, VAL, False, 15, [("drawing", "Sheet number"), ("text", " / "), ("drawing", "Total sheets")]),
+    ("v_mat", 267.5, 23.6, VAL, False, 60, [("sheet", "Material")]),
+    ("v_mass", 323.5, 23.6, VAL, False, 25, [("sheet", "Mass")]),
+    ("v_rev", 363.5, 14.6, VAL, False, 13, [("sheet", "Revision")]),
+    ("v_drawn", 267.5, 14.6, VAL, False, 33, [("drawing", "Drawing drawn by")]),
+    ("v_date", 303.5, 14.6, VAL, False, 22, [("drawing", "Drawing date drawn")]),
+    ("v_scale", 351.5, 23.6, VAL, False, 13, [("drawing", "Sheet scale")]),
+    ("v_size", 333.5, 14.6, VAL, False, 11, [("drawing", "Sheet size")]),
+    ("v_sheet", 347.5, 14.6, VAL, False, 15, [("drawing", "Sheet number"), ("text", " / "), ("drawing", "Total sheets")]),
 ]
 
 

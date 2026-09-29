@@ -22,8 +22,15 @@ time.sleep(5)
 pid = {p["name"]: p["partId"] for p in c.get(f"/api/v10/parts/d/{PD}/w/{PW}/e/{PPS}",
                                              query_params={"includeWireBodies": "true"})}
 s = modify(PD, PW, eid, [{"messageName": "onshapeCreateViews", "formatVersion": "2021-01-01", "views": [{
-    "viewType": "TopLevel", "position": {"x": 215, "y": 218}, "orientation": "top", "includeWires": True,
+    "viewType": "TopLevel", "position": {"x": 215, "y": 235}, "orientation": "top", "includeWires": True,
     "scale": {"scaleSource": "Custom", "numerator": 1, "denumerator": 5},
     "reference": {"elementId": PPS, "idTag": pid["4101 PLAN"]}}]}], "4101 PLAN view")
+print(s.get("output")[:400])
+# The sheet-reference dropdown only offers parts that have a view on the sheet, so the real part gets its own
+# (front / profile) view; the composite alone has no material or mass.
+s = modify(PD, PW, eid, [{"messageName": "onshapeCreateViews", "formatVersion": "2021-01-01", "views": [{
+    "viewType": "TopLevel", "position": {"x": 215, "y": 190}, "orientation": "front",
+    "scale": {"scaleSource": "Custom", "numerator": 1, "denumerator": 5},
+    "reference": {"elementId": PPS, "idTag": pid["RD 20TAC 28 178 4101"]}}]}], "4101 part view")
 print(s.get("output")[:400])
 (Path(__file__).parent / "test_drawing.json").write_text(json.dumps({"eid": eid, "name": NAME}))

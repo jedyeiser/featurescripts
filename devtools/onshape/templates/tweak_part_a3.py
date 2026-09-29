@@ -20,7 +20,7 @@ for layer, x1, y1, x2, y2, alias in bpm.L:
 for layer, x, y, r, alias in bpm.CIRCLES:
     anns.append({"type": "Onshape::Circle", "circle": {"logicalId": ids[alias][1], "center": pt(x, y), "radius": r}})
 for layer, x, y, s, h, alias in bpm.N:
-    if alias == "st_units":
+    if alias == "st_units" or alias.startswith("lb_"):
         anns.append({"type": "Onshape::Note", "note": {"logicalId": ids[alias][1], "position": pt(x, y)}})
 s = modify(TD, TW, lay["eid"], [{"messageName": "onshapeEditAnnotations", "formatVersion": "2021-01-01",
                                  "annotations": anns}], "PART A3 tweak")

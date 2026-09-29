@@ -1166,6 +1166,16 @@ const UNWRAP_ARC_SLACK = 1e-3;
  */
 function flatCurveItem(points is array, startTangentIn is Vector, endTangentIn is Vector, settings is map) returns map
 {
+    return flatCurveItem(points, startTangentIn, endTangentIn, settings, true, true);
+}
+
+/**
+ * flatCurveItem with the end check per end: an end where an edge was cut into pieces (kernelZonePieces) keeps the
+ * slope both pieces share.
+ */
+function flatCurveItem(points is array, startTangentIn is Vector, endTangentIn is Vector, settings is map, checkStart is boolean,
+    checkEnd is boolean) returns map
+{
     var startTangent = startTangentIn;
     var endTangent = endTangentIn;
     const count = size(points);
@@ -1179,12 +1189,12 @@ function flatCurveItem(points is array, startTangentIn is Vector, endTangentIn i
     {
         const startEstimate = threePointTangent(points[0], points[1], points[2]);
         const endEstimate = -threePointTangent(points[count - 1], points[count - 2], points[count - 3]);
-        if (angleBetween(startTangent, startEstimate) > UNWRAP_TANGENT_AGREE)
+        if (checkStart && angleBetween(startTangent, startEstimate) > UNWRAP_TANGENT_AGREE)
         {
             gate = gate ~ " (start tangent off by " ~ toString(roundToPrecision(angleBetween(startTangent, startEstimate) / degree, 2)) ~ " deg: replaced)";
             startTangent = startEstimate;
         }
-        if (angleBetween(endTangent, endEstimate) > UNWRAP_TANGENT_AGREE)
+        if (checkEnd && angleBetween(endTangent, endEstimate) > UNWRAP_TANGENT_AGREE)
         {
             gate = gate ~ " (end tangent off by " ~ toString(roundToPrecision(angleBetween(endTangent, endEstimate) / degree, 2)) ~ " deg: replaced)";
             endTangent = endEstimate;
@@ -1849,17 +1859,10 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
             const piece = pieces[p];
             const first = (piece.from == 0);
             const last = (piece.to == size(points) - 1);
-            var entry = flatCurveItem(subArray(points, piece.from, piece.to + 1),
-                first ? startTangent : sampleSlope(points, piece.from), last ? endTangent : sampleSlope(points, piece.to), settings);
             // a cut keeps the slope both pieces share (flatCurveItem's end check is for the edge's true ends)
-            if (!first)
-            {
-                entry.item.startTangent = sampleSlope(points, piece.from);
-            }
-            if (!last)
-            {
-                entry.item.endTangent = sampleSlope(points, piece.to);
-            }
+            var entry = flatCurveItem(subArray(points, piece.from, piece.to + 1),
+                first ? startTangent : sampleSlope(points, piece.from), last ? endTangent : sampleSlope(points, piece.to), settings,
+                first, last);
             entry.item.monotone = subArray(piece.monotone, piece.from, piece.to + 1);
             outlineIds = append(outlineIds, (size(pieces) == 1) ? edgeId : edgeId + ("piece" ~ p));
             outlineEntries = append(outlineEntries, entry);
