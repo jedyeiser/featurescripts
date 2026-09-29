@@ -330,6 +330,39 @@ export function rebuildCurvedPiece(context is Context, id is Id, chart is map, p
     const limit = max(settings.shapeTolerance, UNWRAP_PART_REVERSE_FLOOR).value + analysis.squaredMax;
     var notes = [];
     var reason = undefined;
+
+    // A planar cap is only as good as its plane fit (within the shape tolerance): where the exact cell rebuild can
+    // take the piece, it does (4401 over REF_WIRE: cells keep the end extent exactly; a cap cut came out 8.6 um short).
+    if (size(analysis.caps) > 0 && size(analysis.fallback) == 0)
+    {
+        const cid = id + "cellsFirst";
+        startFeature(context, cid, {});
+        var first = undefined;
+        try silent
+        {
+            first = rebuildPiece(context, cid, chart, piece, settings);
+        }
+        if (first != undefined)
+        {
+            const check = reverseCheck(context, chart, first.body, piece);
+            if (check.distance <= limit)
+            {
+                endFeature(context, cid);
+                var report = first.report;
+                report.fallbackFaces = 0;
+                report.approximatedFaces = 0;
+                report.bands = 0;
+                report.approximationMax = 0;
+                report.reverseCheck = check.distance;
+                return { "body" : first.body, "method" : "cells", "report" : report,
+                        "notes" : ["    " ~ size(analysis.caps) ~ " planar cap(s): the exact cell rebuild took the piece"],
+                        "text" : "cell rebuild: " ~ first.text ~ "; reverse check " ~ roundToPrecision(check.distance * 1000, 5)
+                            ~ " mm on " ~ check.samples ~ " samples" };
+            }
+        }
+        abortFeature(context, cid);
+    }
+
     if (size(analysis.fallback) == 0)
     {
         const pid = id + "prism";

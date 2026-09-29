@@ -210,6 +210,9 @@ const UNWRAP_CHECK_END_ZONE = 0.03;
 const UNWRAP_CHECK_EDGE_SAMPLES = 40;
 
 /** The two sides and their plate area must cover this fraction of the part's area. */
+/** Plates up to this thick take their side areas from the volume when both sides are complete (withSideAreas). */
+const UNWRAP_SIDE_AREA_THIN = 1 * millimeter;
+
 const UNWRAP_SIDE_AREA_FRACTION = 0.6;
 
 /** A number as stored in the Outputs table's data strings: optionally signed, decimal, with an exponent. */
@@ -1534,9 +1537,11 @@ function plateSidesGeneral(context is Context, part is Query) returns map
  * evArea on a draped side costs ~1.9 s (the topsheet's 124 spline faces), so the side areas come from the volume
  * where the topology shows both sides complete: two sides offset t apart bound area0 + area1 = 2 V / t (to t^2 times
  * the total Gaussian curvature, ~1 mm^2 in 282000 on the topsheet), and when every leftover (wall) face touches BOTH
- * sides neither side can be missing a face (a missing side face would be a leftover touching one side only). Then
- * both areas are V / t: equal, so undrapeOutline picks the side with fewer edges, as it did when the two measured
- * areas agreed. Otherwise one side (the one with fewer edges) is measured and the other is 2 V / t minus it: when the
+ * sides neither side can be missing a face (a missing side face would be a leftover touching one side only). Then,
+ * for a plate no thicker than UNWRAP_SIDE_AREA_THIN, both areas are V / t: equal, so undrapeOutline picks the side
+ * with fewer edges, as it did when the two measured areas agreed within 1 %. (A thick plate's sides differ by t times
+ * the integral of 2H -- over 1 % on 4802 as a 4 mm plate -- and undrapeOutline has always used the larger one.)
+ * Otherwise one side (the one with fewer edges) is measured and the other is 2 V / t minus it: when the
  * measured side misses faces the estimate is larger by what is missing and the larger-side rule picks the other.
  */
 function withSideAreas(context is Context, part is Query, allFaces is Query, candidate is map) returns map
@@ -1556,7 +1561,7 @@ function withSideAreas(context is Context, part is Query, allFaces is Query, can
     const volume = evVolume(context, { "entities" : part });
     var area0;
     var area1;
-    if (complete && size(wallFaces) > 0)
+    if (complete && size(wallFaces) > 0 && candidate.thickness <= UNWRAP_SIDE_AREA_THIN)
     {
         area0 = volume / candidate.thickness;
         area1 = area0;

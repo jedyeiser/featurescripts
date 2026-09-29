@@ -107,7 +107,7 @@ export const PRIMITIVE_EI_GRID_STEP = 50;
 /** Curvature band: plot height per 0.01 1/m (50 mm, user 2026-09-29 -> a 14 m sidecut (0.071 1/m) plots 357 mm high, a 30 m one 167 mm). */
 export const PRIMITIVE_CURVATURE_SCALE_BOUNDS = { (millimeter) : [0.1, 50, 1000] } as LengthBoundSpec;
 /**
- * Fixed chart axes (2026-09-29): the plot band's and EI band's frames do not move with the data. Radius band: from
+ * Manual axes (Auto scale off; the fixed chart axes of 2026-09-29): the frames do not move with the data. Radius band: from
  * -"Radius axis min" to +radius limit (10 mm per 1 m: -100 .. +500 mm at the defaults). Curvature band: from
  * -"Curvature axis min" to +"Max curvature" (1/m; at 50 mm per 0.01 1/m also -100 .. +500 mm). EI band: 0 .. "EI axis
  * max" (N*m^2; 225 mm at 2 N*m^2 per mm). Plotted values outside a band's axis break the line.
@@ -117,6 +117,24 @@ export const PRIMITIVE_RADIUS_AXIS_MIN_BOUNDS = { (unitless) : [0, 10, 10000] } 
 export const PRIMITIVE_MAX_CURVATURE_BOUNDS = { (unitless) : [0.001, 0.1, 1000] } as RealBoundSpec;
 export const PRIMITIVE_CURVATURE_AXIS_MIN_BOUNDS = { (unitless) : [0, 0.02, 1000] } as RealBoundSpec;
 export const PRIMITIVE_EI_AXIS_MAX_BOUNDS = { (unitless) : [1, 450, 1000000] } as RealBoundSpec;
+/**
+ * Auto scale (2026-09-29, default on): the bands keep a FIXED height (so they stack and align the same on every ski)
+ * and the scale inside follows the data. Radius / curvature band: "Radius band height", the zero line at
+ * PRIMITIVE_PLOT_NEGATIVE_FRACTION of it from the bottom; the positive side's top = k * a nice step with the largest
+ * plotted value at PRIMITIVE_AUTO_FILL_LO .. HI of it (primitiveAutoAxis). EI band: "EI band height", 0 at the bottom.
+ * Band heights are length parameters with MILLIMETRE bounds (correction 62: the migrated default is written in mm).
+ */
+export const PRIMITIVE_PLOT_BAND_HEIGHT_BOUNDS = { (millimeter) : [10, 150, 5000] } as LengthBoundSpec;
+export const PRIMITIVE_EI_BAND_HEIGHT_BOUNDS = { (millimeter) : [10, 150, 5000] } as LengthBoundSpec;
+/** Share of the radius / curvature band below its zero line (taper, tip, tail); fixed so the zero line never moves. */
+export const PRIMITIVE_PLOT_NEGATIVE_FRACTION = 0.2;
+/** Auto scale: the largest plotted value sits within this share of the positive axis (aim 90 %). */
+export const PRIMITIVE_AUTO_FILL_LO = 0.85;
+export const PRIMITIVE_AUTO_FILL_HI = 0.95;
+/** Auto scale tick steps (level units: m of radius, 0.01 1/m of curvature; N*m^2 of EI), also times 10, 100, ... */
+export const PRIMITIVE_PLOT_STEPS = [1, 2, 5, 10, 20, 25, 50];
+export const PRIMITIVE_EI_STEPS = [10, 25, 50, 100];
+
 /** The curvature scale's level unit: 0.01 1/m (levels are whole multiples, labels with 2 decimals). */
 export const PRIMITIVE_CURVATURE_UNIT = 0.01;
 /** At most about this many tick levels on a scale whose step adapts (curvature). */

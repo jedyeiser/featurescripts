@@ -29,6 +29,9 @@ Cases (names carry the expectation):
         stacking identical to P1 / P6 / P11; only the plotted data is cut
   P16 = P12 with Plot x-range FULL (curvature at the default 50 mm per 0.01 1/m, Max curvature 0.1 1/m): the tip / tail
         curvature is cut at the axis, frame and stacking = P12
+  P17 = P1 with Auto scale OFF (2026-09-29): the manual scales / axes exactly as before auto scale (radius -10 .. +50 m
+        at 10 mm per m, ticks every 10 m); every case above runs with Auto scale ON (the default): fixed band heights
+        (Radius band height 150 mm, 20 % below zero; EI band height 150 mm), nice scale fitted to the data
   SD1 = a NEW Station definition (one Single point station at the MRS connector) inserted without "variableName":
         the 2026-09-29 default "" -> no # variable
   P14 = the user's "monkey bite" (2026-09-28, "Primitive tests" Sketch 1 / Extrude 1: a R 79.12 mm circle at
@@ -253,7 +256,8 @@ def ei_sketch():
 def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseline=None, footprint=None,
               region="FULL", points=35, qv="", datum_uses="ORIGIN", ei=None, tip_block="", tail_block="",
               grid=False, labels=True, plot="RADIUS", curvature_scale="50 mm", extras=(), key_lines=False, junctions=True,
-              radius_axis_min="10", max_curvature="0.1", curvature_axis_min="0.02", ei_axis_max="450"):
+              radius_axis_min="10", max_curvature="0.1", curvature_axis_min="0.02", ei_axis_max="450",
+              auto_scale=True, radius_band_height="150 mm", ei_band_height="150 mm"):
     params = [
         q("volume", volume),
         q("fcp", fcp),
@@ -276,6 +280,9 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
         num("curvatureAxisMin", curvature_axis_min),
         num("radiusAxisLow", radius_axis_min),
         num("eiAxisMax", ei_axis_max),
+        b("autoScale", auto_scale),
+        num("radiusBandHeight", radius_band_height),
+        num("eiBandHeight", ei_band_height),
         q("targetEI", *([ei] if ei else [])),
         num("dataPoints", str(points), True),
         b("forceStations", True),
@@ -304,7 +311,8 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
                   ("datumUses", "targetEI", "tipBlockWire", "tipBlock", "tailBlockWire", "tailBlock",
                    "dashedGrid", "labels", "textHeight", "stationNumbers", "eiScale", "tipBlockFrom", "tailBlockFrom",
                    "tipBlockWireName", "tailBlockWireName", "extraPoints", "plotMode", "plotRegion", "curvatureScale",
-                   "keyLines", "junctionTicks", "maxCurvature", "curvatureAxisMin", "radiusAxisLow", "eiAxisMax")]
+                   "keyLines", "junctionTicks", "maxCurvature", "curvatureAxisMin", "radiusAxisLow", "eiAxisMax",
+                   "autoScale", "radiusBandHeight", "eiBandHeight")]
     return upsert(name, "exportPrimitive", params, ns)
 
 
@@ -363,6 +371,9 @@ def cases(dv, mi, dm, ei, bt=None):
         ("P16 TAC as P12, plot x-range FULL -> curvature cut at the axis (max 0.1 1/m), frame + stacking = P12, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P16 TAC curvature full",
               plot="CURVATURE", region="FULL")),
+        ("P17 TAC as P1, Auto scale OFF -> the manual axes: radius -10 .. +50 m at 10 mm per m, bands = P1 before auto scale, INFO",
+         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P17 TAC manual",
+              auto_scale=False)),
     ] + ([] if bt is None else [
         ("P14 TAC tail bite, FULL_BASELINE + volume footprint -> bite in the footprint (isometric unwrap), INFO",
          dict(volume=vol % bt, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P14 TAC bite", baseline=fb)),

@@ -2,13 +2,13 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 // IMPORT: primitive_profiles.fs
-export import(path : "5865b24d55ff270a56088adf", version : "0d79a06f9a28de9278132644");
+export import(path : "5865b24d55ff270a56088adf", version : "a49d6c6f041f48486d3a38bd");
 // IMPORT: primitive_footprint.fs
-export import(path : "fbc957543e769a649f00c5cc", version : "52903211943479b82fd32d5f");
+export import(path : "fbc957543e769a649f00c5cc", version : "0643b2c32fc6fa3f5a5aeb72");
 // IMPORT: primitive_baseline.fs
-export import(path : "b827b10bc0bdc678c2db28cd", version : "b6f22a4e1e917b94a9276e25");
+export import(path : "b827b10bc0bdc678c2db28cd", version : "17196e5856e8bb263bcadb97");
 // IMPORT: primitive_output.fs
-export import(path : "6f122edb2547a6a46991d9fd", version : "6ebcbd2b8dfca378d7ad3508");
+export import(path : "6f122edb2547a6a46991d9fd", version : "f5e360a9b5a73ca5e71e9980");
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs) -- same pin as station_geometry
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: xSection V58 xSectBeamAnalysis.fs (getEIFromEdges, computeBeamStiffness; direction-safe)
@@ -18,6 +18,11 @@ IconNamespace::import(path : "b9dc4aaf067afeb58293caed", version : "efb139f3e58d
 
 /** The data table's radius is read this far inside the RSL, so a row on an edge junction takes the RSL-side edge. */
 const RADIUS_SIDE_STEP = 1e-3 * millimeter;
+/**
+ * Auto scale with nothing plotted: the axis is chosen as if the manual axis top (Max radius, Max curvature, EI axis
+ * max) were plotted at this share of it, which gives back that top for the defaults (50 m, 0.1 1/m, 450 N*m^2).
+ */
+const AUTO_AIM = 0.9;
 /** A key-location tick within this of the plot region's ends is drawn. */
 const REGION_TOLERANCE = 1e-6 * meter;
 
@@ -42,8 +47,12 @@ const REGION_TOLERANCE = 1e-6 * meter;
  *                   mm per 0.01 1/m; axis -"Curvature axis min" .. +"Max curvature"
  *                   Both plotted over the "Plot x-range", breaking where the value leaves the axis, with TICK marks at
  *                   the key locations and junction ticks there; the REFERENCE (0) line and the scale frame (end axes,
- *                   ticks, numbers) are FIXED (2026-09-29): full footprint length, whole axis, whatever the data
- *     The EI band's frame is fixed the same way: the volume's x extent, EI 0 .. "EI axis max".
+ *                   ticks, numbers) span the full footprint length whatever the data
+ *     The EI band's frame spans the volume's x extent, EI 0 .. its axis top.
+ *     Auto scale (default, 2026-09-29): each of these bands has a FIXED height ("Radius band height", zero line 20 %
+ *     up; "EI band height") and the scale inside follows the data: axis top = k * nice step with the largest plotted
+ *     value at 85-95 % of it (primitiveAutoAxis), the top numbered. Off: the manual scales above (10 mm per 1 m,
+ *     "Curvature plot scale", "EI band scale") and axes (-"Radius axis min" .. +"Max radius", ..., 0 .. "EI axis max").
  * Each band has a DATUM point at x = 0 on its reference line; "Key lines" adds a vertical line (ONE light-grey edge;
  * the drawing restyles it dashed) through every band at FCP, MP(s), MRS, ACP and the extra key points that ask for one. All bodies are points and wires, so the
  * composite can be moved or copied as a unit.
@@ -146,14 +155,24 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         annotation { "Group Name" : "Plot", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Plot type", "Default" : PrimitivePlot.RADIUS, "UIHint" : [UIHint.SHOW_LABEL],
-                        "Description" : "The last band. Sidecut radius (m), 10 mm per 1 m. Curvature (1/m) of the footprint edges, continuous through inflections. Tables stay in radius." }
+                        "Description" : "The last band. Sidecut radius (m) or curvature (1/m) of the footprint edges, continuous through inflections. Tables stay in radius." }
             definition.plotMode is PrimitivePlot;
 
             annotation { "Name" : "Plot x-range", "Default" : PrimitivePlotRegion.FULL, "UIHint" : [UIHint.SHOW_LABEL],
                         "Description" : "Where the radius / curvature is plotted (with its key-location and junction ticks). The band's axes and reference line always span the full ski. The average radius is always taken between the inflection points." }
             definition.plotRegion is PrimitivePlotRegion;
 
-            if (definition.plotMode == PrimitivePlot.CURVATURE)
+            // New 2026-09-29, default ON (correction 25: saved features migrate to true, intended by the user).
+            annotation { "Name" : "Auto scale", "Default" : true,
+                        "Description" : "Fixed band heights, scale fitted to the data: the largest plotted radius / curvature (within the Plot x-range and Max radius) and the largest EI sit at 85-95 % of their band's top; ticks on a nice step (1, 2, 5, 10, 20, 25, 50 m; 0.01 1/m steps; 10, 25, 50, 100 N*m^2), the top numbered. Off: the manual scales and axes." }
+            definition.autoScale is boolean;
+
+            if (definition.autoScale)
+            {
+                annotation { "Name" : "Radius band height", "Description" : "Model height of the radius (or curvature) band, axis bottom to top: 80 % above the zero line, 20 % below it (taper, tip, tail). 150 mm prints 30 mm at 1:5." }
+                isLength(definition.radiusBandHeight, PRIMITIVE_PLOT_BAND_HEIGHT_BOUNDS);
+            }
+            else if (definition.plotMode == PrimitivePlot.CURVATURE)
             {
                 annotation { "Name" : "Curvature plot scale", "Description" : "Plot height per 0.01 1/m of curvature, e.g. 50 mm: a 14 m sidecut (0.071 1/m) plots 357 mm high." }
                 isLength(definition.curvatureScale, PRIMITIVE_CURVATURE_SCALE_BOUNDS);
@@ -172,7 +191,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                 isReal(definition.radiusAxisLow, PRIMITIVE_RADIUS_AXIS_MIN_BOUNDS);
             }
 
-            annotation { "Name" : "Max radius (treated as flat above)", "Description" : "Top of the radius axis; the radius plot breaks where |R| is larger (flat parts, next to an inflection) and the data table's radius is empty there. Enter in m, e.g. 50 m (500 mm of plot)." }
+            annotation { "Name" : "Max radius (treated as flat above)", "Description" : "The radius plot breaks where |R| is larger (flat parts, next to an inflection) and the data table's radius is empty there. Enter in m, e.g. 50 m. With Auto scale off it is also the top of the radius axis (10 mm per 1 m: 500 mm of plot)." }
             isLength(definition.radiusLimit, PRIMITIVE_RADIUS_LIMIT_BOUNDS);
 
             annotation { "Name" : "Key-location tick half-length", "Description" : "Half length of the radius / curvature band's key-location tick marks." }
@@ -189,7 +208,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             }
 
             annotation { "Name" : "Grid lines", "Default" : false,
-                        "Description" : "Horizontal grid lines at every tick level (10 m of radius, the curvature ticks, 50 N*m^2 of EI) across the plot and EI bands: one light-grey edge per level; restyle them (dashed, colour) in the drawing." }
+                        "Description" : "Horizontal grid lines at every tick level of the plot and EI bands: one light-grey edge per level; restyle them (dashed, colour) in the drawing." }
             definition.dashedGrid is boolean;
 
             annotation { "Name" : "Key lines", "Default" : false,
@@ -210,11 +229,19 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                         "Description" : "An EI profile wire in the xSection convention (EI and Cross Section's EI curve): x = world X along the ski, height z = EI with 1 mm = 1 N*m^2. Adds the EI band and Table 2 theoretical deflection (mm / 30 kg) and stiffness (lb/in): 3-point bending, rollers at FCP and ACP, load at MRS." }
             definition.targetEI is Query;
 
-            annotation { "Name" : "EI band scale (Nm^2 per mm)", "Description" : "Used only with a Target EI. N*m^2 per 1 mm of plot height: 2 = a 150 N*m^2 ski plots 75 mm high. Ticks every 50 N*m^2." }
-            isReal(definition.eiScale, PRIMITIVE_EI_SCALE_BOUNDS);
+            if (definition.autoScale)
+            {
+                annotation { "Name" : "EI band height", "Description" : "Used only with a Target EI (Auto scale, Plot group). Model height of the EI band, 0 to the axis top; the largest EI sits at 85-95 % of it." }
+                isLength(definition.eiBandHeight, PRIMITIVE_EI_BAND_HEIGHT_BOUNDS);
+            }
+            else
+            {
+                annotation { "Name" : "EI band scale (Nm^2 per mm)", "Description" : "Used only with a Target EI. N*m^2 per 1 mm of plot height: 2 = a 150 N*m^2 ski plots 75 mm high. Ticks every 50 N*m^2." }
+                isReal(definition.eiScale, PRIMITIVE_EI_SCALE_BOUNDS);
 
-            annotation { "Name" : "EI axis max (Nm^2)", "Description" : "Used only with a Target EI. The EI axis runs from 0 to this; the plot breaks above it." }
-            isReal(definition.eiAxisMax, PRIMITIVE_EI_AXIS_MAX_BOUNDS);
+                annotation { "Name" : "EI axis max (Nm^2)", "Description" : "Used only with a Target EI. The EI axis runs from 0 to this; the plot breaks above it." }
+                isReal(definition.eiAxisMax, PRIMITIVE_EI_AXIS_MAX_BOUNDS);
+            }
         }
 
         annotation { "Group Name" : "Tooling blocks (Table 5)", "Collapsed By Default" : true }
@@ -294,6 +321,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         const fromVolumeBaseline = definition.baselineFrom == PrimitiveSource.VOLUME;
         const fromVolumeFootprint = definition.footprintFrom == PrimitiveSource.VOLUME;
         const curvatureMode = definition.plotMode == PrimitivePlot.CURVATURE;
+        const autoScale = definition.autoScale;
         const plotBand = curvatureMode ? "curvature" : "radius";
         const plotLabel = PRIMITIVE_BAND_LABELS[plotBand];
         var notes = [];
@@ -401,19 +429,31 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             }
             beam = computeBeamStiffness(eiData, fcpWorld[0], acpWorld[0]);
         }
-        // EI band geometry (built at height 0, moved into place after stacking). Fixed axes (2026-09-29): x over the
-        // volume's full extent, EI 0 .. EI axis max; the plot is cut to that frame.
-        const eiPerUnit = millimeter / definition.eiScale;
+        // EI band geometry (built at height 0, moved into place after stacking). Frame x over the volume's full extent,
+        // EI 0 .. the axis top; the plot is cut to that frame. Auto scale (2026-09-29): fixed "EI band height", the top a
+        // nice multiple with the largest EI at 85-95 % of it; else EI scale / EI axis max (fixed axes of 2026-09-29).
         const eiFrameLo = volumeBox.minCorner[0];
         const eiFrameHi = volumeBox.maxCorner[0];
+        var eiPerUnit = millimeter / definition.eiScale;
+        var eiTop = definition.eiAxisMax;
+        var eiStep = PRIMITIVE_EI_GRID_STEP;
+        var eiMax = undefined;
         var eiPlot = undefined;
         if (beam != undefined)
         {
-            eiPlot = primitiveEIPlot(context, id + "eiPlot", wireEdges(definition.targetEI), toLocal, 0 * meter, eiPerUnit,
-                eiFrameLo, eiFrameHi, definition.eiAxisMax);
-            if (eiPlot.hi > definition.eiAxisMax)
+            if (autoScale)
             {
-                notes = append(notes, "the target EI exceeds EI axis max (" ~ definition.eiAxisMax ~ " N*m^2): its plot breaks above it");
+                eiMax = primitiveEIMax(context, wireEdges(definition.targetEI), toLocal, eiFrameLo, eiFrameHi);
+                const eiAxis = primitiveAutoAxis(eiMax > 0 ? eiMax : definition.eiAxisMax * AUTO_AIM, PRIMITIVE_EI_STEPS);
+                eiTop = eiAxis.top;
+                eiStep = eiAxis.step;
+                eiPerUnit = definition.eiBandHeight / eiTop;
+            }
+            eiPlot = primitiveEIPlot(context, id + "eiPlot", wireEdges(definition.targetEI), toLocal, 0 * meter, eiPerUnit,
+                eiFrameLo, eiFrameHi, eiTop);
+            if (eiPlot.hi > eiTop)
+            {
+                notes = append(notes, "the target EI exceeds EI axis max (" ~ eiTop ~ " N*m^2): its plot breaks above it");
             }
         }
 
@@ -521,9 +561,11 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         var valueLo = 0;
         var valueHi = 0;
         var runs = [];
+        // One level unit in value units: 0.01 1/m of curvature, 1 m of radius.
+        const levelUnit = curvatureMode ? PRIMITIVE_CURVATURE_UNIT : 1;
         if (curvatureMode)
         {
-            // Levels in 0.01 1/m; values in 1/m.
+            // Levels in 0.01 1/m; values in 1/m. The runs join at the manual scale in both modes (a continuity test).
             perLevel = definition.curvatureScale;
             perUnit = perLevel / PRIMITIVE_CURVATURE_UNIT;
             axisLo = -definition.curvatureAxisMin / PRIMITIVE_CURVATURE_UNIT;
@@ -542,15 +584,48 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             valueHi = definition.radiusLimit / meter;
             runs = primitiveRadiusRuns(unwrapped.samples);
         }
-        runs = primitiveClipRuns(runs, region.clip ? region.lo : frameLo - 1 * meter, region.clip ? region.hi : frameHi + 1 * meter, valueLo, valueHi);
+        const clipLo = region.clip ? region.lo : frameLo - 1 * meter;
+        const clipHi = region.clip ? region.hi : frameHi + 1 * meter;
+        // Auto scale (2026-09-29): fixed band height, zero line at PRIMITIVE_PLOT_NEGATIVE_FRACTION from the bottom (never
+        // moves), the positive axis top = a nice multiple with the largest plotted value (inside the Plot x-range and
+        // Max radius) at 85-95 % of it; the negative side takes the same scale down to the band's bottom.
+        var plotMax = undefined;
+        var plotFill = undefined;
+        const bandNegative = definition.radiusBandHeight * PRIMITIVE_PLOT_NEGATIVE_FRACTION;
+        const bandPositive = definition.radiusBandHeight - bandNegative;
+        if (autoScale)
+        {
+            const limit = curvatureMode ? 1e12 : definition.radiusLimit / meter;
+            runs = primitiveClipRuns(runs, clipLo, clipHi, -limit, limit);
+            plotMax = 0;
+            for (var run in runs)
+            {
+                for (var p in run)
+                {
+                    plotMax = max(plotMax, p[1]);
+                }
+            }
+            const manualTop = curvatureMode ? definition.maxCurvature : definition.radiusLimit / meter;
+            const axis = primitiveAutoAxis((plotMax > 0 ? plotMax : manualTop * AUTO_AIM) / levelUnit, PRIMITIVE_PLOT_STEPS);
+            plotFill = plotMax > 0 ? axis.fill : 0;
+            levelStep = axis.step;
+            axisHi = axis.top;
+            perLevel = bandPositive / axisHi;
+            perUnit = perLevel / levelUnit;
+            axisLo = -bandNegative / perLevel;
+            valueLo = axisLo * levelUnit;
+            valueHi = min(axisHi * levelUnit, limit);
+        }
+        runs = primitiveClipRuns(runs, clipLo, clipHi, valueLo, valueHi);
         const labelHeight = definition.labels ? definition.textHeight * 0.6 : undefined;
         const levels = primitiveLevelsWithin(axisLo, axisHi, levelStep);
         const plotFormat = { "digits" : curvatureMode ? 2 : 0, "signed" : !curvatureMode,
-                "labelStep" : primitiveLabelStep(levelStep, perLevel, labelHeight), "axisLo" : axisLo, "axisHi" : axisHi };
+                "labelStep" : primitiveLabelStep(levelStep, perLevel, labelHeight), "axisLo" : axisLo, "axisHi" : axisHi,
+                "labelTop" : autoScale ? axisHi : undefined };
 
         // ---- Bands: extents, stacking ----
         const labelHalf = definition.labels && size(levels) > 1 ? labelHeight / 2 : 0 * meter;
-        const eiLevels = eiPlot == undefined ? [] : primitiveLevelsWithin(0, definition.eiAxisMax, PRIMITIVE_EI_GRID_STEP);
+        const eiLevels = eiPlot == undefined ? [] : primitiveLevelsWithin(0, eiTop, eiStep);
         const eiLabelHalf = definition.labels && size(eiLevels) > 1 ? labelHeight / 2 : 0 * meter;
         const tick = definition.tickLength;
         const profileBodies = qUnion([profile.bottom, profile.top, profile.tipEnd, profile.tailEnd]);
@@ -559,15 +634,19 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         if (eiPlot != undefined)
         {
             bandKeys = ["ei"];
-            extents = [{ "lo" : -eiLabelHalf, "hi" : max(definition.eiAxisMax * eiPerUnit, eiLevels[size(eiLevels) - 1] * eiPerUnit + eiLabelHalf) }];
+            extents = [{ "lo" : -eiLabelHalf, "hi" : max(eiTop * eiPerUnit, eiLevels[size(eiLevels) - 1] * eiPerUnit + eiLabelHalf) }];
         }
         bandKeys = concatenateArrays([bandKeys, ["baseline", "profile", "footprint", plotBand]]);
+        // Auto scale: the plot band's extent is the band height (+ half a number at each end), whatever the data.
+        const plotExtent = autoScale ?
+            { "lo" : min(-bandNegative - labelHalf, -tick), "hi" : max(bandPositive + labelHalf, tick) } :
+            { "lo" : min([axisLo * perLevel, -tick, levels[0] * perLevel - labelHalf]),
+              "hi" : max([axisHi * perLevel, tick, levels[size(levels) - 1] * perLevel + labelHalf]) };
         extents = concatenateArrays([extents, [
             primitiveZExtent(context, baseline.body),
             primitiveZExtent(context, profileBodies),
             { "lo" : fpBox.minCorner[1], "hi" : fpBox.maxCorner[1] },
-            { "lo" : min([axisLo * perLevel, -tick, levels[0] * perLevel - labelHalf]),
-              "hi" : max([axisHi * perLevel, tick, levels[size(levels) - 1] * perLevel + labelHalf]) }
+            plotExtent
         ]]);
         const offsets = primitiveStack(extents, volumeBox.minCorner[2], definition.bandGap);
         var bandZ = {};
@@ -602,8 +681,8 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             members = append(members, eiReference);
             members = concatenateArrays([members, primitiveScaleFrame(context, id + "eiFrame", "EI", eiLevels, eiPerUnit, eiFrameLo, eiFrameHi,
                             zEI, dirSign, definition.dashedGrid, labelHeight, title,
-                            { "digits" : 0, "signed" : false, "labelStep" : primitiveLabelStep(PRIMITIVE_EI_GRID_STEP, eiPerUnit, labelHeight),
-                              "axisLo" : 0, "axisHi" : definition.eiAxisMax })]);
+                            { "digits" : 0, "signed" : false, "labelStep" : primitiveLabelStep(eiStep, eiPerUnit, labelHeight),
+                              "axisLo" : 0, "axisHi" : eiTop, "labelTop" : autoScale ? eiTop : undefined })]);
         }
 
         // Band 1: baseline
@@ -827,10 +906,12 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                     "extraKeyPoints" : extraNames,
                     "keyLines" : keyLineNames,
                     "junctionTicks" : definition.junctionTicks,
+                    "autoScale" : autoScale,
                     "tipTowards" : dirSign > 0 ? "+X" : "-X"
                 },
                 "bands" : bandsData(bandZ, definition, region, [frameLo, frameHi], [axisLo, axisHi], levels, levelStep, perLevel, curvatureMode,
-                    size(junctions), eiPlot == undefined ? undefined : [eiFrameLo, eiFrameHi]),
+                    size(junctions), eiPlot == undefined ? undefined : [eiFrameLo, eiFrameHi],
+                    { "max" : plotMax, "fill" : plotFill, "eiTop" : eiTop, "eiStep" : eiStep, "eiPerUnit" : eiPerUnit, "eiMax" : eiMax }),
                 "scaleFactors" : scale.rows,
                 "metadata" : metaRows,
                 "keyLocations" : keyRows,
@@ -873,7 +954,18 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             summary = summary ~ " Note: " ~ join(notes, "; ") ~ ".";
         }
         reportFeatureInfo(context, id, summary);
-    }, {});
+    }, {
+        // Hidden manual scales (Auto scale on) and the auto band heights (off) may be absent from a definition.
+        "autoScale" : true,
+        "radiusBandHeight" : 150 * millimeter,
+        "eiBandHeight" : 150 * millimeter,
+        "curvatureScale" : 50 * millimeter,
+        "maxCurvature" : 0.1,
+        "curvatureAxisMin" : 0.02,
+        "radiusAxisLow" : 10,
+        "eiScale" : 2,
+        "eiAxisMax" : 450
+    });
 
 /** Where the Table 2 average radius is always taken (user, 2026-09-28). */
 const AVERAGE_BETWEEN = "between the inflection points";
@@ -1006,29 +1098,55 @@ function uKey(u is ValueWithUnits) returns string
  * mm and axis range in level units, 2026-09-29) and the levels for the attribute.
  */
 function bandsData(bandZ is map, definition is map, region is map, frameX is array, axis is array, levels is array, levelStep is number,
-    perLevel is ValueWithUnits, curvatureMode is boolean, junctionCount is number, eiFrameX) returns map
+    perLevel is ValueWithUnits, curvatureMode is boolean, junctionCount is number, eiFrameX, scale is map) returns map
 {
-    var out = { "radiusScale" : "10 mm per 1 m" };
+    const auto = definition.autoScale;
+    // The scales actually used (2026-09-29 auto scale): radiusScale / curvatureScale / eiScale as text (keys of
+    // primitive/1), plus numbers: radiusScaleMm (mm per 1 m) + radiusTickStep (m), or curvatureScaleMm (mm per
+    // 0.01 1/m) + curvatureTickStep (1/m); eiPerMm (N*m^2 per 1 mm) + eiTickStep; band heights (mm); with auto scale
+    // the largest plotted value (plotMax: m or 1/m; eiMax) and its share of the positive axis (plotFill, eiFill).
+    const levelMM = primitiveRound(perLevel / millimeter, 4);
+    var out = { "autoScale" : auto, "radiusScale" : curvatureMode ? "10 mm per 1 m" : levelMM ~ " mm per 1 m" };
     for (var entry in bandZ)
     {
         out[entry.key] = primitiveMM(entry.value);
     }
     if (bandZ.ei != undefined)
     {
-        out.eiScale = definition.eiScale ~ " N*m^2 per 1 mm";
-        out.eiAxisMax = definition.eiAxisMax;
+        const eiPerMm = primitiveRound(millimeter / scale.eiPerUnit, 6);
+        out.eiScale = eiPerMm ~ " N*m^2 per 1 mm";
+        out.eiPerMm = eiPerMm;
+        out.eiAxisMax = scale.eiTop;
+        out.eiTickStep = scale.eiStep;
+        out.eiBandHeight = primitiveMM(scale.eiTop * scale.eiPerUnit);
         out.eiFrameFrom = primitiveMM(eiFrameX[0]);
         out.eiFrameTo = primitiveMM(eiFrameX[1]);
+        if (auto && scale.eiMax != undefined)
+        {
+            out.eiMax = primitiveRound(scale.eiMax, 4);
+            out.eiFill = primitiveRound(scale.eiMax / scale.eiTop, 4);
+        }
     }
     if (curvatureMode)
     {
-        out.curvatureScale = primitiveRound(definition.curvatureScale / millimeter, 4) ~ " mm per 0.01 1/m";
-        out.maxCurvature = definition.maxCurvature;
-        out.curvatureAxisMin = definition.curvatureAxisMin;
+        out.curvatureScale = levelMM ~ " mm per 0.01 1/m";
+        out.curvatureScaleMm = levelMM;
+        out.curvatureTickStep = primitiveRound(levelStep * PRIMITIVE_CURVATURE_UNIT, 6);
+        out.maxCurvature = primitiveRound(axis[1] * PRIMITIVE_CURVATURE_UNIT, 6);
+        out.curvatureAxisMin = primitiveRound(-axis[0] * PRIMITIVE_CURVATURE_UNIT, 6);
     }
     else
     {
-        out.radiusAxisMin = definition.radiusAxisLow;
+        out.radiusScaleMm = levelMM;
+        out.radiusTickStep = levelStep;
+        out.radiusAxisMin = primitiveRound(-axis[0], 6);
+    }
+    out.plotBandHeight = primitiveMM((axis[1] - axis[0]) * perLevel);
+    out.plotBandNegative = primitiveMM(-axis[0] * perLevel);
+    if (auto)
+    {
+        out.plotMax = primitiveRound(scale.max, 6);
+        out.plotFill = primitiveRound(scale.fill, 4);
     }
     out.radiusLimit = primitiveRound(definition.radiusLimit / meter, 4);
     // The plot band's fixed frame: u from / to (mm) and the axis from / to (level units: m of radius, 0.01 1/m).

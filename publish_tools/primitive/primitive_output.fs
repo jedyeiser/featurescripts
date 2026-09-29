@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_frame.fs
-export import(path : "5808546b3b3d863d82796d24", version : "304d3e1da4e9f8fb14260726");
+export import(path : "5808546b3b3d863d82796d24", version : "0c44c88b4829c8f3e72eb25d");
 
 /**
  * Export Primitive -- output geometry helpers: named point bodies and segments, band stacking and the closed
@@ -254,6 +254,60 @@ export function primitiveNiceStep(step is number, least is number) returns numbe
 }
 
 /**
+ * Auto scale (2026-09-29): the axis for a band whose largest plotted value is `maxValue` (level units, > 0): top =
+ * k * step with step one of `steps` or a multiple of one by 10, 100, ... and k = the fewest steps that keep maxValue
+ * at most PRIMITIVE_AUTO_FILL_HI of top (at least 2). Of all steps, in this order: k <= 10; maxValue / top within
+ * PRIMITIVE_AUTO_FILL_LO .. HI; 4 <= k <= 8; then, inside that range, the LARGEST step (fewest ticks), outside it the
+ * fill nearest the middle of the range. Returns { step, top, fill } (fill = maxValue / top).
+ */
+export function primitiveAutoAxis(maxValue is number, steps is array) returns map
+{
+    const aim = (PRIMITIVE_AUTO_FILL_LO + PRIMITIVE_AUTO_FILL_HI) / 2;
+    var best = undefined;
+    var decade = 1;
+    while (true)
+    {
+        for (var m in steps)
+        {
+            const step = m * decade;
+            const k = max(2, ceil(maxValue / (PRIMITIVE_AUTO_FILL_HI * step) - 1e-9));
+            const fill = maxValue / (k * step);
+            const candidate = { "step" : step, "top" : k * step, "fill" : fill,
+                    "allowed" : k <= 10, "inRange" : fill >= PRIMITIVE_AUTO_FILL_LO - 1e-9 && fill <= PRIMITIVE_AUTO_FILL_HI + 1e-9,
+                    "preferred" : k >= 4 && k <= 8 };
+            if (best == undefined || betterAxis(candidate, best, aim))
+            {
+                best = candidate;
+            }
+        }
+        // Larger decades only give k = 2 with a lower fill.
+        if (min(steps) * decade * 2 >= maxValue)
+        {
+            break;
+        }
+        decade *= 10;
+    }
+    return { "step" : best.step, "top" : best.top, "fill" : best.fill };
+}
+
+/** primitiveAutoAxis's order: true when candidate a beats b. */
+function betterAxis(a is map, b is map, aim is number) returns boolean
+{
+    for (var key in ["allowed", "inRange", "preferred"])
+    {
+        if (a[key] != b[key])
+        {
+            return a[key];
+        }
+    }
+    if (a.inRange)
+    {
+        return a.step > b.step;
+    }
+    return abs(a.fill - aim) < abs(b.fill - aim) - 1e-12;
+}
+
+/**
  * The label step (whole level units, a multiple of `step`) that keeps a scale's numbers at least 1.25 label heights
  * apart: `step` itself when they already are (radius 10 m = 100 mm, EI 50 N*m^2 = 25 mm at the default scales).
  */
@@ -286,7 +340,9 @@ export function primitiveGridLine(context is Context, id is Id, start is Vector,
  * every level but 0 ("<band> GRID -20", one light-grey edge across the band, primitiveGridLine) and, with a text height,
  * the level numbers left of the low-x axis ("<band> LABEL +10"). Levels are whole level units, `perLevel` = plot height
  * of one unit. `format` = { digits (decimals of one level unit: 0 for radius m / EI N*m^2, 2 for curvature in 0.01
- * 1/m), signed (the label TEXT keeps its "+"; body names always do), labelStep (numbers only on its multiples) }.
+ * 1/m), signed (the label TEXT keeps its "+"; body names always do), labelStep (numbers only on its multiples),
+ * labelTop (optional, auto scale: this level is always numbered and numbers closer than 1.25 text heights to it are
+ * left out) }.
  * Operation ids and names come from the level and the end, never from list positions. Returns the bodies (grey; the
  * grid lines light grey).
  */
@@ -321,7 +377,20 @@ export function primitiveScaleFrame(context is Context, id is Id, band is string
     {
         for (var level in levels)
         {
-            if (round(level) % format.labelStep != 0)
+            var show = round(level) % format.labelStep == 0;
+            // Auto scale: the axis top is always numbered; a number too close below it gives way.
+            if (format.labelTop is number)
+            {
+                if (abs(level - format.labelTop) < 1e-9)
+                {
+                    show = true;
+                }
+                else if (abs(level - format.labelTop) * perLevel < 1.25 * textHeight)
+                {
+                    show = false;
+                }
+            }
+            if (!show)
             {
                 continue;
             }
@@ -405,6 +474,33 @@ export function primitiveEIPlot(context is Context, id is Id, edges is Query, to
         }
     }
     return { "bodies" : bodies, "hi" : hi, "xLo" : xLo, "xHi" : xHi };
+}
+
+/**
+ * The largest EI (N*m^2) primitiveEIPlot would plot: over the same 41 samples per edge, those with local x in
+ * frameLo..frameHi (auto scale's maximum). 0 without samples there.
+ */
+export function primitiveEIMax(context is Context, edges is Query, toLocal is Transform, frameLo is ValueWithUnits, frameHi is ValueWithUnits) returns number
+{
+    const zero = 0 * meter;
+    var params = [];
+    for (var k = 0; k <= 40; k += 1)
+    {
+        params = append(params, k / 40);
+    }
+    var hi = 0;
+    for (var edge in evaluateQuery(context, edges))
+    {
+        for (var tl in evEdgeTangentLines(context, { "edge" : edge, "parameters" : params }))
+        {
+            const x = (toLocal * vector(tl.origin[0], zero, zero))[0];
+            if (x >= frameLo && x <= frameHi)
+            {
+                hi = max(hi, tl.origin[2] / millimeter);
+            }
+        }
+    }
+    return hi;
 }
 
 /**
