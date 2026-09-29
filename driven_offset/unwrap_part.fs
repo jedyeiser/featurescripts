@@ -2959,7 +2959,8 @@ export function prismPiece(context is Context, id is Id, chart is map, piece is 
         opTransform(context, cid + "place", { "bodies" : qCreatedBy(cid, EntityType.BODY),
                     "transform" : toWorld(coordSystem(vector(cap.origin[0], cap.origin[1], cap.origin[2]) * meter,
                             vector(cap.u[0], cap.u[1], cap.u[2]), vector(cap.normal[0], cap.normal[1], cap.normal[2]))) });
-        opBoolean(context, cid + "cut", { "targets" : qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SOLID),
+        opBoolean(context, cid + "cut", { "targets" : qSubtraction(qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SOLID),
+                        qCreatedBy(cid, EntityType.BODY)),
                     "tools" : qCreatedBy(cid, EntityType.BODY), "operationType" : BooleanOperationType.SUBTRACTION });
     }
     const scrap = qBodyType(qCreatedBy(id, EntityType.BODY), [BodyType.SHEET, BodyType.WIRE, BodyType.POINT]);
