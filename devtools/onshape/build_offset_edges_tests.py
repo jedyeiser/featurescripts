@@ -40,6 +40,8 @@ length and the Intersections array (blends) are all written here by hand. Cases 
   OE22  native composite curve of OE6's blend edge, picked by its transient id -> reference survives
   OE16  two lines at a corner (not G1; temporary instance, deleted) -> ERROR
   OE25  OE6's layout, both regions named "A", blend keyed by the hidden region ids -> same as OE6
+  OE26  line 200, region 150..50 (reversed), Normal 20 -> 0, start dwell 10 -> 20 held at s 150..140, 0 at s 50
+  OE27  line 200, region 200..0 (reversed), Quadratic zero slope at start 0 -> 20 -> flat at s 200, 20 at s 0
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_offset_edges_tests.py
 """
@@ -396,4 +398,12 @@ offset("OE25 line 400, regions A (id R1) and A (id R2), G1 blend keyed by id -> 
        [region("A", 0, 150, normal=(0, 0), number=1, region_id="R1"),
         region("A", 250, 400, normal=(20, 20), number=2, region_id="R2")],
        [blend(1, "A", "A", "G1", 10, "G1", 10, ids=("R1", "R2"))])
+
+# OE26 / OE27 reversed extents (2026-09-28): Region start past Region end -- every start/end value (offsets, dwells,
+# the quadratic's zero-slope end) stays at the end it was entered for. Before the fix they landed at the other end.
+offset("OE26 line 200, region 150..50 reversed, Normal 20 to 0 linear, start dwell 10 -> 20 held s 150..140, 0 at s 50",
+       line_source("OE26", 26000, 200), ref_point("OE26", 26000, 0), [region("A", 150, 50, normal=(20, 0), dwell=(10, 0))])
+offset("OE27 line 200, region 200..0 reversed, Quadratic zero slope at start 0 to 20 -> flat 0 at s 200, 20 at s 0",
+       line_source("OE27", 27000, 200), ref_point("OE27", 27000, 0),
+       [region("A", 200, 0, shape="QUADRATIC", normal=(0, 20), quad="AT_START")])
 print("studio", E)

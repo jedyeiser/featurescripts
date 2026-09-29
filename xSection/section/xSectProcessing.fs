@@ -19,9 +19,9 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORTS - xSectPredicates (for MaterialBehavior and MaterialType enums)
 import(path : "17142132b20343b5f125e7e7", version : "92eaeac3778fb2c3abe9bc15");
 // IMPORTS - xSectUtils (constants, utilities, polyline projection)
-import(path : "c2c3edd39b85fde5e6062533", version : "9cf03ed1102fc8e100e8e3f1");
+import(path : "c2c3edd39b85fde5e6062533", version : "ba11d48ccdd4952265f29ad5");
 // IMPORTS - xSect_Triangulation (processBodyCurves)
-import(path : "08d3a8d4e34a60d45d46e261", version : "b3ec304e131f77982d65a20b");
+import(path : "08d3a8d4e34a60d45d46e261", version : "d441f8c0aef95acc87399758");
 // IMPORTS - xSectMaterials (buildMaterialLookup, normalizeMaterialName, tryGetKey)
 import(path : "f8e590162884d45f56e0a05f", version : "eea0dd2f92bbe788ad4ed3b4");
 

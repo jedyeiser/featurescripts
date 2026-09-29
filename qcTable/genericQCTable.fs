@@ -105,7 +105,8 @@ export const generateGenericQCData = defineFeature(function(context is Context, 
         // ===== Table Formatting =====
         annotation { "Group Name" : "Table Formatting", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Table Order", "UIHint" : UIHint.SHOW_LABEL, "Default" : TABLE_ORDER.DESCENDING }
+            annotation { "Name" : "Table Order", "UIHint" : UIHint.SHOW_LABEL, "Default" : TABLE_ORDER.DESCENDING,
+                         "Description" : "Ascending / Descending world X (not tip/tail)." }
             definition.tableOrder is TABLE_ORDER;
 
             annotation { "Name" : "Table Units", "Default" : EXPORT_UNITS.MILLIMETER }
@@ -235,6 +236,7 @@ export const generateGenericQCData = defineFeature(function(context is Context, 
             rows[i].station = num ~ "";
         }
 
+        // DESCENDING = descending world X (rows are in ascending world X here); no tip/tail logic.
         if (definition.tableOrder == TABLE_ORDER.DESCENDING)
         {
             rows = reverse(rows);

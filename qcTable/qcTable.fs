@@ -16,7 +16,7 @@ import(path : "f78f146e807209053299e5a5", version : "b3a06038d37ca234d362d348");
 import(path : "0f9cf9b21a3c654880d3167c", version : "d04be9c925d28ec09fb9b6b5");
 
 //import qcTable_merge
-import(path : "7fe95d3b9947e33ce37bdeab", version : "0a1a640e201320625fe108b8");
+import(path : "7fe95d3b9947e33ce37bdeab", version : "fa1248bf88971642a033f146");
 
 
 /**
@@ -89,7 +89,8 @@ export const generateQCData = defineFeature(function(context is Context, id is I
             annotation { "Name" : "ACP Reference", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             definition.acpReference is Query;
 
-            annotation { "Name" : "Table Origin", "UIHint" : UIHint.SHOW_LABEL, "Default" : TABLE_ORIGIN.ORIGIN }
+            annotation { "Name" : "Table Origin", "UIHint" : UIHint.SHOW_LABEL, "Default" : TABLE_ORIGIN.ORIGIN,
+                         "Description" : "The X column is signed world X, measured from the world origin or the picked reference (not a tip/tail distance)." }
             definition.tableOrigin is TABLE_ORIGIN;
 
             // Hidden control for showing/hiding the origin reference picker
@@ -190,10 +191,12 @@ export const generateQCData = defineFeature(function(context is Context, id is I
 
             if (definition.corePhantomMode == PHANTOM_MODE.QUERY)
             {
-                annotation { "Name" : "Core phantom start", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                annotation { "Name" : "Core phantom start", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                             "Description" : "Moves the core's low-X end row to this X (world X, not tip/tail)." }
                 definition.corePhantomStart is Query;
 
-                annotation { "Name" : "Core phantom end", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                annotation { "Name" : "Core phantom end", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                             "Description" : "Moves the core's high-X end row to this X (world X, not tip/tail)." }
                 definition.corePhantomEnd is Query;
             }
 
@@ -208,10 +211,12 @@ export const generateQCData = defineFeature(function(context is Context, id is I
 
             if (definition.swPhantomMode == PHANTOM_MODE.QUERY)
             {
-                annotation { "Name" : "Sidewall phantom start", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                annotation { "Name" : "Sidewall phantom start", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                             "Description" : "Moves the sidewall's low-X end row to this X (world X, not tip/tail)." }
                 definition.swPhantomStart is Query;
 
-                annotation { "Name" : "Sidewall phantom end", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                annotation { "Name" : "Sidewall phantom end", "Filter" : EntityType.VERTEX || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                             "Description" : "Moves the sidewall's high-X end row to this X (world X, not tip/tail)." }
                 definition.swPhantomEnd is Query;
             }
         }

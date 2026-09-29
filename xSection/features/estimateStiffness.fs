@@ -2,7 +2,7 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 // xSectBeamAnalysis (beam stiffness computations)
-import(path : "ebac109589e3bf405d3f3ae7", version : "3e5aa388bc17618e2d42d030");
+import(path : "ebac109589e3bf405d3f3ae7", version : "07cfdc7634781f7f69ffd5b3");
 
 // xSectReferencePoints
 import(path : "08fddb59786b6bfee020ee05", version : "16a3259bfc59aee2fbc2c1dd");

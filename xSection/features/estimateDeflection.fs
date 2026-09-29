@@ -406,11 +406,15 @@ export function estimateDeflectionManipulatorChangeLegacy(
                  annotation { "Name" : "Plate stiffness", "Filter" : EntityType.EDGE, "MaxNumberOfPicks" : 1 }
                  definition.plateStiffness is Query;
                  
-                 annotation { "Name" : "Reaction moment", "Description" : "Moment from forward pressure in Nm", "Default" : 0}
+                 annotation { "Name" : "Reaction moment", "Description" : "Moment from forward pressure in Nm. It presses the tip side down (Z up) and puts more load on the tip-side support. Tip side: the FCP side when an FCP is picked, else the higher-X end.", "Default" : 0}
                  isReal(definition.reactionMoment, POSITIVE_REAL_BOUNDS);
-                 
+
                  annotation { "Name" : "Moment x location", "Description" : "We assume that EI profile is in XZ plane. This is the location of the reaction moment in X", "Default" : 0 * meter }
                  isLength(definition.reactionMomentX, LENGTH_BOUNDS);
+
+                 annotation { "Name" : "FCP (optional)", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                              "Description" : "The forebody contact point. When picked, the EI-profile end nearest it is the tip, so the reaction moment presses that end down whichever way the ski points (a mirrored ski deflects as the mirror image). Empty: the tip is the higher-X end (a +Y moment, clockwise in the Front view)." }
+                 definition.fcpReference is Query;
              }
              
          }
@@ -953,7 +957,23 @@ export function estimateDeflectionManipulatorChangeLegacy(
         var R1;
         var R2;
         var R3 = 0 * newton;
+        // Reaction moment sense. M0 > 0 is a couple about +Y (clockwise in the Front view, X right, Z up): it
+        // steps the sagging moment up by M0 at the mount (10a) and loads the higher-X support more, i.e. it presses
+        // the +X end down. "Forward pressure" presses the TIP down, so the old code assumed the tip at +X. With an
+        // FCP picked, the EI-profile end nearest it is the tip; a tip at the low-X end reverses the couple, which
+        // makes the mirrored ski deflect as the mirror image. Empty FCP (or a tie) = exactly the old sense.
         var M0 = (definition.addPlateConditions ? definition.reactionMoment : 0) * newton * meter;
+        var momentSense = 1;
+        if (definition.addPlateConditions && definition.fcpReference != undefined &&
+            !isQueryEmpty(context, definition.fcpReference))
+        {
+            const xFcp = resolveQueryX(context, definition.fcpReference);
+            if (abs(xFcp - xMin) < abs(xFcp - xMax))
+            {
+                momentSense = -1;
+                M0 = -M0;
+            }
+        }
         if (definition.addThirdSupport)
         {
             R3 = F_total * definition.supportLoadBalance;
@@ -1067,6 +1087,10 @@ export function estimateDeflectionManipulatorChangeLegacy(
             {
                 println("Applied 2: x=" ~ toString(x2 / meter) ~ " m, F2=" ~ toString(F2 / newton) ~ " N");
             }
+            if (definition.addPlateConditions)
+            {
+                println("Reaction moment: " ~ toString(M0 / (newton * meter)) ~ " N*m at x=" ~ toString(definition.reactionMomentX / meter) ~ " m (+ = about +Y; tip " ~ (momentSense > 0 ? "+X" : "-X") ~ ")");
+            }
             println("Net force (R - F): " ~ toString((R1 + R2 + R3 - F1 - F2) / newton) ~ " N (should be ~0)");
             println("xAffected: [" ~ toString(xAffectedMin / meter) ~ " m, " ~ toString(xAffectedMax / meter) ~ " m]");
             println("EI input data (sorted, " ~ toString(size(eiData)) ~ " samples):");
@@ -1118,12 +1142,13 @@ export function estimateDeflectionManipulatorChangeLegacy(
         }
 
         // --- 10a. Inject concentrated reaction moment (if enabled) ---
+        // M0 carries the tip-side sense chosen in step 6 (= reactionMoment * N m when no FCP is picked).
         if (definition.addPlateConditions && definition.reactionMoment != 0)
         {
             var iM = findNearestIndex(x_eval, definition.reactionMomentX);
             for (var i = iM; i < N; i += 1)
             {
-                M_arr[i] = M_arr[i] + definition.reactionMoment * newton * meter;
+                M_arr[i] = M_arr[i] + M0;
             }
         }
 
@@ -1937,6 +1962,6 @@ export function estimateDeflectionManipulatorChangeLegacy(
             "propertyType" : PropertyType.NAME,
             "value"        : "deflection_curve"
         });
-     });
+     }, { "fcpReference" : qNothing() });
  
 

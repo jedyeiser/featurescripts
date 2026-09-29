@@ -3,11 +3,11 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/geometriccontinuity.gen.fs", version : "3083.0");
 
 //import CurveWrapping_full/curveMappingCore
-import(path : "08e8748f2ef24eea16072b75/fa1a00e26f19c86291f2c55e/683d867c35fdab9c98d47556", version : "3e109f7b7c74c76503dcf207");
+import(path : "08e8748f2ef24eea16072b75/1e6c50f8b5c1c4c48b5e745d/683d867c35fdab9c98d47556", version : "be9fd598630c331b5bc74e36");
 //import CurveWrapping_full/Utils
-import(path : "08e8748f2ef24eea16072b75/fa1a00e26f19c86291f2c55e/ad98c7f43a25a4c0e8a428e7", version : "223c53d12a83984c4c62e354");
+import(path : "08e8748f2ef24eea16072b75/1e6c50f8b5c1c4c48b5e745d/ad98c7f43a25a4c0e8a428e7", version : "223c53d12a83984c4c62e354");
 // IMPORT: offset_edges_frames.fs (same document)
-import(path : "cf322190768efbd668185c8c", version : "de724f522170a8defcfd213b");
+import(path : "cf322190768efbd668185c8c", version : "6f365484ed2b8f83fb60ee41");
 
 /**
  * Offset edges -- regions, profile and output wire (split out of offsetEdges.fs 2026-09-26).
@@ -109,6 +109,9 @@ export function processRegions(context is Context, definition is map, pathInfo i
             tEnd   = max(r0.arcLength, r1.arcLength) / pathInfo.length;
         }
 
+        // Keep tStart < tEnd. When the ends swap (Region start past Region end along the path) every
+        // start/end pair swaps with them -- offsets, dwells and the quadratic's zero-slope end -- so each
+        // value stays at the end the user entered it for. (Interior stations are positions: unaffected.)
         tStart = min(max(tStart, 0), 1);
         tEnd   = min(max(tEnd,   0), 1);
         if (tStart > tEnd)
@@ -116,6 +119,24 @@ export function processRegions(context is Context, definition is map, pathInfo i
             var tmp = tStart;
             tStart = tEnd;
             tEnd = tmp;
+
+            var tmpN = region.startNormalOffset;
+            region.startNormalOffset = region.endNormalOffset;
+            region.endNormalOffset = tmpN;
+
+            var tmpB = region.startBinormalOffset;
+            region.startBinormalOffset = region.endBinormalOffset;
+            region.endBinormalOffset = tmpB;
+
+            var tmpD = region.startDelay;
+            region.startDelay = region.endDelay;
+            region.endDelay = tmpD;
+
+            if (region.regionType == RegionType.QUADRATIC)
+            {
+                region.quadZeroSlope = (region.quadZeroSlope == QuadraticZeroSlope.AT_END)
+                    ? QuadraticZeroSlope.AT_START : QuadraticZeroSlope.AT_END;
+            }
         }
 
         region.tStart = tStart;

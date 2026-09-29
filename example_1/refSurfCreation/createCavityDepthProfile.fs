@@ -6,7 +6,7 @@ export import(path : "onshape/std/geometriccontinuity.gen.fs", version : "3083.0
 import(path : "d41884a96244793beb462449", version : "20f7377fd8cb8b11ad2de099");
 
 
-// ─── Enums ────────────────────────────────────────────────────────────────────
+// --- Enums --------------------------------------------------------------------
 
 export enum CavityDepthInputType
 {
@@ -40,7 +40,7 @@ export enum QuadraticZeroSlope
 }
 
 
-// ─── Bounds ───────────────────────────────────────────────────────────────────
+// --- Bounds -------------------------------------------------------------------
 
 export const SidewallBottomOffsetBounds = {(millimeter) : [0.1, 2, 5]}    as LengthBoundSpec;
 export const SidewallTopOffsetBounds    = {(millimeter) : [0, 0, 5]}      as LengthBoundSpec;
@@ -51,13 +51,13 @@ export const ApproxMaxCPBounds          = {(unitless) : [10, 100, 500]}   as Int
 export const SamplingDensityBounds      = {(unitless) : [5, 50, 500]}     as IntegerBoundSpec;
 
 
-// ─── Editing logic ────────────────────────────────────────────────────────────
+// --- Editing logic ------------------------------------------------------------
 
 export function generateCavityDepthProfileEditingLogic(context is Context, id is Id,
     oldDefinition is map, definition is map, isCreating is boolean,
     specifiedParameters is map, hiddenBodies is Query) returns map
 {
-    // Process path — bail silently if inputs are incomplete
+    // Process path -- bail silently if inputs are incomplete
     var pathInfo = undefined;
     try silent
     {
@@ -108,7 +108,7 @@ export function generateCavityDepthProfileEditingLogic(context is Context, id is
         var regA = sortedRegions[i];
         var regB = sortedRegions[i + 1];
 
-        // Default entry — will be overridden by preserved user settings below
+        // Default entry -- will be overridden by preserved user settings below
         var entry = {
             "isValid"         : true,
             "intersectionNum" : i + 1,
@@ -140,7 +140,7 @@ export function generateCavityDepthProfileEditingLogic(context is Context, id is
 }
 
 
-// ─── Feature ──────────────────────────────────────────────────────────────────
+// --- Feature ------------------------------------------------------------------
 
 annotation { "Feature Type Name" : "Generate cavity depth profile",
              "Feature Type Description" : "Generates a cavity depth profile based on user inputs",
@@ -210,7 +210,7 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
             if (region.extentType == RegionExtentType.X_EXTENTS)
             {
                 annotation { "Name" : "Region start",
-                             "Description" : "Distance along wire from reference point (negative = toward tail)" }
+                             "Description" : "Signed distance along the wire from the reference point (positive = toward +X)" }
                 isLength(region.regionStart, LENGTH_BOUNDS);
 
                 annotation { "Name" : "Region end",
@@ -320,7 +320,7 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
 
         if (size(definition.regions) == 0)
         {
-            reportFeatureWarning(context, id, "No regions defined — nothing to generate");
+            reportFeatureWarning(context, id, "No regions defined -- nothing to generate");
             return;
         }
 
@@ -330,7 +330,7 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
         var sortedRegions = sortRegionsByTStart(processedRegions);
         buildOutputWire(context, id, definition, pathInfo, sortedRegions);
 
-        // ── Debug ──────────────────────────────────────────────────────────────
+        // -- Debug --------------------------------------------------------------
         if (definition.printRefData)
         {
             var ep0    = evPathTangentLines(context, pathInfo.path, [0]).tangentLines[0].origin;
@@ -362,11 +362,11 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
                 var ptEnd   = evPathTangentLines(context, pathInfo.path, [reg.tEnd]).tangentLines[0].origin;
                 println("  Region: '" ~ reg.regionName ~ "'");
                 println("    tStart:       " ~ toString(reg.tStart)
-                    ~ "  →  [" ~ toString(ptStart[0] / millimeter) ~ ", "
+                    ~ "  ->  [" ~ toString(ptStart[0] / millimeter) ~ ", "
                                ~ toString(ptStart[1] / millimeter) ~ ", "
                                ~ toString(ptStart[2] / millimeter) ~ "] mm");
                 println("    tEnd:         " ~ toString(reg.tEnd)
-                    ~ "  →  [" ~ toString(ptEnd[0] / millimeter) ~ ", "
+                    ~ "  ->  [" ~ toString(ptEnd[0] / millimeter) ~ ", "
                                ~ toString(ptEnd[1] / millimeter) ~ ", "
                                ~ toString(ptEnd[2] / millimeter) ~ "] mm");
                 println("    length:       " ~ toString(reg.length / millimeter) ~ " mm");
@@ -376,8 +376,8 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
                 {
                     var rawTStart = pathInfo.refParam + sign * (reg.regionStart / pathInfo.length);
                     var rawTEnd   = pathInfo.refParam + sign * (reg.regionEnd   / pathInfo.length);
-                    println("    input xStart: " ~ toString(reg.regionStart / millimeter) ~ " mm  →  rawT=" ~ toString(rawTStart));
-                    println("    input xEnd:   " ~ toString(reg.regionEnd   / millimeter) ~ " mm  →  rawT=" ~ toString(rawTEnd));
+                    println("    input xStart: " ~ toString(reg.regionStart / millimeter) ~ " mm  ->  rawT=" ~ toString(rawTStart));
+                    println("    input xEnd:   " ~ toString(reg.regionEnd   / millimeter) ~ " mm  ->  rawT=" ~ toString(rawTEnd));
                 }
             }
         }
@@ -406,7 +406,7 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
     });
 
 
-// ─── Path processing ──────────────────────────────────────────────────────────
+// --- Path processing ----------------------------------------------------------
 
 function processPath(context is Context, id is Id, definition is map) returns map
 {
@@ -438,7 +438,7 @@ function processPath(context is Context, id is Id, definition is map) returns ma
 }
 
 
-// ─── Region processing ────────────────────────────────────────────────────────
+// --- Region processing --------------------------------------------------------
 
 function processRegions(context is Context, definition is map, pathInfo is map) returns array
 {
@@ -474,7 +474,9 @@ function processRegions(context is Context, definition is map, pathInfo is map) 
             tEnd   = max(d0.sides[0].pathParam, d1.sides[0].pathParam);
         }
 
-        // Clamp and ensure start < end
+        // Clamp and ensure start < end. When the ends swap (bottom wire running toward -X, or
+        // Region start past Region end) the start/end offsets and the quadratic's zero-slope end
+        // swap with them, so each value stays at the end the user entered it for.
         tStart = min(max(tStart, 0), 1);
         tEnd   = min(max(tEnd,   0), 1);
         if (tStart > tEnd)
@@ -482,6 +484,16 @@ function processRegions(context is Context, definition is map, pathInfo is map) 
             var tmp = tStart;
             tStart = tEnd;
             tEnd = tmp;
+
+            var tmpOffset = region.startOffset;
+            region.startOffset = region.endOffset;
+            region.endOffset = tmpOffset;
+
+            if (region.regionType == RegionType.QUADRATIC)
+            {
+                region.quadZeroSlope = (region.quadZeroSlope == QuadraticZeroSlope.AT_END)
+                    ? QuadraticZeroSlope.AT_START : QuadraticZeroSlope.AT_END;
+            }
         }
 
         region.tStart = tStart;
@@ -539,7 +551,7 @@ function sortRegionsByTStart(regions is array) returns array
 }
 
 
-// ─── Point resolution ─────────────────────────────────────────────────────────
+// --- Point resolution ---------------------------------------------------------
 
 function resolveQueryToPoint(context is Context, q is Query) returns Vector
 {
@@ -552,12 +564,12 @@ function resolveQueryToPoint(context is Context, q is Query) returns Vector
 }
 
 
-// ─── Normal convention ────────────────────────────────────────────────────────
+// --- Normal convention --------------------------------------------------------
 
 /**
  * Convention: negate tangent so X component is positive, then cross with +Y.
  * cross([a, b, c], [0, 1, 0]) = [-c, 0, a]. With a > 0 and wire lying in XY,
- * result ≈ [0, 0, a] — positive Z (upward out of ski base).
+ * result ~ [0, 0, a] -- positive Z (upward out of ski base).
  */
 function computeEdgeNormal(tangentDir is Vector) returns Vector
 {
@@ -568,13 +580,13 @@ function computeEdgeNormal(tangentDir is Vector) returns Vector
 }
 
 
-// ─── Profile value ────────────────────────────────────────────────────────────
+// --- Profile value ------------------------------------------------------------
 
 /**
- * Returns the profile offset at normalized position t ∈ [0,1] within a region.
+ * Returns the profile offset at normalized position t in [0,1] within a region.
  *   LINEAR    : linear ramp
- *   QUADRATIC : smoothstep  (3t²−2t³)   — C1 at endpoints
- *   LOGISTIC  : smootherstep(6t⁵−15t⁴+10t³) — C2 at endpoints
+ *   QUADRATIC : smoothstep  (3t^2-2t^3)   -- C1 at endpoints
+ *   LOGISTIC  : smootherstep(6t^5-15t^4+10t^3) -- C2 at endpoints
  */
 function profileValueAt(t is number, region is map) returns ValueWithUnits
 {
@@ -586,8 +598,8 @@ function profileValueAt(t is number, region is map) returns ValueWithUnits
     else if (region.regionType == RegionType.QUADRATIC)
     {
         // True quadratic: one endpoint has zero slope, the other ramps freely.
-        // AT_START (zero slope at t=0): f(t) = t²
-        // AT_END   (zero slope at t=1): f(t) = 2t − t²
+        // AT_START (zero slope at t=0): f(t) = t^2
+        // AT_END   (zero slope at t=1): f(t) = 2t - t^2
         if (region.quadZeroSlope == QuadraticZeroSlope.AT_END)
             s = 2 * t - t * t;
         else // AT_START (default)
@@ -601,15 +613,15 @@ function profileValueAt(t is number, region is map) returns ValueWithUnits
 }
 
 
-// ─── Offset point computation ─────────────────────────────────────────────────
+// --- Offset point computation -------------------------------------------------
 
 /**
  * Returns the height above the bottom wire (along the outward normal) for a given region mode.
  *   SIDEWALL     : swBottomOffset + offsetValue + swTopOffset
- *   CAVITY_DEPTH : distance(bottomPoint → topWire along normal) − offsetValue
+ *   CAVITY_DEPTH : distance(bottomPoint -> topWire along normal) - offsetValue
  *
  * By working in a common "height above bottom wire" space, mixed-mode blends
- * (e.g. SIDEWALL → CAVITY_DEPTH) interpolate consistently.
+ * (e.g. SIDEWALL -> CAVITY_DEPTH) interpolate consistently.
  */
 function computeEffectiveHeight(context is Context, definition is map, region is map,
     basePoint is Vector, normal is Vector, offsetValue is ValueWithUnits) returns ValueWithUnits
@@ -647,7 +659,7 @@ function computeOffsetPoint(context is Context, definition is map, pathInfo is m
 }
 
 
-// ─── Point arrays ─────────────────────────────────────────────────────────────
+// --- Point arrays -------------------------------------------------------------
 
 /**
  * Samples n points along [tSegStart, tSegEnd], evaluating the profile value
@@ -670,7 +682,7 @@ function generateSegmentPoints(context is Context, definition is map, pathInfo i
 
 
 /**
- * Height of a region at a given path parameter — combines profile evaluation with
+ * Height of a region at a given path parameter -- combines profile evaluation with
  * mode dispatch. Used for both direct sampling and finite-difference slope/curvature.
  */
 function computeHeightAtParam(context is Context, definition is map, region is map,
@@ -686,10 +698,10 @@ function computeHeightAtParam(context is Context, definition is map, region is m
 /**
  * Returns { h, slope, curv } at tPath using central finite differences.
  *   h     = height above bottom wire (ValueWithUnits)
- *   slope = dH/dt  (ValueWithUnits — meters per unit of path parameter)
- *   curv  = d²H/dt² (ValueWithUnits)
+ *   slope = dH/dt  (ValueWithUnits -- meters per unit of path parameter)
+ *   curv  = d^2H/dt^2 (ValueWithUnits)
  *
- * Scaling to s-space before use: multiply slope by L, curv by L².
+ * Scaling to s-space before use: multiply slope by L, curv by L^2.
  */
 function computeHeightDerivativesAtParam(context is Context, definition is map, region is map,
     pathInfo is map, tPath is number) returns map
@@ -710,15 +722,15 @@ function computeHeightDerivativesAtParam(context is Context, definition is map, 
 
 
 /**
- * Evaluates the Hermite blend polynomial at s ∈ [0,1].
+ * Evaluates the Hermite blend polynomial at s in [0,1].
  *
- * All slope/curvature args are in s-space (multiply region dH/dt by L, d²H/dt² by L²
- * before calling, where L = tBlendEnd − tBlendStart).
+ * All slope/curvature args are in s-space (multiply region dH/dt by L, d^2H/dt^2 by L^2
+ * before calling, where L = tBlendEnd - tBlendStart).
  *
  * Continuity dispatch:
- *   G0+G0 → linear         G1+G0 / G0+G1 → quadratic
- *   G1+G1 → cubic Hermite  G2+G0 / G0+G2 → cubic
- *   G2+G1 / G1+G2 → quartic              G2+G2 → quintic Hermite
+ *   G0+G0 -> linear         G1+G0 / G0+G1 -> quadratic
+ *   G1+G1 -> cubic Hermite  G2+G0 / G0+G2 -> cubic
+ *   G2+G1 / G1+G2 -> quartic              G2+G2 -> quintic Hermite
  */
 function blendHeightAt(s is number,
     h0 is ValueWithUnits, m0 is ValueWithUnits, k0 is ValueWithUnits,
@@ -742,29 +754,29 @@ function blendHeightAt(s is number,
     }
     else if (matchSlopeStart && !matchCurvStart && !matchSlopeEnd)
     {
-        // G1+G0: quadratic — h0, m0, h1
+        // G1+G0: quadratic -- h0, m0, h1
         return h0 + m0 * s + (h1 - h0 - m0) * s2;
     }
     else if (!matchSlopeStart && matchSlopeEnd && !matchCurvEnd)
     {
-        // G0+G1: quadratic — h0, h1, m1
+        // G0+G1: quadratic -- h0, h1, m1
         var dh = h1 - h0;
         return h0 + (2 * dh - m1) * s + (m1 - dh) * s2;
     }
     else if (matchSlopeStart && !matchCurvStart && matchSlopeEnd && !matchCurvEnd)
     {
-        // G1+G1: cubic Hermite — h0, m0, h1, m1
+        // G1+G1: cubic Hermite -- h0, m0, h1, m1
         return h0 * (2*s3 - 3*s2 + 1) + m0 * (s3 - 2*s2 + s)
              + h1 * (-2*s3 + 3*s2)    + m1 * (s3 - s2);
     }
     else if (matchCurvStart && !matchSlopeEnd)
     {
-        // G2+G0: cubic — h0, m0, k0, h1
+        // G2+G0: cubic -- h0, m0, k0, h1
         return h0 + m0 * s + (k0 / 2) * s2 + (h1 - h0 - m0 - k0 / 2) * s3;
     }
     else if (!matchSlopeStart && matchCurvEnd)
     {
-        // G0+G2: cubic — h0, h1, m1, k1
+        // G0+G2: cubic -- h0, h1, m1, k1
         var dh = h1 - h0;
         var d  = dh - m1 + k1 / 2;
         var c  = -(k1 + 3 * (dh - m1));
@@ -773,7 +785,7 @@ function blendHeightAt(s is number,
     }
     else if (matchCurvStart && matchSlopeEnd && !matchCurvEnd)
     {
-        // G2+G1: quartic — h0, m0, k0, h1, m1
+        // G2+G1: quartic -- h0, m0, k0, h1, m1
         var dh = h1 - h0;
         var a4 = m1 + 2 * m0 + k0 / 2 - 3 * dh;
         var a3 = 4 * dh - 3 * m0 - k0 - m1;
@@ -781,7 +793,7 @@ function blendHeightAt(s is number,
     }
     else if (matchSlopeStart && !matchCurvStart && matchCurvEnd)
     {
-        // G1+G2: quartic — h0, m0, h1, m1, k1
+        // G1+G2: quartic -- h0, m0, h1, m1, k1
         var H  = h1 - h0 - m0;
         var M  = m1 - m0;
         var K  = k1;
@@ -792,7 +804,7 @@ function blendHeightAt(s is number,
     }
     else
     {
-        // G2+G2: quintic Hermite — h0, m0, k0, h1, m1, k1
+        // G2+G2: quintic Hermite -- h0, m0, k0, h1, m1, k1
         return h0 * (1 - 10*s3 + 15*s4 - 6*s5)
              + m0 * (s - 6*s3 + 8*s4 - 3*s5)
              + k0 * (s2/2 - 3*s3/2 + 3*s4/2 - s5/2)
@@ -809,7 +821,7 @@ function blendHeightAt(s is number,
  * Heights at the blend boundaries are evaluated at the actual tNorm positions
  * (not at the region endpoints) so the blend wire meets the trimmed region wire.
  * Slopes and curvatures are matched via finite difference when the intersection's
- * continuity settings request it — accounting for the fact that the height function
+ * continuity settings request it -- accounting for the fact that the height function
  * changes with wire position, not just offset value.
  */
 function generateBlendPoints(context is Context, definition is map, pathInfo is map,
@@ -826,7 +838,7 @@ function generateBlendPoints(context is Context, definition is map, pathInfo is 
     var needCurvStart  = (contStart == GeometricContinuity.G2);
     var needCurvEnd    = (contEnd   == GeometricContinuity.G2);
 
-    // Initialise all derivatives to zero — unused ones won't affect the polynomial
+    // Initialise all derivatives to zero -- unused ones won't affect the polynomial
     var h0 = 0 * meter;
     var m0 = 0 * meter;
     var k0 = 0 * meter;
@@ -874,7 +886,7 @@ function generateBlendPoints(context is Context, definition is map, pathInfo is 
 }
 
 
-// ─── Wire construction ────────────────────────────────────────────────────────
+// --- Wire construction --------------------------------------------------------
 
 function buildOutputWire(context is Context, id is Id, definition is map,
     pathInfo is map, sortedRegions is array)
@@ -1012,7 +1024,7 @@ function buildOutputWire(context is Context, id is Id, definition is map,
 
         if (definition.printCurveDetails)
         {
-            println("=== Blend " ~ toString(bzi) ~ " ('" ~ bz.regA.regionName ~ "' → '" ~ bz.regB.regionName ~ "') ===");
+            println("=== Blend " ~ toString(bzi) ~ " ('" ~ bz.regA.regionName ~ "' -> '" ~ bz.regB.regionName ~ "') ===");
             println("  degree:         " ~ toString(bspline.degree));
             println("  isPeriodic:     " ~ toString(bspline.isPeriodic));
             println("  control points: " ~ toString(size(bspline.controlPoints)));

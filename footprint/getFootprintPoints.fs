@@ -92,19 +92,22 @@ export const getFootprintPoints = defineFeature(function(context is Context, id 
             annotation { "Name" : "Number of Tip Points" }
             isInteger(definition.tipCount, tipTailBounds);
 
-            annotation { "Name" : "Flip Tip Points?", "Default" : false }
+            annotation { "Name" : "Flip Tip Points?", "Default" : false,
+                         "Description" : "Tip points are listed in ascending world X (not tip-to-FCP), x relative to the FCP. On: reverse the list." }
             definition.flipTip is boolean;
 
             annotation { "Name" : "Number of RSL Points" }
             isInteger(definition.rslCount, rslBounds);
 
-            annotation { "Name" : "Flip RSL Points?", "Default" : false }
+            annotation { "Name" : "Flip RSL Points?", "Default" : false,
+                         "Description" : "RSL points are listed in ascending world X, x relative to the RSL midpoint. On: reverse the list." }
             definition.flipRSL is boolean;
 
             annotation { "Name" : "Number of Tail Points" }
             isInteger(definition.tailCount, tipTailBounds);
 
-            annotation { "Name" : "Flip Tail Points?", "Default" : false }
+            annotation { "Name" : "Flip Tail Points?", "Default" : false,
+                         "Description" : "Tail points are listed in ascending world X (not ACP-to-tail), x relative to the ACP. On: reverse the list." }
             definition.flipTail is boolean;
         }
 
@@ -467,6 +470,8 @@ function footprintPointX(context is Context, q is Query) returns ValueWithUnits
     return evVertexPoint(context, { "vertex" : q })[0];
 }
 
+// Points are returned relative to refOrigin (the region's contact point: FCP, MRS or ACP) and sorted by WORLD X
+// ascending -- a world-X convention on purpose, not tip/tail order; the Flip options reverse the list.
 function genPointArray(context is Context, id is Id, targetCurve is Query, curveName is string, numPoints is number, includePoints is Query, refOrigin is Vector, reverseOrder is boolean, createSketch is boolean, sketchID is string)
 {
 

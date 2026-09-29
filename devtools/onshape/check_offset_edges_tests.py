@@ -77,6 +77,11 @@ CASES = [
     # Blends keyed by hidden region ids (2026-09-26): OE6 with both regions named "A" -- must match OE6.
     dict(tag="OE25", src="OE25 source", mode=("x", 25000), prof="s < 200 ? 0 : 20", skip=[(140, 260)], wires=1, edges=3,
          extent=(0, 400), dev=0.01, joints=0.01),
+    # Reversed extents (2026-09-28): start/end values follow the ends they were entered for.
+    dict(tag="OE26", src="OE26 source", mode=("x", 26000), prof="s >= 140 ? 20 : 20 * (s - 50) / 90", wires=1, edges=2,
+         extent=(50, 150), dev=0.01),
+    dict(tag="OE27", src="OE27 source", mode=("x", 27000), prof="20 * ((200 - s) / 200) * ((200 - s) / 200)", wires=1, edges=1,
+         extent=(0, 200), dev=0.01),
 ]
 
 # Expected statuses (today's code; see the notes). Every other case and every fixture must be OK.

@@ -24,6 +24,8 @@ keeps the CSV out of the lookup.
   X10 FCP (mate connector, x 100) > ACP (sketch point, x -100) -> 7 stations ascending -150..150, EI 83.33, beam analysis
   X11 path ends exactly on the beam's end faces (tip grazing) -> no WARNING, interior EI 83.33
   X12 X1 plus a 100x5 IGNORE body on top      -> EI 83.33, NA 5 (the ignored body adds nothing)
+  B1  Generate baseline FCP -800 < ACP 700, B2 its mirror (FCP 800 > ACP -700) -> B2 = mirror of B1 (baseline,
+      weighted baseline, measurement sketch), FRCP / ARCP at the camber/rocker joins
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_xsection_tests.py
 """
@@ -350,5 +352,48 @@ b12b = beam("X12 ignored 100x5 z 10..15", rect("r", y - 50, y + 50, 10, 15))
 p12 = path("X12 path x -100..100", y)
 xsect("X12 ignored_body_adds_nothing -> EI 83.33, NA 5, GJ 125.31", p12,
       [(b12a, "X12 beam", ISO10), (b12b, "X12 ignored", IGNORE)])
+
+# ---- Generate baseline, both ski directions (2026-09-28) ----
+# B1 FCP < ACP and B2 its mirror (FCP > ACP, tip toward +X): FCP 800 / ACP 700 mm from the origin, mount 30 mm
+# off-centre towards FCP, MCh 4, FRCPL 130, ARCPL 50, FCPh 5, ACPh 0.5 (the RD 20TAC targets), constant EI 100 N m^2
+# (a Front-plane line at z 100 mm), weighted baseline + measurement sketch on. check_xsection_tests.py checks that B2
+# is the mirror image of B1 (baseline, weighted baseline, measurement sketch) and that FRCP / ARCP are the joins.
+FRONT = 'qCreatedBy(makeId("Front"), EntityType.FACE)'
+GB_TAB = [e for e in ELEMENTS if e["name"] == "generateBaseline" and e["elementType"] == "FEATURESTUDIO"][0]
+GB_SPEC = [x for x in c.get(f"/api/v10/featurestudios/d/{D}/w/{W}/e/{GB_TAB['id']}/featurespecs")["featureSpecs"]
+           if x["featureType"] == "generateBaseline"][0]
+GB_NS = GB_SPEC.get("namespace") or "e%s::m%s" % (GB_TAB["id"], GB_TAB["microversionId"])
+ei_line = sketch("B EI profile 100 N m^2 (Front, z 100 mm, x -900..900)", FRONT, polyline("l", [(-900, 100), (900, 100)]))
+
+
+def baseline_case(name, sign, y):
+    """sign +1: FCP at x -800 (FCP < ACP); sign -1: the mirror image, FCP at x +800."""
+    fcp = connector(name + " FCP", -800 * sign, y)
+    acp = connector(name + " ACP", 700 * sign, y)
+    mount = connector(name + " mount", -30 * sign, y)
+    given = {"outputCurveName": s("outputCurveName", name + " baseline"),
+             "fcpQuery": q("fcpQuery", body(fcp)), "acpQuery": q("acpQuery", body(acp)), "mountQuery": q("mountQuery", body(mount)),
+             "camberHeight": num("camberHeight", "4 mm"), "frcpl": num("frcpl", "130 mm"), "arcpl": num("arcpl", "50 mm"),
+             "fcpHeight": num("fcpHeight", "5 mm"), "acpHeight": num("acpHeight", "0.5 mm"),
+             "hasEIProfile": b("hasEIProfile", True), "showEIQuery": b("showEIQuery", True),
+             "eiEdgesQuery": q("eiEdgesQuery", edges(ei_line)),
+             "approxTolerance": num("approxTolerance", "0.01 mm"), "maxControlPoints": num("maxControlPoints", "50", True),
+             "addBaselineSketch": b("addBaselineSketch", True), "createWeightedBaseline": b("createWeightedBaseline", True),
+             "debugPrintAnalysis": b("debugPrintAnalysis", True)}
+    params = []
+    for p in GB_SPEC["parameters"]:
+        pid = p["parameterId"]
+        d = p.get("defaultValue")
+        if pid in given:
+            params.append(given[pid])
+        elif isinstance(d, dict):
+            d = copy.deepcopy(d)
+            d.pop("nodeId", None)
+            params.append(dict(d, parameterId=pid))
+    return feature(name, "generateBaseline", params, GB_NS)
+
+
+baseline_case("B1 generate_baseline FCP_lt_ACP (FCP -800, ACP 700, mount -30)", 1, case_y(13))
+baseline_case("B2 generate_baseline FCP_gt_ACP mirror of B1 (FCP 800, ACP -700, mount 30)", -1, case_y(14))
 
 print("studio", E)

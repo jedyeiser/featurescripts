@@ -5,7 +5,7 @@ import(path : "onshape/std/faceIntersection.fs", version : "3083.0");
 import(path : "onshape/std/loft.fs", version : "3083.0");
 
 // IMPORT: tools/printing.fs
-import(path : "b1e8bfe71f67389ca210ed8b/71a714bb442c2a2dabd1278a/b02d6a2bac551b24347c983f", version : "c104606e8ffc8e0964404bbc");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 
 // import swRoutRegions -- SWRoutExtentType, bounds, region processing functions
 export import(path : "7e3b271854475bf6cf878b2b", version : "202178aa8f713464c4f51f87");
@@ -75,7 +75,7 @@ export function generateSWRoutEditingLogic(context is Context, id is Id,
                     qOwnedByBody(definition.refWire, EntityType.EDGE));
             var dirSign = (definition.flipRefWire == true) ? -1 : 1;
             // Build a canonical (dirSign=+1) pass purely for ordering: flipRefWire
-            // must invert offset sign downstream but must NOT reorder regions or
+            // mirrors ALONG_REF extents about the origin but must NOT reorder regions or
             // swap user-assigned identities (e.g. "Tip" vs "Tail").
             var canonicalRegions = processSwRoutRegions(context, id + "elSortCanon",
                     definition, refWirePath, definition.refWireOrigin, 1);
@@ -308,8 +308,10 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
         var dirSign = definition.flipRefWire ? -1 : 1;
 
         // Process and sort regions.
-        // Canonical pass (dirSign=+1) drives ordering so flipRefWire only inverts
-        // offset/normal sign, not region identity. Geometric pass uses actual dirSign.
+        // Canonical pass (dirSign=+1) drives ordering so flipRefWire keeps region order and
+        // identity (intersection numbering). Geometric pass uses the actual dirSign: with flip
+        // on, ALONG_REF extents are mirrored about the origin, so sortedRegions then runs toward
+        // DECREASING path t (region r+1 lies below region r; their shared end is r's tStart).
         var canonicalRegions = processSwRoutRegions(context, id + "canonSort",
                 definition, refWirePath, definition.refWireOrigin, 1);
         var canonicalOrder = sort(canonicalRegions, function(a, b)
@@ -770,9 +772,13 @@ export const SWRout = defineFeature(function(context is Context, id is Id, defin
             if (!intr.join) { continue; }
 
             var regA = sortedRegions[rAIdx];
+            var regB = sortedRegions[rBIdx];
 
-            // Boundary plane at end of region A (== start of region B)
-            var boundaryPlane = createRegionBoundingPlane(context, refWirePath, regA.tEnd);
+            // Boundary plane at region A's end that faces region B (their shared boundary). sortedRegions
+            // is in canonical (flip-off) order, so with Flip wire direction on the regions run toward
+            // DECREASING path t and that end is regA.tStart; flip off it is regA.tEnd, as before.
+            var tBoundary = ((regA.tStart + regA.tEnd) <= (regB.tStart + regB.tEnd)) ? regA.tEnd : regA.tStart;
+            var boundaryPlane = createRegionBoundingPlane(context, refWirePath, tBoundary);
 
             var bodiesA = getBodiesForRegion(rAIdx, regionMergedBody, regionFinalSurfs, sideNames);
             var bodiesB = getBodiesForRegion(rBIdx, regionMergedBody, regionFinalSurfs, sideNames);

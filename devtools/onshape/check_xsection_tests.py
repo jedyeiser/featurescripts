@@ -173,7 +173,9 @@ CASES = {
     "X8 ": lambda rows: both(stations_match(rows, RECT, area=RECT["area"]), bodies_per_station(rows, 2)),
     "X9 ": lambda rows: both(xs_are(rows, UNIFORM), stations_match(rows, RECT)),
     # End stations are inset by max(0.5 mm, 2% of the 50 mm spacing) = 1 mm from the path ends (2026-09-25).
+    # Stations are numbered from FCP (the tip side) whichever end of X it is (2026-09-28): FCP at x 100 is station 0.
     "X10 ": lambda rows: both(xs_are(rows, [-149, -100, -50, 0, 50, 100, 149]), ascending(rows), stations_match(rows, RECT),
+                              labels_are(rows, [5, 4, 3, 2, 1, 0, -1]),
                               (all(r["beam"] == "yes" for r in rows), "beam analysis " + (rows[0]["beam"] if rows else "-"))),
     "X11 ": lambda rows: both(stations_match(rows, RECT, where=lambda r: abs(r["x"]) < 99),
                               (True, "end stations (info): " + ", ".join("x %s EI %s" % (fmt(r["x"]), fmt(r["EI"])) for r in rows if abs(r["x"]) >= 99))),
@@ -187,6 +189,12 @@ def bodies_per_station(rows, n):
     counts = [len(r["areas"]) for r in rows]
     ok = all(k == n for k in counts)
     return ok, "bodies per station %s" % counts + ("" if ok else " (expected %d)" % n)
+
+
+def labels_are(rows, want):
+    """Station numbers in ascending-x order."""
+    got = [r["station"] for r in sorted(rows, key=lambda r: r["x"])]
+    return got == want, "stations %s" % got + ("" if got == want else " (expected %s)" % want)
 
 
 def ascending(rows):
@@ -219,6 +227,94 @@ def read_rows():
     return rows
 
 
+BASELINE_SCRIPT = r'''
+function(context is Context, queries)
+{
+    var out = [];
+    for (var fid in [FIDS])
+    {
+        for (var sub in ["extractBaselineCurves", "extractWeightedCurves"])
+        {
+            for (var e in evaluateQuery(context, qCreatedBy(makeId(fid) + sub, EntityType.EDGE)))
+            {
+                var params = [];
+                for (var j = 0; j <= 200; j += 1)
+                {
+                    params = append(params, j / 200);
+                }
+                for (var tl in evEdgeTangentLines(context, { "edge" : e, "parameters" : params }))
+                {
+                    out = append(out, "P|" ~ fid ~ "|" ~ sub ~ "|" ~ toString(tl.origin[0] / millimeter) ~ "|" ~ toString(tl.origin[2] / millimeter));
+                }
+            }
+        }
+        for (var nm in ["minChord", "inflChord", "fbNormalLeg", "abNormalLeg", "camberNormal"])
+        {
+            const q = sketchEntityQuery(makeId(fid) + "baselineMeasurementSketch", EntityType.EDGE, nm);
+            if (size(evaluateQuery(context, q)) > 0)
+            {
+                const tl = evEdgeTangentLines(context, { "edge" : q, "parameters" : [0, 1] });
+                out = append(out, "S|" ~ fid ~ "|" ~ nm ~ "|" ~ toString(tl[0].origin[0] / millimeter) ~ "|" ~ toString(tl[0].origin[2] / millimeter)
+                    ~ "|" ~ toString(tl[1].origin[0] / millimeter) ~ "|" ~ toString(tl[1].origin[2] / millimeter));
+            }
+        }
+    }
+    return out;
+}
+'''
+
+
+def check_baselines(features):
+    """B1 (FCP < ACP) and B2 (its mirror, FCP > ACP): B2's baseline, weighted baseline and measurement sketch are the
+    mirror image of B1's (x -> -x), and FRCP / ARCP (the measurement sketch's inflection chord) are the camber/rocker
+    joins FCP -/+ 130 and ACP +/- 50 mm. Returns the number of failures."""
+    gb = {f["name"][:3]: f for f in features if f.get("featureType") == "generateBaseline" and f["name"][:3] in ("B1 ", "B2 ")}
+    if len(gb) != 2:
+        print("FAIL B1/B2 -- generateBaseline cases missing (%s)" % sorted(gb))
+        return 1
+    fid = {k.strip(): f["featureId"] for k, f in gb.items()}
+    r = c.post(f"{BASE}/featurescript", json_data={"script": BASELINE_SCRIPT.replace("FIDS", '"%s", "%s"' % (fid["B1"], fid["B2"]))})
+    pts, sk = {}, {}
+    for line in strings(r.get("result")):
+        parts = line.split("|")
+        case = "B1" if parts[1] == fid["B1"] else "B2"
+        if parts[0] == "P":
+            pts.setdefault((case, parts[2]), []).append((float(parts[3]), float(parts[4])))
+        elif parts[0] == "S":
+            sk[(case, parts[2])] = tuple(float(v) for v in parts[3:7])
+    failed = 0
+    for sub, label in (("extractBaselineCurves", "baseline"), ("extractWeightedCurves", "weighted baseline")):
+        one, two = sorted(pts.get(("B1", sub), [])), sorted((-x, z) for x, z in pts.get(("B2", sub), []))
+        if not one or len(one) != len(two):
+            print("FAIL B2 %s mirror -- %d / %d samples" % (label, len(one), len(two)))
+            failed += 1
+            continue
+        dev = max(abs(a[0] - b[0]) + abs(a[1] - b[1]) for a, b in zip(one, two))
+        ok = dev < 1e-3
+        failed += not ok
+        print("%s B2 %s is the mirror of B1 -- max sample deviation %.2g mm (tol 0.001)" % ("PASS" if ok else "FAIL", label, dev))
+    for nm in ("minChord", "inflChord", "fbNormalLeg", "abNormalLeg", "camberNormal"):
+        a, m = sk.get(("B1", nm)), sk.get(("B2", nm))
+        if a is None or m is None:
+            print("FAIL B1/B2 sketch line %s missing" % nm)
+            failed += 1
+            continue
+        dev = max(abs(a[0] + m[0]), abs(a[1] - m[1]), abs(a[2] + m[2]), abs(a[3] - m[3]))
+        ok = dev < 1e-3
+        failed += not ok
+        print("%s B2 sketch %s is the mirror of B1 -- %.2g mm" % ("PASS" if ok else "FAIL", nm, dev))
+    for case, fcp, acp in (("B1", -800.0, 700.0), ("B2", 800.0, -700.0)):
+        chord = sk.get((case, "inflChord"))
+        if chord is None:
+            continue
+        toward = 1 if acp > fcp else -1
+        want = (fcp + toward * 130.0, acp - toward * 50.0)
+        ok = abs(chord[0] - want[0]) < 0.01 and abs(chord[2] - want[1]) < 0.01
+        failed += not ok
+        print("%s %s FRCP / ARCP at the joins -- x %.3f / %.3f (expected %.1f / %.1f)" % ("PASS" if ok else "FAIL", case, chord[0], chord[2], want[0], want[1]))
+    return failed
+
+
 def main():
     feats = c.get(f"{BASE}/features")
     states = feats["featureStates"]
@@ -248,6 +344,7 @@ def main():
         ok, text = check(case_rows)
         failed += not ok
         print("PASS" if ok else "FAIL", f["name"], "--", text)
+    failed += check_baselines(feats["features"])
     print("%d failed" % failed if failed else "all passed")
     return 1 if failed else 0
 

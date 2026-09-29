@@ -608,6 +608,7 @@ export function relocatePhantomEnds(
 // Relocate one body's lo/hi terminal stations. `offset`/`startQuery`/`endQuery`
 // are only read in the branch that uses them (the others may be undefined). In
 // QUERY mode the start pick moves the low-X terminal, the end pick the high-X one.
+// World-X convention on purpose (phantom start = low-X end, end = high-X end), not tip/tail.
 function relocateBodyEnds(context is Context, bundle is map, mode, offset, startQuery, endQuery, extents is Box3d) returns map
 {
     var terminals = terminalStationXs(bundle.stations, extents);

@@ -2,15 +2,15 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 // IMPORT: tools/arc_length.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/f88f68e9ff3cb3c30d4afffe", version : "561709ffbf7a138328bbffc4");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
 // IMPORT: tools/curve_operations.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/a7403d5f7f5a4fef8225b768", version : "8539ef748286f908313b6564");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/a7403d5f7f5a4fef8225b768", version : "4044a27226f3821ff3e795ef");
 // IMPORT: tools/bspline_data.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/b1c7f2116fb64e6b40bf53f4", version : "4fe0cca8e00a4cd812896a8c");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
 // IMPORT: tools/solvers.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/99e84dbe2a4e2350792fa693", version : "9e71a1ec81d7a22319fafe0e");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/99e84dbe2a4e2350792fa693", version : "91ebe2327e2b0654bb603e52");
 // IMPORT: tools/bspline_knots.fs
-import(path : "b1e8bfe71f67389ca210ed8b/910a6d7a356c2832de31817a/dadb70c0a762573622fa609c", version : "2267a758e66498ac49f4601e");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/dadb70c0a762573622fa609c", version : "744c7afe122e8ae2b3b17a12");
 
 
 
@@ -860,7 +860,8 @@ export function sampleByPlanes(context is Context, orderedCurves is array, direc
         var pt   = bestInter.point;
         var owningCurve = bestInter.curve;
 
-        // Arc length in QUERY/WORLD mode: projection offset from minT
+        // "Arc length" in QUERY/WORLD mode: projection offset from minT, i.e. distance along the direction from the
+        // curve's LOWEST point (World X: the low-X end), not a tip/tail convention. Flip order only reverses rows.
         var arcLength = planeD - minT;
 
         var sampleMap = {

@@ -27,8 +27,11 @@ Radius plot: draw it in integrateFootprint's input format (10 mm Y per 1 m radiu
   FRCPl, ACPh, ARCP, ARCPl, FB_Roll, AB_Roll, Tip_height, Tail_height`.
 - FRCP means two things: generateBaseline = FCP +/- frcpl in X (the join point); analyzeBaseline = lowest-Z inflection.
 - FRCPL/ARCPL are |dx|, not arc length (conflicts with s).
-- XS1/XS2: qcTable "XS-1"/"XS-2" at FCP + rsl/4; spec = MRS +/- RSL/4; drawings use EDA = ACP, SPA = FCP, X from the tail end.
-- Tip direction: getFootprintPoints "Tip toward +X" flag; analyzeFootprint uses FCP vs MRS; spec: tip = FCP side.
+- XS1/XS2: qcTable "XS-1"/"XS-2" at FCP + rsl/4 and FCP + 3 rsl/4 with signed rsl = ACP - FCP, i.e. XS-1 = halfway FCP..MRS
+  (FCP side), XS-2 = halfway MRS..ACP -- the same points as the spec (checked 2026-09-28); only the spelling differs
+  (XS-1 vs XS1). Drawings use EDA = ACP, SPA = FCP, X from the tail end.
+- Tip direction: getFootprintPoints "Tip toward +X" flag, overridden by its optional FCP pick (2026-09-28); scaleFootprint
+  optional "Reference FCP" pick; analyzeFootprint uses FCP vs MRS; spec: tip = FCP side.
 - FCP < ACP assumptions: computeBeamStiffness, computeCompliance, getEIFromEdges; generateBaseline rounds xFCP/xACP to 0.1 mm.
 - Four different FCP/ACP resolvers (resolveReferencePointX, checkInputData, entryPoint, qcTable extractXPosition).
 

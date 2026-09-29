@@ -63,7 +63,8 @@ export function mergeStationData(
             continue;
         }
 
-        // Build base row. "X" is reported relative to the chosen table origin.
+        // Build base row. "X" (x_mrs) is SIGNED WORLD X relative to the chosen table origin (world origin or the
+        // picked datum) -- deliberately not tip/tail-relative; x_acp below is the tip-aware column.
         // The station number is a placeholder here; it is assigned after the
         // loop once the full set of displayed rows is known.
         var row = {
