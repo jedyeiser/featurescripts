@@ -1051,8 +1051,8 @@ function swRout(context is Context, id is Id, definition is map, datum is CoordS
     {
         throw regenError("Select the SW rout surface as faces or sheet bodies.", ["routSurface"]);
     }
-    const box = evBox3d(context, { "topology" : faces, "cSys" : datum, "tight" : true });
-    var xs = { "start" : box.minCorner[0], "stop" : box.maxCorner[0] };
+    const extent = evBox3d(context, { "topology" : faces, "cSys" : datum, "tight" : true });
+    var xs = { "start" : extent.minCorner[0], "stop" : extent.maxCorner[0] };
     var origins = { "start" : "surface extent (lowest x)", "stop" : "surface extent (highest x)" };
     for (var which in ["start", "stop"])
     {
@@ -1077,10 +1077,10 @@ function swRout(context is Context, id is Id, definition is map, datum is CoordS
     // ---- The section at MRS ----
     var measured = undefined;
     var note = undefined;
-    if (frame.xMrs < box.minCorner[0] - ROUT_REACH || frame.xMrs > box.maxCorner[0] + ROUT_REACH)
+    if (frame.xMrs < extent.minCorner[0] - ROUT_REACH || frame.xMrs > extent.maxCorner[0] + ROUT_REACH)
     {
-        note = "the SW rout surface does not reach MRS (x " ~ primitiveRound(box.minCorner[0] / millimeter, 2) ~ " .. " ~
-            primitiveRound(box.maxCorner[0] / millimeter, 2) ~ " mm): Table 4 has start / stop only";
+        note = "the SW rout surface does not reach MRS (x " ~ primitiveRound(extent.minCorner[0] / millimeter, 2) ~ " .. " ~
+            primitiveRound(extent.maxCorner[0] / millimeter, 2) ~ " mm): Table 4 has start / stop only";
     }
     else
     {
