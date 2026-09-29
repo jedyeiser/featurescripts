@@ -202,3 +202,120 @@ export const spikeMateConnector = defineFeature(function(context is Context, id 
                     "owner" : definition.owner
                 });
     });
+
+/**
+ * Nesting spike: Outer replay calls Inner replay (a FeatureList holding the Inner replay feature) the way
+ * Case pattern calls Close case. "Outer frame": the outer pushes the pattern frame around the call.
+ * Inner mode "own": the inner pushes a frame on its own id (today's Close case); "none": no inner frame.
+ */
+annotation { "Feature Type Name" : "Inner replay" }
+export const innerReplay = defineFeature(function(context is Context, id is Id, definition is map)
+    precondition
+    {
+        annotation { "Name" : "Features to replay" }
+        definition.features is FeatureList;
+    }
+    {
+        const mode = try silent(getVariable(context, "-spikeMode"));
+        if (mode == undefined)
+        {
+            return;
+        }
+        var functions = [];
+        if (isInFeaturePattern(context))
+        {
+            functions = valuesSortedById(context, definition.features);
+        }
+        else
+        {
+            var byFeature = {};
+            for (var key, listed in definition.features)
+            {
+                byFeature[makeId(key[size(key) - 1])] = listed;
+            }
+            functions = valuesSortedById(context, byFeature);
+        }
+        var errors = [];
+        if (mode == "own")
+        {
+            setFeaturePatternInstanceData(context, id, { "transform" : identityTransform() });
+        }
+        for (var i = 0; i < size(functions); i += 1)
+        {
+            try
+            {
+                functions[i](id);
+            }
+            catch (err)
+            {
+                errors = append(errors, "feature " ~ (i + 1) ~ ": " ~ errText(err));
+            }
+        }
+        if (mode == "own")
+        {
+            unsetFeaturePatternInstanceData(context, id);
+        }
+        setVariable(context, "-spikeErr", errors);
+    });
+
+annotation { "Feature Type Name" : "Outer replay" }
+export const outerReplay = defineFeature(function(context is Context, id is Id, definition is map)
+    precondition
+    {
+        annotation { "Name" : "Inner replay" }
+        definition.inner is FeatureList;
+
+        annotation { "Name" : "Name 1" }
+        definition.bindName is string;
+
+        annotation { "Name" : "Bind 1", "Filter" : EntityType.FACE || EntityType.EDGE }
+        definition.bindQuery is Query;
+
+        annotation { "Name" : "Name 2" }
+        definition.bindName2 is string;
+
+        annotation { "Name" : "Bind 2", "Filter" : EntityType.FACE || EntityType.EDGE }
+        definition.bindQuery2 is Query;
+
+        annotation { "Name" : "Outer frame" }
+        definition.outerFrame is boolean;
+
+        annotation { "Name" : "Inner mode (own / none)" }
+        definition.innerMode is string;
+    }
+    {
+        const saved1 = getQueryVariable(context, definition.bindName);
+        const saved2 = getQueryVariable(context, definition.bindName2);
+        setQueryVariable(context, definition.bindName, qUnion(evaluateQuery(context, definition.bindQuery)));
+        setQueryVariable(context, definition.bindName2, qUnion(evaluateQuery(context, definition.bindQuery2)));
+        setVariable(context, "caseName", "B");
+        setVariable(context, "-spikeMode", definition.innerMode);
+        setVariable(context, "-spikeErr", ["inner did not run"]);
+        const callId = id + "c";
+        var outerError = undefined;
+        if (definition.outerFrame)
+        {
+            setFeaturePatternInstanceData(context, callId, { "transform" : identityTransform() });
+        }
+        try
+        {
+            values(definition.inner)[0](callId);
+        }
+        catch (err)
+        {
+            outerError = errText(err);
+        }
+        if (definition.outerFrame)
+        {
+            unsetFeaturePatternInstanceData(context, callId);
+        }
+        setVariable(context, "-spikeMode", undefined);
+        setQueryVariable(context, definition.bindName, saved1);
+        setQueryVariable(context, definition.bindName2, saved2);
+        setVariable(context, "caseName", "A");
+        const errors = getVariable(context, "-spikeErr");
+        if (outerError != undefined || size(errors) > 0)
+        {
+            throw regenError("Outer replay: " ~ (outerError == undefined ? "" : "call: " ~ outerError ~ "; ") ~ join(errors, "; "));
+        }
+    });

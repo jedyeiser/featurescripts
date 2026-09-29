@@ -61,7 +61,7 @@ function(context is Context, queries)
         }
         // Sampled footprint / plot-band geometry (x, z mm; start / end tangents) for the unwrap checks (P1, P14 only).
         var shapes = {};
-        if (data.prefix == "P1 TAC" || data.prefix == "P14 TAC bite")
+        if ((data.prefix == "P1 TAC") || (data.prefix == "P14 TAC bite"))
         {
             var ts = [];
             for (var i = 0; i <= 100; i += 1)
@@ -71,7 +71,7 @@ function(context is Context, queries)
             for (var m in evaluateQuery(context, qContainedInCompositeParts(body)))
             {
                 const name = getProperty(context, { "entity" : m, "propertyType" : PropertyType.NAME });
-                if (name != data.prefix ~ " PRIMITIVE FOOTPRINT" && name != data.prefix ~ " PRIMITIVE RADIUS")
+                if ((name != (data.prefix ~ " PRIMITIVE FOOTPRINT")) && (name != (data.prefix ~ " PRIMITIVE RADIUS")))
                 {
                     continue;
                 }
