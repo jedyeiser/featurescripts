@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_frame.fs
-export import(path : "PRIMITIVE_FRAME_EID", version : "PRIMITIVE_FRAME_MV");
+export import(path : "5808546b3b3d863d82796d24", version : "11f0f0307ee2dcceaf62c9c1");
 
 /**
  * Export Primitive -- the profile: the volume cut by the datum XZ plane (the mid plane), split into
