@@ -100,6 +100,12 @@ export const UNWRAP_PART_SHAPE_TOL = 0.005 * millimeter;
 /** Classification grid of a PRISM face (G x G parameters, G odd so there is a middle row). */
 export const UNWRAP_PART_PRISM_GRID = 5;
 
+/**
+ * viewFit: a face whose grid lines travel less than this (metres) along the extrusion direction in both parameter
+ * directions (a face facing along it) keeps the old choice of station direction, by spread in the view.
+ */
+export const UNWRAP_PART_EXTRUSION_MOVE = 1e-6;
+
 /** Rows: adaptive (seed every UNWRAP_PART_ROW_SEED_SPACING m, at least UNWRAP_PART_ROW_SEED_MIN, then split every
  * span whose mapped midpoint misses the cubic through its neighbours by more than shapeTolerance *
  * UNWRAP_PART_ROW_REFINE, up to UNWRAP_PART_ROW_PASSES passes), or fixed (UNWRAP_PART_ROW_FIXED_SPACING, at least
@@ -1633,10 +1639,37 @@ export function gridSpread(flat is array, alongU is boolean, ib is number) retur
     return best;
 }
 
+/** Longest travel in one flat coordinate (plain metres) of the grid lines running along u (alongU) or v. */
+export function gridCoordinateSpread(flat is array, alongU is boolean, coordinate is number) returns number
+{
+    const G = UNWRAP_PART_PRISM_GRID;
+    var best = 0;
+    for (var t = 0; t < G; t += 1)
+    {
+        var length = 0;
+        var last = undefined;
+        for (var s = 0; s < G; s += 1)
+        {
+            const p = flat[gridIndex(s, t, alongU)];
+            if (p == undefined)
+            {
+                continue;
+            }
+            if (last != undefined)
+            {
+                length += abs(p[coordinate] - last[coordinate]);
+            }
+            last = p;
+        }
+        best = max(best, length);
+    }
+    return best;
+}
+
 /**
  * How far a face departs from a pure extrusion in one view: the side view (ib = 2, the image extruded along flat Y,
  * a PROFILE) or the plan view (ib = 1, extruded along flat Z, a WALL). The curve direction is the grid direction
- * spreading most in the view. At each grid station along it, the points across the face are measured along the view
+ * moving least along the extrusion direction (by spread in the view when neither moves along it). At each grid station along it, the points across the face are measured along the view
  * normal of the middle one (so parameter slip along the curve does not count): the best-fit tool passes through the
  * middle of their range, and the face departs from it by half the range. The tool row is the face's middle row
  * shifted by "mids" (interpolated along the row); an envelope row by "outs" (the outermost point of each station).
@@ -1650,7 +1683,14 @@ export function viewFit(samples is map, ib is number) returns map
     const normals = samples.normals;
     const spreadU = gridSpread(flat, true, ib);
     const spreadV = gridSpread(flat, false, ib);
-    const alongU = spreadU >= spreadV;
+    // The points across a station must run along the extrusion direction (flat Y for a profile, Z for a wall), so the
+    // stations run along the grid direction that moves least in it. Choosing by the spread in the view instead let a
+    // small, nearly square face skewed in plan pass as a profile, measured along its height: 4103's tip cap over
+    // FULL_BASELINE (flat normal y share 0.29) came out a vertical wall and missed its lean by 0.083 mm.
+    const extrusion = (ib == 2) ? 1 : 2;
+    const moveU = gridCoordinateSpread(flat, true, extrusion);
+    const moveV = gridCoordinateSpread(flat, false, extrusion);
+    const alongU = (max(moveU, moveV) > UNWRAP_PART_EXTRUSION_MOVE) ? (moveV >= moveU) : (spreadU >= spreadV);
     const noFit = { "dev" : UNWRAP_PART_NO_FIT, "mids" : makeArray(G, 0), "outs" : makeArray(G, 0), "alongU" : alongU,
         "spread" : max(spreadU, spreadV) };
     const m = (G - 1) / 2;
