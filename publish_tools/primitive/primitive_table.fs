@@ -161,6 +161,17 @@ function keyTable(data is map, body is Query) returns Table
                 ], rows, body);
 }
 
+/** A number as text with exactly one decimal ("7.0"; user: the SW rout angle in degrees, 1 decimal), text unchanged. */
+function fixed1(value)
+{
+    if (!(value is number))
+    {
+        return value;
+    }
+    const tenths = round(abs(value) * 10);
+    return ((value < 0 && tenths > 0) ? "-" : "") ~ floor(tenths / 10) ~ "." ~ (tenths % 10);
+}
+
 /**
  * SW rout (2026-09-29): angle (deg, 1 decimal), step-in and distance above base (mm) measured at MRS, with the MRS
  * position; start / stop with their position only. No rows (no table) without a SW rout surface.
@@ -172,7 +183,7 @@ function swRoutTable(data is map, body is Query) returns Table
     {
         for (var r in data.swRout)
         {
-            rows = append(rows, tableRow({ "name" : r.name, "value" : cellN(r.value, r.unit == "deg" ? 1 : 2), "unit" : r.unit,
+            rows = append(rows, tableRow({ "name" : r.name, "value" : r.unit == "deg" ? fixed1(r.value) : cellN(r.value, 2), "unit" : r.unit,
                             "x" : cell2(r.x), "s" : cell2(r.s), "distFromTail" : cell2(r.distFromTail) }));
         }
     }

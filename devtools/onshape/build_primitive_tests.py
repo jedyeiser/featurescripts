@@ -34,6 +34,12 @@ Cases (names carry the expectation):
         (Radius band height 150 mm, 20 % below zero; EI band height 150 mm), nice scale fitted to the data
   SD1 = a NEW Station definition (one Single point station at the MRS connector) inserted without "variableName":
         the 2026-09-29 default "" -> no # variable
+  R1  = P1 + SW rout surface = the derived SW_ROUT_SURFACE sheet (all 26 faces, +Y side only; RD 20TAC design: 0.8 mm
+        step-in, 4 mm above the base, rout face 7.0 deg to Z running on past the ski's top), no start / stop picks:
+        Table 4 angle 7.0 deg, step-in 0.80, dist. above base 4.00 at MRS; start / stop = the sheet's x extent
+  R2  = R1 with the sheet mirrored to -Y (Mirror_ROUT, Front plane) and Rout start / stop = ACP / FCP connectors:
+        the -Y side measured and mirrored (= R1's values); start / stop x, s, dist. from tail = P1's ACP / FCP rows
+  R3  = R1 with ONE rout face that does not reach MRS (x 1463..1567): INFO, Table 4 start / stop only (no MRS rows)
   P14 = the user's "monkey bite" (2026-09-28, "Primitive tests" Sketch 1 / Extrude 1: a R 79.12 mm circle at
         (-31.43, 3.38) mm on Top, extruded REMOVE through all) cut into the tail of a SECOND derived copy
         (Bite copy: the derived VOLUME copied in place), baseline FULL_BASELINE, footprint from VOLUME, picks as P1:
@@ -108,7 +114,7 @@ def upsert(name, feature_type, params, namespace=""):
             "serializationVersion": f["serializationVersion"], "sourceMicroversion": f["sourceMicroversion"]}
     # A P case keeps its feature when its name (expectation) changes: match on the case id.
     case = name.split()[0]
-    existing = [x for x in f["features"] if x["name"] == name or (re.match(r"P\d+$", case) and x["name"].split()[0] == case)]
+    existing = [x for x in f["features"] if x["name"] == name or (re.match(r"[PR]\d+$", case) and x["name"].split()[0] == case)]
     if existing:
         feature["featureId"] = existing[0]["featureId"]
         r = c.post(f"{BASE}/features/featureid/{existing[0]['featureId']}", body)
@@ -194,6 +200,18 @@ def mirror(derive_id):
     return upsert("Mirror_TAC (tip -X)", "mirror", params)
 
 
+def mirror_rout(derive_id):
+    """The derived SW_ROUT_SURFACE sheet mirrored in the Front (XZ) plane: a rout on the -Y side only (R2)."""
+    params = [
+        en("patternType", "MirrorType", "PART"),
+        q("entities", 'qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.SHEET)' % derive_id),
+        q("mirrorPlane", 'qCreatedBy(makeId("Front"), EntityType.FACE)'),
+        en("operationType", "NewBodyOperationType", "NEW"),
+        b("defaultScope", True),
+    ]
+    return upsert("Mirror_ROUT (SW rout sheet to -Y)", "mirror", params)
+
+
 def datum_mc():
     params = [
         en("originType", "OriginCreationType", "ON_ENTITY"),
@@ -258,7 +276,7 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
               region="FULL", points=35, qv="", datum_uses="ORIGIN", ei=None, tip_block="", tail_block="",
               grid=False, labels=True, plot="RADIUS", curvature_scale="50 mm", extras=(), key_lines=False, junctions=True,
               radius_axis_min="10", max_curvature="0.1", curvature_axis_min="0.02", ei_axis_max="450",
-              auto_scale=True, radius_band_height="150 mm", ei_band_height="150 mm"):
+              auto_scale=True, radius_band_height="150 mm", ei_band_height="150 mm", rout=None, rout_start=None, rout_stop=None):
     params = [
         q("volume", volume),
         q("fcp", fcp),
@@ -285,6 +303,9 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
         num("radiusBandHeight", radius_band_height),
         num("eiBandHeight", ei_band_height),
         q("targetEI", *([ei] if ei else [])),
+        q("routSurface", *([rout] if rout else [])),
+        q("routStart", *([rout_start] if rout_start else [])),
+        q("routStop", *([rout_stop] if rout_stop else [])),
         num("dataPoints", str(points), True),
         b("forceStations", True),
         b("stationNumbers", True),
@@ -313,7 +334,7 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
                    "dashedGrid", "labels", "textHeight", "stationNumbers", "eiScale", "tipBlockFrom", "tailBlockFrom",
                    "tipBlockWireName", "tailBlockWireName", "extraPoints", "plotMode", "plotRegion", "curvatureScale",
                    "keyLines", "junctionTicks", "maxCurvature", "curvatureAxisMin", "radiusAxisLow", "eiAxisMax",
-                   "autoScale", "radiusBandHeight", "eiBandHeight")]
+                   "autoScale", "radiusBandHeight", "eiBandHeight", "routSurface", "routStart", "routStop")]
     return upsert(name, "exportPrimitive", params, ns)
 
 
@@ -324,7 +345,11 @@ FPT_R_AT = (885, -48.72930096625616, 0)
 MP_X = 807.9668184775537
 
 
-def cases(dv, mi, dm, ei, bt=None):
+# A point on the derived SW_ROUT_SURFACE's rout face x 1463..1567 (probed; the face does not reach MRS) -- R3.
+ROUT_FACE_AT = (1515.4142419230932, 62.35238967124519, 16.406826895516527)
+
+
+def cases(dv, mi, dm, ei, bt=None, mr=None):
     vol = 'qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.SOLID)'
     fb = wire_named(dv, *FULL_BASELINE_AT)
     fb_m = wire_named(mi, -FULL_BASELINE_AT[0], FULL_BASELINE_AT[1], FULL_BASELINE_AT[2])
@@ -375,7 +400,19 @@ def cases(dv, mi, dm, ei, bt=None):
         ("P17 TAC as P1, Auto scale OFF -> the manual axes: radius -10 .. +50 m at 10 mm per m, bands = P1 before auto scale, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P17 TAC manual",
               auto_scale=False)),
-    ] + ([] if bt is None else [
+    ] + ([] if mr is None else [
+        ("R1 TAC SW_ROUT_SURFACE (RD, +Y) -> 7.0 deg, step-in 0.80, 4.00 above base, start / stop = sheet x extent, INFO",
+         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="R1 TAC rout",
+              rout='qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.SHEET)' % dv)),
+        ("R2 TAC rout mirrored to -Y, start / stop = ACP / FCP -> R1 values, start / stop = P1 ACP / FCP rows, INFO",
+         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="R2 TAC rout -Y",
+              rout='qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.SHEET)' % mr,
+              rout_start=mc_at(dv, 145), rout_stop=mc_at(dv, 1625))),
+        ("R3 TAC one rout face x 1463-1567 (misses MRS) -> INFO note, Table 4 start / stop only",
+         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="R3 TAC rout short",
+              rout='qContainsPoint(qOwnedByBody(qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.SHEET), EntityType.FACE), vector(%r, %r, %r) * millimeter)'
+                   % ((dv,) + ROUT_FACE_AT))),
+    ]) + ([] if bt is None else [
         ("P14 TAC tail bite, FULL_BASELINE + volume footprint -> bite in the footprint (isometric unwrap), INFO",
          dict(volume=vol % bt, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P14 TAC bite", baseline=fb)),
     ])
@@ -409,13 +446,16 @@ if __name__ == "__main__":
     mi = mirror(dv)
     dm = datum_mc()
     ei = ei_sketch()
+    mr = None
+    if not only or only & {"R1", "R2", "R3"}:
+        mr = mirror_rout(dv)
     bt = None
     if not only or "P14" in only:
         bt = bite_copy(dv)
         bite(bt)
     if not only or "SD1" in only:
         station_definition_new(dv)
-    for name, kw in cases(dv, mi, dm, ei, bt):
+    for name, kw in cases(dv, mi, dm, ei, bt, mr):
         if only and name.split()[0] not in only:
             continue
         if not NEW and name.split()[0] in ("P7", "P8", "P9", "P10", "P11", "P12", "P13"):

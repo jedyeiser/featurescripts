@@ -121,6 +121,30 @@
    "drawing": "4c6533f9c6d80a62ddf385cd",
    "logo": "be36bda38c12fca2580e96af",
    "build_s": 79
+  },
+  "VOLKL A2": {
+   "brand": "VOLKL",
+   "size": "A2",
+   "name": "VOLKL - A2 (template)",
+   "drawing": "c976e52629eb3fa58176a1bc",
+   "logo": "2076768bc50d95f51d89ebae",
+   "build_s": 77
+  },
+  "LINE A2": {
+   "brand": "LINE",
+   "size": "A2",
+   "name": "LINE - A2 (template)",
+   "drawing": "59748e8e98182a3db387bedd",
+   "logo": "69a980bb27145de7d69d508a",
+   "build_s": 77
+  },
+  "EOC A2": {
+   "brand": "EOC",
+   "size": "A2",
+   "name": "EOC - A2 (template)",
+   "drawing": "824ff6f745b4fe354b523b8b",
+   "logo": "610127ab0ce95a6d0d7889a3",
+   "build_s": 69
   }
  }
 }
