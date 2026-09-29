@@ -1839,7 +1839,8 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
                 "spacing" : definition.sampleSpacing,
                 "deformation" : definition.measureDeformation,
                 "sideAreas" : [sides.area0, sides.area1],
-                "uTurn" : (definition.uTurnRule == UndrapeUTurn.BLEND) ? "blend" : "literal"
+                "uTurn" : (definition.uTurnRule == UndrapeUTurn.BLEND) ? "blend" : "literal",
+                "stop" : definition.nameSuffix
             });
 
     if (definition.nameSuffix == "__stop3") { throw regenError("PROFILE STOP 3"); }
