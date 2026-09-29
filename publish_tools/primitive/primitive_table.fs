@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_types.fs
-export import(path : "ecde24520874030ab412c981", version : "48551b6314e7365be64a23b8");
+export import(path : "ecde24520874030ab412c981", version : "3f933ceeb58b4bbcfe0dfeca");
 // IMPORT: primitive_tables_icon.svg (table icon)
 IconNamespace::import(path : "eb32ed1a7e9ecf0a7ef61a7c", version : "a0113143f1b8cd5ca25093fa");
 

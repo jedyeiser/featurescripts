@@ -25,6 +25,12 @@ Cases (names carry the expectation):
         ticks, key lines at FCP MP MRS ACP FB_Mass_location
   P12 = P1 with Plot CURVATURE, Plot region INFLECTION: curvature band (1/m) between the inflections, tables = P1
   P13 = extra key points "FB mass" + "FB_mass" (the same id): ERROR on the item
+  P15 = P1 with Plot x-range INFLECTION (radius): the fixed frame (2026-09-29) -> axes, reference line and band
+        stacking identical to P1 / P6 / P11; only the plotted data is cut
+  P16 = P12 with Plot x-range FULL (curvature at the default 50 mm per 0.01 1/m, Max curvature 0.1 1/m): the tip / tail
+        curvature is cut at the axis, frame and stacking = P12
+  SD1 = a NEW Station definition (one Single point station at the MRS connector) inserted without "variableName":
+        the 2026-09-29 default "" -> no # variable
   P14 = the user's "monkey bite" (2026-09-28, "Primitive tests" Sketch 1 / Extrude 1: a R 79.12 mm circle at
         (-31.43, 3.38) mm on Top, extruded REMOVE through all) cut into the tail of a SECOND derived copy
         (Bite copy: the derived VOLUME copied in place), baseline FULL_BASELINE, footprint from VOLUME, picks as P1:
@@ -244,7 +250,8 @@ def ei_sketch():
 
 def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseline=None, footprint=None,
               region="FULL", points=21, qv="", datum_uses="ORIGIN", ei=None, tip_block="", tail_block="",
-              grid=False, labels=True, plot="RADIUS", curvature_scale="5 mm", extras=(), key_lines=False, junctions=True):
+              grid=False, labels=True, plot="RADIUS", curvature_scale="50 mm", extras=(), key_lines=False, junctions=True,
+              radius_axis_min="10 m", max_curvature="0.1", curvature_axis_min="0.02", ei_axis_max="450"):
     params = [
         q("volume", volume),
         q("fcp", fcp),
@@ -263,6 +270,10 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
         en("plotMode", "PrimitivePlot", plot, ns),
         en("plotRegion", "PrimitivePlotRegion", region, ns),
         num("curvatureScale", curvature_scale),
+        num("maxCurvature", max_curvature),
+        num("curvatureAxisMin", curvature_axis_min),
+        num("radiusAxisMin", radius_axis_min),
+        num("eiAxisMax", ei_axis_max),
         q("targetEI", *([ei] if ei else [])),
         num("dataPoints", str(points), True),
         b("forceStations", True),
@@ -291,7 +302,7 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
                   ("datumUses", "targetEI", "tipBlockWire", "tipBlock", "tailBlockWire", "tailBlock",
                    "dashedGrid", "labels", "textHeight", "stationNumbers", "eiScale", "tipBlockFrom", "tailBlockFrom",
                    "tipBlockWireName", "tailBlockWireName", "extraPoints", "plotMode", "plotRegion", "curvatureScale",
-                   "keyLines", "junctionTicks")]
+                   "keyLines", "junctionTicks", "maxCurvature", "curvatureAxisMin", "radiusAxisMin", "eiAxisMax")]
     return upsert(name, "exportPrimitive", params, ns)
 
 
@@ -344,10 +355,31 @@ def cases(dv, mi, dm, ei, bt=None):
         ("P13 TAC extra key points 'FB mass' + 'FB_mass' -> ERROR (duplicate name)",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), prefix="P13 TAC duplicate",
               extras=[("FB mass", mc_at(dv, MP_X), False), ("FB_mass", dm_q, False)])),
+        ("P15 TAC as P1, plot x-range INFLECTION -> fixed frame + stacking = P1, plot within the inflections, INFO",
+         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P15 TAC inflection",
+              region="INFLECTION")),
+        ("P16 TAC as P12, plot x-range FULL -> curvature cut at the axis (max 0.1 1/m), frame + stacking = P12, INFO",
+         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P16 TAC curvature full",
+              plot="CURVATURE", region="FULL")),
     ] + ([] if bt is None else [
         ("P14 TAC tail bite, FULL_BASELINE + volume footprint -> bite in the footprint (isometric unwrap), INFO",
          dict(volume=vol % bt, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P14 TAC bite", baseline=fb)),
     ])
+
+
+def station_definition_new(dv):
+    """SD1: a Station definition inserted WITHOUT variableName, as a new feature from the dialog: the 2026-09-29 default
+    ("", was "stations") applies -> no # variable. One Single point station "MRS" at the derived MRS connector."""
+    ns = ns_of("station_definition")
+    params = [
+        en("language", "StationLanguage", "ENGLISH", ns),
+        {"btType": "BTMParameterArray-2025", "parameterId": "stations", "items": [
+            {"btType": "BTMArrayParameterItem-1843", "parameters": [
+                en("stationType", "StationEntryType", "POINT", ns), s("stationName", "MRS"), q("point", mc_at(dv, 885)),
+                q("secondPoint"), q("lineEdge"), num("count", "5", True), num("firstNumber", "1", True), b("reverse", False)]}]},
+        b("printStations", False),
+    ]
+    return upsert("SD1 new Station definition, variable name left out -> no # variable, INFO", "stationDefinition", params, ns)
 
 
 if __name__ == "__main__":
@@ -361,6 +393,8 @@ if __name__ == "__main__":
     if not only or "P14" in only:
         bt = bite_copy(dv)
         bite(bt)
+    if not only or "SD1" in only:
+        station_definition_new(dv)
     for name, kw in cases(dv, mi, dm, ei, bt):
         if only and name.split()[0] not in only:
             continue

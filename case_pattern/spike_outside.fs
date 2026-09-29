@@ -137,6 +137,12 @@ export const topFrameReplay = defineFeature(function(context is Context, id is I
 
         annotation { "Name" : "Case name" }
         definition.caseName is string;
+
+        annotation { "Name" : "Query variable 2 (optional)" }
+        definition.bindName2 is string;
+
+        annotation { "Name" : "Bind 2 to", "Filter" : EntityType.FACE || EntityType.EDGE }
+        definition.bindQuery2 is Query;
     }
     {
         if (isInFeaturePattern(context))
@@ -146,6 +152,12 @@ export const topFrameReplay = defineFeature(function(context is Context, id is I
         const saved = getQueryVariable(context, definition.bindName);
         const savedName = try silent(getVariable(context, "caseName"));
         setQueryVariable(context, definition.bindName, qUnion(evaluateQuery(context, definition.bindQuery)));
+        const two = definition.bindName2 != "";
+        const saved2 = two ? getQueryVariable(context, definition.bindName2) : undefined;
+        if (two)
+        {
+            setQueryVariable(context, definition.bindName2, qUnion(evaluateQuery(context, definition.bindQuery2)));
+        }
         setVariable(context, "caseName", definition.caseName);
         const functions = valuesSortedById(context, definition.features);
         const instanceId = id + "inst";
@@ -183,6 +195,10 @@ export const topFrameReplay = defineFeature(function(context is Context, id is I
         }
         unsetFeaturePatternInstanceData(context, instanceId);
         setQueryVariable(context, definition.bindName, saved);
+        if (two)
+        {
+            setQueryVariable(context, definition.bindName2, saved2);
+        }
         if (savedName != undefined)
         {
             setVariable(context, "caseName", savedName);
