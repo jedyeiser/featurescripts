@@ -360,7 +360,7 @@ export function rebuildCurvedPiece(context is Context, id is Id, chart is map, p
             {
                 println("KEEPFAIL " ~ reason);
                 endFeature(context, pid);
-                return { "body" : built.body, "method" : "prism", "report" : mergeMaps(emptyPartReport(), { "reverseCheck" : check.distance }), "notes" : [], "text" : "KEPT FAILED " ~ reason };
+                return { "body" : built.body, "method" : "prism", "report" : mergeMaps(emptyPartReport(), { "reverseCheck" : check.distance, "approximationMax" : 0 }), "notes" : [], "text" : "KEPT FAILED " ~ reason };
             }
         }
         abortFeature(context, pid);
