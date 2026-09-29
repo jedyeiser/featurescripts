@@ -235,7 +235,7 @@ HELPERS = r'''
             return best == undefined ? inf * meter : best * mm;
         };
     // fpt_analyze computeAverageRadius (= beamBuilder _arc_length_weighted_radius): arc-length weighted mean of 1/k
-    // over the parts of the edges with xa <= x <= xb and k > 1e-7 / mm; midpoint rule, 2000 stations per edge
+    // over the parts of the edges with xa <= x <= xb and k > 1e-2 / m (R < 100 m); midpoint rule, 2000 stations per edge
     const avgRds = function(edgesQ, xa, xb)
         {
             const N = 2000;
@@ -247,7 +247,7 @@ HELPERS = r'''
                 for (var r in evEdgeCurvatures(context, { "edge" : e, "parameters" : params(N, false) }))
                 {
                     const x = r.frame.origin[0];
-                    if (x >= xa && x <= xb && r.curvature > 1e-4 / meter)
+                    if (x >= xa && x <= xb && r.curvature > 1e-2 / meter)
                     {
                         num += ds / r.curvature;
                         den += ds;

@@ -898,9 +898,11 @@ export function arcThroughThreePoints(p1 is Vector, p2 is Vector, p3 is Vector) 
 // rather than on beamBuilder's 900 samples. Every radius published here is a positive magnitude.
 // -----------------------------------------------------------------------------------------------------------
 
-// beamBuilder FLAT_CURVATURE = 1e-7 / mm: where |curvature| is at or below this (radius 10 km or more) the
-// curve is straight and takes no part in the average radius, neither its radius nor its length.
-export const SIDECUT_FLAT_CURVATURE = 1e-4 / meter;
+// Where |curvature| is at or below this (radius 100 m or more) the curve is not sidecut and takes no part in the
+// average radius, neither its radius nor its length. A sidecut radius is never above ~50 m (user, 2026-09-28);
+// 100 m keeps smooth (spline) inflections from dominating the mean. beamBuilder uses the same cutoff for the
+// average; its plot keeps a separate 10 km line-break threshold.
+export const SIDECUT_FLAT_CURVATURE = 1e-2 / meter;
 
 // Samples per knot span used only to bracket where x reaches the bounds and where |k| crosses the threshold.
 const AVG_RADIUS_SAMPLES_PER_SPAN = 6;

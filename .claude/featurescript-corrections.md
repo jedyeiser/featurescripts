@@ -1759,3 +1759,21 @@ pieces; the same split with a `qCreatedBy(...)` target worked.
 `qUnion([targets, startTracking(context, targets)])`. Split+ does the latter since 2026-09-28, so an evaluated
 target -- a Case pattern input (pre-resolved, correction 50) or a composite feature's query -- keeps its pieces.
 The `qUnion([pieces, qCreatedBy(splitId)])` idiom adds nothing.
+
+## Correction 56: the tangent-arc (natural radius) quadratic cancels for near-symmetric stations away from x = 0 (2026-09-28)
+
+**Symptom** (footprint/fpt_analyze.fs, natural radius ported from beamBuilder `_natural_radius`): the S14 test
+fixture gave natural radius (inflection) 14.000 m centred on X = 0 but 14.052 m at X = 16000 (AF5) and 13.987 m
+for AF6 -- the same geometry translated.
+
+**Cause**: the centre-x quadratic `A cx^2 + B cx + C = 0` has `A = a2 - a1` (difference of the two station
+heights above the waist). A symmetric ski gives A ~ 1e-12 instead of 0, and the textbook `(-B + sqrt(disc)) / 2A`
+subtracts two numbers of size |B| ~ 3e4: 1e-11 mm of width difference at x = 16 m moved R by 4 mm, 1e-12 mm by
+42 mm. beamBuilder has the same formula (its own values are exposed on near-zero-taper skis modelled away from
+x = 0).
+
+**Fix**: cancellation-free roots, same values and order: `q = -(B + sign(B) sqrt(disc)) / 2`, roots `q / A` and
+`C / q`. Agrees with the textbook form to 6e-13 relative wherever that one is well conditioned.
+
+**Lesson**: any quadratic whose leading coefficient is a DIFFERENCE of nearly equal measurements needs the stable
+root form; check a translated copy of a symmetric fixture.
