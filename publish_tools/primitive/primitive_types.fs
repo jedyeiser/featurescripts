@@ -82,8 +82,8 @@ export const PRIMITIVE_BAND_GAP_BOUNDS = { (millimeter) : [0, 50, 5000] } as Len
 export const PRIMITIVE_RADIUS_LIMIT_BOUNDS = { (meter) : [1, 50, 10000] } as LengthBoundSpec;
 export const PRIMITIVE_TICK_BOUNDS = { (millimeter) : [0.1, 10, 500] } as LengthBoundSpec;
 export const PRIMITIVE_TEXT_HEIGHT_BOUNDS = { (millimeter) : [1, 20, 500] } as LengthBoundSpec;
-/** EI band scale: N*m^2 per 1 mm of plot height (10 -> a 150 N*m^2 ski plots 15 mm high). */
-export const PRIMITIVE_EI_SCALE_BOUNDS = { (unitless) : [0.01, 10, 100000] } as RealBoundSpec;
+/** EI band scale: N*m^2 per 1 mm of plot height (2 -> a 150 N*m^2 ski plots 75 mm high). */
+export const PRIMITIVE_EI_SCALE_BOUNDS = { (unitless) : [0.01, 2, 100000] } as RealBoundSpec;
 /** EI band ticks every 50 N*m^2. */
 export const PRIMITIVE_EI_GRID_STEP = 50;
 

@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_frame.fs
-export import(path : "5808546b3b3d863d82796d24", version : "6736d3998246dc5bd08cb2e8");
+export import(path : "5808546b3b3d863d82796d24", version : "122020fc4f18916d98126988");
 
 /**
  * Export Primitive -- output geometry helpers: named point bodies and segments, band stacking and the closed
@@ -106,6 +106,61 @@ export function primitiveText(context is Context, id is Id, text is string, anch
     }
     primitiveName(context, wires, name);
     return wires;
+}
+
+/**
+ * primitiveText with superscripts: "^" makes the next character a superscript (0.6 of the height, raised), e.g.
+ * "EI (N*m^2)" -> N*m followed by a small raised 2 (sketch text has no rich formatting; code stays ASCII). The pieces
+ * are laid out left to right from their measured extents, then the whole label is aligned like primitiveText.
+ */
+export function primitiveLabel(context is Context, id is Id, text is string, anchor is Vector, height is ValueWithUnits,
+    align is string, name is string) returns Query
+{
+    var pieces = [];
+    var rest = text;
+    while (true)
+    {
+        const m = match(rest, "([^\\^]*)\\^(.)(.*)");
+        if (!m.hasMatch)
+        {
+            if (rest != "")
+            {
+                pieces = append(pieces, { "text" : rest, "sup" : false });
+            }
+            break;
+        }
+        if (m.captures[1] != "")
+        {
+            pieces = append(pieces, { "text" : m.captures[1], "sup" : false });
+        }
+        pieces = append(pieces, { "text" : m.captures[2], "sup" : true });
+        rest = m.captures[3];
+    }
+    if (size(pieces) == 1 && !pieces[0].sup)
+    {
+        return primitiveText(context, id, text, anchor, height, align, name);
+    }
+    var x = anchor[0];
+    var bodies = [];
+    for (var k = 0; k < size(pieces); k += 1)
+    {
+        const sup = pieces[k].sup;
+        const piece = primitiveText(context, id + ("part" ~ k), pieces[k].text,
+            vector(x, anchor[1], sup ? anchor[2] + height * 0.25 : anchor[2]), sup ? height * 0.6 : height, "LEFT", name);
+        if (!isQueryEmpty(context, piece))
+        {
+            x = evBox3d(context, { "topology" : piece, "tight" : true }).maxCorner[0] + height * 0.06;
+            bodies = append(bodies, piece);
+        }
+    }
+    const all = qUnion(bodies);
+    if (align != "LEFT" && size(bodies) > 0)
+    {
+        const bb = evBox3d(context, { "topology" : all, "tight" : true });
+        const shift = align == "RIGHT" ? anchor[0] - bb.maxCorner[0] : anchor[0] - (bb.minCorner[0] + bb.maxCorner[0]) / 2;
+        opTransform(context, id + "align", { "bodies" : all, "transform" : transform(vector(shift, 0 * meter, 0 * meter)) });
+    }
+    return all;
 }
 
 /** A scale level (whole units) as a key fragment ("P10", "M20", "P0"). */

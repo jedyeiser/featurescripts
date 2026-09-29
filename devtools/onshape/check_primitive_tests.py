@@ -395,7 +395,7 @@ def run_checks(prims, before=None):
     grey = norm(full["P10"]["colours"].get("P10 TAC grid PRIMITIVE RADIUS GRID +10", "0/0/0"))
     check("P10", "grid dashes grey (pattern copies keep it)", "0.5/0.5/0.5", grey, grey == "0.5/0.5/0.5")
 
-    # 2026-09-28 EI band (P8 only: target EI 150 N*m^2, scale 10 N*m^2 per mm -> 15 mm high, ticks 0..150 by 50)
+    # 2026-09-28 EI band (P8 only: target EI 150 N*m^2, scale 2 N*m^2 per mm -> 75 mm high, ticks 0..150 by 50)
     m8 = full["P8"]["members"]
     ei_names = ["EI", "EI REFERENCE", "EI AXIS TIP", "EI AXIS TAIL", "EI TICK 0 TIP", "EI TICK +50 TIP", "EI TICK +150 TAIL",
                 "EI LABEL +150", "EI TITLE", "EI DATUM"]

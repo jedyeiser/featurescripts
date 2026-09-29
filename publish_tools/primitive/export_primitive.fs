@@ -2,13 +2,13 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 // IMPORT: primitive_profiles.fs
-export import(path : "5865b24d55ff270a56088adf", version : "42c56ae1f5f4ebf763dd797f");
+export import(path : "5865b24d55ff270a56088adf", version : "15dd1e0cd199c6c2006e1538");
 // IMPORT: primitive_footprint.fs
-export import(path : "fbc957543e769a649f00c5cc", version : "a503910a82367e09972629a1");
+export import(path : "fbc957543e769a649f00c5cc", version : "c889ddfeb49b84e8c736f5a5");
 // IMPORT: primitive_baseline.fs
-export import(path : "b827b10bc0bdc678c2db28cd", version : "d4bcfc718083eb7c8fab4ac2");
+export import(path : "b827b10bc0bdc678c2db28cd", version : "b5e4152dabbf7d3c9694a0fc");
 // IMPORT: primitive_output.fs
-export import(path : "6f122edb2547a6a46991d9fd", version : "5545cb62d0c10c08f4c68d76");
+export import(path : "6f122edb2547a6a46991d9fd", version : "010d05776e74fa9eecfe1267");
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs) -- same pin as station_geometry
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: xSection V57 xSectBeamAnalysis.fs (getEIFromEdges, computeBeamStiffness; direction-safe)
@@ -177,7 +177,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             annotation { "Name" : "Tick length", "Description" : "Half length of the radius plot's key-location tick marks." }
             isLength(definition.tickLength, PRIMITIVE_TICK_BOUNDS);
 
-            annotation { "Name" : "EI scale (N*m^2 per mm)", "Description" : "EI band (with a Target EI): N*m^2 per 1 mm of plot height. 10 = a 150 N*m^2 ski plots 15 mm high. Ticks every 50 N*m^2." }
+            annotation { "Name" : "EI scale (N*m^2 per mm)", "Description" : "EI band (with a Target EI): N*m^2 per 1 mm of plot height. 2 = a 150 N*m^2 ski plots 75 mm high. Ticks every 50 N*m^2." }
             isReal(definition.eiScale, PRIMITIVE_EI_SCALE_BOUNDS);
 
             annotation { "Name" : "Dashed grid", "Default" : false,
@@ -563,7 +563,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             const left = evBox3d(context, { "topology" : qUnion(members), "tight" : true }).minCorner[0] - definition.textHeight;
             for (var band in bandKeys)
             {
-                const titleText = primitiveText(context, id + ("title" ~ PRIMITIVE_BAND_LABELS[band]), PRIMITIVE_BAND_TITLES[band],
+                const titleText = primitiveLabel(context, id + ("title" ~ PRIMITIVE_BAND_LABELS[band]), PRIMITIVE_BAND_TITLES[band],
                     vector(left, zero, bandZ[band]), definition.textHeight, "RIGHT", title ~ " " ~ PRIMITIVE_BAND_LABELS[band] ~ " TITLE");
                 primitiveColour(context, titleText, PRIMITIVE_COLOURS[band]);
                 members = append(members, titleText);

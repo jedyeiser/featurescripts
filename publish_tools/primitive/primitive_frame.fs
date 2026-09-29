@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_types.fs
-export import(path : "ecde24520874030ab412c981", version : "fe5fa80592a47bebd8342270");
+export import(path : "ecde24520874030ab412c981", version : "2c729a6472d927e790fb3792");
 
 /**
  * Export Primitive -- frames and chains.

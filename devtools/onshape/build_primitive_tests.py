@@ -216,7 +216,7 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
         num("bandGap", "50 mm"),
         num("radiusLimit", "50 m"),
         num("tickLength", "10 mm"),
-        num("eiScale", "10"),
+        num("eiScale", "2"),
         b("dashedGrid", grid),
         b("labels", labels),
         num("textHeight", "20 mm"),

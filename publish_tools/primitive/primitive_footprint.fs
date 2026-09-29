@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_frame.fs
-export import(path : "5808546b3b3d863d82796d24", version : "6736d3998246dc5bd08cb2e8");
+export import(path : "5808546b3b3d863d82796d24", version : "122020fc4f18916d98126988");
 // IMPORT: footprint V32 fpt_analyze.fs (prepareFootprintCurves, analyzeFootprintCurves, computeAverageRadius)
 import(path : "52724f3a857fa52d3ecceb77/b105c12d5094d99215293e38/71d853c0fd2f10ca3bb20a4b", version : "3b2e4e5538b5a476b5486c1d");
 

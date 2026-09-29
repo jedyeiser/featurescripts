@@ -128,19 +128,22 @@ Datum (empty = world origin, world axes; X along the ski, Z up, profiles in its 
 (default; a vertex / point / MC whose ORIGIN moves the frame, axes stay world X/Y/Z, so x is measured along world X
 from the datum -- the ski's own connectors have Z along the ski) or COORDINATE_SYSTEM (the MC's own axes, as phase 1),
 Target EI (optional EI wire, xSection convention: x = world X, height 1 mm = 1 N*m^2, like EI and Cross Section's EI
-curve), Tooling blocks (Tip / Tail block: type a name, or pick the block's wire and editing logic copies its name,
-correction 36), Baseline from Volume
+curve), Tooling blocks (per block "name from" TYPED (default; shows only the name field) or WIRE (shows only the wire
+pick; editing logic copies the wire's name into the hidden tipBlockWireName / tailBlockWireName, correction 36; no
+wire = no row)), Baseline from Volume
 (the section's bottom wire) or Input wires (e.g. FULL_BASELINE), Footprint from Volume (the base periphery) or
 Input wires (flat FPT_L + FPT_R, taken as already unwrapped and aligned at MRS; or wrapped 3D wires), Average radius
 between Contacts / Widest / Inflection (Table 2 average radius only), Data points N (+ force XS1 / MRS / XS2), Station
 numbers (default on: # column on Key locations and Data), Layout (band gap 50 mm, radius plot limit 50 m, tick 10 mm,
-Dashed grid default OFF, Labels default ON + Text height 20 mm), Query variable (default `primitive`). The name prefix
+EI scale 2 N*m^2 per mm, Dashed grid default OFF, Labels default ON + Text height 20 mm), Query variable (default `primitive`). The name prefix
 fills from the volume's name (editing logic). Icons: feature = icons/final/export_primitive_icon.svg (tab
 b9dc4aaf067afeb58293caed), table = primitive_tables_icon.svg (tab eb32ed1a7e9ecf0a7ef61a7c, wired by hand on "Table
 Type Name").
 
 Output: ONE closed composite `<prefix> PRIMITIVE` (excluded from BOM) in the datum XZ plane, BELOW the part, bands
-top to bottom a band gap apart: BASELINE (+ points TIP/TAIL at the baseline's ends, FCP/ACP, and unless the baseline
+top to bottom a band gap apart: EI (only with a Target EI: the EI wire's edges sampled + fitted at EI / EI scale, x
+local; `EI REFERENCE` zero line; title EI (N*m + a raised 0.6-height 2 + ) via primitiveLabel's `^2` markup; `EI AXIS` / `EI TICK +50 TIP` / `EI LABEL` / `EI GRID` every 50 N*m^2, like the radius
+frame; purple), BASELINE (+ points TIP/TAIL at the baseline's ends, FCP/ACP, and unless the baseline
 is flat within the RSL FRCP/ARCP/MCL/FB_MIN/AB_MIN), PROFILE (BOTTOM, TOP, TIP END, TAIL END + points on the bottom
 wire, TIP/TAIL at the section's extreme points along X = the bottom wire's ends, TOP FCP/ACP), FOOTPRINT (unwrapped: u = x(MRS) + s along the tip, y drawn
 as height; exact arcs kept wherever the bottom is flat; points widest / waist / inflections), RADIUS (10 mm per 1 m,
@@ -158,7 +161,11 @@ and in the producer slot (Extract variables keys: primitive, rsl, averageRadius,
 naturalRadiusInflection, taperAngleWidest, taperAngleInflection, deflection, stiffness (0 = no target EI); queries primitive, baseline, profileBottom,
 profileTop, footprint, radius). Tables: add "Primitive tables" (filter "Primitives containing", pick "Table").
 
-Definitions: s = arc length on the bottom wire from MRS, + towards FCP; h along the bottom wire's normal into the
+Definitions: x from the datum; s = distance along the bottom wire from the datum, same direction as x (signed arc
+length, zero at the bottom-wire point at x = 0, ds/dx > 0 whichever way the tip points; past an end of the wire it runs
+on along that end's tangent; MCl's s is measured the same way, not taken from analyzeBaseline; 2026-09-28 user rule);
+Key locations and Data rows sorted by x ascending, `station` 0.. from the lowest x (stored always, # column with
+"Station numbers"); h along the bottom wire's normal into the
 ski; XS1 / XS2 halfway FCP..MRS / MRS..ACP in x; RSL = |x(ACP) - x(FCP)| in the datum; ski_thck = normal thickness;
 baseline_height = baseline above the straight line through its FCP / ACP points; Table 1 top lengths run between
 the bottom stations carried to the top along the normal.
@@ -172,16 +179,20 @@ min / FRCP / ARCP / MCL points; radii only where found.
 
 Tests: Part Studio "Primitive tests" (cbf60b1202cbc555d4e752d6): Derive_DM_V1 (RD 20TAC Design Master @ V1: VOLUME,
 FULL_BASELINE, REF_WIRE, FPT_L/R + mate connectors), Mirror_TAC (tip -X), Datum_x500_z10, EI_const_150 (sketch line on
-Front at z 150 mm = EI 150 N*m^2), and P1..P9 (names carry the expectation; P7 datum = MRS connector with ORIGIN ->
-P1 x - 885; P8 target EI + block names -> 132.46 mm/30kg = P L^3 / 48 EI; P9 COORDINATE_SYSTEM on the world-aligned
-MC = P5). Build: `PYTHONPATH=. [PRIMITIVE_STUDIO=<name>] python devtools/onshape/build_primitive_tests.py [P1 ...]`;
+Front at z 150 mm = EI 150 N*m^2), and P1..P10 (names carry the expectation; P7 datum = MRS connector with ORIGIN ->
+P1 x - 885, s(MRS) = 0; P8 target EI + block names -> 132.46 mm/30kg = P L^3 / 48 EI, EI band; P9 COORDINATE_SYSTEM on
+the world-aligned MC = P5; P10 = P1 with the dashed grid on, labels off). Build: `PYTHONPATH=. [PRIMITIVE_STUDIO=<name>] python devtools/onshape/build_primitive_tests.py [P1 ...]`;
 check: `PYTHONPATH=. FS_SYNC_TIMEOUT=300 python devtools/onshape/check_primitive_tests.py [--dump | --json out |
---before snapshot.json]` -> 59/59 (2026-09-28, run in the copy studio "Primitive tests (agent)" 5c3ac8fb8ec70b1f256c0e97
+--before snapshot.json] [--unsuppress] [--keep P1,P8]` (many Export primitive instances make a studio slow: after
+checking, `--keep` suppresses every case but those) -> all pass (2026-09-28 evening, see the session report; first
+59/59 run in the copy studio "Primitive tests (agent)" 5c3ac8fb8ec70b1f256c0e97
 while the user was working in "Primitive tests"; --before compared P1..P6 with the phase-1 code: unchanged except the
 removed rows). avg R 17.0496, natural 17.4824 / 16.1851 m, RSL 1480, FRCPl 130.0, ARCPl 50.0.
 
 Open: SW rout table (Table 4), ISO min thickness, Tip_height / Tail_height definitions, drawing template; the
 radius plot and data table use the +y side only; the base periphery misses base faces that do not touch the mid
-plane; the Tip / Tail block wire -> name editing logic is untested in the UI (REST inserts skip editing logic);
+plane; the Tip / Tail block WIRE -> name editing logic is untested in the UI (REST inserts skip editing logic);
+drawing views render every wire BLACK (tested 2026-09-28: APPEARANCE colours show only in the Part Studio; PDF export
+had no colour); with a COORDINATE_SYSTEM datum the EI band maps world x through the datum's x axis only;
 analyzeBaseline (xSection) takes FCP/ACP from its sample grid unless they are chain ends -- re-measured here, fix
 upstream then re-pin.
