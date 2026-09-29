@@ -162,17 +162,17 @@ function basePeriphery(context is Context, volume is Query, bottom is map, toDat
 export function primitiveBaseSections(context is Context, id is Id, faces is array, periphery is Query, frame is map,
     toDatum is Transform, toLocal is Transform, isIdentity is boolean) returns map
 {
-    const box = evBox3d(context, { "topology" : periphery, "tight" : true });
+    const bb = evBox3d(context, { "topology" : periphery, "tight" : true });
     var levels = [0 * meter];
     for (var f in UNWRAP_SECTION_FRACTIONS)
     {
-        if (box.maxCorner[1] > PRIMITIVE_CHAIN_TOLERANCE)
+        if (bb.maxCorner[1] > PRIMITIVE_CHAIN_TOLERANCE)
         {
-            levels = append(levels, f * box.maxCorner[1]);
+            levels = append(levels, f * bb.maxCorner[1]);
         }
-        if (box.minCorner[1] < -PRIMITIVE_CHAIN_TOLERANCE)
+        if (bb.minCorner[1] < -PRIMITIVE_CHAIN_TOLERANCE)
         {
-            levels = append(levels, f * box.minCorner[1]);
+            levels = append(levels, f * bb.minCorner[1]);
         }
     }
     const yAxis = toDatum.linear * vector(0, 1, 0);
