@@ -251,7 +251,7 @@ def ei_sketch():
 def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseline=None, footprint=None,
               region="FULL", points=21, qv="", datum_uses="ORIGIN", ei=None, tip_block="", tail_block="",
               grid=False, labels=True, plot="RADIUS", curvature_scale="50 mm", extras=(), key_lines=False, junctions=True,
-              radius_axis_min="10 m", max_curvature="0.1", curvature_axis_min="0.02", ei_axis_max="450"):
+              radius_axis_min="10", max_curvature="0.1", curvature_axis_min="0.02", ei_axis_max="450"):
     params = [
         q("volume", volume),
         q("fcp", fcp),
@@ -272,7 +272,7 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
         num("curvatureScale", curvature_scale),
         num("maxCurvature", max_curvature),
         num("curvatureAxisMin", curvature_axis_min),
-        num("radiusAxisMin", radius_axis_min),
+        num("radiusAxisLow", radius_axis_min),
         num("eiAxisMax", ei_axis_max),
         q("targetEI", *([ei] if ei else [])),
         num("dataPoints", str(points), True),
@@ -302,7 +302,7 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
                   ("datumUses", "targetEI", "tipBlockWire", "tipBlock", "tailBlockWire", "tailBlock",
                    "dashedGrid", "labels", "textHeight", "stationNumbers", "eiScale", "tipBlockFrom", "tailBlockFrom",
                    "tipBlockWireName", "tailBlockWireName", "extraPoints", "plotMode", "plotRegion", "curvatureScale",
-                   "keyLines", "junctionTicks", "maxCurvature", "curvatureAxisMin", "radiusAxisMin", "eiAxisMax")]
+                   "keyLines", "junctionTicks", "maxCurvature", "curvatureAxisMin", "radiusAxisLow", "eiAxisMax")]
     return upsert(name, "exportPrimitive", params, ns)
 
 
@@ -368,10 +368,16 @@ def cases(dv, mi, dm, ei, bt=None):
 
 
 def station_definition_new(dv):
-    """SD1: a Station definition inserted WITHOUT variableName, as a new feature from the dialog: the 2026-09-29 default
-    ("", was "stations") applies -> no # variable. One Single point station "MRS" at the derived MRS connector."""
+    """SD1: a NEW Station definition as the dialog makes it: variableName = the feature spec's default (2026-09-29: "",
+    was "stations"; a REST insert that leaves a parameter out fails its precondition, so the default is read from the
+    spec) -> no # variable. One Single point station "MRS" at the derived MRS connector."""
     ns = ns_of("station_definition")
+    sd_tab = [e for e in ELEMENTS if e["name"] == "station_definition"][0]["id"]
+    specs = c.get(f"/api/v10/featurestudios/d/{D}/w/{W}/e/{sd_tab}/featurespecs")["featureSpecs"]
+    default = [p["defaultValue"]["value"] for sp in specs for p in sp.get("parameters", []) if p.get("parameterId") == "variableName"][0]
+    print("Station definition variableName spec default: %r" % default)
     params = [
+        s("variableName", default),
         en("language", "StationLanguage", "ENGLISH", ns),
         {"btType": "BTMParameterArray-2025", "parameterId": "stations", "items": [
             {"btType": "BTMArrayParameterItem-1843", "parameters": [
@@ -379,7 +385,7 @@ def station_definition_new(dv):
                 q("secondPoint"), q("lineEdge"), num("count", "5", True), num("firstNumber", "1", True), b("reverse", False)]}]},
         b("printStations", False),
     ]
-    return upsert("SD1 new Station definition, variable name left out -> no # variable, INFO", "stationDefinition", params, ns)
+    return upsert("SD1 new Station definition, spec-default variable name -> no # variable, INFO", "stationDefinition", params, ns)
 
 
 if __name__ == "__main__":

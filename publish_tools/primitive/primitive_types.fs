@@ -112,7 +112,8 @@ export const PRIMITIVE_CURVATURE_SCALE_BOUNDS = { (millimeter) : [0.1, 50, 1000]
  * -"Curvature axis min" to +"Max curvature" (1/m; at 50 mm per 0.01 1/m also -100 .. +500 mm). EI band: 0 .. "EI axis
  * max" (N*m^2; 225 mm at 2 N*m^2 per mm). Plotted values outside a band's axis break the line.
  */
-export const PRIMITIVE_RADIUS_AXIS_MIN_BOUNDS = { (meter) : [0, 10, 10000] } as LengthBoundSpec;
+/** Radius axis min in m (a plain number, see export_primitive's radiusAxisLow). */
+export const PRIMITIVE_RADIUS_AXIS_MIN_BOUNDS = { (unitless) : [0, 10, 10000] } as RealBoundSpec;
 export const PRIMITIVE_MAX_CURVATURE_BOUNDS = { (unitless) : [0.001, 0.1, 1000] } as RealBoundSpec;
 export const PRIMITIVE_CURVATURE_AXIS_MIN_BOUNDS = { (unitless) : [0, 0.02, 1000] } as RealBoundSpec;
 export const PRIMITIVE_EI_AXIS_MAX_BOUNDS = { (unitless) : [1, 450, 1000000] } as RealBoundSpec;

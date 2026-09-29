@@ -303,3 +303,5 @@ around the Close case call as well as the Close case's own frame (nested) keeps 
 retry for edits of outside geometry fails (the outer frame cannot be left). Spike rows O1-O4, N1-N6 in the
 "Case pattern outside-ref spikes" studio (throwaway; spike_outside.fs tab). Proposed: run each case nested first;
 if a feature refuses with SELF_INTERSECTING, roll the attempt back and rerun the case the current way. Not built.
+Row O5 (2026-09-29): user's reorder -- Define case, body, case features, then an executor that owns the body list --
+passes everything at once (outside clicks, in-list QV remap, outside-geometry edit via retry). Candidate v3 shape.

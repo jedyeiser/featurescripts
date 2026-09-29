@@ -2,13 +2,13 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 // IMPORT: primitive_profiles.fs
-export import(path : "5865b24d55ff270a56088adf", version : "70268aedee724c3cb2747783");
+export import(path : "5865b24d55ff270a56088adf", version : "0d79a06f9a28de9278132644");
 // IMPORT: primitive_footprint.fs
-export import(path : "fbc957543e769a649f00c5cc", version : "6e09517956407ef6f0337d37");
+export import(path : "fbc957543e769a649f00c5cc", version : "4cf236ea134cd83aa592678c");
 // IMPORT: primitive_baseline.fs
-export import(path : "b827b10bc0bdc678c2db28cd", version : "b38289ccd24abf065a15af4f");
+export import(path : "b827b10bc0bdc678c2db28cd", version : "b6f22a4e1e917b94a9276e25");
 // IMPORT: primitive_output.fs
-export import(path : "6f122edb2547a6a46991d9fd", version : "6844c28488d7637dafd3e88e");
+export import(path : "6f122edb2547a6a46991d9fd", version : "6ebcbd2b8dfca378d7ad3508");
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs) -- same pin as station_geometry
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: xSection V58 xSectBeamAnalysis.fs (getEIFromEdges, computeBeamStiffness; direction-safe)
@@ -166,8 +166,10 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             }
             else
             {
-                annotation { "Name" : "Radius axis min", "Description" : "The radius axis runs from minus this (taper, tip, tail) to +Max radius; the plot breaks below it. Enter in m, e.g. 10 m." }
-                isLength(definition.radiusAxisMin, PRIMITIVE_RADIUS_AXIS_MIN_BOUNDS);
+                // A plain number in m: a NEW length parameter's default is migrated into saved features as that number
+                // in mm (10 m -> "10.0*mm", 2026-09-29), a real's is not.
+                annotation { "Name" : "Radius axis min (m)", "Description" : "The radius axis runs from minus this (taper, tip, tail) to +Max radius; the plot breaks below it." }
+                isReal(definition.radiusAxisLow, PRIMITIVE_RADIUS_AXIS_MIN_BOUNDS);
             }
 
             annotation { "Name" : "Max radius (treated as flat above)", "Description" : "Top of the radius axis; the radius plot breaks where |R| is larger (flat parts, next to an inflection) and the data table's radius is empty there. Enter in m, e.g. 50 m (500 mm of plot)." }
@@ -523,9 +525,9 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         else
         {
             // Levels and values in m of radius.
-            axisLo = -definition.radiusAxisMin / meter;
+            axisLo = -definition.radiusAxisLow;
             axisHi = definition.radiusLimit / meter;
-            valueLo = -min(definition.radiusAxisMin, definition.radiusLimit) / meter;
+            valueLo = -min(definition.radiusAxisLow, definition.radiusLimit / meter);
             valueHi = definition.radiusLimit / meter;
             runs = primitiveRadiusRuns(unwrapped.samples);
         }
@@ -1015,7 +1017,7 @@ function bandsData(bandZ is map, definition is map, region is map, frameX is arr
     }
     else
     {
-        out.radiusAxisMin = primitiveRound(definition.radiusAxisMin / meter, 4);
+        out.radiusAxisMin = definition.radiusAxisLow;
     }
     out.radiusLimit = primitiveRound(definition.radiusLimit / meter, 4);
     // The plot band's fixed frame: u from / to (mm) and the axis from / to (level units: m of radius, 0.01 1/m).

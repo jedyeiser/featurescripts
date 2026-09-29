@@ -10,6 +10,12 @@ statuses, and compares:
   * P8 (target EI 150 N*m^2 constant): deflection = P L^3 / 48 EI, stiffness = 48 EI (1 in) / L^3, block rows;
   * only rows with data (no "n/a" / phase-2 rows); P1's flat baseline has no rocker / camber rows or points;
   * structure: composite members, band bodies, key points;
+  * fixed chart axes (2026-09-29): P1 / P6 / P11 / P15 (radius, regions FULL / RSL / WIDEST / INFLECTION) share one
+    frame geometry and band stacking, as do P12 / P16 (curvature INFLECTION / FULL); P16's full-ski curvature stays
+    inside its axis; P8's EI frame spans the volume and 0 .. 450 N*m^2;
+  * xSection V58 pinned in primitive_baseline / export_primitive, the exactContacts workaround gone;
+  * Station definition: the spec default of "variableName" is "" (new features: no # variable; SD1 in this studio),
+    while the saved "Stations (test)" in Part Studio 1 keeps "stations" and its Station geometry features resolve;
   * P14 (the user's tail bite on a copy of the volume): the unwrap is an isometry (periphery length, base area), the
     footprint reaches the bite's true depth on the centreline, only the bite adds corners, the radius band beyond the
     bite = P1's and has no spikes through it, and inside the RSL everything = P3.
@@ -51,7 +57,7 @@ function(context is Context, queries)
             const a = getProperty(context, { "entity" : m, "propertyType" : PropertyType.APPEARANCE });
             colours[name] = round(a.red * 100) / 100 ~ "/" ~ round(a.green * 100) / 100 ~ "/" ~ round(a.blue * 100) / 100;
             // x / z ranges (mm) of the plot band's plot, reference line, junction and key-location ticks, per body (world frame).
-            if (match(name, ".* (RADIUS|CURVATURE)( REFERENCE| JUNCTION| TICK .*)?").hasMatch || match(name, ".* FOOTPRINT JUNCTION").hasMatch)
+            if (match(name, ".* (RADIUS|CURVATURE|EI)( REFERENCE| JUNCTION| TICK .*| AXIS .*| LABEL .*)?").hasMatch || match(name, ".* FOOTPRINT JUNCTION").hasMatch)
             {
                 const bb = evBox3d(context, { "topology" : m, "tight" : true });
                 const row = [round(bb.minCorner[0] / millimeter * 1000) / 1000, round(bb.maxCorner[0] / millimeter * 1000) / 1000,
@@ -443,10 +449,10 @@ def run_checks(prims, before=None):
     # 2026-09-28 EI band (P8 only: target EI 150 N*m^2, scale 2 N*m^2 per mm -> 75 mm high, ticks 0..150 by 50)
     m8 = full["P8"]["members"]
     ei_names = ["EI", "EI REFERENCE", "EI AXIS TIP", "EI AXIS TAIL", "EI TICK 0 TIP", "EI TICK +50 TIP", "EI TICK +150 TAIL",
-                "EI LABEL +150", "EI TITLE", "EI DATUM"]
+                "EI TICK +450 TIP", "EI LABEL +150", "EI LABEL +450", "EI TITLE", "EI DATUM"]
     missing = [n for n in ei_names if "P8 TAC EI PRIMITIVE " + n not in m8]
-    top = [m for m in m8 if re.search(r" EI TICK \+200 ", m)]
-    check("P8", "EI band: plot, reference, axes, ticks 0..150 by 50, label, title, datum", "present, no +200",
+    top = [m for m in m8 if re.search(r" EI TICK \+500 ", m)]
+    check("P8", "EI band (fixed axis 0..450): plot, reference, axes, ticks 0..450 by 50, labels, title, datum", "present, no +500",
           missing or ("all" if not top else top), not missing and not top)
     eic = norm(full["P8"]["colours"].get("P8 TAC EI PRIMITIVE EI", "0/0/0"))
     check("P8", "EI plot colour", "0.45/0.2/0.6", eic, eic == "0.45/0.2/0.6")
@@ -460,6 +466,9 @@ def run_checks(prims, before=None):
     check("P6", "average radius always between the inflections: = P1 (region RSL)", meta(p1, "averageRadius"), meta(p6, "averageRadius"),
           near(meta(p6, "averageRadius"), meta(p1, "averageRadius"), 1e-4))
     run_checks_b(d, full)
+    run_checks_axes(d, full)
+    run_checks_repin()
+    run_checks_stations()
     if "P14" in d:
         run_checks_unwrap(d, full)
 
@@ -501,16 +510,17 @@ def run_checks_b(d, full):
         ok = bool(d[case]["settings"].get("plotRegion") == region and ref and plot)
         if ok and want:
             ok = near(got[0], want[0], 0.01) and near(got[1], want[1], 0.01)
+        frame_x = [b.get("frameFrom"), b.get("frameTo")]
         if ok:
-            ok = near(ref[0], got[0], 0.01) and near(ref[1], got[1], 0.01) and plot[0] >= got[0] - 0.01 and plot[1] <= got[1] + 0.01
+            ok = near(ref[0], frame_x[0], 0.01) and near(ref[1], frame_x[1], 0.01) and plot[0] >= got[0] - 0.01 and plot[1] <= got[1] + 0.01
         if ok and region == "FULL":
             ok = plot[0] < lo_rsl - 1 or plot[1] > hi_rsl + 1  # the full plot runs on past the contacts
         if ok and region != "FULL":
             ok = plot[0] < got[0] + 30 and plot[1] > got[1] - 30
         ticks = [r[0] for name, rs in full[case]["extents"].items() if " %s TICK " % band in name and not re.search(r"TICK [-+]?[\d.]+ (TIP|TAIL)$", name) for r in rs]
         ok = ok and all(got[0] - 0.01 <= x <= got[1] + 0.01 for x in ticks)
-        check(case, "plot region %s: reference = region, plot + key ticks inside" % region, "%s %s" % (region, want and [round(v, 2) for v in want]),
-              "region %s, ref %s, plot %s, %d key ticks" % (got, ref and ref[:2], plot and plot[:2], len(ticks)), ok)
+        check(case, "plot region %s: reference = full frame, plot + key ticks inside the region" % region, "%s %s" % (region, want and [round(v, 2) for v in want]),
+              "region %s, frame %s, ref %s, plot %s, %d key ticks" % (got, frame_x, ref and ref[:2], plot and plot[:2], len(ticks)), ok)
     # Curvature (P12): band, 1/m scale, values ~ 1/R of the sidecut, continuous (few runs), tables = P1
     m12 = full["P12"]["members"]
     names = ["CURVATURE", "CURVATURE REFERENCE", "CURVATURE TITLE", "CURVATURE DATUM", "CURVATURE AXIS TIP", "CURVATURE TICK 0 TIP",
@@ -525,12 +535,13 @@ def run_checks_b(d, full):
     kmin = (plot[2] - b12["curvature"]) / b12["plotLevelHeight"] * 0.01
     check("P12", "curvature between inflections (1/m): max ~ 1/R sidecut, min >= ~0 (TAC: arcs, the tip arc starts at the inflection)",
           "0.05..0.08 / -0.01..max", "%.4f / %.4f" % (kmax, kmin), 0.05 <= kmax <= 0.08 and -0.01 <= kmin <= kmax)
-    check("P12", "curvature level step 0.01 1/m, 5 mm", "1, 5 mm", "%s, %s" % (b12.get("plotLevelStep"), b12.get("plotLevelHeight")),
-          b12.get("plotLevelStep") == 1.0 and near(b12.get("plotLevelHeight"), 5.0, 1e-6))
+    check("P12", "curvature level step 0.01 1/m, 50 mm (default since 2026-09-29)", "1, 50 mm", "%s, %s" % (b12.get("plotLevelStep"), b12.get("plotLevelHeight")),
+          b12.get("plotLevelStep") == 1.0 and near(b12.get("plotLevelHeight"), 50.0, 1e-6))
     labels = sorted(m.split(" LABEL ")[1] for m in m12 if " CURVATURE LABEL " in m)
+    want_labels = sorted(["0"] + ["-0.0%d" % i for i in (1, 2)] + ["+0.0%d" % i for i in range(1, 10)] + ["+0.10"])
     c05 = full["P12"]["counts"].get("P12 TAC curvature PRIMITIVE CURVATURE LABEL +0.05")
-    check("P12", "curvature numbers every 0.05 1/m (label spacing); '0.05' drawn without '+' (6 glyph loops)", "0, +0.05; 6",
-          "%s; %s" % (labels, c05), labels == ["+0.05", "0"] and c05 == 6)
+    check("P12", "curvature numbers at every 0.01 1/m over the fixed axis -0.02..+0.10; '0.05' drawn without '+' (6 glyph loops)", "13 labels; 6",
+          "%s; %s" % (labels, c05), labels == want_labels and c05 == 6)
     runs = full["P12"]["counts"].get("P12 TAC curvature PRIMITIVE CURVATURE", 0)
     cj12 = full["P12"]["extents"].get("P12 TAC curvature PRIMITIVE CURVATURE JUNCTION", [])
     check("P12", "curvature breaks only at edge junctions (no sign breaks): runs <= junctions + 1", "<= %d" % (len(cj12) + 1), runs,
@@ -585,6 +596,114 @@ def run_checks_b(d, full):
           "%s %s / %s %s" % (e150, e50, r10, rm10), e150 == 4 and e50 == 3 and r10 == 4 and rm10 == 4)
     et = full["P8"]["counts"].get("P8 TAC EI PRIMITIVE EI TITLE")
     check("P8", "EI title 'EI (Nm^2)': E I ( N m ) 2 = 7 glyph loops (no '*')", 7, et, et == 7)
+
+
+def frame_geometry(full_case, data, band):
+    """{name suffix: [[xmin, xmax, zmin - z_ref, zmax - z_ref], ...]} of the band's fixed frame: end axes, reference line,
+    level ticks and numbers (not the plot, key-location or junction ticks)."""
+    zref = data["bands"][band.lower()]
+    out = {}
+    for name, rows_ in full_case["extents"].items():
+        suffix = name.split(" PRIMITIVE ", 1)[1]
+        if re.match(r"%s (AXIS (TIP|TAIL)|REFERENCE|TICK [-+]?[\d.]+ (TIP|TAIL)|LABEL .*)$" % band, suffix):
+            out[suffix] = sorted([r[0], r[1], round(r[2] - zref, 3), round(r[3] - zref, 3)] for r in rows_)
+    return out
+
+
+def same_geometry(a, b, tol=1e-3):
+    if set(a) != set(b):
+        return "names differ: %s" % sorted(set(a) ^ set(b))[:4]
+    for k in a:
+        if len(a[k]) != len(b[k]):
+            return "%s count %d vs %d" % (k, len(a[k]), len(b[k]))
+        for ra, rb in zip(a[k], b[k]):
+            if any(abs(x - y) > tol for x, y in zip(ra, rb)):
+                return "%s %s vs %s" % (k, ra, rb)
+    return ""
+
+
+def run_checks_axes(d, full):
+    """2026-09-29 fixed chart axes: frames and band stacking do not move with the data or the Plot x-range."""
+    stack_keys = ("ei", "baseline", "profile", "footprint", "radius", "curvature")
+    frame_keys = ("frameFrom", "frameTo", "axisFrom", "axisTo", "plotLevels")
+    for band, cases in (("RADIUS", ("P1", "P6", "P11", "P15")), ("CURVATURE", ("P12", "P16"))):
+        ref = cases[0]
+        g0 = frame_geometry(full[ref], d[ref], band)
+        for case in cases[1:]:
+            diff = same_geometry(g0, frame_geometry(full[case], d[case], band))
+            check(case, "%s frame geometry (axes, reference, level ticks, numbers) = %s's (region %s vs %s)"
+                  % (band.lower(), ref, d[case]["settings"]["plotRegion"], d[ref]["settings"]["plotRegion"]),
+                  "identical, %d bodies" % len(g0), diff or "identical", not diff and len(g0) > 10)
+            sa = {k: d[ref]["bands"].get(k) for k in stack_keys + frame_keys}
+            sb = {k: d[case]["bands"].get(k) for k in stack_keys + frame_keys}
+            check(case, "band stacking + frame data = %s's" % ref, "equal", sb if sa != sb else "equal", sa == sb)
+    # Radius axis -10 .. +50 m at 10 mm per m: -100 .. +500 mm around the reference, x = the full footprint.
+    b1 = d["P1"]["bands"]
+    ax = frame_geometry(full["P1"], d["P1"], "RADIUS").get("RADIUS AXIS TIP", [[0, 0, 0, 0]])[0]
+    check("P1", "radius axis: -10 .. +50 m (-100 .. +500 mm), at the frame's x ends", "-100 / 500, x in %s" % [b1.get("frameFrom"), b1.get("frameTo")],
+          ax, near(ax[2], -100.0, 1e-3) and near(ax[3], 500.0, 1e-3) and (near(ax[0], b1["frameTo"], 1e-3) or near(ax[0], b1["frameFrom"], 1e-3)))
+    # Curvature full ski (P16): plotted, but cut at the axis (-0.02 .. +0.10 1/m) and inside the frame.
+    b16 = d["P16"]["bands"]
+    plot = span(full["P16"], "CURVATURE")
+    lo = b16["curvature"] + b16["axisFrom"] * b16["plotLevelHeight"]
+    hi = b16["curvature"] + b16["axisTo"] * b16["plotLevelHeight"]
+    fp = {k: v for k, v in d["P1"]["footprint"].items() if isinstance(v, dict)}
+    inf = sorted([fp["FB_INFLECTION"]["u"], fp["AB_INFLECTION"]["u"]])
+    # (TAC: the tip / tail arcs start at the inflections with -0.98 1/m, beyond the -0.02 axis: only the sidecut shows.)
+    check("P16", "curvature FULL: plot inside the fixed axis (z) and frame (x)",
+          "z %.1f..%.1f, x %s..%s" % (lo, hi, b16["frameFrom"], b16["frameTo"]), plot,
+          bool(plot) and plot[2] >= lo - 1e-3 and plot[3] <= hi + 1e-3 and plot[0] >= b16["frameFrom"] - 1e-3 and plot[1] <= b16["frameTo"] + 1e-3
+          and plot[0] <= inf[0] + 1 and plot[1] >= inf[1] - 1)
+    check("P16", "settings: plot CURVATURE, region FULL, max 0.1 1/m, axis min 0.02 1/m", "CURVATURE FULL 0.1 0.02",
+          "%s %s %s %s" % (d["P16"]["settings"]["plot"], d["P16"]["settings"]["plotRegion"], b16.get("maxCurvature"), b16.get("curvatureAxisMin")),
+          d["P16"]["settings"]["plot"] == "CURVATURE" and d["P16"]["settings"]["plotRegion"] == "FULL"
+          and near(b16.get("maxCurvature"), 0.1, 1e-9) and near(b16.get("curvatureAxisMin"), 0.02, 1e-9))
+    # EI (P8): frame over the volume's x extent, 0 .. 450 N*m^2 (225 mm at 2 N*m^2 per mm); plot inside.
+    b8 = d["P8"]["bands"]
+    eg = frame_geometry(full["P8"], d["P8"], "EI")
+    eax = eg.get("EI AXIS TIP", [[0, 0, 0, 0]])[0]
+    eplot = span(full["P8"], "EI")
+    ok = (near(eax[2], 0.0, 1e-3) and near(eax[3], 225.0, 1e-3) and b8.get("eiAxisMax") == 450.0
+          and eplot and eplot[0] >= b8["eiFrameFrom"] - 1e-3 and eplot[1] <= b8["eiFrameTo"] + 1e-3
+          and near(eplot[2] - b8["ei"], 75.0, 1e-3))
+    check("P8", "EI frame: x = volume extent, 0..450 N*m^2 = 0..225 mm; plot (150 = 75 mm) inside", "0 / 225, plot 75",
+          "axis %s, frame x %s..%s, plot %s" % (eax, b8.get("eiFrameFrom"), b8.get("eiFrameTo"), eplot), bool(ok))
+
+
+def run_checks_repin():
+    """2026-09-29: xSection V58 pinned; the exactContacts / distanceToLine workaround removed (live tabs)."""
+    tabs = {e["name"]: e["id"] for e in c.list_elements(D, W)}
+    base = c.get("/api/v10/featurestudios/d/%s/w/%s/e/%s" % (D, W, tabs["primitive_baseline"]))["contents"]
+    ep = c.get("/api/v10/featurestudios/d/%s/w/%s/e/%s" % (D, W, tabs["export_primitive"]))["contents"]
+    pins = re.findall(r'import\(path : "f8deedeb1fbd819a8fa20113/([0-9a-f]{24})/', base + ep)
+    gone = "exactContacts" not in base and "distanceToLine" not in base
+    check("repin", "xSection imports pinned to V58 (live tabs), workaround gone", "2 x V58, no exactContacts",
+          "%s, workaround gone %s" % (pins, gone), pins == ["ad6a3958dd2e8873f6dd0b0d"] * 2 and gone)
+
+
+def run_checks_stations():
+    """Station definition's variableName default "" (2026-09-29) applies to NEW features only."""
+    tabs = {e["name"]: e["id"] for e in c.list_elements(D, W)}
+    specs = c.get("/api/v10/featurestudios/d/%s/w/%s/e/%s/featurespecs" % (D, W, tabs["station_definition"]))["featureSpecs"]
+    default = [p["defaultValue"]["value"] for sp in specs for p in sp.get("parameters", []) if p.get("parameterId") == "variableName"]
+    check("SD", "Station definition spec: variableName default (new features)", "''", default, default == [""])
+    script = 'function(context is Context, queries) { var v; try silent { v = getVariable(context, "stations"); } return v == undefined ? "NONE" : "SET"; }'
+    got = json.dumps(c.post("/api/v10/partstudios/d/%s/w/%s/e/%s/featurescript" % (D, W, E), json_data={"script": script}).get("result"))
+    st = statuses()
+    sd1 = [v for k, v in st.items() if k.startswith("SD1 ")]
+    check("SD1", "new Station definition (spec default): INFO, no #stations variable", "INFO, NONE", "%s, %s" % (sd1, got),
+          sd1 == ["INFO"] and '"NONE"' in got)
+    # Saved features (Part Studio 1): "Stations (test)" keeps variableName "stations", the variable exists and every
+    # Station definition / geometry feature still regenerates INFO.
+    ps1 = "bb2cddb24faf53d9d043c38e"
+    f = c.get("/api/v10/partstudios/d/%s/w/%s/e/%s/features" % (D, W, ps1))
+    saved = [p.get("value") for x in f["features"] if x["name"] == "Stations (test)" for p in x["parameters"] if p.get("parameterId") == "variableName"]
+    geo = {x["name"]: f["featureStates"][x["featureId"]]["featureStatus"] for x in f["features"]
+           if x["featureType"] in ("stationGeometry", "stationDefinition") and x["featureId"] in f["featureStates"]}
+    got1 = json.dumps(c.post("/api/v10/partstudios/d/%s/w/%s/e/%s/featurescript" % (D, W, ps1), json_data={"script": script}).get("result"))
+    check("SD", "saved 'Stations (test)' keeps variableName 'stations', #stations set; station features INFO", "stations, SET, all INFO",
+          "%s, %s, %s" % (saved, "SET" if '"SET"' in got1 else got1, geo),
+          saved == ["stations"] and '"SET"' in got1 and geo and all(v == "INFO" for v in geo.values()))
 
 
 def band_edges(full_case, band):

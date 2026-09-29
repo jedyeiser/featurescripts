@@ -1853,3 +1853,7 @@ native Extrude up-to-face failed EXTRUDE_SELECT_TERMINATING_SURFACE; Offset+ los
   sibling id instead of the call id: "Execution error".
 **Consequence**: outside clicks and outside edits need different call shapes. Case inputs / Shared references work in
 both because they are bound as resolved entities before the call.
+- **One-level executor works for everything** (row O5): a feature that holds the body FeatureList ITSELF, pushes the
+  frame on its own sub-id (identity transform) and replays: outside clicks resolve, in-list QV "created by" remaps,
+  and an outside-geometry edit (fillet of a case input's edges) succeeds through the pop-and-retry. So the fix is the
+  call shape (the executor must own the list), not the transform.
