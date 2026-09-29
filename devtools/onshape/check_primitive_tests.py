@@ -431,14 +431,16 @@ def run_checks(prims, before=None):
 
     # 2026-09-28 radius frame, dashed grid, colours, labels (P1 labels on by default, P10 grid on, labels off)
     m1, m10 = full["P1"]["members"], full["P10"]["members"]
-    frame = ["RADIUS AXIS TIP", "RADIUS AXIS TAIL", "RADIUS TICK 0 TIP", "RADIUS TICK 0 TAIL", "RADIUS TICK +10 TIP",
-             "RADIUS TICK +10 TAIL", "RADIUS TICK -10 TIP"]
+    # Auto scale (2026-09-29): the tick step and levels come from the data (bands.radiusTickStep / plotLevels).
+    b1 = p1["bands"]
+    step1 = int(b1["radiusTickStep"])
+    frame = ["RADIUS AXIS TIP", "RADIUS AXIS TAIL"] + ["RADIUS TICK %s %s" % (lvl_name(v), end) for v in b1["plotLevels"] for end in ("TIP", "TAIL")]
     missing = [n for n in frame if "P1 TAC PRIMITIVE " + n not in m1]
-    check("P1", "radius frame: end axes + 10 m ticks", "present", missing or "all", not missing)
+    check("P1", "radius frame: end axes + a tick at every plotLevel on both axes", "present", missing or "all", not missing)
     levels = sorted(int(m.split()[-2]) for m in m1 if re.search(r"RADIUS TICK [-+]?\d+ TIP$", m))
-    plot = [abs(r["radius"]) for r in p1["data"] if isinstance(r["radius"], float)]
-    check("P1", "tick levels every 10 m, 0 incl., within the limit", "step 10, |max| <= 50",
-          levels, levels and all(b - a == 10 for a, b in zip(levels, levels[1:])) and 0 in levels and max(abs(v) for v in levels) <= 50)
+    check("P1", "tick levels every radiusTickStep, 0 incl., top = axisTo, bottom within axisFrom", "step %d, 0..%s" % (step1, b1["axisTo"]),
+          levels, levels and all(b - a == step1 for a, b in zip(levels, levels[1:])) and 0 in levels
+          and levels[-1] == b1["axisTo"] and levels[0] >= b1["axisFrom"] and levels == [int(v) for v in b1["plotLevels"]])
     grid1 = [m for m in m1 if " RADIUS GRID " in m]
     check("P1", "grid lines off by default", "none", grid1, not grid1)
     grid10 = {m: (full["P10"]["counts"][m], full["P10"]["edges"][m]) for m in m10 if " RADIUS GRID " in m}
@@ -448,7 +450,8 @@ def run_checks(prims, before=None):
     text10 = [m for m in m10 if m.endswith(" TITLE") or " RADIUS LABEL " in m]
     check("P10", "labels off: no text", "none", text10, not text10)
     compare("P10 vs P1", p1, d["P10"], 1e-6)
-    titles = ["BASELINE TITLE", "PROFILE TITLE", "FOOTPRINT TITLE", "RADIUS TITLE", "RADIUS LABEL 0", "RADIUS LABEL +10", "RADIUS LABEL -10"]
+    titles = ["BASELINE TITLE", "PROFILE TITLE", "FOOTPRINT TITLE", "RADIUS TITLE", "RADIUS LABEL 0", "RADIUS LABEL +10",
+              "RADIUS LABEL -%d" % step1, "RADIUS LABEL %s" % lvl_name(b1["axisTo"])]
     missing = [n for n in titles if "P1 TAC PRIMITIVE " + n not in m1]
     check("P1", "labels (default on): band titles + scale numbers", "present", missing or "all", not missing)
     col = full["P1"]["colours"]
@@ -458,17 +461,19 @@ def run_checks(prims, before=None):
     norm = lambda v: "/".join("%g" % float(x) for x in str(v).split("/"))
     bad = ["%s %s" % (k, col.get("P1 TAC PRIMITIVE " + k)) for k, v in want.items() if norm(col.get("P1 TAC PRIMITIVE " + k, "0/0/0")) != norm(v)]
     check("P1", "appearance per band (read back from the composite members)", "band colours", bad or "all", not bad)
-    grey = norm(full["P10"]["colours"].get("P10 TAC grid PRIMITIVE RADIUS GRID +10", "0/0/0"))
+    grey = norm(full["P10"]["colours"].get("P10 TAC grid PRIMITIVE RADIUS GRID +%d" % step1, "0/0/0"))
     check("P10", "grid lines light grey", "0.8/0.8/0.8", grey, grey == "0.8/0.8/0.8")
 
-    # 2026-09-28 EI band (P8 only: target EI 150 N*m^2, scale 2 N*m^2 per mm -> 75 mm high, ticks 0..150 by 50)
+    # EI band (P8 only: target EI 150 N*m^2; auto scale 2026-09-29: band height 150 mm, top = k * eiTickStep)
     m8 = full["P8"]["members"]
-    ei_names = ["EI", "EI REFERENCE", "EI AXIS TIP", "EI AXIS TAIL", "EI TICK 0 TIP", "EI TICK +50 TIP", "EI TICK +150 TAIL",
-                "EI TICK +450 TIP", "EI LABEL +150", "EI LABEL +450", "EI TITLE", "EI DATUM"]
+    b8a = d["P8"]["bands"]
+    e_step, e_top = int(b8a["eiTickStep"]), int(b8a["eiAxisMax"])
+    ei_names = ["EI", "EI REFERENCE", "EI AXIS TIP", "EI AXIS TAIL", "EI TITLE", "EI DATUM", "EI LABEL +150", "EI LABEL +%d" % e_top]
+    ei_names += ["EI TICK +%d %s" % (v, end) if v else "EI TICK 0 %s" % end for v in range(0, e_top + 1, e_step) for end in ("TIP", "TAIL")]
     missing = [n for n in ei_names if "P8 TAC EI PRIMITIVE " + n not in m8]
-    top = [m for m in m8 if re.search(r" EI TICK \+500 ", m)]
-    check("P8", "EI band (fixed axis 0..450): plot, reference, axes, ticks 0..450 by 50, labels, title, datum", "present, no +500",
-          missing or ("all" if not top else top), not missing and not top)
+    top = [m for m in m8 if re.search(r" EI TICK \+%d " % (e_top + e_step), m)]
+    check("P8", "EI band: plot, reference, axes, ticks 0..top by eiTickStep, labels (top numbered), title, datum",
+          "present, 0..%d by %d, nothing above" % (e_top, e_step), missing or ("all" if not top else top), not missing and not top)
     eic = norm(full["P8"]["colours"].get("P8 TAC EI PRIMITIVE EI", "0/0/0"))
     check("P8", "EI plot colour", "0.45/0.2/0.6", eic, eic == "0.45/0.2/0.6")
     b8 = d["P8"]["bands"]
@@ -550,13 +555,15 @@ def run_checks_b(d, full):
     kmin = (plot[2] - b12["curvature"]) / b12["plotLevelHeight"] * 0.01
     check("P12", "curvature between inflections (1/m): max ~ 1/R sidecut, min >= ~0 (TAC: arcs, the tip arc starts at the inflection)",
           "0.05..0.08 / -0.01..max", "%.4f / %.4f" % (kmax, kmin), 0.05 <= kmax <= 0.08 and -0.01 <= kmin <= kmax)
-    check("P12", "curvature level step 0.01 1/m, 50 mm (default since 2026-09-29)", "1, 50 mm", "%s, %s" % (b12.get("plotLevelStep"), b12.get("plotLevelHeight")),
-          b12.get("plotLevelStep") == 1.0 and near(b12.get("plotLevelHeight"), 50.0, 1e-6))
+    # Auto scale: step 0.01 1/m (TAC max 0.0635 -> top 0.07), level height = 120 mm / 7.
+    check("P12", "curvature auto scale: step 0.01 1/m, top 0.07 1/m, level height 120 / 7 mm", "1, 7, 17.1429 mm",
+          "%s, %s, %s" % (b12.get("plotLevelStep"), b12.get("axisTo"), b12.get("plotLevelHeight")),
+          b12.get("plotLevelStep") == 1.0 and b12.get("axisTo") == 7.0 and near(b12.get("plotLevelHeight"), 120.0 / 7, 1e-3))
     labels = sorted(m.split(" LABEL ")[1] for m in m12 if " CURVATURE LABEL " in m)
-    want_labels = sorted(["0"] + ["-0.0%d" % i for i in (1, 2)] + ["+0.0%d" % i for i in range(1, 10)] + ["+0.10"])
+    want_labels = sorted(lvl_name(v, 2) for v in b12["plotLevels"])
     c05 = full["P12"]["counts"].get("P12 TAC curvature PRIMITIVE CURVATURE LABEL +0.05")
-    check("P12", "curvature numbers at every 0.01 1/m over the fixed axis -0.02..+0.10; '0.05' drawn without '+' (6 glyph loops)", "13 labels; 6",
-          "%s; %s" % (labels, c05), labels == want_labels and c05 == 6)
+    check("P12", "curvature numbers at every 0.01 1/m level (-0.01..+0.07, top numbered); '0.05' drawn without '+' (6 glyph loops)",
+          "%d labels; 6" % len(want_labels), "%s; %s" % (labels, c05), labels == want_labels and c05 == 6)
     runs = full["P12"]["counts"].get("P12 TAC curvature PRIMITIVE CURVATURE", 0)
     cj12 = full["P12"]["extents"].get("P12 TAC curvature PRIMITIVE CURVATURE JUNCTION", [])
     check("P12", "curvature breaks only at edge junctions (no sign breaks): runs <= junctions + 1", "<= %d" % (len(cj12) + 1), runs,
@@ -614,9 +621,9 @@ def run_checks_b(d, full):
     e150 = full["P8"]["counts"].get("P8 TAC EI PRIMITIVE EI LABEL +150")
     e50 = full["P8"]["counts"].get("P8 TAC EI PRIMITIVE EI LABEL +50")
     r10 = full["P1"]["counts"].get("P1 TAC PRIMITIVE RADIUS LABEL +10")
-    rm10 = full["P1"]["counts"].get("P1 TAC PRIMITIVE RADIUS LABEL -10")
-    check("P8", "EI numbers without '+' (150 = 4 loops, 50 = 3); radius keeps signs (+10 = 4, -10 = 4)", "4 3 / 4 4",
-          "%s %s / %s %s" % (e150, e50, r10, rm10), e150 == 4 and e50 == 3 and r10 == 4 and rm10 == 4)
+    rm5 = full["P1"]["counts"].get("P1 TAC PRIMITIVE RADIUS LABEL -5")
+    check("P8", "EI numbers without '+' (150 = 4 loops, 50 = 3); radius keeps signs (+10 = 4, -5 = 2)", "4 3 / 4 2",
+          "%s %s / %s %s" % (e150, e50, r10, rm5), e150 == 4 and e50 == 3 and r10 == 4 and rm5 == 2)
     et = full["P8"]["counts"].get("P8 TAC EI PRIMITIVE EI TITLE")
     check("P8", "EI title 'EI (Nm^2)': E I ( N m ) 2 = 7 glyph loops (no '*')", 7, et, et == 7)
 

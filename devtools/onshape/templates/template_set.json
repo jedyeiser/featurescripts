@@ -1,0 +1,30 @@
+{
+ "doc": "52b5bde03744944bff91bef9",
+ "workspace": "81e38c962fe4d7c8250c4fc5",
+ "templates": {
+  "K2SKIS A4": {
+   "brand": "K2SKIS",
+   "size": "A4",
+   "name": "K2 SKIS - A4 (template)",
+   "drawing": "f1d1ca1bc41b306b7dfdc6e3",
+   "logo": "c5078f3c8cbc3a36b75cae1b",
+   "dwt": null
+  },
+  "K2SKIS A3": {
+   "brand": "K2SKIS",
+   "size": "A3",
+   "name": "K2 SKIS - A3 (template)",
+   "drawing": "acf93b94bedc5f7e268b0f56",
+   "logo": "c5078f3c8cbc3a36b75cae1b",
+   "dwt": "21f55986a1690fe358e55777"
+  },
+  "K2SKIS A2": {
+   "brand": "K2SKIS",
+   "size": "A2",
+   "name": "K2 SKIS - A2 (template)",
+   "drawing": "fc6d835e8b1d0cfbb1af6a89",
+   "logo": "c5078f3c8cbc3a36b75cae1b",
+   "dwt": null
+  }
+ }
+}
