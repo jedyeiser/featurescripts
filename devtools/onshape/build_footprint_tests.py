@@ -76,6 +76,31 @@ def circumradius(p, q, r):
     return math.dist(p, q) * math.dist(q, r) * math.dist(r, p) / (2 * cr)
 
 
+def tangent_radius(p1, p2, w):
+    """Natural radius (fpt_analyze naturalRadiusTangentToWaist = beamBuilder analysis.py _natural_radius, user
+    decision 2026-09-28): the arc through p1 and p2 tangent to the waist line y = w (mm), centre (cx, w + R).
+    With a_i = |y_i| - w each station gives (x_i - cx)^2 + a_i^2 = 2 a_i R; eliminating R leaves a quadratic in
+    cx (linear when a1 == a2), solved without cancellation; beamBuilder's root choice."""
+    (x1, y1), (x2, y2) = p1, p2
+    a1, a2 = abs(y1) - w, abs(y2) - w
+    A = a2 - a1
+    B = -2.0 * (a2 * x1 - a1 * x2)
+    C = (a2 * x1 * x1 - a1 * x2 * x2) - a1 * a2 * (a2 - a1)
+    if abs(A) < 1e-12:
+        cands = [-C / B]
+    else:
+        root = math.sqrt(B * B - 4 * A * C)
+        q = -(B + root) / 2 if B >= 0 else -(B - root) / 2
+        cands = [C / q, q / A] if B >= 0 else [q / A, C / q]
+    best = None
+    for cx in cands:
+        r = ((x1 - cx) ** 2 + a1 * a1) / (2 * a1)
+        inside = min(x1, x2) - abs(x2 - x1) <= cx <= max(x1, x2) + abs(x2 - x1)
+        if r > 0 and (best is None or (inside and r < best)):
+            best = r
+    return best
+
+
 class Profile:
     """A half sidecut (y >= 0) in world X / Y (mm): x = x0 + d * u (d = +1: tip at -X, d = -1: tip at +X)."""
 
@@ -144,10 +169,10 @@ class Profile:
         return self.pt(sgn * arcs[i]["u1"])
 
     def natural_inflection(self):
-        return circumradius(self.inflection(-1), self.waist(), self.inflection(1))
+        return tangent_radius(self.inflection(-1), self.inflection(1), self.w)
 
     def natural_widest(self):
-        return circumradius(self.widest(-1), self.waist(), self.widest(1))
+        return tangent_radius(self.widest(-1), self.widest(1), self.w)
 
     def taper(self):
         """Degrees; + when the forebody (FCP side) widest point is wider (fpt_analyze computeTaperAngle)."""
@@ -155,15 +180,19 @@ class Profile:
         return math.degrees(math.atan2(f[1] - a[1], abs(f[0] - a[0])))
 
     def average_radius(self):
-        """The definition in fpt_analyze computeAverageRadius: mean of |R| at 200 stations at the midpoints of
-        equal x intervals between the inflection points (metres)."""
-        xa, xb = sorted([self.inflection(-1)[0], self.inflection(1)[0]])
-        dx = (xb - xa) / 200
-        total = 0.0
-        for st in range(200):
-            u = (xa + (st + 0.5) * dx - self.x0) / self.d
-            total += abs(self.seg(u)["R"])
-        return total / 200 / 1000
+        """fpt_analyze computeAverageRadius = beamBuilder analysis.py _arc_length_weighted_radius (user decision
+        2026-09-28): the ARC-LENGTH weighted mean of |R| between the inflection points (metres). The span is a
+        chain of whole arcs (the inflections are arc junctions); an arc from u0 to u1 has length |R| |phi1 - phi0|
+        with sin(phi) = (u - cu) / R."""
+        num = den = 0.0
+        for sgn in (-1, 1):
+            ui = abs(self.inflection(sgn)[0] - self.x0)
+            for g in self.sides[sgn]:
+                if g["u1"] <= ui + 1e-9:
+                    ds = abs(g["R"]) * abs(math.asin((g["u1"] - g["cu"]) / g["R"]) - math.asin((g["u0"] - g["cu"]) / g["R"]))
+                    num += abs(g["R"]) * ds
+                    den += ds
+        return num / den / 1000
 
     def arcs(self):
         """World arcs from tip end to tail end: {cx, cy, r, u0, u1} (u0 < u1), split at self.splits."""

@@ -1167,7 +1167,8 @@ function adaptiveRadiusIntegrals(bspline is BSplineCurve, a is number, b is numb
  * _natural_radius, reproduced exactly, in mm with its absolute thresholds). With a_i = |y_i| - w and the centre
  * at (cx, w + R), each station gives (x_i - cx)^2 + a_i^2 = 2 a_i R; eliminating R leaves
  *     (a2 - a1) cx^2 - 2 (a2 x1 - a1 x2) cx + (a2 x1^2 - a1 x2^2) - a1 a2 (a2 - a1) = 0,
- * linear when a1 == a2 (the symmetric ski: the centre on the perpendicular bisector). Root choice as beamBuilder:
+ * linear when a1 == a2 (the symmetric ski: the centre on the perpendicular bisector); the quadratic's roots are
+ * computed in the cancellation-free form (the same roots, in the same order). Root choice as beamBuilder:
  * the first valid root, replaced by the second only when that one's centre lies within one station spacing of the
  * stations and its radius is smaller. Invalid (R = inf) when a station is not wider than the waist or the solve
  * degenerates. Returns { valid, center (on the +Y side), R }.
@@ -1203,8 +1204,23 @@ export function naturalRadiusTangentToWaist(p1 is Vector, p2 is Vector, waistHal
         {
             return invalid;
         }
+        // The roots (-B + root) / 2A and (-B - root) / 2A, in that order, without the cancellation that the
+        // textbook form suffers when A is tiny (a near-symmetric ski away from x = 0: 1e-11 mm of width
+        // difference at x = 16 m moved the radius by 4 mm): q = -(B + sign(B) root) / 2, roots q / A and C / q.
         const root = sqrt(disc);
-        candidates = [(-B + root) / (2 * A), (-B - root) / (2 * A)];
+        const q = B >= 0 ? -(B + root) / 2 : -(B - root) / 2;
+        if (q == 0)
+        {
+            candidates = [(-B + root) / (2 * A), (-B - root) / (2 * A)];
+        }
+        else if (B >= 0)
+        {
+            candidates = [C / q, q / A];
+        }
+        else
+        {
+            candidates = [q / A, C / q];
+        }
     }
     var bestR = undefined;
     var bestCx = undefined;

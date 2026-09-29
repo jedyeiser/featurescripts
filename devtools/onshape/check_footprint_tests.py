@@ -10,13 +10,15 @@ What each kind of case verifies (all numbers come from the analytic fixture geom
       checker reads what the feature BODY makes: the "Sketch key points" sketch. From its construction lines
       (waistLine, fb/abWidestLine, fb/abInflection) it checks the waist, both widest points and both inflection
       points (a missing inflection line = no inflection found), then computes from THOSE points the natural radius
-      (circle through widest-waist-widest and inflection-waist-inflection) and the taper (widest to widest). The
-      average radius is recomputed by the checker with the feature's definition (mean of 1/k at 200 stations at the
-      midpoints of equal x intervals between the feature's inflection x, each station on whichever fixture edge
-      spans its x, curvature from evEdgeCurvatures) -- so it verifies the interval the feature found and that the
-      definition is independent of the edge split (AF2 vs AF3), not the feature's own arithmetic. If the dialog
-      has been populated (open the feature, Recalculate), its "Average radius" / "Natural radius - inflection"
-      strings are compared as well.
+      (the arc through the widest pair / the inflection pair TANGENT to the waist line -- beamBuilder's definition,
+      user decision 2026-09-28) and the taper (widest to widest). The average radius is recomputed by the checker
+      with the same definition (arc-length weighted mean of 1/k over the fixture edges between the feature's
+      inflection x, straight parts |k| <= 1e-7 / mm left out; midpoint rule on 2000 arc-length stations per edge,
+      curvature from evEdgeCurvatures) -- so it verifies the interval the feature found and that the value does not
+      depend on the edge split (AF2 vs AF3). The feature's OWN values (sidecutRadius, naturalRadiusWidest,
+      naturalRadiusInflection, published for Extract variables) are compared with the expectations too. If the
+      dialog has been populated (open the feature, Recalculate), its "Average radius" / "Natural radius -
+      inflection" strings are compared as well.
   GP  Generate Footprint Points with "Create Sketch From Points": the tip / RSL / tail point sketches -- point
       count, x range (region bounds: tip end, FCP, ACP, tail end), every point on the footprint (0.001 mm), equal
       arc-length spacing (chord max / min <= 1.002).
@@ -194,6 +196,77 @@ HELPERS = r'''
             }
             return { "n" : n, "avg" : n > 0 ? total / n : 0 * meter };
         };
+    // natural radius (fpt_analyze naturalRadiusTangentToWaist = beamBuilder _natural_radius): the arc through p1 and
+    // p2 tangent to the waist line y = w; quadratic in the centre x solved without cancellation, beamBuilder's root
+    const tangentR = function(p1, p2, w)
+        {
+            const x1 = p1[0] / mm;
+            const x2 = p2[0] / mm;
+            const a1 = abs(p1[1]) / mm - w / mm;
+            const a2 = abs(p2[1]) / mm - w / mm;
+            if (a1 <= 1e-9 || a2 <= 1e-9)
+            {
+                return inf * meter;
+            }
+            const A = a2 - a1;
+            const B = -2 * (a2 * x1 - a1 * x2);
+            const C = (a2 * x1 * x1 - a1 * x2 * x2) - a1 * a2 * (a2 - a1);
+            var cands = [];
+            if (abs(A) < 1e-12)
+            {
+                cands = [-C / B];
+            }
+            else
+            {
+                const root = sqrt(B * B - 4 * A * C);
+                const q = B >= 0 ? -(B + root) / 2 : -(B - root) / 2;
+                cands = B >= 0 ? [C / q, q / A] : [q / A, C / q];
+            }
+            var best = undefined;
+            for (var cx in cands)
+            {
+                const r = ((x1 - cx) * (x1 - cx) + a1 * a1) / (2 * a1);
+                const inside = min(x1, x2) - abs(x2 - x1) <= cx && cx <= max(x1, x2) + abs(x2 - x1);
+                if (r > 0 && (best == undefined || (inside && r < best)))
+                {
+                    best = r;
+                }
+            }
+            return best == undefined ? inf * meter : best * mm;
+        };
+    // fpt_analyze computeAverageRadius (= beamBuilder _arc_length_weighted_radius): arc-length weighted mean of 1/k
+    // over the parts of the edges with xa <= x <= xb and k > 1e-7 / mm; midpoint rule, 2000 stations per edge
+    const avgRds = function(edgesQ, xa, xb)
+        {
+            const N = 2000;
+            var num = 0 * meter * meter;
+            var den = 0 * meter;
+            for (var e in evaluateQuery(context, edgesQ))
+            {
+                const ds = evLength(context, { "entities" : e }) / N;
+                for (var r in evEdgeCurvatures(context, { "edge" : e, "parameters" : params(N, false) }))
+                {
+                    const x = r.frame.origin[0];
+                    if (x >= xa && x <= xb && r.curvature > 1e-4 / meter)
+                    {
+                        num += ds / r.curvature;
+                        den += ds;
+                    }
+                }
+            }
+            return den > 0 * meter ? num / den : 0 * meter;
+        };
+    // a value the feature published for Extract variables (0 m when absent)
+    const published = function(fid, key)
+        {
+            const v = getVariable(context, toString(makeId(fid)), 0);
+            if (!(v is map) || !(v.variable is map) || v.variable[key] == undefined)
+            {
+                return 0 * meter;
+            }
+            const e = v.variable[key];
+            return e is map ? e.value : e;
+        };
     // largest distance from n + 1 points along each edge of fromEdges to the toEdges
     const maxDev = function(fromEdges, toEdges, n)
         {
@@ -290,23 +363,30 @@ def body_analyze(case, fid):
         var msg = "waist " ~ fpt(w) ~ ", widest FB " ~ fpt(fw) ~ " AB " ~ fpt(aw) ~ ", inflection FB " ~ fpt(fi) ~ " AB " ~ fpt(ai);
         if (w != undefined && fw != undefined && aw != undefined)
         {
-            const nw = circumR(fw, w, aw);
+            const nw = tangentR(fw, aw, w[1]);
             const tp = atan2(fw[1] - aw[1], abs(fw[0] - aw[0]));
             ok = ok && abs(nw - %(nw).6f * meter) <= 0.02 * meter && abs(tp - %(tp).6f * degree) <= 0.001 * degree;
             msg = msg ~ ", natural (widest) " ~ fm(nw) ~ ", taper " ~ fdeg(tp);
         }
         if (w != undefined && fi != undefined && ai != undefined)
         {
-            const ni = circumR(fi, w, ai);
-            const av = avgR(%(src)s, min(fi[0], ai[0]), max(fi[0], ai[0]));
-            ok = ok && abs(ni - %(ni).6f * meter) <= 0.02 * meter && av.n == 200 && abs(av.avg - %(av).6f * meter) <= 0.01 * meter;
-            msg = msg ~ ", natural (inflection) " ~ fm(ni) ~ ", average radius (checker, feature's interval) " ~ fm(av.avg) ~ " at " ~ av.n ~ " stations";
+            const ni = tangentR(fi, ai, w[1]);
+            const av = avgRds(%(src)s, min(fi[0], ai[0]), max(fi[0], ai[0]));
+            ok = ok && abs(ni - %(ni).6f * meter) <= 0.02 * meter && abs(av - %(av).6f * meter) <= 0.01 * meter;
+            msg = msg ~ ", natural (inflection) " ~ fm(ni) ~ ", average radius (checker, feature's interval) " ~ fm(av);
         }
         else
         {
             ok = false;
             msg = msg ~ " -- inflection line missing (no inflection found)";
         }
+        // the feature's own values (published for Extract variables)
+        const pAv = published(SELF, "sidecutRadius");
+        const pNw = published(SELF, "naturalRadiusWidest");
+        const pNi = published(SELF, "naturalRadiusInflection");
+        ok = ok && abs(pAv - %(av).6f * meter) <= 0.01 * meter && abs(pNw - %(nw).6f * meter) <= 0.02 * meter
+            && abs(pNi - %(ni).6f * meter) <= 0.02 * meter;
+        msg = msg ~ "; feature: average " ~ fm(pAv) ~ ", natural " ~ fm(pNw) ~ " / " ~ fm(pNi);
         return [ok, msg ~ " | expected waist (%(wx).3f, %(wy).3f), widest (%(fwx).3f, %(fwy).3f) (%(awx).3f, %(awy).3f), inflections x %(fix).3f / %(aix).3f, natural %(nw).4f / %(ni).4f m, average %(av).4f m, taper %(tp).4f deg"];''' % v
 
 
