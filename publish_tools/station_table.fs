@@ -8,7 +8,7 @@ IconNamespace::import(path : "87946e777d7b592c8d681392", version : "a856cda4eb0b
 /** Heading language: the Station definition's, or forced here (one model on an English and a German drawing). */
 export enum StationTableLanguage
 {
-    annotation { "Name" : "As station definition" }
+    annotation { "Name" : "Same as Station definition" }
     AS_DEFINED,
     annotation { "Name" : "English" }
     ENGLISH,

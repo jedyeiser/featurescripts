@@ -153,8 +153,8 @@ top to bottom a band gap apart: EI (only with a Target EI: the EI wire's edges s
 local; `EI REFERENCE` zero line; title EI (N*m + a raised 0.6-height 2 + ) via primitiveLabel's `^2` markup; `EI AXIS` / `EI TICK +50 TIP` / `EI LABEL` / `EI GRID` every 50 N*m^2, like the radius
 frame, numbers without "+"; title "EI (Nm" + raised 2 + ")"; purple), BASELINE (+ points TIP/TAIL at the baseline's ends, FCP/ACP, and unless the baseline
 is flat within the RSL FRCP/ARCP/MCL/FB_MIN/AB_MIN), PROFILE (BOTTOM, TOP, TIP END, TAIL END + points on the bottom
-wire, TIP/TAIL at the section's extreme points along X = the bottom wire's ends, TOP FCP/ACP), FOOTPRINT (unwrapped: u = x(MRS) + s along the tip, y drawn
-as height; exact arcs kept wherever the bottom is flat; points widest / waist / inflections), RADIUS (10 mm per 1 m,
+wire, TIP/TAIL at the section's extreme points along X = the bottom wire's ends, TOP FCP/ACP), FOOTPRINT (unwrapped: u = x(MRS) + s along the BASE at the point's own y (see Unwrap below), y drawn
+as height; exact arcs kept wherever the base is flat; points widest / waist / inflections), RADIUS (10 mm per 1 m,
 sidecut +, taper/tip/tail -, breaks where |R| > limit, arcs = horizontal lines, joined across continuous junctions;
 or with Plot CURVATURE the band CURVATURE (1/m): signed curvature, same signs, one run through sign changes, broken only
 at edge junctions where the curvature jumps (arcs), levels in 0.01 1/m (step 1-2-5 for <= 20 levels), numbers with 2
@@ -211,9 +211,35 @@ snapshot: tables identical except P6's average radius. Speed-ups (chain-at-x bis
 baseline-from-volume reuses the bottom frame's chain / lookup, data-table footprint crossings batched): P1 alone
 7.7 s -> 3.0 s.
 
+### Unwrap through base sections (2026-09-28, the user's tail bite)
+Bug: the footprint mapped each periphery point x -> s along the mid-plane BOTTOM wire at the same x and clamped at its
+end, so a bite cut into the tail ("Primitive tests" Sketch 1 / Extrude 1: R 79.12 mm circle at (-31.43, 3.38) mm, REMOVE
+through all) collapsed into a vertical line; the vertical bite wall also made the TAIL extreme point a tie, the bottom
+wire climbed the wall and the wall counted as a base face. Fix (option 2 of the brief, all in primitive_footprint /
+primitive_profiles; no new import):
+* the base FACES (only) are cut by planes y = 0, +-0.45 and +-0.9 of the periphery's largest |y| (one opIntersectFaces);
+  every run of a level is a section, aligned at x(MRS) (u = x(MRS) there) or, when it misses the waist or is split by a
+  bite, to the nearest-in-y section it overlaps in x;
+* each sample maps by its FOOT in XZ (nearest point: Newton on a cubic-Hermite table in plain numbers, then one exact
+  kernel correction; exact without the kernel over line edges) on the levels just below / above its y, u interpolated
+  in y; radius / curvature use the same map's derivatives (header of primitive_footprint.fs);
+* points no section reaches get sections at their own y (a periphery point lies on the base, so that section reaches
+  it; at most 24 extra levels); tangent extrapolation of the nearest section only beyond all base geometry;
+* profile extreme points: ties within 1e-10 m go to the LOWER point (a vertical end wall ends the bottom at its foot).
+On a base extruded along y the unwrap is an isometry: the attribute's `footprint.unwrap` records sections, exact /
+fitted edges, sourceLength / unwrappedLength (mm) and baseArea (mm^2). P14 (bite on a copy-in-place of the volume,
+FULL_BASELINE, footprint from VOLUME): length 3693.7816 vs 3693.7817 mm, area 192315.4 vs 192315.4 mm^2, footprint
+on the centreline ends at u(TAIL) 47.42 (the bite's depth), only the bite adds corners (73 / 71 deg), radius band
+beyond the bite = P1 within 0.016 mm plot height, no spikes through it, data rows / radius metadata = P3. P1-P6
+tables identical to before at 1e-6 mm. 117/117 in "Primitive tests (agent)" (left with P1 + P8 active; the bite
+fixture features stay, P14 suppressed). Regen (REST re-post, wall): P1 3.02 -> 3.55 s, P14 4.09 s. Option 1
+(driven_offset V17 unwrapChart) not used: its chart is ONE reference wire extruded along y, so it needs the same base
+sections to reach a bite (the centreline wire ends there) and would add a cross-document pin chain
+(edge_offset_utils -> curve_core).
+
 Open: SW rout table (Table 4), ISO min thickness, Tip_height / Tail_height definitions, drawing template; the
 radius plot and data table use the +y side only; the base periphery misses base faces that do not touch the mid
-plane; the Tip / Tail block WIRE -> name editing logic is untested in the UI (REST inserts skip editing logic);
+plane; a wrapped (3D) INPUT footprint is mapped on the bottom wire alone (untested); the Tip / Tail block WIRE -> name editing logic is untested in the UI (REST inserts skip editing logic);
 drawing views render every wire BLACK (tested 2026-09-28: APPEARANCE colours show only in the Part Studio; PDF export
 had no colour); with a COORDINATE_SYSTEM datum the EI band maps world x through the datum's x axis only;
 analyzeBaseline (xSection) takes FCP/ACP from its sample grid unless they are chain ends -- re-measured here, fix

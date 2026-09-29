@@ -47,69 +47,93 @@ annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Station g
 export const stationGeometry = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Part", "Filter" : (EntityType.BODY && (BodyType.SOLID || BodyType.SHEET)) || BodyType.COMPOSITE, "MaxNumberOfPicks" : 1 }
-        definition.part is Query;
-
-        annotation { "Name" : "Datum", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
-                    "Description" : "Origin of every measurement. X is the measuring axis, Z is up. Empty = the world origin." }
-        definition.datum is Query;
-
-        annotation { "Name" : "Name prefix", "Default" : "", "MaxLength" : 128,
-                    "Description" : "Starts every body name: <prefix> PLAN, <prefix> PLAN ST MRS, ... Filled with the part's name when the part is picked." }
-        definition.prefix is string;
-
-        annotation { "Name" : "Plan (datum XY)", "Default" : true }
-        definition.planView is boolean;
-
-        annotation { "Name" : "Profile (datum XZ)", "Default" : false }
-        definition.profileView is boolean;
-
-        annotation { "Name" : "Other views", "Item name" : "view", "Item label template" : "#viewName" }
-        definition.otherViews is array;
-        for (var view in definition.otherViews)
+        annotation { "Group Name" : "Part and datum", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "View name", "Default" : "VIEW", "MaxLength" : 32 }
-            view.viewName is string;
+            annotation { "Name" : "Part", "Filter" : (EntityType.BODY && (BodyType.SOLID || BodyType.SHEET)) || BodyType.COMPOSITE, "MaxNumberOfPicks" : 1,
+                        "Description" : "The solid, sheet or composite to measure." }
+            definition.part is Query;
 
-            annotation { "Name" : "Connector", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
-                        "Description" : "Projects onto the connector's XY plane; its X is the measuring axis and its origin the datum." }
-            view.viewConnector is Query;
+            annotation { "Name" : "Datum (measuring origin)", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                        "Description" : "X runs along the ski, Z up. Empty = world origin. X is the measuring axis." }
+            definition.datum is Query;
+
+            annotation { "Name" : "Name prefix", "Default" : "", "MaxLength" : 128,
+                        "Description" : "Starts every body name: <prefix> PLAN, <prefix> PLAN ST MRS, ... Filled with the part's name when the part is picked." }
+            definition.prefix is string;
         }
 
-        annotation { "Name" : "Station definition",
-                    "Description" : "The Station definition feature(s) whose stations this part is measured at. Several are read one after another." }
-        definition.stationDefinitions is FeatureList;
-
-        // Before 2026-09-28 the set was named by its variable here; kept hidden so saved features still read it
-        // (used only when no Station definition is picked).
-        annotation { "Name" : "Station set (variable)", "Default" : "", "MaxLength" : 64, "UIHint" : UIHint.ALWAYS_HIDDEN }
-        definition.stationSet is string;
-
-        annotation { "Name" : "More stations", "Item name" : "station", "Item label template" : "#stationName" }
-        definition.stations is array;
-        for (var entry in definition.stations)
+        annotation { "Group Name" : "Views", "Collapsed By Default" : false }
         {
-            stationEntryPredicate(entry);
+            annotation { "Name" : "Plan view (datum XY)", "Default" : true }
+            definition.planView is boolean;
+
+            annotation { "Name" : "Profile view (datum XZ)", "Default" : false }
+            definition.profileView is boolean;
+
+            annotation { "Name" : "Custom views", "Item name" : "view", "Item label template" : "#viewName",
+                        "Description" : "More views, each on a mate connector's XY plane." }
+            definition.otherViews is array;
+            for (var view in definition.otherViews)
+            {
+                annotation { "Name" : "View name", "Default" : "", "MaxLength" : 32,
+                            "Description" : "Names the view's bodies (<prefix> <name>), e.g. SIDE or BASE." }
+                view.viewName is string;
+
+                annotation { "Name" : "View mate connector", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                            "Description" : "Projects onto the connector's XY plane; its X is the measuring axis and its origin the datum." }
+                view.viewConnector is Query;
+            }
         }
 
-        annotation { "Name" : "Station lines", "Default" : true }
-        definition.stationLines is boolean;
+        annotation { "Group Name" : "Stations", "Collapsed By Default" : false }
+        {
+            annotation { "Name" : "Station definitions",
+                        "Description" : "The Station definition feature(s) whose stations this part is measured at. Several are read one after another." }
+            definition.stationDefinitions is FeatureList;
 
-        annotation { "Name" : "Outline wires", "Default" : true }
-        definition.outlineWires is boolean;
+            // Before 2026-09-28 the set was named by its variable here; kept hidden so saved features still read it
+            // (used only when no Station definition is picked).
+            annotation { "Name" : "Station set (variable)", "Default" : "", "MaxLength" : 64, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
+            definition.stationSet is string;
 
-        annotation { "Name" : "Outline surface", "Default" : false }
-        definition.outlineSurface is boolean;
+            annotation { "Name" : "Extra stations (this part only)", "Item name" : "station", "Item label template" : "#stationName",
+                        "Description" : "Stations measured on this part only, after the Station definitions' stations." }
+            definition.stations is array;
+            for (var entry in definition.stations)
+            {
+                stationEntryPredicate(entry);
+            }
+        }
 
-        annotation { "Name" : "Datum point", "Default" : true }
-        definition.datumPoint is boolean;
+        annotation { "Group Name" : "Geometry to create", "Collapsed By Default" : false }
+        {
+            annotation { "Name" : "Station lines", "Default" : true,
+                        "Description" : "One wire per station across the part's outline, to dimension." }
+            definition.stationLines is boolean;
 
-        annotation { "Name" : "Flat copy at datum", "Default" : false,
-                    "Description" : "A separate copy of the outline surface with the view on world XY and the datum at the origin -- for DXF export." }
-        definition.flatCopy is boolean;
+            annotation { "Name" : "Outline wires", "Default" : true,
+                        "Description" : "The part's outline in each view as wires." }
+            definition.outlineWires is boolean;
 
-        annotation { "Name" : "Print table", "Default" : false }
-        definition.printTable is boolean;
+            annotation { "Name" : "Outline as surface", "Default" : false,
+                        "Description" : "The region inside the outline as a flat sheet (shaded in drawings)." }
+            definition.outlineSurface is boolean;
+
+            annotation { "Name" : "Datum point", "Default" : true,
+                        "Description" : "A point at the datum in each view, for ordinate dimensions." }
+            definition.datumPoint is boolean;
+
+            annotation { "Name" : "Flat copy at datum", "Default" : false,
+                        "Description" : "A separate copy of the outline surface with the view on world XY and the datum at the origin -- for DXF export." }
+            definition.flatCopy is boolean;
+        }
+
+        annotation { "Group Name" : "Debug", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Print station table to notices", "Default" : false,
+                        "Description" : "Print every view's station rows (x, span, edges) to the FeatureScript notices." }
+            definition.printTable is boolean;
+        }
     }
     {
         if (isQueryEmpty(context, definition.part))
@@ -226,9 +250,13 @@ function viewFrames(context is Context, definition is map) returns array
         const v = definition.otherViews[i];
         if (isQueryEmpty(context, v.viewConnector))
         {
-            throw regenError("View " ~ v.viewName ~ ": select a connector.");
+            throw regenError("Custom view " ~ (i + 1) ~ ": select the view mate connector.", ["otherViews[" ~ i ~ "].viewConnector"]);
         }
         const label = stationIdFromName(v.viewName);
+        if (label == "")
+        {
+            throw regenError("Custom view " ~ (i + 1) ~ ": enter a view name.", ["otherViews[" ~ i ~ "].viewName"]);
+        }
         views = append(views, { "key" : "view_" ~ label, "label" : label,
                     "cs" : evMateConnector(context, { "mateConnector" : v.viewConnector }) });
     }

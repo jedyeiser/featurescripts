@@ -2,12 +2,13 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_frame.fs
 export import(path : "5808546b3b3d863d82796d24", version : "5933438d5f264793131ce0a6");
-// IMPORT: xSection V57 analyzeBaseline.fs (analyzeBaselineGeometry)
-import(path : "f8deedeb1fbd819a8fa20113/1113d16a32de3db613416436/f0717a1116fee7304957da5b", version : "8e18336b63be0ae8baa68042");
+// IMPORT: xSection V58 analyzeBaseline.fs (analyzeBaselineGeometry; fcp_pt / acp_pt exact at the FCP / ACP x)
+import(path : "f8deedeb1fbd819a8fa20113/ad6a3958dd2e8873f6dd0b0d/f0717a1116fee7304957da5b", version : "d8b52bb8029bcc972f9af4f0");
 
 /**
- * Export Primitive -- the baseline (Table 5), measured by xSection's analyzeBaselineGeometry on a LOCAL copy of
- * the baseline (it works in world X / Z, which the local frame makes the datum's X / Z):
+ * Export Primitive -- the baseline (Table 5), measured by xSection's analyzeBaselineGeometry (V58: FCP / ACP points
+ * exactly at their x, correction 59) on a LOCAL copy of the baseline (it works in world X / Z, which the local frame
+ * makes the datum's X / Z):
  *     FCPh / ACPh     height of FCP / ACP above the rocker tangent at FRCP / ARCP
  *     FRCP / ARCP     on each half, the baseline inflection closest to that half's lowest point, towards MRS
  *     FRCPl / ARCPl   |dx| FCP -> FRCP, ACP -> ARCP
@@ -57,7 +58,7 @@ export function primitiveBaseline(context is Context, id is Id, fromVolume is bo
 
     const chain = fromVolume ? bottomFrame.chain : primitiveChain(context, edges, tail, "Baseline");
     const lookup = fromVolume ? bottomFrame.lookup : primitiveChainTable(context, chain);
-    var out = { "body" : body, "result" : exactContacts(context, result, chain, lookup, fcp, acp), "chain" : chain, "lookup" : lookup };
+    var out = { "body" : body, "result" : result, "chain" : chain, "lookup" : lookup };
     var xs = [];
     for (var i = 0; i < FLAT_SAMPLES; i += 1)
     {
@@ -71,42 +72,6 @@ export function primitiveBaseline(context is Context, id is Id, fromVolume is bo
     out.deviation = deviation;
     out.flat = deviation < PRIMITIVE_FLAT_BASELINE;
     return out;
-}
-
-/**
- * analyzeBaselineGeometry (xSection V57) takes fcp_pt / acp_pt from its 200 midpoint samples unless FCP / ACP is a
- * chain END, so on a baseline that runs past the contacts (FULL_BASELINE with tip / tail) FRCPl, ARCPl, FCPh and
- * ACPh were off by up to half a sample spacing (RD 20TAC: FRCPl 131.25 for 130, ARCPl 49.26 for 50). Re-measured
- * here from the baseline point exactly at the FCP / ACP x, with analyzeBaseline's own formulas (|dx|, and the
- * distance to the rocker tangent line).
- */
-function exactContacts(context is Context, result, chain is map, lookup is map, fcp is Vector, acp is Vector)
-{
-    if (result == undefined)
-    {
-        return undefined;
-    }
-    const at = primitiveChainAtX(context, chain, lookup, [fcp[0], acp[0]]);
-    var r = result;
-    r.fcp_pt = at[0].point;
-    r.acp_pt = at[1].point;
-    if (r.frcp_pt is Vector && r.frcp_dir is Vector)
-    {
-        r.frcpl = abs(r.frcp_pt[0] - r.fcp_pt[0]);
-        r.fcph = distanceToLine(r.fcp_pt, r.frcp_pt, r.frcp_dir);
-    }
-    if (r.arcp_pt is Vector && r.arcp_dir is Vector)
-    {
-        r.arcpl = abs(r.acp_pt[0] - r.arcp_pt[0]);
-        r.acph = distanceToLine(r.acp_pt, r.arcp_pt, r.arcp_dir);
-    }
-    return r;
-}
-
-function distanceToLine(point is Vector, origin is Vector, direction is Vector) returns ValueWithUnits
-{
-    const d = point - origin;
-    return norm(d - dot(d, direction) * direction);
 }
 
 /**

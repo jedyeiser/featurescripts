@@ -52,11 +52,11 @@ export const STATION_FIRST_NUMBER_BOUNDS = { (unitless) : [0, 1, 1000] } as Inte
 
 export enum StationEntryType
 {
-    annotation { "Name" : "Point" }
+    annotation { "Name" : "Single point" }
     POINT,
-    annotation { "Name" : "Along a line" }
+    annotation { "Name" : "N stations along a line" }
     LINE,
-    annotation { "Name" : "Between two points" }
+    annotation { "Name" : "N stations between two points" }
     BETWEEN
 }
 
@@ -66,16 +66,18 @@ export enum StationEntryType
  */
 export predicate stationEntryPredicate(entry is map)
 {
-    annotation { "Name" : "Type", "Default" : StationEntryType.POINT, "UIHint" : UIHint.SHOW_LABEL }
+    annotation { "Name" : "Station type", "Default" : StationEntryType.POINT, "UIHint" : [UIHint.SHOW_LABEL] }
     entry.stationType is StationEntryType;
 
-    annotation { "Name" : "Name", "Default" : "", "MaxLength" : 64,
-                "Description" : "Station id. Along a line / between two points: stations are named <name>_1 .. <name>_N, or just 1 .. N when the name is empty." }
+    annotation { "Name" : "Station name (or name stem)", "Default" : "", "MaxLength" : 64,
+                "Description" : "Single point: the station's id (required). N stations: named <name>_<n>, or just <n> when the name is empty, n counting from First number." }
     entry.stationName is string;
 
+    // One id may not be declared in two branches (correction 46), so Point / Between share this one: "Point / first point".
     if (entry.stationType == StationEntryType.POINT || entry.stationType == StationEntryType.BETWEEN)
     {
-        annotation { "Name" : "Point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Point / first point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                    "Description" : "A vertex, point or mate connector. N stations between two points: the first end." }
         entry.point is Query;
     }
 
@@ -93,7 +95,7 @@ export predicate stationEntryPredicate(entry is map)
 
     if (entry.stationType == StationEntryType.LINE || entry.stationType == StationEntryType.BETWEEN)
     {
-        annotation { "Name" : "Stations", "Description" : "Evenly spaced; both ends included. Each measures perpendicular to the line." }
+        annotation { "Name" : "Number of stations", "Description" : "Evenly spaced; both ends included. Each measures perpendicular to the line." }
         isInteger(entry.count, STATION_COUNT_BOUNDS);
 
         annotation { "Name" : "First number", "Description" : "Number of the first station: 0 gives <name>_0 .. <name>_(N-1)." }

@@ -295,3 +295,11 @@ No editing logic on Close case any more; separator and templateNames parameters 
 case names carry the variant (`bf_inside_3d`), output names the kind (`bump`, `surf`), published and part names
 read `<component>_<qualifier>_<2d|3d>_<kind>`; locals `_role`; no `-`, no leading `#` in text fields.
 
+
+### Outside references clicked in the body -- cause found (2026-09-29, correction 60)
+Case pattern calls the Close case with NO frame, and that call drops every reference the listed features clicked on
+geometry from before the body (they resolve empty; not a platform limit -- native Feature pattern keeps them). A frame
+around the Close case call as well as the Close case's own frame (nested) keeps them, but then the step-out-of-frame
+retry for edits of outside geometry fails (the outer frame cannot be left). Spike rows O1-O4, N1-N6 in the
+"Case pattern outside-ref spikes" studio (throwaway; spike_outside.fs tab). Proposed: run each case nested first;
+if a feature refuses with SELF_INTERSECTING, roll the attempt back and rerun the case the current way. Not built.

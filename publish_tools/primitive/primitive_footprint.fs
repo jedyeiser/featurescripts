@@ -1248,39 +1248,24 @@ export function primitivePlotRuns(samples is array, field is string, breakOnSign
     return runs;
 }
 
-/** The runs cut to lo <= u <= hi (a run crossing a bound ends on it, value interpolated); runs left with < 2 points dropped. */
-export function primitiveClipRuns(runs is array, lo is ValueWithUnits, hi is ValueWithUnits) returns array
+/**
+ * The runs cut to lo <= u <= hi and vLo <= value <= vHi (primitiveClipPolyline: a run crossing a bound ends on it,
+ * interpolated; a run leaving the value window breaks there -- the plot bands' fixed axes, 2026-09-29). Pieces shorter
+ * than CLIP_MIN_RUN along u are dropped.
+ */
+export function primitiveClipRuns(runs is array, lo is ValueWithUnits, hi is ValueWithUnits, vLo is number, vHi is number) returns array
 {
     var out = [];
     for (var run in runs)
     {
-        var kept = [];
-        for (var k = 0; k < size(run); k += 1)
+        for (var kept in primitiveClipPolyline(run, lo, hi, vLo, vHi))
         {
-            const p = run[k];
-            if (k > 0)
+            // A run that only touches the region (e.g. the tip arc starting at an inflection that is also an edge
+            // junction, where the curvature jumps) leaves a sliver: dropped, it would show nothing but a dot.
+            if (abs(kept[size(kept) - 1][0] - kept[0][0]) >= CLIP_MIN_RUN)
             {
-                const q = run[k - 1];
-                for (var bound in (p[0] >= q[0] ? [lo, hi] : [hi, lo]))
-                {
-                    // Crossing a bound between two samples: the point on it.
-                    if ((q[0] < bound && p[0] > bound) || (q[0] > bound && p[0] < bound))
-                    {
-                        const f = (bound - q[0]) / (p[0] - q[0]);
-                        kept = append(kept, [bound, q[1] + (p[1] - q[1]) * f]);
-                    }
-                }
+                out = append(out, kept);
             }
-            if (p[0] >= lo && p[0] <= hi)
-            {
-                kept = append(kept, p);
-            }
-        }
-        // A run that only touches the region (e.g. the tip arc starting at an inflection that is also an edge junction,
-        // where the curvature jumps) leaves a sliver: dropped, it would stretch the scale for nothing visible.
-        if (size(kept) >= 2 && abs(kept[size(kept) - 1][0] - kept[0][0]) >= CLIP_MIN_RUN)
-        {
-            out = append(out, kept);
         }
     }
     return out;
@@ -1330,23 +1315,6 @@ export function primitiveRadiusPlot(context is Context, id is Id, runs is array,
         bodies = append(bodies, qCreatedBy(rid, EntityType.BODY));
     }
     return bodies;
-}
-
-/** Lowest and highest plot height (relative to the reference line) of the runs; 0 is always inside. */
-export function primitiveRadiusExtent(runs is array, perUnit is ValueWithUnits) returns map
-{
-    var lo = 0 * meter;
-    var hi = 0 * meter;
-    for (var run in runs)
-    {
-        for (var p in run)
-        {
-            const h = p[1] * perUnit;
-            lo = min(lo, h);
-            hi = max(hi, h);
-        }
-    }
-    return { "lo" : lo, "hi" : hi };
 }
 
 /**

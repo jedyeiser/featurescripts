@@ -17,16 +17,17 @@ IconNamespace::import(path : "3ee51c2d93f41ff1c25d1a68", version : "1fe37c9db8e9
  * the set holds plain values only.
  */
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Station definition",
-            "Feature Type Description" : "Named measurement stations -- points, or N stations along a line -- stored in one map variable that publish features read." }
+            "Feature Type Description" : "Named measurement stations -- points, or N stations along a line or between two points -- that publish features (Station geometry) pick." }
 export const stationDefinition = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Variable name", "Default" : "stations", "MaxLength" : 64,
-                    "Description" : "Optional: also store the set in this # variable. Publish features pick this Station definition itself. Empty = no variable." }
+        // Default "" since 2026-09-29 (was "stations"): only new features change; saved ones keep their stored name.
+        annotation { "Name" : "Also store as # variable (optional)", "Default" : "", "MaxLength" : 64,
+                    "Description" : "Empty = no variable. Publish features pick this Station definition itself; the # variable is only for your own expressions." }
         definition.variableName is string;
 
-        annotation { "Name" : "Language", "Default" : StationLanguage.ENGLISH, "UIHint" : UIHint.SHOW_LABEL,
-                    "Description" : "Column names of the Station table (English / Deutsch) for geometry built from these stations." }
+        annotation { "Name" : "Station table language", "Default" : StationLanguage.ENGLISH, "UIHint" : [UIHint.SHOW_LABEL],
+                    "Description" : "Headings of the Station table (English / Deutsch) for geometry built from these stations." }
         definition.language is StationLanguage;
 
         annotation { "Name" : "Stations", "Item name" : "station", "Item label template" : "#stationName" }
@@ -36,7 +37,8 @@ export const stationDefinition = defineFeature(function(context is Context, id i
             stationEntryPredicate(entry);
         }
 
-        annotation { "Name" : "Print stations", "Default" : false }
+        annotation { "Name" : "Print stations", "Default" : false,
+                    "Description" : "Print every resolved station (id, position, direction) to the FeatureScript notices." }
         definition.printStations is boolean;
     }
     {

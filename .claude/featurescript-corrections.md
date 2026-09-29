@@ -1820,3 +1820,36 @@ closed composite fine. Text box: firstCorner / secondCorner height = text height
 Sketch plane `plane(origin, vector(0, -1, 0), vector(1, 0, 0))` reads correctly in a front view (sketch y = +Z).
 Also: wire and point bodies keep `PropertyType.APPEARANCE` (read back), and `opPattern` copies name + appearance
 (copyPropertiesAndAttributes defaults true) -- set them on the seed first.
+
+## Correction 61: unwrap by the point's own base, not the centreline at the same x; `!=` binds tighter than `~` (2026-09-28)
+
+**Symptom** (Export primitive, the user's tail bite): the unwrapped footprint showed a bite cut into the tail as a
+vertical line. **Cause**: each periphery point took u from the mid-plane bottom wire at the SAME x, clamped past the
+wire's end; the bite cut the centreline back, so every point beyond it got the same u. Also the vertical bite wall made
+the profile's TAIL extreme point a tie: the bottom wire climbed the wall and the wall was taken as a base face.
+**Fix**: map each point by its foot (nearest point in XZ) on sections of the BASE FACES at several y, interpolated in y,
+extra sections at the own y of points no section reaches; break extreme-point ties towards the lower point. Check an
+unwrap by isometry: on a base extruded along y the unwrapped lengths and area equal the base's.
+**Also**: in FS `name != prefix ~ " X"` parses as `(name != prefix) ~ " X"` ("First operand of logical or conditional
+operator must be boolean, value is string") -- parenthesise concatenations inside comparisons.
+**Perf**: per-point Newton with ValueWithUnits vectors cost ~1.2 s for 1600 feet; the same in plain numbers on a
+cubic-Hermite table plus ONE batched exact kernel correction cost ~0.6 s.
+
+---
+
+## Correction 60: calling a feature function under a new id WITHOUT a pattern frame drops its outside references (2026-09-29)
+
+**Symptom**: inside a Case pattern (v2), every reference a repeated feature CLICKED on geometry from before the body
+(face, vertex, mate connector) resolved to nothing: evaluateQuery 0, isQueryEmpty true, ev* CANNOT_RESOLVE_ENTITIES;
+native Extrude up-to-face failed EXTRUDE_SELECT_TERMINATING_SURFACE; Offset+ lost its side reference (RD 20FOU 28).
+**Measured** ("Case pattern outside-ref spikes" studio, case_pattern/spike_outside.fs, devtools/onshape/spike_case_outside.py):
+- native Linear pattern (Reapply features) and a top-level feature that pushes a frame and calls a FeatureList:
+  every outside click resolves (native and custom features alike).
+- Outer feature calls an inner feature (a FeatureList of the outer) which replays ITS list (Case pattern -> Close case):
+  outer no frame + inner frame (= v2): outside clicks EMPTY. Outer frame + inner none: EMPTY. Outer frame + inner frame
+  (nested): outside clicks RESOLVE. Rule: every call of a feature function under a foreign id must be inside a frame.
+- The SELF_INTERSECTING_CURVE_SELECTED retry (edit of outside geometry run with the frame popped) works only when NO
+  frame is left: with the outer frame still pushed, popping the inner one is not enough. Pushing the outer frame on a
+  sibling id instead of the call id: "Execution error".
+**Consequence**: outside clicks and outside edits need different call shapes. Case inputs / Shared references work in
+both because they are bound as resolved entities before the call.

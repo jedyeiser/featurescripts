@@ -96,6 +96,18 @@ for tag, y, outer, mode in [("N1 outer no frame, inner own frame (= Case pattern
     feature("%s Outer replay -> case B" % tag, "outerReplay", [flist("inner", [inner]), s("bindName", "top" + t), sel("bindQuery", top(B)),
             s("bindName2", "rim" + t), sel("bindQuery2", rim(B)), b("outerFrame", outer), s("innerMode", mode.rstrip("6")), b("frameElsewhere", mode.endswith("6"))], SNS)
 
+# O5: the user's reorder -- the executing feature holds the body list itself (one level, frame on its own sub-id):
+# outside clicks + in-list QV + an edit of outside geometry (rim fillet on #rim5, retried outside the frame).
+A, B, C, T, corner, mc = row("O5", 1500)
+d5 = define_case("O5 Define case A: #top5", "A", [("top5", top(A))])
+f5 = [probe("O5 probe face", top(T)), probe("O5 probe MC", mc),
+      up_to("O5 boss up to tower top (clicked outside)", qv("entities", "top5"), top(T))]
+f5.append(feature("O5 fillet B's rim 2 mm, CLICKED outside edit", "fillet", [sel("entities", rim(B)), num("radius", "2 mm")]))
+f5.append(feature("O5 #bossE5 = edges created by boss (native QV)", "queryVariable", native_qv("bossE5", [f5[2]], "EDGE")))
+f5.append(feature("O5 boss fillet #bossE5 1 mm (in-list remap)", "fillet", [qv("entities", "bossE5"), num("radius", "1 mm")]))
+feature("O5 Top-frame replay with retry, #top5 = B's top", "topFrameReplay",
+        [flist("features", f5), s("bindName", "top5"), sel("bindQuery", top(B)), s("caseName", "B")], SNS)
+
 feats = c.get(f"{BASE}/features")
 print("\nSTATUS")
 for f in feats["features"]:

@@ -219,6 +219,22 @@ export function primitiveLevels(lo is number, hi is number, step is number, cap 
     return levels;
 }
 
+/**
+ * A fixed axis's levels (2026-09-29): the multiples of `step` from lo to hi (level units, lo <= 0 <= hi), both ends
+ * included within 1e-9. Always holds 0.
+ */
+export function primitiveLevelsWithin(lo is number, hi is number, step is number) returns array
+{
+    const first = min(0, ceil(lo / step - 1e-9) * step);
+    const last = max(0, floor(hi / step + 1e-9) * step);
+    var levels = [];
+    for (var level = first; level <= last + 1e-9 * step; level += step)
+    {
+        levels = append(levels, round(level / step) * step);
+    }
+    return levels;
+}
+
 /** The first of 1, 2, 5, 10, 20, 50, ... that is a multiple of `step` and at least `least` (whole level units). */
 export function primitiveNiceStep(step is number, least is number) returns number
 {
@@ -284,7 +300,8 @@ export function primitiveDashedLine(context is Context, id is Id, start is Vecto
 
 /**
  * A scale band's frame in the LOCAL XZ plane (band "RADIUS", "CURVATURE" or "EI"): a vertical axis at each end of the
- * band (x = xLo / xHi, named by the ski end it is on: "<band> AXIS TIP" / "<band> AXIS TAIL") over the levels, a
+ * band (x = xLo / xHi, named by the ski end it is on: "<band> AXIS TIP" / "<band> AXIS TAIL") over the levels (or from
+ * format.axisLo to format.axisHi, level units, when given: the fixed axes of 2026-09-29), a
  * PRIMITIVE_AXIS_TICK tick outward at every level on both axes ("<band> TICK +10 TIP"), optionally a dashed line at
  * every level but 0 ("<band> GRID -20", PRIMITIVE_GRID_DASH dashes, PRIMITIVE_GRID_GAP apart) and, with a text height,
  * the level numbers left of the low-x axis ("<band> LABEL +10"). Levels are whole level units, `perLevel` = plot height
@@ -303,8 +320,8 @@ export function primitiveScaleFrame(context is Context, id is Id, band is string
     {
         return bodies;
     }
-    const zLo = zRef + levels[0] * perLevel;
-    const zHi = zRef + levels[size(levels) - 1] * perLevel;
+    const zLo = zRef + (format.axisLo is number ? min(format.axisLo, levels[0]) : levels[0]) * perLevel;
+    const zHi = zRef + (format.axisHi is number ? max(format.axisHi, levels[size(levels) - 1]) : levels[size(levels) - 1]) * perLevel;
     // The tip is at high x when the ski points +X.
     const ends = [{ "end" : dirSign > 0 ? "TAIL" : "TIP", "x" : xLo, "out" : -1 },
                   { "end" : dirSign > 0 ? "TIP" : "TAIL", "x" : xHi, "out" : 1 }];
@@ -352,11 +369,12 @@ export function primitiveScaleFrame(context is Context, id is Id, band is string
 /**
  * The target EI in the LOCAL XZ plane: every EI edge (xSection convention: world x along the ski, z in mm = EI in
  * N*m^2; negative values read as 0) sampled at 41 points and fitted through (x local, zRef + EI * perUnit), so steps
- * between edges stay steps. x local = the datum frame's x of the world point (x, 0, 0). Returns { bodies, hi (largest
- * EI, N*m^2), xLo, xHi (local x range; undefined without edges) }.
+ * between edges stay steps. x local = the datum frame's x of the world point (x, 0, 0). The plot is cut to the band's
+ * fixed frame (2026-09-29): frameLo <= x <= frameHi, EI <= eiMax (it breaks above). Returns { bodies, hi (largest EI,
+ * N*m^2, before the cut), xLo, xHi (local x range of the samples; undefined without edges) }.
  */
 export function primitiveEIPlot(context is Context, id is Id, edges is Query, toLocal is Transform, zRef is ValueWithUnits,
-    perUnit is ValueWithUnits) returns map
+    perUnit is ValueWithUnits, frameLo is ValueWithUnits, frameHi is ValueWithUnits, eiMax is number) returns map
 {
     const zero = 0 * meter;
     var params = [];
@@ -371,7 +389,7 @@ export function primitiveEIPlot(context is Context, id is Id, edges is Query, to
     var index = 0;
     for (var edge in evaluateQuery(context, edges))
     {
-        var points = [];
+        var samples = [];
         for (var tl in evEdgeTangentLines(context, { "edge" : edge, "parameters" : params }))
         {
             const ei = max(0, tl.origin[2] / millimeter);
@@ -379,21 +397,31 @@ export function primitiveEIPlot(context is Context, id is Id, edges is Query, to
             hi = max(hi, ei);
             xLo = xLo == undefined ? x : min(xLo, x);
             xHi = xHi == undefined ? x : max(xHi, x);
-            const q = vector(x, zero, zRef + ei * perUnit);
-            if (size(points) == 0 || norm(q - points[size(points) - 1]) > 1e-8 * meter)
-            {
-                points = append(points, q);
-            }
+            samples = append(samples, [x, ei]);
         }
         index += 1;
-        if (size(points) < 2 || norm(points[size(points) - 1] - points[0]) < 1e-7 * meter)
+        const pieces = primitiveClipPolyline(samples, frameLo, frameHi, 0, eiMax);
+        for (var r = 0; r < size(pieces); r += 1)
         {
-            continue;
+            var points = [];
+            for (var s in pieces[r])
+            {
+                const q = vector(s[0], zero, zRef + s[1] * perUnit);
+                if (size(points) == 0 || norm(q - points[size(points) - 1]) > 1e-8 * meter)
+                {
+                    points = append(points, q);
+                }
+            }
+            if (size(points) < 2 || norm(points[size(points) - 1] - points[0]) < 1e-7 * meter)
+            {
+                continue;
+            }
+            // The EI wire's edges carry no names: the id follows their (query) order; a second piece of an edge cut
+            // by EI axis max gets a suffix.
+            const eid = id + ("edge" ~ index ~ (r == 0 ? "" : "_" ~ r));
+            opFitSpline(context, eid, { "points" : points });
+            bodies = append(bodies, qCreatedBy(eid, EntityType.BODY));
         }
-        // The EI wire's edges carry no names: the id follows their (query) order.
-        const eid = id + ("edge" ~ index);
-        opFitSpline(context, eid, { "points" : points });
-        bodies = append(bodies, qCreatedBy(eid, EntityType.BODY));
     }
     return { "bodies" : bodies, "hi" : hi, "xLo" : xLo, "xHi" : xHi };
 }

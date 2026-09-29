@@ -153,13 +153,32 @@ export const topFrameReplay = defineFeature(function(context is Context, id is I
         setFeaturePatternInstanceData(context, instanceId, { "transform" : identityTransform() });
         for (var i = 0; i < size(functions); i += 1)
         {
+            var failed = undefined;
             try
             {
                 functions[i](instanceId);
             }
             catch (err)
             {
-                errors = append(errors, "feature " ~ (i + 1) ~ ": " ~ errText(err));
+                failed = errText(err);
+            }
+            if (failed != undefined && indexOf(failed, "SELF_INTERSECTING_CURVE_SELECTED") >= 0)
+            {
+                unsetFeaturePatternInstanceData(context, instanceId);
+                try
+                {
+                    functions[i](instanceId + ("direct" ~ i));
+                    failed = undefined;
+                }
+                catch (err)
+                {
+                    failed = "retry: " ~ errText(err);
+                }
+                setFeaturePatternInstanceData(context, instanceId, { "transform" : identityTransform() });
+            }
+            if (failed != undefined)
+            {
+                errors = append(errors, "feature " ~ (i + 1) ~ ": " ~ failed);
             }
         }
         unsetFeaturePatternInstanceData(context, instanceId);
