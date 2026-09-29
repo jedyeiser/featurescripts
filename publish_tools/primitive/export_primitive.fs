@@ -43,8 +43,9 @@ const RADIUS_SIDE_STEP = 1e-3 * millimeter;
  * camber rows unless the baseline is flat within the RSL, radii only where found.
  *
  * Frames: datum = the world origin (X along the ski, Z up) when empty; else, per "Datum uses", the picked point with
- * world axes (ORIGIN, default) or the picked mate connector's own axes (COORDINATE_SYSTEM). s = arc length
- * along the profile's bottom wire, zero at MRS, positive towards FCP (the tip). w = across (y), h = along the
+ * world axes (ORIGIN, default) or the picked mate connector's own axes (COORDINATE_SYSTEM). x from the datum; s =
+ * distance along the profile's bottom wire from the datum (x = 0), same direction as x (straight on along the end
+ * tangent where x = 0 lies past an end of the wire). w = across (y), h = along the
  * bottom wire's normal into the ski. XS1 / XS2 = halfway FCP..MRS / MRS..ACP in x. FCP may lie on either side.
  */
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Export primitive",
@@ -124,21 +125,45 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
 
         annotation { "Group Name" : "Tooling blocks", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "Tip block wire", "Filter" : EntityType.BODY && BodyType.WIRE, "MaxNumberOfPicks" : 1,
-                        "Description" : "Optional: the tip block's wire; its name fills Tip block." }
-            definition.tipBlockWire is Query;
+            annotation { "Name" : "Tip block name from", "Default" : PrimitiveNameFrom.TYPED, "UIHint" : [UIHint.SHOW_LABEL, UIHint.HORIZONTAL_ENUM],
+                        "Description" : "Typed: enter the tip tooling block's name. Picked wire's name: pick the block's wire, its name is used." }
+            definition.tipBlockFrom is PrimitiveNameFrom;
 
-            annotation { "Name" : "Tip block", "Default" : "", "MaxLength" : 128,
-                        "Description" : "The tip tooling block's name (Table 5). Empty = no row." }
-            definition.tipBlock is string;
+            if (definition.tipBlockFrom == PrimitiveNameFrom.TYPED)
+            {
+                annotation { "Name" : "Tip block", "Default" : "", "MaxLength" : 128,
+                            "Description" : "The tip tooling block's name (Table 5). Empty = no row." }
+                definition.tipBlock is string;
+            }
+            else
+            {
+                annotation { "Name" : "Tip block wire", "Filter" : EntityType.BODY && BodyType.WIRE, "MaxNumberOfPicks" : 1,
+                            "Description" : "The tip block's wire; its name goes into Table 5. None picked = no row." }
+                definition.tipBlockWire is Query;
+            }
 
-            annotation { "Name" : "Tail block wire", "Filter" : EntityType.BODY && BodyType.WIRE, "MaxNumberOfPicks" : 1,
-                        "Description" : "Optional: the tail block's wire; its name fills Tail block." }
-            definition.tailBlockWire is Query;
+            annotation { "Name" : "Tip block wire name", "Default" : "", "MaxLength" : 256, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
+            definition.tipBlockWireName is string;
 
-            annotation { "Name" : "Tail block", "Default" : "", "MaxLength" : 128,
-                        "Description" : "The tail tooling block's name (Table 5). Empty = no row." }
-            definition.tailBlock is string;
+            annotation { "Name" : "Tail block name from", "Default" : PrimitiveNameFrom.TYPED, "UIHint" : [UIHint.SHOW_LABEL, UIHint.HORIZONTAL_ENUM],
+                        "Description" : "Typed: enter the tail tooling block's name. Picked wire's name: pick the block's wire, its name is used." }
+            definition.tailBlockFrom is PrimitiveNameFrom;
+
+            if (definition.tailBlockFrom == PrimitiveNameFrom.TYPED)
+            {
+                annotation { "Name" : "Tail block", "Default" : "", "MaxLength" : 128,
+                            "Description" : "The tail tooling block's name (Table 5). Empty = no row." }
+                definition.tailBlock is string;
+            }
+            else
+            {
+                annotation { "Name" : "Tail block wire", "Filter" : EntityType.BODY && BodyType.WIRE, "MaxNumberOfPicks" : 1,
+                            "Description" : "The tail block's wire; its name goes into Table 5. None picked = no row." }
+                definition.tailBlockWire is Query;
+            }
+
+            annotation { "Name" : "Tail block wire name", "Default" : "", "MaxLength" : 256, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
+            definition.tailBlockWireName is string;
         }
 
         annotation { "Group Name" : "Layout", "Collapsed By Default" : true }
@@ -152,12 +177,15 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             annotation { "Name" : "Tick length", "Description" : "Half length of the radius plot's key-location tick marks." }
             isLength(definition.tickLength, PRIMITIVE_TICK_BOUNDS);
 
+            annotation { "Name" : "EI scale (N*m^2 per mm)", "Description" : "EI band (with a Target EI): N*m^2 per 1 mm of plot height. 10 = a 150 N*m^2 ski plots 15 mm high. Ticks every 50 N*m^2." }
+            isReal(definition.eiScale, PRIMITIVE_EI_SCALE_BOUNDS);
+
             annotation { "Name" : "Dashed grid", "Default" : false,
-                        "Description" : "Horizontal grid lines at every 10 m of radius across the radius band, drawn as short dashes (4 mm dash, 4 mm gap) so they read lighter than the plot." }
+                        "Description" : "Horizontal grid lines at every tick level (10 m of radius, 50 N*m^2 of EI) across the radius and EI bands, drawn as short dashes (4 mm dash, 4 mm gap) so they read lighter than the plots." }
             definition.dashedGrid is boolean;
 
             annotation { "Name" : "Labels", "Default" : true,
-                        "Description" : "Band titles (BASELINE, PROFILE, FOOTPRINT, RADIUS (m)) left of the bands and the radius scale's numbers, as outline text geometry in the composite." }
+                        "Description" : "Band titles (EI, BASELINE, PROFILE, FOOTPRINT, RADIUS (m)) left of the bands and the scales' numbers, as outline text geometry in the composite." }
             definition.labels is boolean;
 
             if (definition.labels)
@@ -265,7 +293,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             notes = append(notes, "the baseline is flat within the RSL (within " ~ primitiveRound(baseline.deviation / millimeter, 4) ~
                 " mm of the FCP - ACP chord): no rocker contacts, minima or camber");
         }
-        const baselineRows = primitiveBaselineRows(context, frame, baseline, definition.tipBlock, definition.tailBlock);
+        const baselineRows = primitiveBaselineRows(context, frame, baseline, blockName(context, definition, "tip"), blockName(context, definition, "tail"));
 
         // ---- Table 2: theoretical deflection / stiffness from the target EI (xSection convention: world X, 1 mm = 1 N*m^2) ----
         var beam = undefined;
@@ -281,6 +309,17 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                 notes = append(notes, "the target EI does not span FCP - ACP (world X); its end values are held flat");
             }
             beam = computeBeamStiffness(eiData, fcpWorld[0], acpWorld[0]);
+        }
+        // EI band geometry (built at height 0, moved into place after stacking).
+        const eiPerUnit = millimeter / definition.eiScale;
+        var eiPlot = undefined;
+        if (beam != undefined)
+        {
+            eiPlot = primitiveEIPlot(context, id + "eiPlot", wireEdges(definition.targetEI), toLocal, 0 * meter, eiPerUnit);
+            if (size(eiPlot.bodies) == 0)
+            {
+                eiPlot = undefined;
+            }
         }
 
         // ---- Footprint: unwrap, analyse (Table 2), radius ----
@@ -339,28 +378,61 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         // ---- Bands: extents, stacking ----
         const runs = primitiveRadiusRuns(unwrapped.samples);
         const radiusExtent = primitiveRadiusExtent(runs);
-        const levels = primitiveRadiusLevels(radiusExtent.lo, radiusExtent.hi, definition.radiusLimit);
         const perMetre = PRIMITIVE_RADIUS_PLOT_SCALE * meter;
+        const levels = primitiveLevels(radiusExtent.lo / perMetre, radiusExtent.hi / perMetre, PRIMITIVE_RADIUS_GRID_STEP, definition.radiusLimit / meter);
         const labelHeight = definition.labels ? definition.textHeight * 0.6 : undefined;
         const labelHalf = definition.labels && size(levels) > 1 ? labelHeight / 2 : 0 * meter;
+        const eiLevels = eiPlot == undefined ? [] : primitiveLevels(0, eiPlot.hi, PRIMITIVE_EI_GRID_STEP, 1e9);
+        const eiLabelHalf = definition.labels && size(eiLevels) > 1 ? labelHeight / 2 : 0 * meter;
         const tick = definition.tickLength;
         const profileBodies = qUnion([profile.bottom, profile.top, profile.tipEnd, profile.tailEnd]);
         const fpBox = evBox3d(context, { "topology" : unwrapped.bodies, "tight" : true });
-        const extents = [
+        var bandKeys = [];
+        var extents = [];
+        if (eiPlot != undefined)
+        {
+            bandKeys = ["ei"];
+            extents = [{ "lo" : -eiLabelHalf, "hi" : max(eiPlot.hi * eiPerUnit, eiLevels[size(eiLevels) - 1] * eiPerUnit + eiLabelHalf) }];
+        }
+        bandKeys = concatenateArrays([bandKeys, ["baseline", "profile", "footprint", "radius"]]);
+        extents = concatenateArrays([extents, [
             primitiveZExtent(context, baseline.body),
             primitiveZExtent(context, profileBodies),
             { "lo" : fpBox.minCorner[1], "hi" : fpBox.maxCorner[1] },
             { "lo" : min([radiusExtent.lo, -tick, levels[0] * perMetre - labelHalf]),
               "hi" : max([radiusExtent.hi, tick, levels[size(levels) - 1] * perMetre + labelHalf]) }
-        ];
+        ]]);
         const offsets = primitiveStack(extents, volumeBox.minCorner[2], definition.bandGap);
-        const zBaseline = offsets[0];
-        const zProfile = offsets[1];
-        const zFootprint = offsets[2];
-        const zRadius = offsets[3];
+        var bandZ = {};
+        for (var i = 0; i < size(bandKeys); i += 1)
+        {
+            bandZ[bandKeys[i]] = offsets[i];
+        }
+        const zBaseline = bandZ.baseline;
+        const zProfile = bandZ.profile;
+        const zFootprint = bandZ.footprint;
+        const zRadius = bandZ.radius;
         const zero = 0 * meter;
         var members = [];
         var queries = {};
+
+        // Band 0 (with a target EI): the EI profile (purple), zero reference, scale frame (grey)
+        if (eiPlot != undefined)
+        {
+            const zEI = bandZ.ei;
+            const eiBodies = qUnion(eiPlot.bodies);
+            opTransform(context, id + "moveEI", { "bodies" : eiBodies, "transform" : transform(vector(zero, zero, zEI)) });
+            primitiveName(context, eiBodies, title ~ " EI");
+            primitiveColour(context, eiBodies, PRIMITIVE_COLOURS.ei);
+            members = append(members, eiBodies);
+            queries.ei = eiBodies;
+            const eiReference = primitiveSegment(context, id + "eiReference", vector(eiPlot.xLo, zero, zEI), vector(eiPlot.xHi, zero, zEI),
+                title ~ " EI REFERENCE");
+            primitiveColour(context, eiReference, PRIMITIVE_COLOURS.frame);
+            members = append(members, eiReference);
+            members = concatenateArrays([members, primitiveScaleFrame(context, id + "eiFrame", "EI", eiLevels, eiPerUnit, eiPlot.xLo, eiPlot.xHi,
+                            zEI, dirSign, definition.dashedGrid, labelHeight, title)]);
+        }
 
         // Band 1: baseline
         var bandStart = size(members);
@@ -473,15 +545,14 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                         vector(entry.value, zero, zRadius - tick), vector(entry.value, zero, zRadius + tick), title ~ " RADIUS TICK " ~ entry.key));
         }
         primitiveColour(context, qUnion(subArray(members, bandStart)), PRIMITIVE_COLOURS.frame);
-        members = concatenateArrays([members, primitiveRadiusFrame(context, id + "radiusFrame", levels, fpBox.minCorner[0], fpBox.maxCorner[0],
-                        zRadius, dirSign, definition.dashedGrid, labelHeight, title)]);
+        members = concatenateArrays([members, primitiveScaleFrame(context, id + "radiusFrame", "RADIUS", levels, perMetre, fpBox.minCorner[0],
+                        fpBox.maxCorner[0], zRadius, dirSign, definition.dashedGrid, labelHeight, title)]);
 
         // Band datum points (x = 0 on each band's reference line), for ordinate dimensions.
-        const bandZ = [zBaseline, zProfile, zFootprint, zRadius];
-        for (var i = 0; i < size(PRIMITIVE_BANDS); i += 1)
+        for (var band in bandKeys)
         {
-            const label = PRIMITIVE_BAND_LABELS[PRIMITIVE_BANDS[i]];
-            const datumPoint = primitivePointBody(context, id + ("datum" ~ label), vector(zero, zero, bandZ[i]), title ~ " " ~ label ~ " DATUM");
+            const label = PRIMITIVE_BAND_LABELS[band];
+            const datumPoint = primitivePointBody(context, id + ("datum" ~ label), vector(zero, zero, bandZ[band]), title ~ " " ~ label ~ " DATUM");
             primitiveColour(context, datumPoint, PRIMITIVE_COLOURS.frame);
             members = append(members, datumPoint);
         }
@@ -490,11 +561,10 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         if (definition.labels)
         {
             const left = evBox3d(context, { "topology" : qUnion(members), "tight" : true }).minCorner[0] - definition.textHeight;
-            for (var i = 0; i < size(PRIMITIVE_BANDS); i += 1)
+            for (var band in bandKeys)
             {
-                const band = PRIMITIVE_BANDS[i];
                 const titleText = primitiveText(context, id + ("title" ~ PRIMITIVE_BAND_LABELS[band]), PRIMITIVE_BAND_TITLES[band],
-                    vector(left, zero, bandZ[i]), definition.textHeight, "RIGHT", title ~ " " ~ PRIMITIVE_BAND_LABELS[band] ~ " TITLE");
+                    vector(left, zero, bandZ[band]), definition.textHeight, "RIGHT", title ~ " " ~ PRIMITIVE_BAND_LABELS[band] ~ " TITLE");
                 primitiveColour(context, titleText, PRIMITIVE_COLOURS[band]);
                 members = append(members, titleText);
             }
@@ -521,8 +591,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                     "stationNumbers" : definition.stationNumbers,
                     "tipTowards" : dirSign > 0 ? "+X" : "-X"
                 },
-                "bands" : { "baseline" : primitiveMM(zBaseline), "profile" : primitiveMM(zProfile),
-                    "footprint" : primitiveMM(zFootprint), "radius" : primitiveMM(zRadius), "radiusScale" : "10 mm per 1 m" },
+                "bands" : bandsData(bandZ, definition.eiScale),
                 "scaleFactors" : scale.rows,
                 "metadata" : metaRows,
                 "keyLocations" : keyRows,
@@ -568,16 +637,60 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
     }, {});
 
 /**
- * Fills a name from a pick (getProperty throws in the feature body, correction 36): the name prefix from the volume,
- * Tip / Tail block from their wires. A name is filled when empty, and follows a pick change as long as it still is
- * the previous pick's name.
+ * Fills names from picks (getProperty throws in the feature body, correction 36): the name prefix from the volume
+ * (filled when empty, and follows a pick change as long as it still is the previous pick's name), and the hidden
+ * Tip / Tail block wire names from the block wires (always the picked wire's name; empty without a pick).
  */
 export function exportPrimitiveEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
     isCreating is boolean, specifiedParameters is map) returns map
 {
     var out = followName(context, oldDefinition, definition, "volume", "prefix");
-    out = followName(context, oldDefinition, out, "tipBlockWire", "tipBlock");
-    out = followName(context, oldDefinition, out, "tailBlockWire", "tailBlock");
+    out = wireName(context, out, "tipBlockWire", "tipBlockWireName");
+    out = wireName(context, out, "tailBlockWire", "tailBlockWireName");
+    return out;
+}
+
+/** `text` = the name of the wire picked in `pick` ("" without a pick). */
+function wireName(context is Context, definition is map, pick is string, text is string) returns map
+{
+    if (!(definition[text] is string))
+    {
+        return definition;
+    }
+    var name = "";
+    if (definition[pick] is Query && !isQueryEmpty(context, definition[pick]))
+    {
+        const got = getProperty(context, { "entity" : definition[pick], "propertyType" : PropertyType.NAME });
+        name = got is string ? got : "";
+    }
+    var out = definition;
+    out[text] = name;
+    return out;
+}
+
+/** A tooling block's name for Table 5 (`end` "tip" / "tail"): typed, or the picked wire's name ("" = no row). */
+function blockName(context is Context, definition is map, end is string) returns string
+{
+    if (definition[end ~ "BlockFrom"] == PrimitiveNameFrom.WIRE)
+    {
+        const pick = definition[end ~ "BlockWire"];
+        return pick is Query && !isQueryEmpty(context, pick) ? definition[end ~ "BlockWireName"] : "";
+    }
+    return definition[end ~ "Block"];
+}
+
+/** The bands' reference heights (mm, local frame) and scales for the attribute. */
+function bandsData(bandZ is map, eiScale is number) returns map
+{
+    var out = { "radiusScale" : "10 mm per 1 m" };
+    for (var entry in bandZ)
+    {
+        out[entry.key] = primitiveMM(entry.value);
+    }
+    if (bandZ.ei != undefined)
+    {
+        out.eiScale = eiScale ~ " N*m^2 per 1 mm";
+    }
     return out;
 }
 
@@ -702,16 +815,16 @@ function metadataRows(fpt is map, fcp is Vector, acp is Vector, volumeBox is Box
     return rows;
 }
 
-/** Footprint points as { u, s, w } in mm (u = unwrapped length coordinate, s from MRS towards FCP). */
+/** Footprint points as { u, s, w } in mm (u = unwrapped length coordinate, s as primitiveS). */
 function footprintSummary(frame is map, points is map, fpt is map) returns map
 {
     var out = {};
     for (var entry in points)
     {
         const u = entry.value[0];
-        out[entry.key] = { "u" : primitiveMM(u), "s" : primitiveMM((u - frame.xMrs) * frame.dirSign), "w" : primitiveMM(entry.value[1]) };
+        out[entry.key] = { "u" : primitiveMM(u), "s" : primitiveMM(primitiveSFromU(frame, u)), "w" : primitiveMM(entry.value[1]) };
     }
-    out.averageFrom = primitiveMM((fpt.lo - frame.xMrs) * frame.dirSign);
-    out.averageTo = primitiveMM((fpt.hi - frame.xMrs) * frame.dirSign);
+    out.averageFrom = primitiveMM(primitiveSFromU(frame, fpt.lo));
+    out.averageTo = primitiveMM(primitiveSFromU(frame, fpt.hi));
     return out;
 }

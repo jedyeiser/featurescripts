@@ -108,29 +108,27 @@ export function primitiveText(context is Context, id is Id, text is string, anch
     return wires;
 }
 
-/** A radius-plot level (whole metres) as a key fragment ("P10", "M20", "P0"). */
+/** A scale level (whole units) as a key fragment ("P10", "M20", "P0"). */
 function levelKey(level is number) returns string
 {
     return (level < 0 ? "M" : "P") ~ abs(level);
 }
 
-/** A radius-plot level as a name / label ("+10", "-20", "0"). */
+/** A scale level as a name / label ("+10", "-20", "0"). */
 function levelName(level is number) returns string
 {
     return level > 0 ? "+" ~ level : "" ~ level;
 }
 
 /**
- * The radius plot's levels (m): multiples of PRIMITIVE_RADIUS_GRID_STEP covering the plot heights lo..hi (relative
- * to the reference line) outward, never beyond the radius limit. Always holds 0.
+ * A scale's levels: multiples of `step` covering lo..hi (plotted values, e.g. m of radius or N*m^2 of EI) outward,
+ * never beyond +-cap. Always holds 0.
  */
-export function primitiveRadiusLevels(lo is ValueWithUnits, hi is ValueWithUnits, radiusLimit is ValueWithUnits) returns array
+export function primitiveLevels(lo is number, hi is number, step is number, cap is number) returns array
 {
-    const step = PRIMITIVE_RADIUS_GRID_STEP;
-    const perMetre = PRIMITIVE_RADIUS_PLOT_SCALE * meter;
-    const cap = floor(radiusLimit / meter / step + 1e-9) * step;
-    const top = min(cap, max(0, ceil(hi / perMetre / step - 1e-9) * step));
-    const bottom = max(-cap, min(0, floor(lo / perMetre / step + 1e-9) * step));
+    const limit = floor(cap / step + 1e-9) * step;
+    const top = min(limit, max(0, ceil(hi / step - 1e-9) * step));
+    const bottom = max(-limit, min(0, floor(lo / step + 1e-9) * step));
     var levels = [];
     for (var level = bottom; level <= top; level += step)
     {
@@ -140,37 +138,37 @@ export function primitiveRadiusLevels(lo is ValueWithUnits, hi is ValueWithUnits
 }
 
 /**
- * The radius band's frame in the LOCAL XZ plane: a vertical axis at each end of the band (x = xLo / xHi, named by the
- * ski end it is on: "RADIUS AXIS TIP" / "RADIUS AXIS TAIL") over the levels, a PRIMITIVE_AXIS_TICK tick outward at
- * every level on both axes ("RADIUS TICK +10 TIP"), optionally a dashed grid line at every level but 0 ("RADIUS GRID
- * -20", PRIMITIVE_GRID_DASH dashes, PRIMITIVE_GRID_GAP apart) and, with a text height, tick labels left of the low-x
- * axis ("RADIUS LABEL +10"). Operation ids and names come from the level and the end, never from list positions.
- * Returns the bodies (all grey).
+ * A scale band's frame in the LOCAL XZ plane (band "RADIUS" or "EI"): a vertical axis at each end of the band (x = xLo
+ * / xHi, named by the ski end it is on: "<band> AXIS TIP" / "<band> AXIS TAIL") over the levels, a PRIMITIVE_AXIS_TICK
+ * tick outward at every level on both axes ("<band> TICK +10 TIP"), optionally a dashed line at every level but 0
+ * ("<band> GRID -20", PRIMITIVE_GRID_DASH dashes, PRIMITIVE_GRID_GAP apart) and, with a text height, the level numbers
+ * left of the low-x axis ("<band> LABEL +10"). `perLevel` = plot height of one level unit. Operation ids and names
+ * come from the level and the end, never from list positions. Returns the bodies (all grey).
  */
-export function primitiveRadiusFrame(context is Context, id is Id, levels is array, xLo is ValueWithUnits, xHi is ValueWithUnits,
-    zRef is ValueWithUnits, dirSign is number, dashed is boolean, textHeight, prefix is string) returns array
+export function primitiveScaleFrame(context is Context, id is Id, band is string, levels is array, perLevel is ValueWithUnits,
+    xLo is ValueWithUnits, xHi is ValueWithUnits, zRef is ValueWithUnits, dirSign is number, dashed is boolean, textHeight,
+    prefix is string) returns array
 {
     const zero = 0 * meter;
-    const perMetre = PRIMITIVE_RADIUS_PLOT_SCALE * meter;
     var bodies = [];
     if (size(levels) < 2)
     {
         return bodies;
     }
-    const zLo = zRef + levels[0] * perMetre;
-    const zHi = zRef + levels[size(levels) - 1] * perMetre;
+    const zLo = zRef + levels[0] * perLevel;
+    const zHi = zRef + levels[size(levels) - 1] * perLevel;
     // The tip is at high x when the ski points +X.
     const ends = [{ "end" : dirSign > 0 ? "TAIL" : "TIP", "x" : xLo, "out" : -1 },
                   { "end" : dirSign > 0 ? "TIP" : "TAIL", "x" : xHi, "out" : 1 }];
     for (var e in ends)
     {
         bodies = append(bodies, primitiveSegment(context, id + ("axis" ~ e.end), vector(e.x, zero, zLo), vector(e.x, zero, zHi),
-                    prefix ~ " RADIUS AXIS " ~ e.end));
+                    prefix ~ " " ~ band ~ " AXIS " ~ e.end));
         for (var level in levels)
         {
-            const z = zRef + level * perMetre;
+            const z = zRef + level * perLevel;
             bodies = append(bodies, primitiveSegment(context, id + ("tick" ~ levelKey(level) ~ e.end), vector(e.x, zero, z),
-                        vector(e.x + e.out * PRIMITIVE_AXIS_TICK, zero, z), prefix ~ " RADIUS TICK " ~ levelName(level) ~ " " ~ e.end));
+                        vector(e.x + e.out * PRIMITIVE_AXIS_TICK, zero, z), prefix ~ " " ~ band ~ " TICK " ~ levelName(level) ~ " " ~ e.end));
         }
     }
     if (dashed)
@@ -183,10 +181,10 @@ export function primitiveRadiusFrame(context is Context, id is Id, levels is arr
             {
                 continue;
             }
-            const z = zRef + level * perMetre;
+            const z = zRef + level * perLevel;
             const gid = id + ("grid" ~ levelKey(level));
             const dash = primitiveSegment(context, gid + "dash", vector(xLo, zero, z), vector(xLo + PRIMITIVE_GRID_DASH, zero, z),
-                prefix ~ " RADIUS GRID " ~ levelName(level));
+                prefix ~ " " ~ band ~ " GRID " ~ levelName(level));
             // Name and colour first: the pattern copies them.
             primitiveColour(context, dash, PRIMITIVE_COLOURS.frame);
             bodies = append(bodies, dash);
@@ -209,12 +207,61 @@ export function primitiveRadiusFrame(context is Context, id is Id, levels is arr
         for (var level in levels)
         {
             bodies = append(bodies, primitiveText(context, id + ("label" ~ levelKey(level)), levelName(level),
-                        vector(xLo - PRIMITIVE_AXIS_TICK - textHeight / 4, zero, zRef + level * perMetre), textHeight, "RIGHT",
-                        prefix ~ " RADIUS LABEL " ~ levelName(level)));
+                        vector(xLo - PRIMITIVE_AXIS_TICK - textHeight / 4, zero, zRef + level * perLevel), textHeight, "RIGHT",
+                        prefix ~ " " ~ band ~ " LABEL " ~ levelName(level)));
         }
     }
     primitiveColour(context, qUnion(bodies), PRIMITIVE_COLOURS.frame);
     return bodies;
+}
+
+/**
+ * The target EI in the LOCAL XZ plane: every EI edge (xSection convention: world x along the ski, z in mm = EI in
+ * N*m^2; negative values read as 0) sampled at 41 points and fitted through (x local, zRef + EI * perUnit), so steps
+ * between edges stay steps. x local = the datum frame's x of the world point (x, 0, 0). Returns { bodies, hi (largest
+ * EI, N*m^2), xLo, xHi (local x range; undefined without edges) }.
+ */
+export function primitiveEIPlot(context is Context, id is Id, edges is Query, toLocal is Transform, zRef is ValueWithUnits,
+    perUnit is ValueWithUnits) returns map
+{
+    const zero = 0 * meter;
+    var params = [];
+    for (var k = 0; k <= 40; k += 1)
+    {
+        params = append(params, k / 40);
+    }
+    var bodies = [];
+    var hi = 0;
+    var xLo = undefined;
+    var xHi = undefined;
+    var index = 0;
+    for (var edge in evaluateQuery(context, edges))
+    {
+        var points = [];
+        for (var tl in evEdgeTangentLines(context, { "edge" : edge, "parameters" : params }))
+        {
+            const ei = max(0, tl.origin[2] / millimeter);
+            const x = (toLocal * vector(tl.origin[0], zero, zero))[0];
+            hi = max(hi, ei);
+            xLo = xLo == undefined ? x : min(xLo, x);
+            xHi = xHi == undefined ? x : max(xHi, x);
+            const q = vector(x, zero, zRef + ei * perUnit);
+            if (size(points) == 0 || norm(q - points[size(points) - 1]) > 1e-8 * meter)
+            {
+                points = append(points, q);
+            }
+        }
+        index += 1;
+        if (size(points) < 2 || norm(points[size(points) - 1] - points[0]) < 1e-7 * meter)
+        {
+            continue;
+        }
+        // The EI wire's edges carry no names: the id follows their (query) order.
+        const eid = id + ("edge" ~ index);
+        opFitSpline(context, eid, { "points" : points });
+        bodies = append(bodies, qCreatedBy(eid, EntityType.BODY));
+    }
+    return { "bodies" : bodies, "hi" : hi, "xLo" : xLo, "xHi" : xHi };
 }
 
 /**

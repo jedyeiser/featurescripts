@@ -416,15 +416,16 @@ export function primitiveChainCrossing(context is Context, chain is map, origin 
 
 /**
  * The measuring frame on the bottom wire: its chain (TAIL -> TIP) and lookup table, where MRS sits on it (aMrs),
- * the tip direction (dirSign = +1 when FCP has the larger x) and upSign, which turns cross(tangent, y) into the
- * normal pointing into the ski.
+ * where x = 0 (the datum) sits on it (aZero; beyond an end of the wire the arc position runs on along that end's
+ * tangent), the tip direction (dirSign = +1 when FCP has the larger x) and upSign, which turns cross(tangent, y)
+ * into the normal pointing into the ski.
  */
 export function primitiveFrame(context is Context, chain is map, mrs is Vector, dirSign is number) returns map
 {
     const lookup = primitiveChainTable(context, chain);
-    const atMrs = primitiveChainAtX(context, chain, lookup, [mrs[0]])[0];
-    const n0 = cross(atMrs.tangent, vector(0, 1, 0));
-    return { "chain" : chain, "lookup" : lookup, "aMrs" : atMrs.a, "xMrs" : mrs[0], "dirSign" : dirSign,
+    const at = primitiveChainAtX(context, chain, lookup, [mrs[0], 0 * meter]);
+    const n0 = cross(at[0].tangent, vector(0, 1, 0));
+    return { "chain" : chain, "lookup" : lookup, "aMrs" : at[0].a, "aZero" : at[1].a, "xMrs" : mrs[0], "dirSign" : dirSign,
             "upSign" : n0[2] >= 0 ? 1 : -1 };
 }
 
@@ -435,10 +436,19 @@ export function primitiveUp(frame is map, tangent is Vector) returns Vector
     return norm(n) > 1e-12 ? normalize(n) : vector(0, 0, 1);
 }
 
-/** s (arc length from MRS, + towards FCP) of a bottom arc position. */
+/**
+ * s of a bottom arc position: the signed arc length along the bottom wire from the point at x = 0 (the datum),
+ * increasing with x (ds/dx > 0) whichever way the tip points. The chain runs TAIL -> TIP, i.e. with x when dirSign > 0.
+ */
 export function primitiveS(frame is map, a is ValueWithUnits) returns ValueWithUnits
 {
-    return a - frame.aMrs;
+    return frame.dirSign * (a - frame.aZero);
+}
+
+/** s (as primitiveS) of an unwrapped length coordinate u (primitiveU). */
+export function primitiveSFromU(frame is map, u is ValueWithUnits) returns ValueWithUnits
+{
+    return u - frame.xMrs + frame.dirSign * (frame.aMrs - frame.aZero);
 }
 
 /** The unwrapped length coordinate: x of MRS plus s towards FCP (u = x wherever the bottom wire is flat and straight). */

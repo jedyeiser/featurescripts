@@ -28,6 +28,15 @@ export enum PrimitiveDatumUse
     COORDINATE_SYSTEM
 }
 
+/** Where a tooling block's name comes from. */
+export enum PrimitiveNameFrom
+{
+    annotation { "Name" : "Typed" }
+    TYPED,
+    annotation { "Name" : "Picked wire's name" }
+    WIRE
+}
+
 /** The station pair the Table 2 average radius is taken between. */
 export enum PrimitiveRadiusBetween
 {
@@ -73,6 +82,10 @@ export const PRIMITIVE_BAND_GAP_BOUNDS = { (millimeter) : [0, 50, 5000] } as Len
 export const PRIMITIVE_RADIUS_LIMIT_BOUNDS = { (meter) : [1, 50, 10000] } as LengthBoundSpec;
 export const PRIMITIVE_TICK_BOUNDS = { (millimeter) : [0.1, 10, 500] } as LengthBoundSpec;
 export const PRIMITIVE_TEXT_HEIGHT_BOUNDS = { (millimeter) : [1, 20, 500] } as LengthBoundSpec;
+/** EI band scale: N*m^2 per 1 mm of plot height (10 -> a 150 N*m^2 ski plots 15 mm high). */
+export const PRIMITIVE_EI_SCALE_BOUNDS = { (unitless) : [0.01, 10, 100000] } as RealBoundSpec;
+/** EI band ticks every 50 N*m^2. */
+export const PRIMITIVE_EI_GRID_STEP = 50;
 
 /** Radius plot frame: ticks (and the optional dashed grid) every 10 m of radius, short ticks on the two end axes. */
 export const PRIMITIVE_RADIUS_GRID_STEP = 10;
@@ -86,15 +99,16 @@ export const PRIMITIVE_COLOURS = {
         "profile" : color(0.0, 0.5, 0.25),
         "footprint" : color(0.85, 0.4, 0.0),
         "radius" : color(0.75, 0.1, 0.1),
+        "ei" : color(0.45, 0.2, 0.6),
         "frame" : color(0.5, 0.5, 0.5)
     };
 
 /** Band titles (text geometry, "Labels"). */
-export const PRIMITIVE_BAND_TITLES = { "baseline" : "BASELINE", "profile" : "PROFILE", "footprint" : "FOOTPRINT", "radius" : "RADIUS (m)" };
+export const PRIMITIVE_BAND_TITLES = { "ei" : "EI (N*m^2)", "baseline" : "BASELINE", "profile" : "PROFILE", "footprint" : "FOOTPRINT", "radius" : "RADIUS (m)" };
 
-/** Band keys, in stacking order (top to bottom), and their body-name labels. */
-export const PRIMITIVE_BANDS = ["baseline", "profile", "footprint", "radius"];
-export const PRIMITIVE_BAND_LABELS = { "baseline" : "BASELINE", "profile" : "PROFILE", "footprint" : "FOOTPRINT", "radius" : "RADIUS" };
+/** Band keys, in stacking order (top to bottom; "ei" only with a target EI), and their body-name labels. */
+export const PRIMITIVE_BANDS = ["ei", "baseline", "profile", "footprint", "radius"];
+export const PRIMITIVE_BAND_LABELS = { "ei" : "EI", "baseline" : "BASELINE", "profile" : "PROFILE", "footprint" : "FOOTPRINT", "radius" : "RADIUS" };
 
 /** An operation-id / key fragment from a display name: letters, digits and _ only. */
 export function primitiveKey(name is string) returns string

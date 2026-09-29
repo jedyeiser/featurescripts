@@ -14,6 +14,7 @@ IconNamespace::import(path : "eb32ed1a7e9ecf0a7ef61a7c", version : "a0113143f1b8
  *     5 Baseline                    Tip / Tail block (when named), FCPh FRCP FRCPl FB_Roll MCh MCl AB_Roll ARCPl ARCP ACPh
  *                                   (not on a baseline that is flat within the RSL)
  *     Data                          x, s, y, ski_width, z, ski_thck, baseline_height, radius within the RSL, by x
+ * x from the datum; s = distance along the bottom wire from the datum, same direction as x.
  * With "Station numbers" on (Export primitive), Key locations and Data start with a # column: 0 at the lowest x.
  * Only rows with data are stored, and a table without rows is not returned.
  * A drawing inserts every table this returns: filter by primitive name and pick one table per insertion.

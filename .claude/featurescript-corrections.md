@@ -1807,3 +1807,16 @@ fcp_pt / acp_pt / mrs_pt = chain point at the exact X (chainPointAtX, bisection)
 FCPh 5.000 / ACPh 0.500 (were 5.098 / 0.485). Remove the Export primitive workaround once it pins that version.
 **Lesson**: solve for a named point (x = x_FCP) instead of picking the nearest sample; a test fixture whose contacts
 are chain ends hides the error.
+
+## Correction 60: sketch text as geometry -- extract the REGION edges, not the text curves (2026-09-28)
+
+**Symptom**: `@opExtractWires: EXTRACT_WIRES_OVERLAPPING_EDGES` on `qCreatedBy(sketchId, EntityType.EDGE)` of an FS
+sketch with `skText` (also with only the sketch's wire bodies' edges).
+**Cause**: a solved text sketch makes one wire body per glyph curve (185 for "RADIUS 10") AND a sheet body of the
+text regions; the glyph curves overlap each other / the region edges.
+**Fix**: `opExtractWires` on `qOwnedByBody(qBodyType(qCreatedBy(sketchId, EntityType.BODY), BodyType.SHEET),
+EntityType.EDGE)` -> one closed wire per glyph loop; then `opDeleteBodies` the sketch bodies. The wires go into a
+closed composite fine. Text box: firstCorner / secondCorner height = text height, width is ignored (text runs on).
+Sketch plane `plane(origin, vector(0, -1, 0), vector(1, 0, 0))` reads correctly in a front view (sketch y = +Z).
+Also: wire and point bodies keep `PropertyType.APPEARANCE` (read back), and `opPattern` copies name + appearance
+(copyPropertiesAndAttributes defaults true) -- set them on the seed first.

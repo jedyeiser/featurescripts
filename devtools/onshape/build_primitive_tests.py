@@ -205,13 +205,18 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
         num("dataPoints", str(points), True),
         b("forceStations", True),
         b("stationNumbers", True),
+        en("tipBlockFrom", "PrimitiveNameFrom", "TYPED", ns),
         q("tipBlockWire"),
         s("tipBlock", tip_block),
+        s("tipBlockWireName", ""),
+        en("tailBlockFrom", "PrimitiveNameFrom", "TYPED", ns),
         q("tailBlockWire"),
         s("tailBlock", tail_block),
+        s("tailBlockWireName", ""),
         num("bandGap", "50 mm"),
         num("radiusLimit", "50 m"),
         num("tickLength", "10 mm"),
+        num("eiScale", "10"),
         b("dashedGrid", grid),
         b("labels", labels),
         num("textHeight", "20 mm"),
@@ -220,7 +225,8 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
     if not NEW:
         params = [p for p in params if p["parameterId"] not in
                   ("datumUses", "targetEI", "tipBlockWire", "tipBlock", "tailBlockWire", "tailBlock",
-                   "dashedGrid", "labels", "textHeight", "stationNumbers")]
+                   "dashedGrid", "labels", "textHeight", "stationNumbers", "eiScale", "tipBlockFrom", "tailBlockFrom",
+                   "tipBlockWireName", "tailBlockWireName")]
     return upsert(name, "exportPrimitive", params, ns)
 
 

@@ -14,6 +14,10 @@ With --before <json> (a --json snapshot of an earlier run): P1 .. P6 values unch
 2026-09-28 decisions removed (phase-2 placeholders; P1 / P5 / P6 rocker rows on a flat baseline).
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/check_primitive_tests.py [--dump | --json <out> | --before <json>]
+                   [--unsuppress] [--keep P1,P8]
+  --unsuppress   unsuppress every P case first (the checks need all of them regenerated)
+  --keep P1,P8   afterwards suppress every P case except these, so the studio regenerates fast (2026-09-28: many
+                 Export primitive instances make a studio slow)
 """
 import json
 import os
@@ -132,6 +136,26 @@ def statuses():
     return {names[k]: v["featureStatus"] for k, v in f["featureStates"].items() if k in names}
 
 
+def set_suppressed(keep=None):
+    """Suppresses every P case not in `keep` (None: unsuppress all), in one feature update."""
+    f = c.get(f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}/features")
+    changed = []
+    for x in f["features"]:
+        case = x["name"].split()[0]
+        if not re.match(r"P\d+$", case):
+            continue
+        want = keep is not None and case not in keep
+        if bool(x.get("suppressed")) != want:
+            x["suppressed"] = want
+            changed.append(x)
+    if not changed:
+        return
+    c.post(f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}/features/updates", {
+        "btType": "BTUpdateFeaturesCall-1748", "features": changed, "updateSuppressionAttributes": True,
+        "serializationVersion": f["serializationVersion"], "sourceMicroversion": f["sourceMicroversion"]})
+    print("%s %s" % ("suppressed" if keep is not None else "unsuppressed", ", ".join(x["name"].split()[0] for x in changed)))
+
+
 def primitives():
     items, raw = read()
     out = {}
@@ -161,8 +185,11 @@ def meta(d, key):
 
 
 def compare(case, a, b, tol, dx=0.0, dz=0.0, sign=1.0):
-    """Every number of primitive b equals primitive a's (x -> sign * x + dx, z -> z + dz); texts equal."""
+    """Every number of primitive b equals primitive a's (x -> sign * x + dx, z -> z + dz, s -> sign * s + ds); texts
+    equal. s runs from the datum along the bottom wire with x (2026-09-28), so a datum shift moves every s by the same
+    arc length ds, taken from MRS."""
     bad = []
+    ds = rows(b, "keyLocations")["MRS"]["s"] - sign * rows(a, "keyLocations")["MRS"]["s"]
     for section in ("scaleFactors", "metadata", "keyLocations", "baseline"):
         ra, rb = rows(a, section), rows(b, section)
         for key, row in ra.items():
@@ -172,6 +199,8 @@ def compare(case, a, b, tol, dx=0.0, dz=0.0, sign=1.0):
                 vb = rb.get(key, {}).get(field)
                 if field == "x" and isinstance(va, float):
                     va = sign * va + dx
+                if field == "s" and isinstance(va, float):
+                    va = sign * va + ds
                 if field == "z" and section == "keyLocations" and isinstance(va, float):
                     va = va + dz
                 if isinstance(va, float):
@@ -190,6 +219,8 @@ def compare(case, a, b, tol, dx=0.0, dz=0.0, sign=1.0):
             vb = rb.get(field)
             if field == "x" and isinstance(va, float):
                 va = sign * va + dx
+            if field == "s" and isinstance(va, float):
+                va = sign * va + ds
             if field == "z" and isinstance(va, float):
                 va = va + dz
             if isinstance(va, float) and not near(va, vb, tol):
@@ -235,11 +266,24 @@ def run_checks(prims, before=None):
     check("P1", "natural radius inflection m", "~16.18", meta(p1, "naturalRadiusInflection"), near(meta(p1, "naturalRadiusInflection"), 16.18, 0.01))
     check("P1", "RSL mm", 1480, meta(p1, "rsl"), near(meta(p1, "rsl"), 1480.0, 0.01))
     k1 = rows(p1, "keyLocations")
+    s_mrs = k1["MRS"]["s"]
     for key, x, s in (("FCP", 1625, 740), ("ACP", 145, -740), ("MRS", 885, 0), ("XS1", 1255, 370), ("XS2", 515, -370)):
-        check("P1", "%s x / s mm" % key, "%s / %s" % (x, s), "%s / %s" % (k1[key]["x"], k1[key]["s"]),
-              near(k1[key]["x"], float(x), 1e-3) and near(k1[key]["s"], float(s), 1e-3))
-    check("P1", "TIP / TAIL s mm", "905 / -885", "%s / %s" % (k1["TIP"]["s"], k1["TAIL"]["s"]),
-          near(k1["TIP"]["s"], 905.0, 0.01) and near(k1["TAIL"]["s"], -885.0, 0.01))
+        check("P1", "%s x / s - s(MRS) mm" % key, "%s / %s" % (x, s), "%s / %s" % (k1[key]["x"], k1[key]["s"] - s_mrs),
+              near(k1[key]["x"], float(x), 1e-3) and near(k1[key]["s"] - s_mrs, float(s), 1e-3))
+    check("P1", "TIP / TAIL s - s(MRS) mm", "905 / -885", "%s / %s" % (k1["TIP"]["s"] - s_mrs, k1["TAIL"]["s"] - s_mrs),
+          near(k1["TIP"]["s"] - s_mrs, 905.0, 0.01) and near(k1["TAIL"]["s"] - s_mrs, -885.0, 0.01))
+    # 2026-09-28 s rule: zero at x = 0 (the datum; P1 world origin, just past the TAIL end at x 0.63 -> straight
+    # extension), increasing with x. On TAC's flat running length s - x is constant.
+    m7 = rows(d["P7"], "keyLocations")["MRS"]
+    check("P7", "s zero at the datum (datum = MRS): x / s of MRS", "0 / 0", "%s / %s" % (m7["x"], m7["s"]), near(m7["x"], 0.0, 1e-3) and near(m7["s"], 0.0, 1e-3))
+    check("P1", "s(TAIL) small, >= 0 (x = 0 just past the tail end)", ">= 0, < 5", k1["TAIL"]["s"],
+          0.0 <= k1["TAIL"]["s"] < 5.0)
+    ks = sorted(p1["keyLocations"], key=lambda r: r["x"])
+    check("P1", "s increases with x (key locations)", "ascending", [r["s"] for r in ks],
+          all(b["s"] > a["s"] for a, b in zip(ks, ks[1:])))
+    k4 = rows(d["P4"], "keyLocations")
+    check("P4", "mirror: s(key) = -s(P3 key), tip at -X", "negated", "FCP %s vs %s" % (k4["FCP"]["s"], rows(d["P3"], "keyLocations")["FCP"]["s"]),
+          all(near(k4[k]["s"], -rows(d["P3"], "keyLocations")[k]["s"], 2e-3) for k in ("FCP", "ACP", "MRS", "TIP", "TAIL")))
     sf = rows(p1, "scaleFactors")
     check("P1", "running surface top/bottom %", "slightly > 100", sf["runningSurface"]["ratio"], 100.0 < sf["runningSurface"]["ratio"] < 100.1)
     check("P1", "tip top/bottom %", "< 100", sf["tip"]["ratio"], sf["tip"]["ratio"] < 100.0)
@@ -351,6 +395,22 @@ def run_checks(prims, before=None):
     grey = norm(full["P10"]["colours"].get("P10 TAC grid PRIMITIVE RADIUS GRID +10", "0/0/0"))
     check("P10", "grid dashes grey (pattern copies keep it)", "0.5/0.5/0.5", grey, grey == "0.5/0.5/0.5")
 
+    # 2026-09-28 EI band (P8 only: target EI 150 N*m^2, scale 10 N*m^2 per mm -> 15 mm high, ticks 0..150 by 50)
+    m8 = full["P8"]["members"]
+    ei_names = ["EI", "EI REFERENCE", "EI AXIS TIP", "EI AXIS TAIL", "EI TICK 0 TIP", "EI TICK +50 TIP", "EI TICK +150 TAIL",
+                "EI LABEL +150", "EI TITLE", "EI DATUM"]
+    missing = [n for n in ei_names if "P8 TAC EI PRIMITIVE " + n not in m8]
+    top = [m for m in m8 if re.search(r" EI TICK \+200 ", m)]
+    check("P8", "EI band: plot, reference, axes, ticks 0..150 by 50, label, title, datum", "present, no +200",
+          missing or ("all" if not top else top), not missing and not top)
+    eic = norm(full["P8"]["colours"].get("P8 TAC EI PRIMITIVE EI", "0/0/0"))
+    check("P8", "EI plot colour", "0.45/0.2/0.6", eic, eic == "0.45/0.2/0.6")
+    b8 = d["P8"]["bands"]
+    check("P8", "EI band above the baseline band", "ei > baseline", "%s / %s" % (b8.get("ei"), b8.get("baseline")),
+          isinstance(b8.get("ei"), float) and b8["ei"] > b8["baseline"])
+    no_ei = [m for m in m1 if " PRIMITIVE EI" in m]
+    check("P1", "no EI band without a target EI", "none", no_ei, not no_ei and "ei" not in p1["bands"])
+
     p6 = d["P6"]
     check("P6", "average radius FCP-ACP m", "valid, differs from P1", meta(p6, "averageRadius"),
           isinstance(meta(p6, "averageRadius"), float) and abs(meta(p6, "averageRadius") - meta(p1, "averageRadius")) > 0.01)
@@ -365,6 +425,11 @@ def run_checks(prims, before=None):
 
 
 if __name__ == "__main__":
+    if "--unsuppress" in sys.argv:
+        set_suppressed(None)
+    if "--keep" in sys.argv:
+        import atexit
+        atexit.register(set_suppressed, set(sys.argv[sys.argv.index("--keep") + 1].split(",")))
     prims = primitives()
     if "--json" in sys.argv:
         with open(sys.argv[sys.argv.index("--json") + 1], "w") as fh:

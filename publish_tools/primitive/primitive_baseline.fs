@@ -152,7 +152,7 @@ export function primitiveBaselineRows(context is Context, frame is map, baseline
         valueRow("FRCPl", "FRCPl", result.frcpl, "|dx| FCP -> FRCP"),
         valueRow("FB_Roll", "FB_Roll", result.fb_roll, "|dx| forebody minimum -> FRCP"),
         valueRow("MCh", "MCh", result.camber_height, "Camber height"),
-        pointRow(context, frame, "MCl", "MCl", result.mcl_pt, result.mcl_s, "Max camber position"),
+        pointRow(context, frame, "MCl", "MCl", result.mcl_pt, undefined, "Max camber position"),
         valueRow("AB_Roll", "AB_Roll", result.ab_roll, "|dx| aftbody minimum -> ARCP"),
         valueRow("ARCPl", "ARCPl", result.arcpl, "|dx| ACP -> ARCP"),
         pointRow(context, frame, "ARCP", "ARCP", result.arcp_pt, undefined, "Aftbody rocker contact: inflection nearest the aftbody minimum, towards MRS"),
@@ -183,7 +183,7 @@ function valueRow(key is string, name is string, value, note is string)
     return { "key" : key, "name" : name, "value" : primitiveMM(value), "x" : "", "s" : "", "note" : note };
 }
 
-/** A baseline point: x, and s along the bottom wire at that x (MCl: analyzeBaseline's own mcl_s when given); undefined when not found. */
+/** A baseline point: x, and s along the bottom wire at that x (primitiveS; `s` overrides when given); undefined when not found. */
 function pointRow(context is Context, frame is map, key is string, name is string, point, s, note is string)
 {
     if (!(point is Vector))

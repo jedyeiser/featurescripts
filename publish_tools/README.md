@@ -132,9 +132,12 @@ curve), Tooling blocks (Tip / Tail block: type a name, or pick the block's wire 
 correction 36), Baseline from Volume
 (the section's bottom wire) or Input wires (e.g. FULL_BASELINE), Footprint from Volume (the base periphery) or
 Input wires (flat FPT_L + FPT_R, taken as already unwrapped and aligned at MRS; or wrapped 3D wires), Average radius
-between Contacts / Widest / Inflection (Table 2 average radius only), Data points N (+ force XS1 / MRS / XS2), Layout
-(band gap 50 mm, radius plot limit 50 m, tick 10 mm), Query variable (default `primitive`). The name prefix fills from
-the volume's name (editing logic).
+between Contacts / Widest / Inflection (Table 2 average radius only), Data points N (+ force XS1 / MRS / XS2), Station
+numbers (default on: # column on Key locations and Data), Layout (band gap 50 mm, radius plot limit 50 m, tick 10 mm,
+Dashed grid default OFF, Labels default ON + Text height 20 mm), Query variable (default `primitive`). The name prefix
+fills from the volume's name (editing logic). Icons: feature = icons/final/export_primitive_icon.svg (tab
+b9dc4aaf067afeb58293caed), table = primitive_tables_icon.svg (tab eb32ed1a7e9ecf0a7ef61a7c, wired by hand on "Table
+Type Name").
 
 Output: ONE closed composite `<prefix> PRIMITIVE` (excluded from BOM) in the datum XZ plane, BELOW the part, bands
 top to bottom a band gap apart: BASELINE (+ points TIP/TAIL at the baseline's ends, FCP/ACP, and unless the baseline
@@ -142,8 +145,15 @@ is flat within the RSL FRCP/ARCP/MCL/FB_MIN/AB_MIN), PROFILE (BOTTOM, TOP, TIP E
 wire, TIP/TAIL at the section's extreme points along X = the bottom wire's ends, TOP FCP/ACP), FOOTPRINT (unwrapped: u = x(MRS) + s along the tip, y drawn
 as height; exact arcs kept wherever the bottom is flat; points widest / waist / inflections), RADIUS (10 mm per 1 m,
 sidecut +, taper/tip/tail -, breaks where |R| > limit, arcs = horizontal lines, joined across continuous junctions;
-REFERENCE line; TICKs at FCP ACP MRS MP XS1 XS2 and FB/AB widest + inflection). Each band has a `<band> DATUM` point
-at x = 0 on its reference line. All rows live in the composite's attribute `publishPrimitive` (schema primitive/1)
+REFERENCE line; TICKs at FCP ACP MRS MP XS1 XS2 and FB/AB widest + inflection; scale frame: `RADIUS AXIS TIP` / `TAIL`
+at the band's two x ends over every 10 m level covering the plot (outward, capped at the limit), 3 mm `RADIUS TICK +10
+TIP` ticks outward at each level on both axes, optional `RADIUS GRID -20` dashed lines (4 mm dash / 4 mm gap, one
+opPattern per level) at every level but 0). Each band has a `<band> DATUM` point at x = 0 on its reference line.
+Labels (outline text as wires: sketch text -> opExtractWires of its REGION edges, the text's own curves overlap):
+`<band> TITLE` (BASELINE / PROFILE / FOOTPRINT / RADIUS (m)) right-aligned in one column left of everything, centred on
+each band's reference line; `RADIUS LABEL +10` numbers (0.6 x text height) left of the low-x axis. Colours
+(APPEARANCE, kept by wires and points): baseline blue, profile green, footprint orange, radius plot red, reference /
+ticks / frame / grid / numbers / datum points grey, titles in their band's colour. All rows live in the composite's attribute `publishPrimitive` (schema primitive/1)
 and in the producer slot (Extract variables keys: primitive, rsl, averageRadius, naturalRadiusWidest,
 naturalRadiusInflection, taperAngleWidest, taperAngleInflection, deflection, stiffness (0 = no target EI); queries primitive, baseline, profileBottom,
 profileTop, footprint, radius). Tables: add "Primitive tables" (filter "Primitives containing", pick "Table").
