@@ -8,7 +8,7 @@ lines, circles and notes (MText formatting codes: {\\fNoto Sans|b1|i0|c0|p0;...}
 What it cannot (done in the UI afterwards, see ui_part_a3_master.py): line weights (format layers), property-
 linked notes, the logo image, drawing properties, the revision table, locking the format layers.
 
-usage (repo root): PYTHONPATH=. python devtools/onshape/templates/build_part_a3_master.py [--rebuild] [--brand K2]
+usage (repo root): PYTHONPATH=. python devtools/onshape/templates/build_part_a3_master.py [--rebuild] [--brand K2] [--size A3|A4|A1]
        (phase 1: value notes only) -> ui_part_a3_master.py links them -> ... --phase rest (phase 2)
 Prints the element id and writes the layer assignment to templates/part_a3_layout.json.
 """

@@ -1,4 +1,4 @@
-# Drawing style guide (Onshape) -- ski / snowboard engineering, EOC brands (2026-09-29)
+# Drawing style guide (Onshape) -- ski / snowboard engineering, EOC brands (2026-09-29, v2 after user review)
 
 Scope: every drawing template in "Ski Drawing Templates" (doc 52b5bde0, K2 enterprise). First master:
 **K2 SKIS - PART A3 (template)** (plan: `drawing_templates_plan.md` sections 4-6). Direction from the user:
@@ -30,7 +30,7 @@ Tables > Font (left at Noto Sans). In notes created by API the font is written w
 ## 2. Text heights (ISO 3098 series 2.5 / 3.5 / 5 / 7)
 | Role | Height | Where set |
 |---|---|---|
-| Title-block field labels, zone label "NOTES" | 2.5 regular (NOTES bold) | per note (API `textHeight`) |
+| Title-block field labels, the "NOTES" label | 2.5 regular (NOTES bold) | per note (API `textHeight`) |
 | Title-block values, notes, dimensions | 3.5 | Drawing properties > Dimensions / Annotations > Notes (3.5 is the default) |
 | **All tables** (BOM, custom, cut list, hole, revision, general): title, header and content rows | **2.5** (header bold -- Onshape's default B toggle on header rows, kept) | Drawing properties > Tables > each table type > Header / Content (/ Title) row text |
 | Title-block part name (bold), units "mm" | 5 | per note |
@@ -44,8 +44,7 @@ about 80 mm). Labels 2.5 / values 3.5 is the one "label vs value" rule used in t
 
 Why 2.5 for tables (user decision 2026-09-29): our tables are dense engineering tables (Station table, the six
 primitive tables with 35+ data rows, the revision history) that must fit next to full-length views; 2.5 mm is the
-ISO 3098 minimum for A3 and larger sheets (ISO 3098-0 / ISO 5457: 2.5 on A0-A3, 3.5 would be the A4-lettered
-minimum only for hand-lettering), still reads cleanly in Noto Sans on laser prints and PDF, and matches the
+smallest ISO 3098 height for general text on A3 and larger sheets, still reads cleanly in Noto Sans on laser prints and PDF, and matches the
 title-block label height, so the sheet has one "small" size. Row height follows from text + padding: 2.5 mm text
 with the default 1.5 mm vertical padding gives the minimum row of 7.17 mm (Onshape refuses anything lower).
 
@@ -53,7 +52,7 @@ with the default 1.5 mm vertical padding gives the minimum row of 7.17 mm (Onsha
 | Element | Weight | Where |
 |---|---|---|
 | Frame (ISO 5457) + centring marks | 0.70 | layer **Border frame**, Drawing properties > Formats > Border frame thickness |
-| Zone structure (view / table-revision / notes-title split) incl. title-block outer edges | 0.35 | layer **Border zones**, Formats > Border zone thickness |
+| Title-block outer edges (top + left; v2 has no interior zone lines) | 0.35 | layer **Border zones**, Formats > Border zone thickness |
 | Title-block cell dividers, projection symbol | 0.25 | layer **Title block**, Formats > Title block thickness |
 | Visible edges | 0.50 | Views > Visible edges (default 0.40) |
 | Hidden / tangent edges, hatch, detail and aux profile lines, break lines, threads | 0.25 | Views |
