@@ -1,4 +1,4 @@
-"""Checks the Export primitive tests in "Primitive tests" (Publish & Drawing tools, built by build_primitive_tests.py).
+"""Checks the Export primitive tests in "Primitive tests" (5c3ac8fb8ec70b1f256c0e97; Publish & Drawing tools, built by build_primitive_tests.py).
 
 Reads every "<prefix> PRIMITIVE" composite's attribute (schema primitive/1) through the eval API, plus the feature
 statuses, and compares:
@@ -8,6 +8,8 @@ statuses, and compares:
   * P5 (datum at x 500, z 10) against P1: every value equal, x - 500, z - 10;
   * P7 (datum = MRS connector, Datum uses ORIGIN) against P1: x - 885; P9 (COORDINATE_SYSTEM) against P5;
   * P8 (target EI 150 N*m^2 constant): deflection = P L^3 / 48 EI, stiffness = 48 EI (1 in) / L^3, block rows;
+  * P18 (real TARG_EI + block names FROM WIRE Aufbug_22 / FR2_Wire): block rows = wire names, deflection / stiffness,
+    EI band, other rows = P1;
   * only rows with data (no "n/a" / phase-2 rows); P1's flat baseline has no rocker / camber rows or points;
   * structure: composite members, band bodies, key points;
   * 2026-09-29: key lines and grid lines are ONE light-grey edge each (were dash segments); P1 (35 rows, the default)
@@ -20,6 +22,10 @@ statuses, and compares:
   * xSection V58 pinned in primitive_baseline / export_primitive, the exactContacts workaround gone;
   * Station definition: the spec default of "variableName" is "" (new features: no # variable; SD1 in this studio),
     while the saved "Stations (test)" in Part Studio 1 keeps "stations" and its Station geometry features resolve;
+  * 2026-09-29 Table 3 = Location | x | s | Dist. from tail (REST fstable), distFromTail = |x - x(TAIL)| on every case;
+  * R1-R3 SW rout (Table 4): the RD SW_ROUT_SURFACE sheet -> 7.0 deg / 0.80 / 4.00 at MRS, start / stop = sheet extent,
+    Table 4 cells, embedded Extract-variables keys; R2 (-Y mirror, picked start / stop) = R1 + P1's ACP / FCP rows;
+    R3 (one face missing MRS) start / stop only; R1 / R3 other tables = P1;
   * P14 (the user's tail bite on a copy of the volume): the unwrap is an isometry (periphery length, base area), the
     footprint reaches the bite's true depth on the centreline, only the bite adds corners, the radius band beyond the
     bite = P1's and has no spikes through it, and inside the RSL everything = P3.
@@ -63,7 +69,7 @@ function(context is Context, queries)
             const a = getProperty(context, { "entity" : m, "propertyType" : PropertyType.APPEARANCE });
             colours[name] = round(a.red * 100) / 100 ~ "/" ~ round(a.green * 100) / 100 ~ "/" ~ round(a.blue * 100) / 100;
             // x / z ranges (mm) of the plot band's plot, reference line, junction and key-location ticks, per body (world frame).
-            if (match(name, ".* (RADIUS|CURVATURE|EI)( REFERENCE| JUNCTION| TICK .*| AXIS .*| LABEL .*)?").hasMatch || match(name, ".* FOOTPRINT JUNCTION").hasMatch)
+            if (match(name, ".* (RADIUS|CURVATURE|EI)( REFERENCE| JUNCTION| TICK .*| AXIS .*| LABEL .*)?").hasMatch || match(name, ".* FOOTPRINT JUNCTION").hasMatch || match(name, ".* PROFILE SW ROUT").hasMatch)
             {
                 const bb = evBox3d(context, { "topology" : m, "tight" : true });
                 const row = [round(bb.minCorner[0] / millimeter * 1000) / 1000, round(bb.maxCorner[0] / millimeter * 1000) / 1000,
@@ -198,7 +204,7 @@ def set_suppressed(keep=None):
     changed = []
     for x in f["features"]:
         case = x["name"].split()[0]
-        if not re.match(r"P\d+$", case):
+        if not re.match(r"[PR]\d+$", case):
             continue
         want = keep is not None and case not in keep
         if bool(x.get("suppressed")) != want:
@@ -321,7 +327,7 @@ def strip(d, flat):
 def run_checks(prims, before=None):
     st = statuses()
     for name, status in sorted(st.items()):
-        if re.match(r"P\d+$", name.split()[0]):
+        if re.match(r"[PR]\d+$", name.split()[0]):
             want = "ERROR" if "-> ERROR" in name else "INFO"
             check(name.split()[0], "feature status", want, status, status == want)
     d = {k.split()[0]: v["data"] for k, v in prims.items()}
@@ -435,6 +441,23 @@ def run_checks(prims, before=None):
           [r for r in p8["metadata"] if r["key"] not in REMOVED] == p1["metadata"] and
           [r for r in p8["baseline"] if r["key"] not in REMOVED] == p1["baseline"])
 
+    # P18 (2026-09-29, ported from the user's retired studio): the real TARG_EI wire as Target EI, tip / tail block
+    # names FROM WIRE (Aufbug_22 / FR2_Wire; the builder sets the hidden wire-name strings the dialog's editing logic
+    # would fill).
+    p18 = d["P18"]
+    b18 = rows(p18, "baseline")
+    check("P18", "Tip / Tail block rows FROM WIRE", "Aufbug_22 / FR2_Wire",
+          "%s / %s" % (b18.get("tipBlock", {}).get("value"), b18.get("tailBlock", {}).get("value")),
+          b18.get("tipBlock", {}).get("value") == "Aufbug_22" and b18.get("tailBlock", {}).get("value") == "FR2_Wire")
+    m18 = rows(p18, "metadata")
+    d18, s18 = m18.get("deflection", {}).get("value"), m18.get("stiffness", {}).get("value")
+    check("P18", "TARG_EI: deflection / stiffness rows, EI band", "> 0 / > 0, EI plot",
+          "%s / %s, %s" % (d18, s18, "P18 TAC wires PRIMITIVE EI" in full["P18"]["members"]),
+          isinstance(d18, float) and d18 > 0 and isinstance(s18, float) and s18 > 0 and "P18 TAC wires PRIMITIVE EI" in full["P18"]["members"])
+    check("P18", "other rows = P1", "equal", "",
+          [r for r in p18["metadata"] if r["key"] not in REMOVED] == p1["metadata"] and
+          [r for r in p18["baseline"] if r["key"] not in REMOVED] == p1["baseline"])
+
     if before:
         old = {k.split()[0]: v["data"] for k, v in before.items()}
         for case in ("P1", "P2", "P3", "P4", "P5", "P6"):
@@ -503,6 +526,7 @@ def run_checks(prims, before=None):
     run_checks_stations()
     if "P14" in d:
         run_checks_unwrap(d, full)
+    run_checks_rout(d, full)
 
     width = max(len(r[1]) for r in RESULTS)
     fails = 0
@@ -523,6 +547,147 @@ def span(full_case, suffix):
 
 def count(full_case, suffix):
     return sum(n for name, n in full_case["counts"].items() if name.endswith(" PRIMITIVE " + suffix))
+
+
+def fstable(kind, name_filter):
+    """The "Primitive tables" custom table output (REST fstable) for one table kind and primitive name filter."""
+    t = [e for e in c.list_elements(D, W) if e["name"] == "primitive_table"][0]
+    ns = "e%s::m%s" % (t["id"], t["microversionId"])
+    r = c.get(f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}/fstable",
+              {"tableType": "primitiveTables", "tableNamespace": ns,
+               "tableParameters": 'tableKind=PrimitiveTableKind.%s;nameFilter="%s"' % (kind, name_filter)})
+    return r.get("tables", [])
+
+
+EMBED_SCRIPT = r'''
+function(context is Context, queries)
+{
+    const v = getVariable(context, toString(makeId("%s")));
+    var out = [];
+    for (var k in ["swRoutAngle", "swRoutStepIn", "swRoutDistAboveBase", "swRoutStartX", "swRoutStartS", "swRoutStopX", "swRoutStopS"])
+    {
+        const value = v.variable[k].value;
+        out = append(out, "EMBED " ~ k ~ " " ~ (value is number ? value : (k == "swRoutAngle" ? value / degree : value / millimeter)));
+    }
+    return out;
+}
+'''
+
+
+def embedded(case):
+    """The SW rout keys a case's feature embeds for Extract variables: {key: number (deg / mm)}."""
+    f = c.get(f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}/features")
+    fid = [x["featureId"] for x in f["features"] if x["name"].split()[0] == case][0]
+    r = c.post(f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}/featurescript", json_data={"script": EMBED_SCRIPT % fid})
+    vals = re.findall(r'"value":\s*"((?:[^"\\]|\\.)*)"', json.dumps(r.get("result")))
+    return {v.split()[1]: float(v.split()[2]) for v in vals if v.startswith("EMBED ")}
+
+
+# The derived SW_ROUT_SURFACE sheet (RD 20TAC Design Master V1), probed independently with the eval API: the TAC
+# volume at MRS (x 885) has its outside at |y| 48.72930 (base edge, vertical side up to z 4), a 0.8 mm shelf at z 4
+# (inner end |y| 47.92935) and the rout face rising from there at 7.0 deg to Z (face normal z = sin 7 deg); the sheet
+# spans x 0.46599 .. 1784.25132. RD model variables: SW_Rout_Step_In 0.8 mm, SW_Rout_Above_Bottom 4 mm.
+ROUT_EXPECT = {"angle": 7.0, "stepIn": 0.8, "distAboveBase": 4.0}
+ROUT_SHEET_X = (0.46599287400549716, 1784.2513154849216)
+ROUT_OUTSIDE_Y = 48.72930096625616
+
+
+def run_checks_rout(d, full):
+    """2026-09-29: Table 3 = Location | x | s | Dist. from tail; Table 4 SW rout (R1-R3)."""
+    p1 = d["P1"]
+    k1 = rows(p1, "keyLocations")
+    # Table 3: distFromTail = |x - x(TAIL)| on every primitive (tip +X, tip -X, datum shifts); old fields kept.
+    bad = []
+    for case, dd in sorted(d.items()):
+        if not dd.get("keyLocations"):
+            continue
+        kk = rows(dd, "keyLocations")
+        xt = kk["TAIL"]["x"]
+        for key, r in kk.items():
+            if not near(r.get("distFromTail"), abs(r["x"] - xt), 2e-4):
+                bad.append("%s.%s %s vs %s" % (case, key, r.get("distFromTail"), abs(r["x"] - xt)))
+            if not all(f in r for f in ("y", "z", "w", "h")):
+                bad.append("%s.%s lost y/z/w/h" % (case, key))
+    check("T3", "key rows: distFromTail = |x - x(TAIL)|, y z w h kept (all cases)", "all", "%d bad %s" % (len(bad), bad[:3]), not bad)
+    t3 = fstable("KEY_LOCATIONS", "P1 TAC")
+    heads = [col["header"] for col in t3[0]["columns"]] if t3 else []
+    check("T3", "P1 Table 3 columns", "Location | x | s | Dist. from tail", " | ".join(heads),
+          heads == ["Location", "x (mm)", "s (mm)", "Dist. from tail (mm)"])
+    names = [row["columnIdToValue"]["name"] for row in t3[0]["rows"]] if t3 else []
+    tail = [row["columnIdToValue"] for row in t3[0]["rows"] if row["columnIdToValue"]["name"] == "TAIL"] if t3 else []
+    check("T3", "P1 Table 3 rows sorted by x, TAIL dist 0, FCP dist = 1625 - x(TAIL)", "%d rows" % len(p1["keyLocations"]),
+          "%d rows, TAIL %s" % (len(names), tail[0]["distFromTail"] if tail else "-"),
+          names == [r["name"] for r in p1["keyLocations"]] and tail and tail[0]["distFromTail"] == "0"
+          and near(k1["FCP"]["distFromTail"], 1625.0 - k1["TAIL"]["x"], 2e-4))
+    t4p1 = fstable("SW_ROUT", "P1 TAC")
+    check("T4", "no SW rout surface (P1): no Table 4, settings.swRout false", "none / false",
+          "%d / %s" % (len(t4p1), p1["settings"].get("swRout")), not t4p1 and p1["settings"].get("swRout") is False and p1["swRout"] == [])
+    if "R1" not in d:
+        return
+
+    r1 = rows(d["R1"], "swRout")
+    got = {k: r1[k]["value"] if k in r1 else None for k in ROUT_EXPECT}
+    check("R1", "angle deg (0.1) / step-in mm (0.01) / dist. above base mm (0.01)", "7.0 / 0.80 / 4.00",
+          "%s / %s / %s" % (got["angle"], got["stepIn"], got["distAboveBase"]),
+          near(got["angle"], 7.0, 0.1) and near(got["stepIn"], 0.8, 0.01) and near(got["distAboveBase"], 4.0, 0.01))
+    sec = d["R1"]["swRoutSection"]
+    check("R1", "section: +Y side, start edge = lowest end inside the ski (y 47.93, z 4), outside y 48.73", "+Y / 47.93 / 4 / 48.73",
+          "%s / %s / %s / %s (%s)" % (sec.get("side"), sec.get("startY"), sec.get("startZ"), sec.get("outsideY"), sec.get("startRule")),
+          sec.get("side") == "+Y" and near(sec.get("startY"), 47.92935, 0.01) and near(sec.get("startZ"), 4.0, 0.01)
+          and near(sec.get("outsideY"), ROUT_OUTSIDE_Y, 0.01) and sec.get("startRule") == "lowest inside the ski")
+    xt = k1["TAIL"]["x"]
+    st, sp = r1["start"], r1["stop"]
+    check("R1", "start / stop x = the sheet's x extent (0.01 mm), dist. from tail = |x - x(TAIL)|", "%.2f / %.2f" % ROUT_SHEET_X,
+          "%s / %s, %s / %s" % (st["x"], sp["x"], st["distFromTail"], sp["distFromTail"]),
+          near(st["x"], ROUT_SHEET_X[0], 0.01) and near(sp["x"], ROUT_SHEET_X[1], 0.01)
+          and near(st["distFromTail"], abs(st["x"] - xt), 2e-4) and near(sp["distFromTail"], abs(sp["x"] - xt), 2e-4))
+    # Both ends lie just past the bottom wire's ends (TAIL x 0.63, TIP x 1783.75): s runs on along the end tangents.
+    check("R1", "start / stop s past the wire ends: s(start) < s(TAIL), s(stop) > s(TIP), both increasing with x", "yes",
+          "%s < %s, %s > %s" % (st["s"], k1["TAIL"]["s"], sp["s"], k1["TIP"]["s"]),
+          st["s"] < k1["TAIL"]["s"] and sp["s"] > k1["TIP"]["s"])
+    check("R1", "MRS rows at x / s of MRS (= P1 MRS row)", "%s / %s" % (k1["MRS"]["x"], k1["MRS"]["s"]),
+          "%s / %s" % (r1["angle"]["x"], r1["angle"]["s"]),
+          all(near(r1[k]["x"], k1["MRS"]["x"], 1e-4) and near(r1[k]["s"], k1["MRS"]["s"], 1e-4) and near(r1[k]["distFromTail"], k1["MRS"]["distFromTail"], 1e-4)
+              for k in ROUT_EXPECT))
+    pt = full["R1"]["extents"].get("R1 TAC rout PRIMITIVE PROFILE SW ROUT")
+    zp = d["R1"]["bands"]["profile"]
+    check("R1", "PROFILE SW ROUT point at x(MRS), profile band + 4 mm", "885 / %.3f" % (zp + 4.0),
+          pt, bool(pt) and near(pt[0][0], 885.0, 1e-3) and near(pt[0][2], zp + 4.0, 1e-3))
+    t4 = fstable("SW_ROUT", "R1 TAC rout")
+    heads = [col["header"] for col in t4[0]["columns"]] if t4 else []
+    cells = {row["columnIdToValue"]["name"]: row["columnIdToValue"] for row in t4[0]["rows"]} if t4 else {}
+    check("R1", "Table 4 columns + rows (angle 1 decimal)", "Measure|Value|Unit|x|s|Dist. from tail; 7.0 deg; 5 rows",
+          "%s; %s; %d rows" % ("|".join(heads), cells.get("SW rout angle", {}).get("value"), len(cells)),
+          heads == ["Measure", "Value", "Unit", "x (mm)", "s (mm)", "Dist. from tail (mm)"]
+          and cells.get("SW rout angle", {}).get("value") == "7.0" and cells.get("Step-in", {}).get("value") == "0.8"
+          and cells.get("Dist. above base", {}).get("value") == "4" and set(cells) == {"SW rout angle", "Step-in", "Dist. above base", "Start", "Stop"})
+    emb = embedded("R1")
+    want = {"swRoutAngle": got["angle"], "swRoutStepIn": got["stepIn"], "swRoutDistAboveBase": got["distAboveBase"],
+            "swRoutStartX": st["x"], "swRoutStartS": st["s"], "swRoutStopX": sp["x"], "swRoutStopS": sp["s"]}
+    check("R1", "embedded Extract-variables keys = Table 4 (deg / mm)", "7 keys equal", emb,
+          all(near(emb.get(k), v, 1e-6) for k, v in want.items()))
+    compare("R1", p1, d["R1"], 1e-4)
+
+    r2 = rows(d["R2"], "swRout")
+    sec2 = d["R2"]["swRoutSection"]
+    check("R2", "rout on -Y only: measured there, mirrored = R1 values", "-Y, R1 values",
+          "%s %s / %s / %s" % (sec2.get("side"), r2.get("angle", {}).get("value"), r2.get("stepIn", {}).get("value"), r2.get("distAboveBase", {}).get("value")),
+          sec2.get("side") == "-Y" and all(k in r2 and near(r2[k]["value"], r1[k]["value"], 1e-3) for k in ROUT_EXPECT)
+          and near(sec2.get("startY"), -sec.get("startY"), 1e-3))
+    ok = all(near(r2[e][f], k1[k][f], 1e-4) for e, k in (("start", "ACP"), ("stop", "FCP")) for f in ("x", "s", "distFromTail"))
+    check("R2", "picked start / stop (ACP / FCP connectors): x, s, dist. from tail = P1's ACP / FCP rows", "145 / 1625",
+          "%s / %s (s %s / %s)" % (r2["start"]["x"], r2["stop"]["x"], r2["start"]["s"], r2["stop"]["s"]),
+          ok and r2["start"]["note"] == "picked" and r2["stop"]["note"] == "picked")
+
+    r3 = d["R3"]["swRout"]
+    keys3 = [r["key"] for r in r3]
+    t4r3 = fstable("SW_ROUT", "R3 TAC rout short")
+    xs = [r["x"] for r in r3]
+    check("R3", "face misses MRS: start / stop only (face x extent around 1515), no MRS rows / point, INFO", "start, stop; INFO",
+          "%s x %s; table rows %d" % (keys3, xs, len(t4r3[0]["rows"]) if t4r3 else 0),
+          keys3 == ["start", "stop"] and 885.0 < xs[0] < 1515.41 < xs[1] < 1625.0 and d["R3"]["swRoutSection"] == {}
+          and not any("SW ROUT" in m for m in full["R3"]["members"]) and t4r3 and len(t4r3[0]["rows"]) == 2)
+    compare("R3", p1, d["R3"], 1e-4)
 
 
 def run_checks_b(d, full):

@@ -13,9 +13,9 @@ missing baseline measures, and SW rout parameters measured back from a surface.
 | Mid-plane section, arc length | `unwrap.fs` `profileFromFace` L1391; `xSection/section/xSectProcessing.fs` L201-227; `std/path.fs` constructPath/evPathLength | production | no top/bottom split of a section loop; per-region length ratio is new |
 | EI, deflection, stiffness | `xSection/beam/xSectBeamAnalysis.fs` `computeBeamStiffness` L93 (30 kg, lb/in, mm/30kg), `getEIFromEdges` L373; `updateProfile.fs` (target EI) | production | assumes FCP < ACP -- sort lo/hi at call site |
 | SW rout | `example_1/refSurfCreation/createSWRoutSurf.fs` L175-205 (legacy, known bugs); production = Driven edge offset | -- | nothing measures angle / dist above base / step-in back; nearest is `driven_offset/evaluate_offset.fs` |
-| Stations / key names | `qcTable/qcTable_stations.fs` `generateStations` L118; `publish_tools/station_utils.fs` | production | no TIP/TAIL/MP; no [s,w,h] |
-| Tables / publishing | `publish_tools/station_table.fs`; `qcTable.fs` L584; `variable_tools/extract_outputs.fs` `embedStandardOutputs` L245 | production | the 5 tables + N-point table are new |
-| Composite + datum | `publish_tools/station_geometry.fs` `buildView` L241 (opPoint datum, closed WIRES composite) | regen-verified | band stacking offsets new; no MCs in composites (correction 19) |
+| Stations / key names | `qcTable/qcTable_stations.fs` `generateStations` L118; `publish_tools/station_tools/station_utils.fs` | production | no TIP/TAIL/MP; no [s,w,h] |
+| Tables / publishing | `publish_tools/station_tools/station_table.fs`; `qcTable.fs` L584; `variable_tools/extract_outputs.fs` `embedStandardOutputs` L245 | production | the 5 tables + N-point table are new |
+| Composite + datum | `publish_tools/station_tools/station_geometry.fs` `buildView` L241 (opPoint datum, closed WIRES composite) | regen-verified | band stacking offsets new; no MCs in composites (correction 19) |
 | Scalar plotted as a wire | `xSection/section/xSectVisualization.fs` `createGenericCurve` L63; radius-plot convention `footprint/integrateFootprint.fs` `curvatureScaleFactors` L43, `convertRadiusScalefactor` L580 | production | no radius-vs-x writer yet |
 
 Radius plot: draw it in integrateFootprint's input format (10 mm Y per 1 m radius, sign from Y, a constant radius

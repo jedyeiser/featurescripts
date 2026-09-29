@@ -19,8 +19,20 @@ Answer inline (edit this file) or in chat. Proposed answers are marked **Propose
 Still undefined. **Proposed:** height of the highest point of the BOTTOM profile beyond FCP (tip) / ACP (tail),
 measured normal to the FCP-ACP line. Or is it the top of the tip/tail block, or the total ski height at the end?
 
-## 3. SW rout table -- one value per quantity
-Yes, one value each should fall out of the inputs: measure at every station where both the rout surface and the
+## 3. SW rout table -- ANSWERED 2026-09-29, BUILT (Table 4)
+User: measure at MRS only (datum YZ plane through MRS, +Y side; -Y mirrored when the surface is only there); angle =
+rout surface (its section tangent at the start edge) vs WORLD Z, 1 decimal; step-in = width (y) from the start edge to
+the ski's outside; start / stop = optional picks, else the surface's x extent; x, s, Dist. from tail per end.
+Implemented with these notes (details: publish_tools/README.md "Table 4 SW rout"):
+- **Start edge -- deviation, please confirm:** the user's rule "end closest to the centreline" picks the TOP overshoot
+  on RD 20TAC's real rout surface (the rout face leans in going up and runs on past the ski's top: z 28.8, step-in 3.85).
+  Built instead: the LOWEST section end inside the ski's outside (gives the designed 0.8 mm step-in / 4 mm up / 7.0 deg);
+  on a rout leaning out both rules agree.
+- **Outside** = the volume section's largest |y| at MRS on that side (normally the base edge). Assumed.
+- **Dist. above base = ASSUMED:** z(start edge) - z(base), base = the profile's bottom wire at MRS (centreline).
+- Start / stop with no picks: start = lowest x, stop = highest x of the surface (assumed; not tail -> tip).
+
+Earlier proposal (superseded): one value each should fall out of the inputs: measure at every station where both the rout surface and the
 volume side exist; report the value if all stations agree within a tolerance (0.1 deg / 0.05 mm), otherwise report
 min..max and flag it (a varying rout is then a real finding). Definitions to confirm:
 - **SW rout angle:** angle between the rout surface and the volume's side face, in the cross-section plane. OK?

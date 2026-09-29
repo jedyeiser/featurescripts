@@ -1,9 +1,41 @@
 # publish_tools -- "Publish & Drawing tools" document
 
-Onshape doc 73271cfcd708b3f5e3fc315c (wid fea83d30106dba0a4e066761). Test Part Studio: "Part Studio 1"
-(bb2cddb24faf53d9d043c38e). Purpose: generated drawing-aid geometry to replace the hand-built
+Onshape doc 73271cfcd708b3f5e3fc315c (wid fea83d30106dba0a4e066761). Test Part Studios: "Station tests"
+(bb2cddb24faf53d9d043c38e, was "Part Studio 1") and "Primitive tests" (5c3ac8fb8ec70b1f256c0e97). Purpose: generated drawing-aid geometry to replace the hand-built
 drawing sketches (Part_Buyoff/Base/BF/Core/SW_Sketch) in ski Parts studios -- their breaking is the
 pain point. Background research: memory `mbd-drawing-research`.
+
+## Document layout (cleanup 2026-09-29)
+
+Tab folders (Onshape) -- one test artifact per purpose, rebuilt in place:
+
+| folder | tabs |
+|---|---|
+| `station_tools` | station_utils, station_definition, station_geometry, station_table + station_definition_icon.svg, station_geometry_icon.svg, station_table_icon.svg |
+| `primitive` | primitive_types, primitive_frame, primitive_profiles, primitive_footprint, primitive_baseline, primitive_table, primitive_output, export_primitive + export_primitive_icon.svg, primitive_tables_icon.svg |
+| `tests` | "Station tests" (bb2cddb24faf53d9d043c38e; publish_tools_fixture.py), "Primitive tests" (5c3ac8fb8ec70b1f256c0e97; build_primitive_tests.py / check_primitive_tests.py) |
+| `test drawings` | "Template test 4101 (demo)" (A3), "Template test A4 (demo)", "Template test A2 (demo)" -- verify the drawing templates (devtools/onshape/templates/make_test_drawing.py, make_size_test_drawing.py) |
+
+The folder is named `station_tools` (not "station tools") so it can match a local subdirectory: `pushproject` without
+`--files` re-places every pushed tab by local subdir (`publish_tools/x.fs` -> root). Until station_*.fs move to
+`publish_tools/station_tools/`, push them with `--files` only (a full push would move them back to the root).
+
+Removed in the cleanup (user-authorised 2026-09-29):
+* drawings "4101 PLAN (demo)", "4501 PLAN + PROFILE (demo)" -- superseded by the template test drawings;
+  "4101 PLAN + table (demo)" (stale V2 station table) was already gone. The script that recreated them,
+  devtools/onshape/publish_tools_demo_drawings.py, is deleted.
+* "Assembly 1" + "BOM : Assembly 1" -- empty assembly.
+* the user's older Part Studio "Primitive tests" (cbf60b1202cbc555d4e752d6): P1-P6 copies of the suite, plus manual
+  work ported into the suite as P18 (TARG_EI + tip / tail block names FROM WIRE Aufbug_22 / FR2_Wire) and already
+  covered by P14 (Sketch 1 + Extrude 1 = the tail bite). The suite studio "Primitive tests (agent)" was renamed
+  "Primitive tests" (same element id, so "Template test A2 (demo)"'s view of "P1 TAC PRIMITIVE" keeps resolving).
+* P11 had its two extra key points saved twice (4 array items -> ERROR "FB_Mass_location has the same name as
+  FB_Mass_location"; found before any cleanup change); rebuilt by build_primitive_tests.py -> INFO.
+* Checks after the cleanup: check_primitive_tests.py 167 / 167 on the renamed studio (FS_SYNC_TIMEOUT=500, --unsuppress
+  --keep P1,P8; left with P1 + P8 + SD1 active); notices --monitor "Station tests" 7 INFO, no notices; "Primitive
+  tests" P1 / P8 / SD1 INFO; the three template test drawings' references resolve (errorCode 0).
+* "Station tests" keeps only Derive_Parts_V1 + the publish_tools_fixture.py features (all referenced by the fixture /
+  the template test drawings: "4101 PLAN" and part "RD 20TAC 28 178 4101") -- nothing deleted there.
 
 ## Tabs
 
@@ -31,7 +63,7 @@ pain point. Background research: memory `mbd-drawing-research`.
 - Station operation ids = sanitized station names (never list indices) so dimensions don't re-bind.
 - Name prefix: auto-filled from part name in editing logic (getProperty throws in the body).
 
-## Test features (Part Studio 1)
+## Test features ("Station tests", was Part Studio 1)
 
 Derive_Parts_V1 (all of RD 20TAC 28 Parts @V1; `devtools/onshape/publish_tools_derive.py`), then
 `devtools/onshape/publish_tools_fixture.py` upserts:
@@ -53,8 +85,9 @@ All regenerate INFO, no notices. Base widths at Q: 116.2/97.9/93.3/105.9/132.1; 
 
 ## Drawings (2026-09-28 demo)
 
-`devtools/onshape/publish_tools_demo_drawings.py` rebuilds "4101 PLAN (demo)" (widths + positions from the TAIL
-end) and "4501 PLAN + PROFILE (demo)" (widths + thickness) through the Drawings API. Findings:
+The demo drawings "4101 PLAN (demo)" (widths + positions from the TAIL end) and "4501 PLAN + PROFILE (demo)" (widths
++ thickness) were built through the Drawings API (script and drawings removed in the 2026-09-29 cleanup; the template
+test drawings in tab folder `test drawings` replace them). Findings:
 - Station geometry now builds each view's geometry 0.01 mm IN FRONT of the part along the view normal; in the
   datum plane the lines lay on the part's underside and a top view hid them.
 - A view shows the composite's wires only if created with `"includeWires": true` (onshapeCreateViews);
@@ -77,7 +110,8 @@ composite with attribute `publishStationTable` ({schema stationTable/1, title, p
 them with qHasAttribute and returns one table per view, rows sorted by x (Station | x from datum | Width /
 Thickness / Span | From | To). Parameter "Views containing" (case-sensitive) filters by view name -- needed in
 drawings, because inserting a custom table brings every table it returns. Verified: Part Studio table panel, and
-drawing "4101 PLAN + table (demo)" (Custom table > Part Studio 1 > Station table, Views containing = 4101 PLAN).
+drawing "4101 PLAN + table (demo)" (Custom table > Part Studio 1 > Station table, Views containing = 4101 PLAN; drawing
+since removed).
 
 ### Surface parts (2026-09-28)
 Station geometry accepts sheet bodies (and composites holding them). Per body:
@@ -173,8 +207,10 @@ each band's reference line; `RADIUS LABEL +10` numbers (0.6 x text height) left 
 (APPEARANCE, kept by wires and points): baseline blue, profile green, footprint orange, radius plot red, reference /
 ticks / frame / numbers / datum points grey, grid and key lines light grey (0.8), titles in their band's colour. All rows live in the composite's attribute `publishPrimitive` (schema primitive/1)
 and in the producer slot (Extract variables keys: primitive, rsl, averageRadius, naturalRadiusWidest,
-naturalRadiusInflection, taperAngleWidest, taperAngleInflection, deflection, stiffness (0 = no target EI); queries primitive, baseline, profileBottom,
-profileTop, footprint, radius or curvature). Tables: add "Primitive tables" (filter "Primitives containing", pick "Table"; the data table is "6 RSL data", 4 stays reserved for the SW rout table).
+naturalRadiusInflection, taperAngleWidest, taperAngleInflection, deflection, stiffness (0 = no target EI), swRoutAngle,
+swRoutStepIn, swRoutDistAboveBase, swRoutStartX, swRoutStartS, swRoutStopX, swRoutStopS (0 = no rout surface / not
+measured); queries primitive, baseline, profileBottom,
+profileTop, footprint, radius or curvature). Tables: add "Primitive tables" (filter "Primitives containing", pick "Table"; the data table is "6 RSL data", "4 SW rout" exists only with a SW rout surface).
 
 Definitions: x from the datum; s = distance along the bottom wire from the datum, same direction as x (signed arc
 length, zero at the bottom-wire point at x = 0, ds/dx > 0 whichever way the tip points; past an end of the wire it runs
@@ -237,7 +273,7 @@ fixture features stay, P14 suppressed). Regen (REST re-post, wall): P1 3.02 -> 3
 sections to reach a bite (the centreline wire ends there) and would add a cross-document pin chain
 (edge_offset_utils -> curve_core).
 
-Open: SW rout table (Table 4), ISO min thickness, Tip_height / Tail_height definitions, drawing template; the
+Open: ISO min thickness, Tip_height / Tail_height definitions, drawing template; the
 radius plot and data table use the +y side only; the base periphery misses base faces that do not touch the mid
 plane; a wrapped (3D) INPUT footprint is mapped on the bottom wire alone (untested); the Tip / Tail block WIRE -> name editing logic is untested in the UI (REST inserts skip editing logic);
 drawing views render every wire BLACK (tested 2026-09-28: APPEARANCE colours show only in the Part Studio; PDF export
@@ -326,3 +362,38 @@ scale inside follows the data:
   continuous numbers; P11 39 rows incl. "Mass AB" + "MP/FB_Mass_location"; grid = 1 body / 1 edge per level; key
   lines = 1 edge each, light grey). 132 / 132 in "Primitive tests (agent)" (left with P1 + P8 + SD1 active). The
   custom table's rendering itself is not read back (no REST endpoint for FS tables); it only maps the stored rows.
+  (2026-09-29 later: there IS one -- GET partstudios/.../fstable with tableType, tableNamespace and tableParameters
+  `tableKind=PrimitiveTableKind.KEY_LOCATIONS;nameFilter="P1 TAC"`; check_primitive_tests.py reads tables 3 / 4 with it.)
+
+### Table 4 SW rout + Table 3 columns (2026-09-29, user decisions A / B)
+
+* Table 3 "Key locations" = Location | x (mm) | s (mm) | Dist. from tail (mm); sorted by x, no # column. Dist. from
+  tail = |x - x(TAIL)| along x (TAIL = the profile's tail extreme point). The attribute rows keep x y z s w h and add
+  `distFromTail`.
+* New dialog group "SW rout" (collapsed; all new, empty by default): `routSurface` (faces and / or sheet bodies,
+  several faces), `routStart`, `routStop` (vertex / point / mate connector). Table 4 and its rows exist only with a
+  rout surface; saved features gain nothing (empty queries; defaults map has qNothing()).
+* Measured in the datum YZ plane through MRS (world YZ at x(MRS) with the default datum): the rout faces and the volume
+  are cut there (opPlane + opIntersectFaces, deleted again). Side: the +Y side's section edges; the -Y side's (values
+  mirrored) when the surface is only there.
+  - **Start edge = the LOWEST section end inside the ski's outside** (a height tie goes to the edge rising from it).
+    DEVIATION from the user's rule "the end closest to the centreline": on RD 20TAC's real SW_ROUT_SURFACE (designed
+    SW_Rout_Step_In 0.8 mm, SW_Rout_Above_Bottom 4 mm) the rout face leans IN going up and runs on past the ski's top,
+    so the end closest to the centreline is that overshoot (z 28.8, step-in 3.85). The lowest inner end is the designed
+    start edge; on a rout leaning OUT both rules pick the same end. No end inside -> the closest-to-centreline end.
+  - Angle = the section's tangent at the start edge vs Z (0..90 deg; the table shows 1 decimal).
+  - Step-in = outside - |y(start edge)|, outside = the volume section's largest |y| on that side (the ski's outermost
+    point at MRS, normally the base edge); + = start edge inside.
+  - **Dist. above base (ASSUMED)** = z(start edge) - z(base), base = the profile's bottom wire at MRS (centreline).
+  - Start / stop: x of the picks, else the surface's lowest / highest x; s = the bottom wire's s at that x (straight on
+    along the end tangent past the wire's ends); Dist. from tail as table 3. The MRS rows carry MRS's x / s.
+  - Surface not reaching / not crossing MRS: info note in the feature message, Table 4 = start / stop only.
+* Attribute: `swRout` rows { key angle / stepIn / distAboveBase / start / stop, name, value, unit, x, s, distFromTail,
+  note } and `swRoutSection` { x, side, startY, startZ, outsideY, outsideZ, baseZ, edges, startRule }; settings.swRout.
+  Geometry: point `PROFILE SW ROUT` in the profile band at x(MRS), start-edge height (no new band).
+* Tests (Primitive tests (agent); Derive_DM_V1 now also derives SW_ROUT_SURFACE, `REKD`; Mirror_ROUT = that sheet
+  mirrored to -Y): R1 real sheet -> 7.0001 deg / 0.7999 / 4.0000 mm, start / stop 0.466 / 1784.2513 (sheet extent,
+  both just past the wire ends); R2 -Y mirror + start / stop = ACP / FCP connectors -> same values, P1's ACP / FCP rows;
+  R3 one face x 1463-1567 -> start / stop only. Table 3 / 4 read back through fstable; embedded keys checked.
+  163 / 163 (143 earlier checks + 20 new; the 9 `--before` checks need a pre-change snapshot, none exists at 35 rows);
+  studio left with P1 + P8 + SD1 active, R1-R3 suppressed.

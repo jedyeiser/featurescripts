@@ -34,6 +34,10 @@ export const primitiveTables = defineTable(function(context is Context, definiti
         annotation { "Name" : "Table", "Default" : PrimitiveTableKind.ALL, "UIHint" : [UIHint.SHOW_LABEL],
                     "Description" : "Which table to return; a drawing inserts every table returned, so pick one per insertion. 4 SW rout exists only for a primitive with a SW rout surface." }
         definition.tableKind is PrimitiveTableKind;
+
+        annotation { "Name" : "Show definitions", "Default" : false,
+                    "Description" : "Adds the Definition column to 2 Metadata (how each value is defined). Off keeps drawings compact; the definitions stay in the published data." }
+        definition.showDefinitions is boolean;
     }
     {
         var tables = [];
@@ -51,7 +55,7 @@ export const primitiveTables = defineTable(function(context is Context, definiti
             }
             if (kind == PrimitiveTableKind.ALL || kind == PrimitiveTableKind.METADATA)
             {
-                tables = appendTable(tables, metadataTable(data, body));
+                tables = appendTable(tables, metadataTable(data, body, definition.showDefinitions == true));
             }
             if (kind == PrimitiveTableKind.ALL || kind == PrimitiveTableKind.KEY_LOCATIONS)
             {
@@ -123,7 +127,7 @@ function scaleTable(data is map, body is Query) returns Table
                 ], rows, body);
 }
 
-function metadataTable(data is map, body is Query) returns Table
+function metadataTable(data is map, body is Query, showDefinitions is boolean) returns Table
 {
     var rows = [];
     for (var r in data.metadata)
@@ -131,9 +135,12 @@ function metadataTable(data is map, body is Query) returns Table
         const digits = r.unit == "mm" ? 2 : 3;
         rows = append(rows, tableRow({ "item" : r.name, "value" : cellN(r.value, digits), "unit" : r.unit, "note" : r.note }));
     }
-    return table(data.title ~ " - 2 Metadata", [
-                    column("item", "Item"), column("value", "Value"), column("unit", "Unit"), column("note", "Definition")
-                ], rows, body);
+    var columns = [column("item", "Item"), column("value", "Value"), column("unit", "Unit")];
+    if (showDefinitions)
+    {
+        columns = append(columns, column("note", "Definition"));
+    }
+    return table(data.title ~ " - 2 Metadata", columns, rows, body);
 }
 
 /** True when the primitive asks for the # column (RSL data only) and its rows carry numbers. */

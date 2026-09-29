@@ -2,7 +2,7 @@
 "Template test A4 (demo)" / "Template test A2 (demo)" FROM that size's K2 SKIS .dwt, with a top view of the
 "4101 PLAN" composite (wires on) and a front view of the real part "RD 20TAC 28 178 4101" (the sheet reference
 needs a part WITH a view; set it afterwards with ui_set_sheet_reference.py). A2 also gets the Export primitive
-composite "P1 TAC PRIMITIVE" from "Primitive tests (agent)" at 1:5 to check that it fits. Only the tab with exactly
+composite "P1 TAC PRIMITIVE" from "Primitive tests" (was "Primitive tests (agent)") at 1:5 to check that it fits. Only the tab with exactly
 this name is touched. The A3 test stays "Template test 4101 (demo)" (make_test_drawing.py).
 usage: PYTHONPATH=. python devtools/onshape/templates/make_size_test_drawing.py A4|A2"""
 import json

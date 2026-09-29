@@ -2,7 +2,8 @@
 (doc 73271cfc; upsert by name). Checked by check_primitive_tests.py.
 
 Fixture (derived by VERSION, never written to the RD doc):
-  Derive_DM_V1        RD 20TAC Design Master @ V1: VOLUME, FULL_BASELINE, REF_WIRE, FPT_L, FPT_R + mate connectors
+  Derive_DM_V1        RD 20TAC Design Master @ V1: VOLUME, FULL_BASELINE, REF_WIRE, FPT_L, FPT_R, SW_ROUT_SURFACE,
+                      TARG_EI, Aufbug_22, FR2_Wire + mate connectors
                       (FCP x 1625, ACP x 145, MRS x 885, MP x 807.97; tip toward +X)
   Mirror_TAC          the derived solid + wires mirrored in the Right (YZ) plane: tip toward -X
   Datum_x500_z10      a mate connector at world (500, 0, 10) mm, world axes
@@ -32,6 +33,10 @@ Cases (names carry the expectation):
   P17 = P1 with Auto scale OFF (2026-09-29): the manual scales / axes exactly as before auto scale (radius -10 .. +50 m
         at 10 mm per m, ticks every 10 m); every case above runs with Auto scale ON (the default): fixed band heights
         (Radius band height 150 mm, 20 % below zero; EI band height 150 mm), nice scale fitted to the data
+  P18 = P1 + Target EI = the derived TARG_EI wire + Tip / Tail block name source FROM WIRE = the derived Aufbug_22 /
+        FR2_Wire (ported 2026-09-29 from the user's retired studio, where P2 used them via "Derived 1"; here they come
+        from the same Design Master V1 derive). Editing logic does not run for REST inserts, so the builder also sets
+        the hidden tip/tailBlockWireName strings the dialog would fill: block rows = "Aufbug_22" / "FR2_Wire"
   SD1 = a NEW Station definition (one Single point station at the MRS connector) inserted without "variableName":
         the 2026-09-29 default "" -> no # variable
   R1  = P1 + SW rout surface = the derived SW_ROUT_SURFACE sheet (all 26 faces, +Y side only; RD 20TAC design: 0.8 mm
@@ -47,7 +52,7 @@ Cases (names carry the expectation):
 
 Data rows: every case uses 35 (the feature default since 2026-09-29): P1 -> 37 rows (+ XS1, XS2; MRS is a grid row).
 
-Studio: "Primitive tests" by default; PRIMITIVE_STUDIO=<name> builds (and creates) another one. NEW=0 leaves out
+Studio: "Primitive tests" (5c3ac8fb8ec70b1f256c0e97; was "Primitive tests (agent)" until the 2026-09-29 cleanup) by default; PRIMITIVE_STUDIO=<name> builds (and creates) another one. NEW=0 leaves out
 the 2026-09-28 parameters (datumUses, targetEI, tip / tail block), for a run against the phase-1 code.
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_primitive_tests.py [P1 P3 ...]
@@ -65,8 +70,9 @@ STUDIO = os.environ.get("PRIMITIVE_STUDIO", "Primitive tests")
 NEW = os.environ.get("NEW", "1") != "0"
 SRC_D, SRC_V, SRC_E, SRC_M = "6212b76fdc6e7eca7cc56d8e", "2a679ea0cd06d118ae47d0e5", "512aefb5494db48a1c058b03", "25245f3384cbcc4242e60112"
 # Design Master @ V1 part ids: VOLUME, FULL_BASELINE, REF_WIRE, FPT_L, FPT_R, SW_ROUT_SURFACE (sheet, 2026-09-29: built
-# in the RD model from SW_Rout_Angle 5 deg, SW_Rout_Above_Bottom 4 mm, SW_Rout_Step_In 0.8 mm)
-SRC_PARTS = ["RxKH", "RNGD", "RLCD", "J9D", "RDBD", "REKD"]
+# in the RD model from SW_Rout_Angle 5 deg, SW_Rout_Above_Bottom 4 mm, SW_Rout_Step_In 0.8 mm), and (2026-09-29, P18,
+# ported from the user's retired studio) TARG_EI, Aufbug_22 (tip tooling block), FR2_Wire (tail tooling block)
+SRC_PARTS = ["RxKH", "RNGD", "RLCD", "J9D", "RDBD", "REKD", "ROCD", "RnBD", "RGCD"]
 
 ELEMENTS = c.list_elements(D, W)
 studios = {e["name"]: e["id"] for e in ELEMENTS if e["elementType"] == "PARTSTUDIO"}
@@ -276,7 +282,10 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
               region="FULL", points=35, qv="", datum_uses="ORIGIN", ei=None, tip_block="", tail_block="",
               grid=False, labels=True, plot="RADIUS", curvature_scale="50 mm", extras=(), key_lines=False, junctions=True,
               radius_axis_min="10", max_curvature="0.1", curvature_axis_min="0.02", ei_axis_max="450",
-              auto_scale=True, radius_band_height="150 mm", ei_band_height="150 mm", rout=None, rout_start=None, rout_stop=None):
+              auto_scale=True, radius_band_height="150 mm", ei_band_height="150 mm", rout=None, rout_start=None, rout_stop=None,
+              tip_wire=None, tail_wire=None):
+    # Block names FROM WIRE: the dialog's editing logic copies the picked wire's name into the hidden
+    # tip/tailBlockWireName string, but editing logic does not run for REST inserts, so the builder sets it.
     params = [
         q("volume", volume),
         q("fcp", fcp),
@@ -309,14 +318,14 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
         num("dataPoints", str(points), True),
         b("forceStations", True),
         b("stationNumbers", True),
-        en("tipBlockFrom", "PrimitiveNameFrom", "TYPED", ns),
-        q("tipBlockWire"),
+        en("tipBlockFrom", "PrimitiveNameFrom", "WIRE" if tip_wire else "TYPED", ns),
+        q("tipBlockWire", *([tip_wire[0]] if tip_wire else [])),
         s("tipBlock", tip_block),
-        s("tipBlockWireName", ""),
-        en("tailBlockFrom", "PrimitiveNameFrom", "TYPED", ns),
-        q("tailBlockWire"),
+        s("tipBlockWireName", tip_wire[1] if tip_wire else ""),
+        en("tailBlockFrom", "PrimitiveNameFrom", "WIRE" if tail_wire else "TYPED", ns),
+        q("tailBlockWire", *([tail_wire[0]] if tail_wire else [])),
         s("tailBlock", tail_block),
-        s("tailBlockWireName", ""),
+        s("tailBlockWireName", tail_wire[1] if tail_wire else ""),
         num("bandGap", "50 mm"),
         num("radiusLimit", "50 m"),
         num("tickLength", "10 mm"),
@@ -343,6 +352,10 @@ FULL_BASELINE_AT = (885, 0, 3.9462364577439866)
 FPT_L_AT = (885, 48.72930096625616, 0)
 FPT_R_AT = (885, -48.72930096625616, 0)
 MP_X = 807.9668184775537
+# Points on the derived TARG_EI / Aufbug_22 / FR2_Wire (edge midpoints, probed on the Design Master V1) -- P18.
+TARG_EI_AT = (885.0274015304153, 0, 418.17225003889996)
+AUFBUG_22_AT = (1761.5311021797331, 0, 26.0079148436927)
+FR2_WIRE_AT = (30.571735398709748, 0, 7.30398664476084)
 
 
 # A point on the derived SW_ROUT_SURFACE's rout face x 1463..1567 (probed; the face does not reach MRS) -- R3.
@@ -400,6 +413,10 @@ def cases(dv, mi, dm, ei, bt=None, mr=None):
         ("P17 TAC as P1, Auto scale OFF -> the manual axes: radius -10 .. +50 m at 10 mm per m, bands = P1 before auto scale, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P17 TAC manual",
               auto_scale=False)),
+        ("P18 TAC as P1 + target EI TARG_EI + block names FROM WIRE Aufbug_22 / FR2_Wire -> block rows = wire names, EI band, INFO",
+         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P18 TAC wires",
+              ei='qOwnedByBody(%s, EntityType.EDGE)' % wire_named(dv, *TARG_EI_AT),
+              tip_wire=(wire_named(dv, *AUFBUG_22_AT), "Aufbug_22"), tail_wire=(wire_named(dv, *FR2_WIRE_AT), "FR2_Wire"))),
     ] + ([] if mr is None else [
         ("R1 TAC SW_ROUT_SURFACE (RD, +Y) -> 7.0 deg, step-in 0.80, 4.00 above base, start / stop = sheet x extent, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="R1 TAC rout",

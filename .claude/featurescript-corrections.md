@@ -1723,7 +1723,7 @@ settled bodies and see later changes to those bodies -- that lives in Variable_t
 
 ## Correction 53: strings -- no `<` ordering, no `(?i)` in regex, `${` breaks a string literal (2026-09-28)
 
-**Symptoms** (publish_tools/station_table.fs):
+**Symptoms** (publish_tools/station_tools/station_table.fs):
 - `sort(..., function(a, b) { return a.title < b.title ? ... })` -> table error "Can not compare string and string".
 - `match(s, "(?i).*x.*")` -> "@match: Invalid regular expression: Invalid special open parenthesis".
 - A literal containing `${` (a regex escape class) -> "String ... is not a valid token" (eval API; the tab push
@@ -1894,3 +1894,18 @@ parameter's migrated value in the REST feature list of an existing feature befor
   devtools/onshape/repick_by_geometry.py re-points them: describe each clicked entity in the version (type, owner name,
   box centre / MC origin), find the unique match in the workspace at the feature's position, write deterministic ids.
   Sketch-internal references (projected edges) are not parameters and are not covered.
+
+---
+
+## Correction 63: approximateSpline through sparse samples interpolates and rings; getProperty in an error message (2026-09-29)
+
+**Symptom** (Unwrap, "wobbly edges"): flat outline splines within 0.005 mm of every sample but 325 um off the
+sampled curve BETWEEN samples (topsheet tip U-turn), 104 um at its tail, 19 um at 4305's wing roots; curvature combs
+with 13-20 inflections. **Cause**: approximateSpline only measures the points it is given; with sparse or uneven
+samples it adds knots until it passes all of them (CP count = point count, i.e. interpolation) and the interpolant
+rings between them. **Fix**: fit through the samples PLUS points of the curve the sampling was validated against
+(unwrap.fs `fitPoints`: 3 cubic-Hermite points per span, chord length, quadratic slopes, true end tangents): worst
+between-sample miss 325 -> 5.5 um and FEWER control points. Measure a fit between its samples, not at them.
+**Also**: a helper that called getProperty(NAME) inside a regenError message (unwrap_part `partName`) made every
+refusal surface as "@getProperty: Cannot get properties during feature regeneration" and lost the real message --
+never call getProperty in a feature body, not even in an error path (correction 36).

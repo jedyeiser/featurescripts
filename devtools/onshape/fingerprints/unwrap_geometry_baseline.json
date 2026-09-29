@@ -2,12 +2,12 @@
  [
   "Unwrap 4101 base (plate, own section)",
   "INFO",
-  "bodies: 1 | edgeLength: 7479.5266 | box: 1789.5891x132.2623x1.2 | volumeRatio: 0.999968"
+  "bodies: 1 | edgeLength: 7479.5266 | box: 1789.5889x132.2623x1.2 | volumeRatio: 0.999968"
  ],
  [
   "Unwrap 4305 (plate, own section)",
   "INFO",
-  "bodies: 1 | edgeLength: 7533.3719 | box: 1788.8504x168.5752x0.44 | volumeRatio: 0.99982"
+  "bodies: 1 | edgeLength: 7533.3658 | box: 1788.85x168.5752x0.44 | volumeRatio: 0.999819"
  ],
  [
   "Unwrap 6005 (plate, own section)",
@@ -22,17 +22,17 @@
  [
   "Unwrap Topsheet (plate, own section)",
   "INFO",
-  "bodies: 1 | edgeLength: 7926.8371 | box: 1827.693x158.6466x0.4 | volumeRatio: 0.999934"
+  "bodies: 1 | edgeLength: 7928.8589 | box: 1827.693x158.6466x0.4 | volumeRatio: 0.999924"
  ],
  [
   "Unwrap Tip-Mat (plate, REF_WIRE offset 1.88 mm)",
   "INFO",
-  "bodies: 1 | edgeLength: 989.684 | box: 153.6889x121.4999x0.2 | volumeRatio: 0.999579"
+  "bodies: 1 | edgeLength: 989.6841 | box: 153.6889x121.4999x0.2 | volumeRatio: 0.99958"
  ],
  [
   "Unwrap Tail-Mat (plate, REF_WIRE offset 1.8 mm)",
   "INFO",
-  "bodies: 1 | edgeLength: 870.9043 | box: 133.9245x105.5304x0.2 | volumeRatio: 0.999944"
+  "bodies: 1 | edgeLength: 870.9044 | box: 133.9236x105.5304x0.2 | volumeRatio: 0.999944"
  ],
  [
   "Unwrap Tip-Shear (plate, REF_WIRE offset 1.96 mm)",
@@ -82,7 +82,7 @@
  [
   "Unwrap 4802 as plate (REF_WIRE offset 3.8 mm)",
   "INFO",
-  "bodies: 1 | edgeLength: 1293.7431 | box: 178.3967x144.8x4.0008 | volumeRatio: 1.000186"
+  "bodies: 1 | edgeLength: 1293.7413 | box: 178.3967x144.8x4.0008 | volumeRatio: 1.000186"
  ],
  [
   "Unwrap CORE (part, along FULL_BASELINE, keep faces) - expect OK, band rebuild",
@@ -105,18 +105,28 @@
   "no embedded output"
  ],
  [
+  "Unwrap Topsheet (plate, own section, U-turns blended) - expect OK, smooth tip and tail",
+  "INFO",
+  "bodies: 1 | edgeLength: 7920.0585 | box: 1827.693x158.6466x0.4 | volumeRatio: 0.999624"
+ ],
+ [
+  "Unwrap 4103 L sidewall (part, along FULL_BASELINE, keep faces) - expect OK, band rebuild + planar tip cap",
+  "INFO",
+  "bodies: 1 | edgeLength: 10291.4627 | box: 1697.0037x26.5314x13.0232 | volumeRatio: 0.998559"
+ ],
+ [
   "U1 Wrapped_profile over FULL_BASELINE (edges, along reference) -> 1 wire, tip/tail at constant height",
   "INFO",
-  "bodies: 1 | edgeLength: 1830.1621 | box: 1830x0x10.1135 | volumeRatio: 0"
+  "bodies: 1 | edgeLength: 1830.1641 | box: 1830x0x10.1129 | volumeRatio: 0"
  ],
  [
   "U2 Topsheet undrape onto Wrapped_profile extrusion offset -0.2 (wire) -> 1 flat plate 0.4 thick",
   "INFO",
-  "bodies: 1 | edgeLength: 7913.4843 | box: 1825.4983x158.6466x0.4 | volumeRatio: 0.998741"
+  "bodies: 1 | edgeLength: 7916.6449 | box: 1825.4983x158.6466x0.4 | volumeRatio: 0.998726"
  ],
  [
   "U3 Topsheet undrape, target = Front-plane section of the mid-surface -> 1 flat plate 0.4 thick",
   "INFO",
-  "bodies: 1 | edgeLength: 7926.8377 | box: 1827.693x158.6466x0.4 | volumeRatio: 0.999933"
+  "bodies: 1 | edgeLength: 7928.8589 | box: 1827.693x158.6466x0.4 | volumeRatio: 0.999924"
  ]
 ]

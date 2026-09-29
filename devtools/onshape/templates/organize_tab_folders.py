@@ -27,10 +27,10 @@ for t in st["templates"].values():
 for n in LEGACY_NAMES:
     if n in by_name:
         want[by_name[n]] = LEGACY
-anchor = st["templates"]["EOC A4"]["drawing"]
+anchor = st["templates"]["EOC A4"]["logo"]   # a blob tab renders fast in the wide viewport
 
 with OnshapeBrowser(headless=True) as b:
-    b.page.set_viewport_size({"width": 3800, "height": 1000})
+    b.page.set_viewport_size({"width": 11000, "height": 1000})
     b.open_element(TD, TW, anchor)
     bar = TabBar(b)
     bar.wait_ready()
@@ -60,7 +60,12 @@ with OnshapeBrowser(headless=True) as b:
             bar.create_folder(f)
             structure[f] = {}
             print("created folder", f)
-        bar.drag_into_folder(eid, f)
+        try:
+            bar.drag_into_folder(eid, f)
+        except Exception as e:      # a missed drop: leave it for the next run (the script is idempotent)
+            print("drag failed:", names[eid], str(e)[:80])
+            bar.go_home()
+            continue
         current[eid] = f
         print(names[eid], ":", have or "/", "->", f)
     if images_only_old:
