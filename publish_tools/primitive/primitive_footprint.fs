@@ -54,9 +54,8 @@ const BASE_PROBES = [0.1, 0.3, 0.5, 0.7, 0.9];
 const UNWRAP_SECTION_FRACTIONS = [0.45, 0.9];
 /** Rows of a section's seed table. */
 const SECTION_TABLE_ROWS = 200;
-/** Newton steps for a point's foot on a section, and its convergence (tangential residual). */
-const SECTION_FOOT_STEPS = 12;
-const SECTION_FOOT_TOL = 1e-11 * meter;
+/** Newton steps for a point's foot on a section's Hermite table (tableFoot; converged at 1e-11 m). */
+const TABLE_FOOT_STEPS = 8;
 /** A foot within this of a section's end still lies on the section (the point is "reached" by it). */
 const SECTION_REACH_TOL = 1e-5 * meter;
 /** Section edges belong to the level within this in y; added levels closer than SECTION_LEVEL_GAP are one. */
@@ -268,8 +267,9 @@ function addSectionLevels(context is Context, id is Id, base is map, ys is array
 }
 
 /**
- * A mapping section: a chain in the plane y = `y` running TAIL -> TIP, with a seed table (a, x, z at
- * SECTION_TABLE_ROWS + 1 even arc positions; sense = +1 / -1 when x is strictly monotonic along it), its x range, its
+ * A mapping section: a chain in the plane y = `y` running TAIL -> TIP, with a table at SECTION_TABLE_ROWS + 1 even arc
+ * positions (a, x with units for primitiveChainAtX; ax, px, pz, tx, tz plain metres / unit tangent for tableFoot;
+ * sense = +1 / -1 when x is strictly monotonic along it), its x range, its
  * straight edges (lines[i]: { p0, dir, normal } or undefined) and uOffset (u = uOffset + dirSign * a). Aligned at x(MRS) (u = x(MRS) there) when it reaches it; otherwise at the
  * overlap point nearest x(MRS) with the nearest-in-y section of `anchored` it overlaps (u equal there). undefined when
  * it can be aligned to nothing.
@@ -282,11 +282,19 @@ function unwrapSection(context is Context, chain is map, y is ValueWithUnits, fr
         arcs = append(arcs, chain.total * i / SECTION_TABLE_ROWS);
     }
     var xs = [];
-    var zs = [];
+    var ax = [];
+    var px = [];
+    var pz = [];
+    var tx = [];
+    var tz = [];
     for (var r in primitiveChainEvaluate(context, chain, arcs))
     {
         xs = append(xs, r.point[0]);
-        zs = append(zs, r.point[2]);
+        ax = append(ax, r.a / meter);
+        px = append(px, r.point[0] / meter);
+        pz = append(pz, r.point[2] / meter);
+        tx = append(tx, r.tangent[0]);
+        tz = append(tz, r.tangent[2]);
     }
     var xLo = xs[0];
     var xHi = xs[0];
@@ -318,7 +326,8 @@ function unwrapSection(context is Context, chain is map, y is ValueWithUnits, fr
         }
         lines = append(lines, line);
     }
-    var section = { "chain" : chain, "y" : y, "a" : arcs, "x" : xs, "z" : zs, "sense" : sense, "xLo" : xLo, "xHi" : xHi, "lines" : lines };
+    var section = { "chain" : chain, "y" : y, "a" : arcs, "x" : xs, "sense" : sense, "xLo" : xLo, "xHi" : xHi, "lines" : lines,
+            "ax" : ax, "px" : px, "pz" : pz, "tx" : tx, "tz" : tz };
     if (xLo <= frame.xMrs && xHi >= frame.xMrs)
     {
         const at = primitiveChainAtX(context, chain, { "a" : arcs, "x" : xs }, [frame.xMrs])[0];
@@ -373,19 +382,21 @@ function sectionEvaluate(context is Context, chain is map, arcs is array) return
     return out;
 }
 
-/** The seed table row of a point: the row nearest its x (bisection on a monotonic table), then downhill on the XZ distance. */
-function sectionSeedRow(section is map, p is Vector) returns number
+/** The seed table row of a point (plain metres qx, qz): the row nearest qx (bisection on a monotonic table), then downhill on the XZ distance. */
+function sectionSeedRow(section is map, qx is number, qz is number) returns number
 {
-    const n = size(section.x);
+    const px = section.px;
+    const pz = section.pz;
+    const n = size(px);
     var row = 0;
     if (section.sense != 0)
     {
         const s = section.sense;
-        if (s * (p[0] - section.x[0]) <= 0 * meter)
+        if (s * (qx - px[0]) <= 0)
         {
             row = 0;
         }
-        else if (s * (p[0] - section.x[n - 1]) >= 0 * meter)
+        else if (s * (qx - px[n - 1]) >= 0)
         {
             row = n - 1;
         }
@@ -396,7 +407,7 @@ function sectionSeedRow(section is map, p is Vector) returns number
             while (hi - lo > 1)
             {
                 const mid = floor((lo + hi) / 2);
-                if (s * (section.x[mid] - p[0]) < 0 * meter)
+                if (s * (px[mid] - qx) < 0)
                 {
                     lo = mid;
                 }
@@ -405,15 +416,15 @@ function sectionSeedRow(section is map, p is Vector) returns number
                     hi = mid;
                 }
             }
-            row = abs(section.x[lo] - p[0]) <= abs(section.x[hi] - p[0]) ? lo : hi;
+            row = abs(px[lo] - qx) <= abs(px[hi] - qx) ? lo : hi;
         }
     }
     else
     {
-        var best = abs(section.x[0] - p[0]);
+        var best = abs(px[0] - qx);
         for (var i = 1; i < n; i += 1)
         {
-            const d = abs(section.x[i] - p[0]);
+            const d = abs(px[i] - qx);
             if (d < best)
             {
                 best = d;
@@ -421,7 +432,7 @@ function sectionSeedRow(section is map, p is Vector) returns number
             }
         }
     }
-    var d2 = (section.x[row] - p[0]) * (section.x[row] - p[0]) + (section.z[row] - p[2]) * (section.z[row] - p[2]);
+    var d2 = (px[row] - qx) * (px[row] - qx) + (pz[row] - qz) * (pz[row] - qz);
     var moved = true;
     while (moved)
     {
@@ -432,7 +443,7 @@ function sectionSeedRow(section is map, p is Vector) returns number
             {
                 continue;
             }
-            const dj = (section.x[j] - p[0]) * (section.x[j] - p[0]) + (section.z[j] - p[2]) * (section.z[j] - p[2]);
+            const dj = (px[j] - qx) * (px[j] - qx) + (pz[j] - qz) * (pz[j] - qz);
             if (dj < d2)
             {
                 d2 = dj;
@@ -445,31 +456,118 @@ function sectionSeedRow(section is map, p is Vector) returns number
 }
 
 /**
- * The foot of every point of `points` on `section` in XZ (Newton on g(a) = (P - C(a)) . t(a) = 0, slope 1 - kappa h,
- * all points batched per step): { a, reached (the foot lies on the section, not past an end), tangent, normal,
- * curvature (1/length), h (the point's height off the section along normal) }.
+ * The foot (plain metres) of (qx, qz) on the section's cubic Hermite table (rows at even arc positions, unit
+ * tangents): Newton from the seed row; past an end, along that end's tangent. Accurate to the table (well under
+ * 1 um on a ski base), refined on the exact curve by sectionFeet.
+ */
+function tableFoot(section is map, qx is number, qz is number) returns number
+{
+    const ax = section.ax;
+    const px = section.px;
+    const pz = section.pz;
+    const tx = section.tx;
+    const tz = section.tz;
+    const last = size(ax) - 1;
+    var i = sectionSeedRow(section, qx, qz);
+    var a = ax[i];
+    i = min(i, last - 1);
+    for (var step = 0; step < TABLE_FOOT_STEPS; step += 1)
+    {
+        if (a <= ax[0])
+        {
+            const g0 = (qx - px[0]) * tx[0] + (qz - pz[0]) * tz[0];
+            if (g0 <= 0)
+            {
+                return ax[0] + g0;
+            }
+            a = ax[0];
+            i = 0;
+        }
+        if (a >= ax[last])
+        {
+            const g1 = (qx - px[last]) * tx[last] + (qz - pz[last]) * tz[last];
+            if (g1 >= 0)
+            {
+                return ax[last] + g1;
+            }
+            a = ax[last];
+            i = last - 1;
+        }
+        while (i > 0 && a < ax[i])
+        {
+            i -= 1;
+        }
+        while (i < last - 1 && a > ax[i + 1])
+        {
+            i += 1;
+        }
+        const h = ax[i + 1] - ax[i];
+        const s = (a - ax[i]) / h;
+        const s2 = s * s;
+        const s3 = s2 * s;
+        // Hermite basis, its first and second derivatives in s.
+        const b0 = 2 * s3 - 3 * s2 + 1;
+        const b1 = s3 - 2 * s2 + s;
+        const b2 = -2 * s3 + 3 * s2;
+        const b3 = s3 - s2;
+        const e0 = 6 * s2 - 6 * s;
+        const e1 = 3 * s2 - 4 * s + 1;
+        const e2 = -6 * s2 + 6 * s;
+        const e3 = 3 * s2 - 2 * s;
+        const f0 = 12 * s - 6;
+        const f1 = 6 * s - 4;
+        const f2 = -12 * s + 6;
+        const f3 = 6 * s - 2;
+        const x = b0 * px[i] + b1 * h * tx[i] + b2 * px[i + 1] + b3 * h * tx[i + 1];
+        const z = b0 * pz[i] + b1 * h * tz[i] + b2 * pz[i + 1] + b3 * h * tz[i + 1];
+        const dx = (e0 * px[i] + e1 * h * tx[i] + e2 * px[i + 1] + e3 * h * tx[i + 1]) / h;
+        const dz = (e0 * pz[i] + e1 * h * tz[i] + e2 * pz[i + 1] + e3 * h * tz[i + 1]) / h;
+        const ddx = (f0 * px[i] + f1 * h * tx[i] + f2 * px[i + 1] + f3 * h * tx[i + 1]) / (h * h);
+        const ddz = (f0 * pz[i] + f1 * h * tz[i] + f2 * pz[i + 1] + f3 * h * tz[i + 1]) / (h * h);
+        const g = (qx - x) * dx + (qz - z) * dz;
+        var slope = dx * dx + dz * dz - ((qx - x) * ddx + (qz - z) * ddz);
+        if (slope < 1e-3)
+        {
+            slope = 1;
+        }
+        const da = g / slope;
+        a += da;
+        if (abs(da) < 1e-11)
+        {
+            break;
+        }
+    }
+    return a;
+}
+
+/**
+ * The foot of every point of `points` on `section` in XZ: tableFoot, then one Newton correction on the exact chain
+ * (g(a) = (P - C(a)) . t(a), slope 1 - kappa h; all points in one batch; exact without the kernel over a straight
+ * edge): { a, reached (the foot lies on the section, not past an end), tangent, normal, curvature (1/length), h (the
+ * point's height off the section along normal) }.
  */
 function sectionFeet(context is Context, section is map, points is array) returns array
 {
+    const chain = section.chain;
+    const total = chain.total / meter;
     var arcs = [];
     var results = makeArray(size(points));
     var active = [];
-    const chain = section.chain;
     for (var j = 0; j < size(points); j += 1)
     {
         const p = points[j];
-        var a = section.a[sectionSeedRow(section, p)];
-        // Over a straight edge the foot is exact without the kernel (most of a ski base).
+        const a = tableFoot(section, p[0] / meter, p[2] / meter);
+        // Over a straight edge the foot is exact without the kernel.
         var i = 0;
         for (var k = 1; k < size(chain.edges); k += 1)
         {
-            if (chain.starts[k] <= a)
+            if (chain.starts[k] / meter <= a)
             {
                 i = k;
             }
         }
         const line = section.lines[i];
-        if (line != undefined)
+        if (line != undefined && a >= 0 && a <= total)
         {
             const d0 = p - line.p0;
             const d = vector(d0[0], 0 * meter, d0[2]);
@@ -478,23 +576,15 @@ function sectionFeet(context is Context, section is map, points is array) return
             {
                 results[j] = { "a" : chain.starts[i] + along, "tangent" : line.dir, "normal" : line.normal, "curvature" : 0 / meter,
                         "h" : dot(d, line.normal) };
-                arcs = append(arcs, chain.starts[i] + along);
                 continue;
             }
-            a = chain.starts[i] + max(0 * meter, min(chain.lengths[i], along));
         }
-        arcs = append(arcs, a);
+        arcs = append(arcs, a * meter);
         active = append(active, j);
     }
-    for (var step = 0; step <= SECTION_FOOT_STEPS && size(active) > 0; step += 1)
+    if (size(active) > 0)
     {
-        var activeArcs = [];
-        for (var j in active)
-        {
-            activeArcs = append(activeArcs, arcs[j]);
-        }
-        const evaluated = sectionEvaluate(context, section.chain, activeArcs);
-        var next = [];
+        const evaluated = sectionEvaluate(context, chain, arcs);
         for (var k = 0; k < size(active); k += 1)
         {
             const j = active[k];
@@ -503,24 +593,17 @@ function sectionFeet(context is Context, section is map, points is array) return
             const d = vector(d0[0], 0 * meter, d0[2]);
             const g = dot(d, ev.tangent);
             const h = dot(d, ev.normal);
-            results[j] = { "a" : arcs[j], "tangent" : ev.tangent, "normal" : ev.normal, "curvature" : ev.curvature, "h" : h };
-            if (step == SECTION_FOOT_STEPS || abs(g) < SECTION_FOOT_TOL)
-            {
-                continue;
-            }
             var slope = 1 - ev.curvature * h;
             if (slope < 1e-3)
             {
                 slope = 1;
             }
-            arcs[j] = arcs[j] + g / slope;
-            next = append(next, j);
+            results[j] = { "a" : arcs[k] + g / slope, "tangent" : ev.tangent, "normal" : ev.normal, "curvature" : ev.curvature, "h" : h };
         }
-        active = next;
     }
     for (var j = 0; j < size(results); j += 1)
     {
-        results[j].reached = results[j].a >= -SECTION_REACH_TOL && results[j].a <= section.chain.total + SECTION_REACH_TOL;
+        results[j].reached = results[j].a >= -SECTION_REACH_TOL && results[j].a <= chain.total + SECTION_REACH_TOL;
     }
     return results;
 }

@@ -302,6 +302,9 @@ export const outerReplay = defineFeature(function(context is Context, id is Id, 
 
         annotation { "Name" : "Inner mode (own / none)" }
         definition.innerMode is string;
+
+        annotation { "Name" : "Outer frame on a sibling id" }
+        definition.frameElsewhere is boolean;
     }
     {
         const saved1 = getQueryVariable(context, definition.bindName);
@@ -312,10 +315,11 @@ export const outerReplay = defineFeature(function(context is Context, id is Id, 
         setVariable(context, "-spikeMode", definition.innerMode);
         setVariable(context, "-spikeErr", ["inner did not run"]);
         const callId = id + "c";
+        const frameId = definition.frameElsewhere ? id + "f" : callId;
         var outerError = undefined;
         if (definition.outerFrame)
         {
-            setFeaturePatternInstanceData(context, callId, { "transform" : identityTransform() });
+            setFeaturePatternInstanceData(context, frameId, { "transform" : identityTransform() });
         }
         try
         {
@@ -327,7 +331,7 @@ export const outerReplay = defineFeature(function(context is Context, id is Id, 
         }
         if (definition.outerFrame)
         {
-            unsetFeaturePatternInstanceData(context, callId);
+            unsetFeaturePatternInstanceData(context, frameId);
         }
         setVariable(context, "-spikeMode", undefined);
         setQueryVariable(context, definition.bindName, saved1);

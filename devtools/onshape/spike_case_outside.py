@@ -82,7 +82,8 @@ for tag, y, outer, mode in [("N1 outer no frame, inner own frame (= Case pattern
                             ("N2 outer frame, inner none", 750, True, "none"),
                             ("N3 outer frame, inner own (nested)", 900, True, "own"),
                             ("N4 outer frame, inner own + retry outside own frame", 1050, True, "retry"),
-                            ("N5 outer no frame, inner own + retry (= Case pattern today, full)", 1200, False, "retry")]:
+                            ("N5 outer no frame, inner own + retry (= Case pattern today, full)", 1200, False, "retry"),
+                            ("N6 outer frame on SIBLING id, inner own + retry", 1350, True, "retry6")]:
     t = tag.split()[0]
     A, B, C, T, corner, mc = row(t, y)
     dn = define_case("%s Define case A: #top%s #rim%s" % (t, t, t), "A", [("top" + t, top(A)), ("rim" + t, rim(A))])
@@ -93,7 +94,7 @@ for tag, y, outer, mode in [("N1 outer no frame, inner own frame (= Case pattern
     fb.append(feature(t + " boss fillet #bossE 1 mm (in-list remap)", "fillet", [qv("entities", "bossE" + t), num("radius", "1 mm")]))
     inner = feature(t + " Inner replay", "innerReplay", [flist("features", fb)], SNS)
     feature("%s Outer replay -> case B" % tag, "outerReplay", [flist("inner", [inner]), s("bindName", "top" + t), sel("bindQuery", top(B)),
-            s("bindName2", "rim" + t), sel("bindQuery2", rim(B)), b("outerFrame", outer), s("innerMode", mode)], SNS)
+            s("bindName2", "rim" + t), sel("bindQuery2", rim(B)), b("outerFrame", outer), s("innerMode", mode.rstrip("6")), b("frameElsewhere", mode.endswith("6"))], SNS)
 
 feats = c.get(f"{BASE}/features")
 print("\nSTATUS")
