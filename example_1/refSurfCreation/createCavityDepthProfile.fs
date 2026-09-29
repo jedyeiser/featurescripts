@@ -202,6 +202,7 @@ export const generateCavityDepthProfile = defineFeature(function(context is Cont
             if (region.extentType == RegionExtentType.QUERY)
             {
                 annotation { "Name" : "Extent points",
+                             "Description" : "Two points; the one with the smaller world X is the region start",
                              "Filter" : EntityType.VERTEX || GeometryType.PLANE || BodyType.MATE_CONNECTOR,
                              "MaxNumberOfPicks" : 2 }
                 region.extentQueries is Query;
@@ -467,11 +468,20 @@ function processRegions(context is Context, definition is map, pathInfo is map) 
             var pt0 = resolveQueryToPoint(context, queryPts[0]);
             var pt1 = resolveQueryToPoint(context, queryPts[1]);
 
+            // The region start is the extent point with the smaller world X, whichever way the wire
+            // runs; the swap below keeps the start offset at that end.
+            if (pt1[0] < pt0[0])
+            {
+                var tmpPt = pt0;
+                pt0 = pt1;
+                pt1 = tmpPt;
+            }
+
             var d0 = evDistancePath(context, { "side0" : pathInfo.path, "side1" : pt0 });
             var d1 = evDistancePath(context, { "side0" : pathInfo.path, "side1" : pt1 });
 
-            tStart = min(d0.sides[0].pathParam, d1.sides[0].pathParam);
-            tEnd   = max(d0.sides[0].pathParam, d1.sides[0].pathParam);
+            tStart = d0.sides[0].pathParam;
+            tEnd   = d1.sides[0].pathParam;
         }
 
         // Clamp and ensure start < end. When the ends swap (bottom wire running toward -X, or
