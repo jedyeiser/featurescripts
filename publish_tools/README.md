@@ -114,16 +114,17 @@ Tabs in tab folder `primitive` (local `publish_tools/primitive/`):
 
 | tab | element | what |
 |---|---|---|
-| primitive_types | ecde24520874030ab412c981 | enums (PrimitiveSource, PrimitiveDatumUse, PrimitiveRadiusBetween, PrimitiveTableKind), flat-baseline tolerance 0.01 mm, attribute name `publishPrimitive`, schema `primitive/1`, bounds |
+| primitive_types | ecde24520874030ab412c981 | enums (PrimitiveSource, PrimitiveDatumUse, PrimitivePlotRegion, PrimitivePlot, PrimitiveTableKind), flat-baseline tolerance 0.01 mm, attribute name `publishPrimitive`, schema `primitive/1`, bounds, reserved key names |
 | primitive_frame | 5808546b3b3d863d82796d24 | point / datum resolution, edge chains, chain-at-x (Newton), foot, normal crossing, [s, w, h] |
 | primitive_profiles | 5865b24d55ff270a56088adf | mid-plane section -> BOTTOM / TOP / TIP END / TAIL END; Table 1 scale factors |
-| primitive_footprint | fbc957543e769a649f00c5cc | base periphery, unwrap along s, radius (chain rule, exact), fpt_analyze (footprint V32), radius plot |
+| primitive_footprint | fbc957543e769a649f00c5cc | base periphery, unwrap along s, radius + signed curvature (chain rule, exact), fpt_analyze (footprint V32), plot runs / region clip / junctions |
 | primitive_baseline | b827b10bc0bdc678c2db28cd | analyzeBaselineGeometry (xSection V57) on a local copy + exact FCP/ACP re-measure; Table 5 |
 | primitive_output | 6f122edb2547a6a46991d9fd | named points / segments, band stacking, closed composite + attribute |
 | export_primitive | 3ce76ee786987ef00917b9b2 | feature "Export primitive"; target EI via xSection V57 xSectBeamAnalysis (getEIFromEdges, computeBeamStiffness) |
 | primitive_table | 4e49f8a0b8f0c2bd75c919e7 | custom table "Primitive tables" |
 
-Use: Export primitive -> Volume (the ski solid), FCP, ACP (vertex / point / mate connector), optional MP(s), optional
+Use: Export primitive (dialog groups, 2026-09-28: Inputs (open), Sources, Key locations, Plot, Stiffness, Tooling blocks,
+Data table, Output; parameter ids unchanged) -> Volume (the ski solid), FCP, ACP (vertex / point / mate connector), optional MP(s), optional
 Datum (empty = world origin, world axes; X along the ski, Z up, profiles in its XZ plane) + Datum uses: ORIGIN
 (default; a vertex / point / MC whose ORIGIN moves the frame, axes stay world X/Y/Z, so x is measured along world X
 from the datum -- the ski's own connectors have Z along the ski) or COORDINATE_SYSTEM (the MC's own axes, as phase 1),
@@ -132,10 +133,17 @@ curve), Tooling blocks (per block "name from" TYPED (default; shows only the nam
 pick; editing logic copies the wire's name into the hidden tipBlockWireName / tailBlockWireName, correction 36; no
 wire = no row)), Baseline from Volume
 (the section's bottom wire) or Input wires (e.g. FULL_BASELINE), Footprint from Volume (the base periphery) or
-Input wires (flat FPT_L + FPT_R, taken as already unwrapped and aligned at MRS; or wrapped 3D wires), Average radius
-between Contacts / Widest / Inflection (Table 2 average radius only), Data points N (+ force XS1 / MRS / XS2), Station
-numbers (default on: # column on Key locations and Data), Layout (band gap 50 mm, radius plot limit 50 m, tick 10 mm,
-EI scale 2 N*m^2 per mm, Dashed grid default OFF, Labels default ON + Text height 20 mm), Query variable (default `primitive`). The name prefix
+Input wires (flat FPT_L + FPT_R, taken as already unwrapped and aligned at MRS; or wrapped 3D wires), Extra key points
+(array `extraPoints`: keyName + keyPoint (vertex / point / MC) + showKeyLine; name -> op-id key via primitiveKey, an
+empty, reserved (FCP ACP MRS MP.. XS1 XS2 TIP TAIL, footprint point names) or duplicate key is a regenError on that
+item), Data points N (+ "Force key locations", id `forceStations`: rows at XS1 / MRS / XS2 and every extra key point
+inside the RSL), Station numbers (default on: # column on Key locations and Data), Plot (`plotMode` RADIUS default /
+CURVATURE), Plot region (`plotRegion`, FULL default / RSL (value id CONTACTS) / WIDEST / INFLECTION: the x-range of the
+radius / curvature band -- plot, reference, axes, key and junction ticks), Curvature scale (5 mm per 0.01 1/m), Layout
+(band gap 50 mm, radius plot limit 50 m, tick 10 mm, EI scale 2 N*m^2 per mm, Dashed grid default OFF, Key lines
+default OFF, Junction ticks default ON, Labels default ON + Text height 20 mm), Query variable (default `primitive`).
+The average radius is ALWAYS taken between the inflection points (2026-09-28; the old "Average radius between"
+parameter `radiusBetween` is gone -- its saved value is ignored, so saved features keep the full radius plot). The name prefix
 fills from the volume's name (editing logic). Icons: feature = icons/final/export_primitive_icon.svg (tab
 b9dc4aaf067afeb58293caed), table = primitive_tables_icon.svg (tab eb32ed1a7e9ecf0a7ef61a7c, wired by hand on "Table
 Type Name").
@@ -143,12 +151,19 @@ Type Name").
 Output: ONE closed composite `<prefix> PRIMITIVE` (excluded from BOM) in the datum XZ plane, BELOW the part, bands
 top to bottom a band gap apart: EI (only with a Target EI: the EI wire's edges sampled + fitted at EI / EI scale, x
 local; `EI REFERENCE` zero line; title EI (N*m + a raised 0.6-height 2 + ) via primitiveLabel's `^2` markup; `EI AXIS` / `EI TICK +50 TIP` / `EI LABEL` / `EI GRID` every 50 N*m^2, like the radius
-frame; purple), BASELINE (+ points TIP/TAIL at the baseline's ends, FCP/ACP, and unless the baseline
+frame, numbers without "+"; title "EI (Nm" + raised 2 + ")"; purple), BASELINE (+ points TIP/TAIL at the baseline's ends, FCP/ACP, and unless the baseline
 is flat within the RSL FRCP/ARCP/MCL/FB_MIN/AB_MIN), PROFILE (BOTTOM, TOP, TIP END, TAIL END + points on the bottom
 wire, TIP/TAIL at the section's extreme points along X = the bottom wire's ends, TOP FCP/ACP), FOOTPRINT (unwrapped: u = x(MRS) + s along the tip, y drawn
 as height; exact arcs kept wherever the bottom is flat; points widest / waist / inflections), RADIUS (10 mm per 1 m,
 sidecut +, taper/tip/tail -, breaks where |R| > limit, arcs = horizontal lines, joined across continuous junctions;
-REFERENCE line; TICKs at FCP ACP MRS MP XS1 XS2 and FB/AB widest + inflection; scale frame: `RADIUS AXIS TIP` / `TAIL`
+or with Plot CURVATURE the band CURVATURE (1/m): signed curvature, same signs, one run through sign changes, broken only
+at edge junctions where the curvature jumps (arcs), levels in 0.01 1/m (step 1-2-5 for <= 20 levels), numbers with 2
+decimals every multiple that keeps them 1.25 label heights apart (default: 0 and 0.05, no "+"), names `CURVATURE TICK
++0.01 TIP` / `CURVATURE LABEL +0.05`; clipped runs shorter than 0.1 mm dropped (TAC: the tip arc starts exactly at
+the inflection, curvature jumps +0.047 -> -0.98);
+REFERENCE line; TICKs at FCP ACP MRS MP XS1 XS2, extra key points and FB/AB widest + inflection (inside the plot region);
+`FOOTPRINT JUNCTION` / `RADIUS JUNCTION` 3 mm ticks at every +y footprint edge junction (op ids from u in um); `KEY
+LINE <name>` dashed verticals (4 / 4 mm, opPattern) over all bands at FCP MP(s) MRS ACP + extra points with Show key line; scale frame: `RADIUS AXIS TIP` / `TAIL`
 at the band's two x ends over every 10 m level covering the plot (outward, capped at the limit), 3 mm `RADIUS TICK +10
 TIP` ticks outward at each level on both axes, optional `RADIUS GRID -20` dashed lines (4 mm dash / 4 mm gap, one
 opPattern per level) at every level but 0). Each band has a `<band> DATUM` point at x = 0 on its reference line.
@@ -159,7 +174,7 @@ each band's reference line; `RADIUS LABEL +10` numbers (0.6 x text height) left 
 ticks / frame / grid / numbers / datum points grey, titles in their band's colour. All rows live in the composite's attribute `publishPrimitive` (schema primitive/1)
 and in the producer slot (Extract variables keys: primitive, rsl, averageRadius, naturalRadiusWidest,
 naturalRadiusInflection, taperAngleWidest, taperAngleInflection, deflection, stiffness (0 = no target EI); queries primitive, baseline, profileBottom,
-profileTop, footprint, radius). Tables: add "Primitive tables" (filter "Primitives containing", pick "Table").
+profileTop, footprint, radius or curvature). Tables: add "Primitive tables" (filter "Primitives containing", pick "Table"; the data table is "6 Data (RSL)", 4 stays reserved for the SW rout table).
 
 Definitions: x from the datum; s = distance along the bottom wire from the datum, same direction as x (signed arc
 length, zero at the bottom-wire point at x = 0, ds/dx > 0 whichever way the tip points; past an end of the wire it runs
@@ -188,6 +203,13 @@ checking, `--keep` suppresses every case but those) -> all pass (2026-09-28 even
 59/59 run in the copy studio "Primitive tests (agent)" 5c3ac8fb8ec70b1f256c0e97
 while the user was working in "Primitive tests"; --before compared P1..P6 with the phase-1 code: unchanged except the
 removed rows). avg R 17.0496, natural 17.4824 / 16.1851 m, RSL 1480, FRCPl 130.0, ARCPl 50.0.
+2026-09-28 (b): P6 = plot region RSL (avg R now = P1); P11 extra key points (MP connector "FB_Mass_location" with key
+line, Datum_x500_z10 "Mass AB") + key lines + region WIDEST -> 23 data rows; P12 Plot CURVATURE + region INFLECTION;
+P13 duplicate names "FB mass" / "FB_mass" -> ERROR. The checker reads plot / reference / tick x-ranges (member
+extents) and glyph-loop counts (EI "150" = 4 loops, no "+"). 100/100 in the agent studio; --before vs the morning
+snapshot: tables identical except P6's average radius. Speed-ups (chain-at-x bisection + per-point Newton exit,
+baseline-from-volume reuses the bottom frame's chain / lookup, data-table footprint crossings batched): P1 alone
+7.7 s -> 3.0 s.
 
 Open: SW rout table (Table 4), ISO min thickness, Tip_height / Tail_height definitions, drawing template; the
 radius plot and data table use the +y side only; the base periphery misses base faces that do not touch the mid

@@ -2,13 +2,13 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 // IMPORT: primitive_profiles.fs
-export import(path : "5865b24d55ff270a56088adf", version : "2b8c24e65351772f3cd3763c");
+export import(path : "5865b24d55ff270a56088adf", version : "831e1834dacfe40e709f02da");
 // IMPORT: primitive_footprint.fs
-export import(path : "fbc957543e769a649f00c5cc", version : "a38c3617681d22d3003b95ef");
+export import(path : "fbc957543e769a649f00c5cc", version : "cf58e637ac7a65bc4b35dc59");
 // IMPORT: primitive_baseline.fs
-export import(path : "b827b10bc0bdc678c2db28cd", version : "23dda42932cda1765fc422df");
+export import(path : "b827b10bc0bdc678c2db28cd", version : "34efb40ab2d8160afd0d369c");
 // IMPORT: primitive_output.fs
-export import(path : "6f122edb2547a6a46991d9fd", version : "a82c114d20098e37e77d7e3e");
+export import(path : "6f122edb2547a6a46991d9fd", version : "d5d74574edb82f638b050ca1");
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs) -- same pin as station_geometry
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: xSection V57 xSectBeamAnalysis.fs (getEIFromEdges, computeBeamStiffness; direction-safe)
@@ -398,7 +398,8 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         // ---- Footprint: unwrap, analyse (Table 2), radius ----
         const source = primitiveFootprintSource(context, id + "footprintSource", fromVolumeFootprint, definition.volume,
             fromVolumeFootprint ? qNothing() : wireEdges(definition.footprintWires), frame, toWorld(datum), toLocal, isIdentity);
-        const unwrapped = primitiveUnwrap(context, id + "unwrap", frame, source.edges, !fromVolumeFootprint, definition.radiusLimit);
+        const unwrapped = primitiveUnwrap(context, id + "unwrap", frame, source.edges, !fromVolumeFootprint, definition.radiusLimit,
+            source.sections);
         opDeleteBodies(context, id + "deleteFootprintSource", { "entities" : source.bodies });
         const uFcp = primitiveU(frame, keys.FCP.a);
         const uAcp = primitiveU(frame, keys.ACP.a);

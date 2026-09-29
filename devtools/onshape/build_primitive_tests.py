@@ -25,6 +25,10 @@ Cases (names carry the expectation):
         ticks, key lines at FCP MP MRS ACP FB_Mass_location
   P12 = P1 with Plot CURVATURE, Plot region INFLECTION: curvature band (1/m) between the inflections, tables = P1
   P13 = extra key points "FB mass" + "FB_mass" (the same id): ERROR on the item
+  P14 = the user's "monkey bite" (2026-09-28, "Primitive tests" Sketch 1 / Extrude 1: a R 79.12 mm circle at
+        (-31.43, 3.38) mm on Top, extruded REMOVE through all) cut into the tail of a SECOND derived copy
+        (Bite copy: the derived VOLUME copied in place), baseline FULL_BASELINE, footprint from VOLUME, picks as P1:
+        the bite appears in the footprint band with its true shape (unwrap = isometry of the base)
 
 Studio: "Primitive tests" by default; PRIMITIVE_STUDIO=<name> builds (and creates) another one. NEW=0 leaves out
 the 2026-09-28 parameters (datumUses, targetEI, tip / tail block), for a run against the phase-1 code.
@@ -120,6 +124,51 @@ def derive():
         if p.get("parameterId") == "includeMateConnectors":
             p["value"] = True
     return upsert("Derive_DM_V1", "importDerived", params)
+
+
+def bite_copy(derive_id):
+    """A copy in place of the derived VOLUME for the bite case, so the bite cut leaves the other cases' volume alone
+    (a second derive of the same version is refused: DERIVED_NO_SAME_SOURCE)."""
+    params = [
+        q("entities", 'qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.SOLID)' % derive_id),
+        en("transformType", "TransformType", "COPY"),
+    ]
+    return upsert("Bite copy (VOLUME copied in place)", "transform", params)
+
+
+def sketch(name, plane_query, entities):
+    f = features()
+    feature = {"btType": "BTMSketch-151", "featureType": "newSketch", "name": name,
+               "parameters": [q("sketchPlane", plane_query)], "entities": entities, "constraints": []}
+    body = {"btType": "BTFeatureDefinitionCall-1406", "feature": feature,
+            "serializationVersion": f["serializationVersion"], "sourceMicroversion": f["sourceMicroversion"]}
+    existing = [x for x in f["features"] if x["name"] == name]
+    if existing:
+        feature["featureId"] = existing[0]["featureId"]
+        r = c.post(f"{BASE}/features/featureid/{existing[0]['featureId']}", body)
+    else:
+        r = c.post(f"{BASE}/features", body)
+    print("%-72s %s" % (name, r.get("featureState", {}).get("featureStatus")))
+    return r["feature"]["featureId"]
+
+
+def bite(bite_derive_id):
+    """The user's tail bite ("Primitive tests" Sketch 1 + Extrude 1, 2026-09-28) on the bite copy only."""
+    circle = {"btType": "BTMSketchCurve-4", "entityId": "bite", "centerId": "bite.center", "isConstruction": False,
+              "geometry": {"btType": "BTCurveGeometryCircle-115", "radius": 0.07911801782391349, "clockwise": False,
+                           "xCenter": -0.03143485290525158, "yCenter": 0.0033824882764551256, "xDir": 1.0, "yDir": 0.0}}
+    sk = sketch("Bite sketch", 'qCreatedBy(makeId("Top"), EntityType.FACE)', [circle])
+    params = [
+        en("domain", "OperationDomain", "MODEL"),
+        en("bodyType", "ExtendedToolBodyType", "SOLID"),
+        en("operationType", "NewBodyOperationType", "REMOVE"),
+        q("entities", 'qSketchRegion(makeId("%s"), true)' % sk),
+        en("endBound", "BoundingType", "THROUGH_ALL"),
+        b("oppositeDirection", False),
+        b("defaultScope", False),
+        q("booleanScope", 'qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.SOLID)' % bite_derive_id),
+    ]
+    return upsert("Bite (tail, bite copy only)", "extrude", params)
 
 
 def mirror(derive_id):
@@ -253,7 +302,7 @@ FPT_R_AT = (885, -48.72930096625616, 0)
 MP_X = 807.9668184775537
 
 
-def cases(dv, mi, dm, ei):
+def cases(dv, mi, dm, ei, bt=None):
     vol = 'qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.SOLID)'
     fb = wire_named(dv, *FULL_BASELINE_AT)
     fb_m = wire_named(mi, -FULL_BASELINE_AT[0], FULL_BASELINE_AT[1], FULL_BASELINE_AT[2])
@@ -295,7 +344,10 @@ def cases(dv, mi, dm, ei):
         ("P13 TAC extra key points 'FB mass' + 'FB_mass' -> ERROR (duplicate name)",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), prefix="P13 TAC duplicate",
               extras=[("FB mass", mc_at(dv, MP_X), False), ("FB_mass", dm_q, False)])),
-    ]
+    ] + ([] if bt is None else [
+        ("P14 TAC tail bite, FULL_BASELINE + volume footprint -> bite in the footprint (isometric unwrap), INFO",
+         dict(volume=vol % bt, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P14 TAC bite", baseline=fb)),
+    ])
 
 
 if __name__ == "__main__":
@@ -305,7 +357,11 @@ if __name__ == "__main__":
     mi = mirror(dv)
     dm = datum_mc()
     ei = ei_sketch()
-    for name, kw in cases(dv, mi, dm, ei):
+    bt = None
+    if not only or "P14" in only:
+        bt = bite_copy(dv)
+        bite(bt)
+    for name, kw in cases(dv, mi, dm, ei, bt):
         if only and name.split()[0] not in only:
             continue
         if not NEW and name.split()[0] in ("P7", "P8", "P9", "P10", "P11", "P12", "P13"):
