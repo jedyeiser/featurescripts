@@ -33,29 +33,33 @@ const UNWRAP_EXACT_TOLERANCE = 1e-7 * meter;
 const FPT_TOLERANCE = 1e-6 * meter;
 /** Two radius-plot runs meeting at an edge junction are joined when their plot heights differ by less than this. */
 const PLOT_JOIN_TOLERANCE = 0.005 * millimeter;
-const OUTLINE_PLANE_SIZE = 20 * meter;
-const OUTLINE_CLEARANCE = 10 * millimeter;
+/** Where each bottom-wire edge is probed for the base faces (interior only: an end may sit on a cap edge). */
+const BASE_PROBES = [0.1, 0.3, 0.5, 0.7, 0.9];
 
 /**
- * The footprint's source edges in the LOCAL frame: the volume's plan outline (on a plane below it, normal to the
- * datum Z), or copies of the input wires. Returns { bodies (temporary copies), edges }.
+ * The footprint's source edges in the LOCAL frame: copies of the volume's BASE PERIPHERY (the boundary of the faces
+ * the profile's bottom wire lies on -- the volume's own edges, so exact arcs stay exact), or copies of the input
+ * wires. Returns { bodies (temporary copies), edges }.
+ *
+ * Not opCreateOutline: it re-fits silhouette edges, and on RD 20TAC an exact R 1.02 m base arc came back as a spline
+ * whose end curvature read R 3.93 m, and R 8.82 m on the mirrored copy (correction 57).
  */
 export function primitiveFootprintSource(context is Context, id is Id, fromVolume is boolean, volume is Query, inputEdges is Query,
-    datum is CoordSystem, toLocal is Transform, isIdentity is boolean) returns map
+    frame is map, toDatum is Transform, toLocal is Transform, isIdentity is boolean) returns map
 {
     var bodies = qNothing();
     var edges = qNothing();
     if (fromVolume)
     {
-        const bb = evBox3d(context, { "topology" : volume, "cSys" : datum, "tight" : true });
-        const origin = toWorld(datum, vector(0 * meter, 0 * meter, bb.minCorner[2] - OUTLINE_CLEARANCE));
-        opPlane(context, id + "outlinePlane", { "plane" : plane(origin, datum.zAxis, datum.xAxis),
-                    "width" : OUTLINE_PLANE_SIZE, "height" : OUTLINE_PLANE_SIZE });
-        opCreateOutline(context, id + "outline", { "tools" : volume, "target" : qCreatedBy(id + "outlinePlane", EntityType.FACE) });
-        opDeleteBodies(context, id + "deleteOutlinePlane", { "entities" : qCreatedBy(id + "outlinePlane", EntityType.BODY) });
-        bodies = qCreatedBy(id + "outline", EntityType.BODY);
-        primitiveMove(context, id + "outlineToLocal", bodies, toLocal, isIdentity);
-        edges = qLoopEdges(qOwnedByBody(bodies, EntityType.FACE));
+        const periphery = basePeriphery(context, volume, frame.chain, toDatum);
+        if (size(periphery) == 0)
+        {
+            throw regenError("Could not find the volume's base periphery (the faces under the profile's bottom wire).", ["volume"]);
+        }
+        opExtractWires(context, id + "periphery", { "edges" : qUnion(periphery) });
+        bodies = qCreatedBy(id + "periphery", EntityType.BODY);
+        primitiveMove(context, id + "peripheryToLocal", bodies, toLocal, isIdentity);
+        edges = qOwnedByBody(bodies, EntityType.EDGE);
     }
     else
     {
@@ -74,6 +78,47 @@ export function primitiveFootprintSource(context is Context, id is Id, fromVolum
         throw regenError("The footprint has no edges.", [fromVolume ? "volume" : "footprintWires"]);
     }
     return { "bodies" : bodies, "edges" : list };
+}
+
+/**
+ * The base periphery: the edges bounding exactly one of the BASE faces, where a base face is one the bottom wire lies
+ * on (probed at interior points of every bottom edge, mapped back to the world with `toDatum`). Edges between two
+ * base faces (split lines) are left out.
+ */
+function basePeriphery(context is Context, volume is Query, bottom is map, toDatum is Transform) returns array
+{
+    const volumeFaces = qOwnedByBody(volume, EntityType.FACE);
+    var faces = {};
+    for (var i = 0; i < size(bottom.edges); i += 1)
+    {
+        for (var tl in evEdgeTangentLines(context, { "edge" : bottom.edges[i], "parameters" : BASE_PROBES }))
+        {
+            for (var face in evaluateQuery(context, qContainsPoint(volumeFaces, toDatum * tl.origin)))
+            {
+                faces[toString(face)] = face;
+            }
+        }
+    }
+    var count = {};
+    var edgeOf = {};
+    for (var entry in faces)
+    {
+        for (var edge in evaluateQuery(context, qLoopEdges(entry.value)))
+        {
+            const key = toString(edge);
+            count[key] = count[key] == undefined ? 1 : count[key] + 1;
+            edgeOf[key] = edge;
+        }
+    }
+    var out = [];
+    for (var entry in count)
+    {
+        if (entry.value == 1)
+        {
+            out = append(out, edgeOf[entry.key]);
+        }
+    }
+    return out;
 }
 
 /**

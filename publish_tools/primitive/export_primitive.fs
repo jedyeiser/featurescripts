@@ -80,7 +80,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         }
 
         annotation { "Name" : "Footprint from", "Default" : PrimitiveSource.VOLUME, "UIHint" : [UIHint.SHOW_LABEL, UIHint.HORIZONTAL_ENUM],
-                    "Description" : "Volume: the part's plan outline, unwrapped along the bottom wire. Input wires: a flat footprint (constant z, taken as unwrapped, aligned at MRS) or a wrapped one." }
+                    "Description" : "Volume: the edges around the part's base, unwrapped along the bottom wire. Input wires: a flat footprint (constant z, taken as unwrapped, aligned at MRS) or a wrapped one." }
         definition.footprintFrom is PrimitiveSource;
 
         if (definition.footprintFrom == PrimitiveSource.INPUT)
@@ -202,7 +202,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
 
         // ---- Footprint: unwrap, analyse (Table 2), radius ----
         const source = primitiveFootprintSource(context, id + "footprintSource", fromVolumeFootprint, definition.volume,
-            fromVolumeFootprint ? qNothing() : wireEdges(definition.footprintWires), datum, toLocal, isIdentity);
+            fromVolumeFootprint ? qNothing() : wireEdges(definition.footprintWires), frame, toWorld(datum), toLocal, isIdentity);
         const unwrapped = primitiveUnwrap(context, id + "unwrap", frame, source.edges, !fromVolumeFootprint, definition.radiusLimit);
         opDeleteBodies(context, id + "deleteFootprintSource", { "entities" : source.bodies });
         const uFcp = primitiveU(frame, keys.FCP.a);

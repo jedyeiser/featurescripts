@@ -122,8 +122,132 @@ def primitives():
     return out
 
 
+RESULTS = []
+
+
+def check(case, what, expected, actual, ok):
+    RESULTS.append((case, what, expected, actual, bool(ok)))
+
+
+def near(a, b, tol):
+    return isinstance(a, float) and isinstance(b, float) and abs(a - b) <= tol
+
+
+def rows(d, section):
+    return {r["key"]: r for r in d[section]}
+
+
+def meta(d, key):
+    return rows(d, "metadata")[key]["value"]
+
+
+def compare(case, a, b, tol, dx=0.0, dz=0.0, sign=1.0):
+    """Every number of primitive b equals primitive a's (x -> sign * x + dx, z -> z + dz); texts equal."""
+    bad = []
+    for section in ("scaleFactors", "metadata", "keyLocations", "baseline"):
+        ra, rb = rows(a, section), rows(b, section)
+        for key, row in ra.items():
+            for field, va in row.items():
+                vb = rb.get(key, {}).get(field)
+                if field == "x" and isinstance(va, float):
+                    va = sign * va + dx
+                if field == "z" and section == "keyLocations" and isinstance(va, float):
+                    va = va + dz
+                if isinstance(va, float):
+                    if not near(va, vb, tol):
+                        bad.append("%s.%s.%s %s vs %s" % (section, key, field, va, vb))
+                elif field != "note" and va != vb:
+                    bad.append("%s.%s.%s %r vs %r" % (section, key, field, va, vb))
+    if len(a["data"]) != len(b["data"]):
+        bad.append("data rows %d vs %d" % (len(a["data"]), len(b["data"])))
+    for i, (ra, rb) in enumerate(zip(a["data"], b["data"])):
+        for field, va in ra.items():
+            vb = rb.get(field)
+            if field == "x" and isinstance(va, float):
+                va = sign * va + dx
+            if field == "z" and isinstance(va, float):
+                va = va + dz
+            if isinstance(va, float) and not near(va, vb, tol):
+                bad.append("data[%d].%s %s vs %s" % (i, field, va, vb))
+            elif not isinstance(va, float) and va != vb:
+                bad.append("data[%d].%s %r vs %r" % (i, field, va, vb))
+    check(case, "every table value (tol %g)" % tol, "equal",
+          "%d differences" % len(bad) + ("" if not bad else ": " + "; ".join(bad[:4])), not bad)
+
+
+REQUIRED_MEMBERS = ["PRIMITIVE BASELINE", "PRIMITIVE PROFILE BOTTOM", "PRIMITIVE PROFILE TOP", "PRIMITIVE FOOTPRINT",
+                    "PRIMITIVE RADIUS", "PRIMITIVE RADIUS REFERENCE", "PRIMITIVE RADIUS TICK FCP", "PRIMITIVE RADIUS TICK MRS",
+                    "PRIMITIVE PROFILE FCP", "PRIMITIVE PROFILE TIP", "PRIMITIVE FOOTPRINT FB_WIDEST", "PRIMITIVE BASELINE DATUM"]
+
+
+def run_checks(prims):
+    st = statuses()
+    for name, status in sorted(st.items()):
+        if name[:2] in ("P1", "P2", "P3", "P4", "P5", "P6"):
+            check(name.split()[0], "feature status", "INFO", status, status == "INFO")
+    d = {k.split()[0]: v["data"] for k, v in prims.items()}
+    full = {k.split()[0]: v for k, v in prims.items()}
+
+    p1 = d["P1"]
+    check("P1", "average radius (inflection) m", "~17.05", meta(p1, "averageRadius"), near(meta(p1, "averageRadius"), 17.05, 0.01))
+    check("P1", "natural radius widest m", "~17.48", meta(p1, "naturalRadiusWidest"), near(meta(p1, "naturalRadiusWidest"), 17.48, 0.01))
+    check("P1", "natural radius inflection m", "~16.18", meta(p1, "naturalRadiusInflection"), near(meta(p1, "naturalRadiusInflection"), 16.18, 0.01))
+    check("P1", "RSL mm", 1480, meta(p1, "rsl"), near(meta(p1, "rsl"), 1480.0, 0.01))
+    k1 = rows(p1, "keyLocations")
+    for key, x, s in (("FCP", 1625, 740), ("ACP", 145, -740), ("MRS", 885, 0), ("XS1", 1255, 370), ("XS2", 515, -370)):
+        check("P1", "%s x / s mm" % key, "%s / %s" % (x, s), "%s / %s" % (k1[key]["x"], k1[key]["s"]),
+              near(k1[key]["x"], float(x), 1e-3) and near(k1[key]["s"], float(s), 1e-3))
+    check("P1", "TIP / TAIL s mm", "905 / -885", "%s / %s" % (k1["TIP"]["s"], k1["TAIL"]["s"]),
+          near(k1["TIP"]["s"], 905.0, 0.01) and near(k1["TAIL"]["s"], -885.0, 0.01))
+    sf = rows(p1, "scaleFactors")
+    check("P1", "running surface top/bottom %", "slightly > 100", sf["runningSurface"]["ratio"], 100.0 < sf["runningSurface"]["ratio"] < 100.1)
+    check("P1", "tip top/bottom %", "< 100", sf["tip"]["ratio"], sf["tip"]["ratio"] < 100.0)
+    check("P1", "data rows (N 21 incl. XS1/MRS/XS2)", 21, len(p1["data"]), len(p1["data"]) == 21)
+    check("P1", "ski_thck at FCP mm (X-Sect SPA)", 6.75, p1["data"][0]["skiThck"], near(p1["data"][0]["skiThck"], 6.75, 0.01))
+    check("P1", "phase-2 rows present", "deflection, stiffness, tip block", "",
+          all(rows(p1, "metadata")[k]["value"] == "not computed (phase 2)" for k in ("deflection", "stiffness"))
+          and rows(p1, "baseline")["tipBlock"]["value"] == "not computed (phase 2)")
+    members = full["P1"]["members"]
+    missing = [m for m in REQUIRED_MEMBERS if "P1 TAC " + m not in members]
+    check("P1", "composite members / BOM", "named bands + points, excluded",
+          "%d members, missing %s, bom %s" % (len(members), missing, full["P1"]["bom"]), not missing and full["P1"]["bom"] is True)
+
+    p2 = d["P2"]
+    b2 = rows(p2, "baseline")
+    check("P2", "FRCPl mm", 130, b2["FRCPl"]["value"], near(b2["FRCPl"]["value"], 130.0, 0.1))
+    check("P2", "ARCPl mm", 50, b2["ARCPl"]["value"], near(b2["ARCPl"]["value"], 50.0, 0.1))
+    check("P2", "FRCP / ARCP x mm", "1495 / 195", "%s / %s" % (b2["FRCP"]["x"], b2["ARCP"]["x"]),
+          near(b2["FRCP"]["x"], 1495.0, 0.1) and near(b2["ARCP"]["x"], 195.0, 0.1))
+    for key in ("averageRadius", "naturalRadiusWidest", "naturalRadiusInflection"):
+        check("P2", key + " vs P1 m", meta(p1, key), meta(p2, key), near(meta(p2, key), meta(p1, key), 0.001))
+
+    p3 = d["P3"]
+    b3 = rows(p3, "baseline")
+    same = all(near(b3[k][f], b2[k][f], 1e-3) or b3[k][f] == b2[k][f] for k in b2 for f in ("value", "x", "s"))
+    check("P3", "baseline rows vs P2", "equal", "equal" if same else "differ", same)
+    for key in ("averageRadius", "naturalRadiusWidest", "naturalRadiusInflection", "taperAngleWidest"):
+        check("P3", key + " vs P1", meta(p1, key), meta(p3, key), near(meta(p3, key), meta(p1, key), 1e-4))
+
+    compare("P4 vs P3", p3, d["P4"], 2e-3, sign=-1.0)
+    check("P4", "tip direction", "-X", d["P4"]["settings"]["tipTowards"], d["P4"]["settings"]["tipTowards"] == "-X")
+    compare("P5 vs P1", p1, d["P5"], 2e-3, dx=-500.0, dz=-10.0)
+    p6 = d["P6"]
+    check("P6", "average radius FCP-ACP m", "valid, differs from P1", meta(p6, "averageRadius"),
+          isinstance(meta(p6, "averageRadius"), float) and abs(meta(p6, "averageRadius") - meta(p1, "averageRadius")) > 0.01)
+
+    width = max(len(r[1]) for r in RESULTS)
+    fails = 0
+    for case, what, expected, actual, ok in RESULTS:
+        fails += 0 if ok else 1
+        print("%-4s %-9s %-*s expected %-22s actual %s" % ("ok" if ok else "FAIL", case, width, what, expected, actual))
+    print("%d / %d pass" % (len(RESULTS) - fails, len(RESULTS)))
+    return fails
+
+
 if __name__ == "__main__":
     prims = primitives()
+    if "--dump" not in sys.argv:
+        sys.exit(1 if run_checks(prims) else 0)
     if "--dump" in sys.argv:
         for k, v in prims.items():
             d = v["data"]
