@@ -315,6 +315,85 @@ def check_baselines(features):
     return failed
 
 
+DEFLECTION_SCRIPT = r'''
+function(context is Context, queries)
+{
+    var out = [];
+    for (var fid in [FIDS])
+    {
+        var params = [];
+        for (var j = 0; j <= 400; j += 1)
+        {
+            params = append(params, j / 400);
+        }
+        for (var e in evaluateQuery(context, qCreatedBy(makeId(fid) + "deflCurve", EntityType.EDGE)))
+        {
+            for (var tl in evEdgeTangentLines(context, { "edge" : e, "parameters" : params }))
+            {
+                out = append(out, "P|" ~ fid ~ "|" ~ toString(tl.origin[0] / millimeter) ~ "|" ~ toString(tl.origin[2] / millimeter));
+            }
+        }
+    }
+    return out;
+}
+'''
+
+
+def check_deflections(features):
+    """D1-D4 (Estimate Deflection, reaction moment 30 N m): D2 (FCP picked on the +X tip) must equal D1 (no FCP);
+    D3 (the X-mirrored ski with its FCP picked) must be the mirror of D1 up to the one-cell discretisation of the
+    moment step (the step sits on a grid node, integrated left to right); D4 (mirrored, no FCP: the old +Y moment)
+    must NOT be. Returns the number of failures."""
+    cases = {f["name"][:2]: f["featureId"] for f in features
+             if f.get("featureType") == "estimateDeflection" and f["name"][:3] in ("D1 ", "D2 ", "D3 ", "D4 ")}
+    if len(cases) != 4:
+        print("FAIL D1-D4 -- estimateDeflection cases missing (%s)" % sorted(cases))
+        return 1
+    r = c.post(f"{BASE}/featurescript", json_data={"script": DEFLECTION_SCRIPT.replace("FIDS", ", ".join('"%s"' % v for v in cases.values()))})
+    by_fid = {v: k for k, v in cases.items()}
+    pts = {}
+    for line in strings(r.get("result")):
+        parts = line.split("|")
+        if parts[0] == "P":
+            pts.setdefault(by_fid[parts[1]], []).append((float(parts[2]), float(parts[3])))
+    if any(len(pts.get(k, [])) < 2 for k in cases):
+        print("FAIL D1-D4 -- deflection curves missing (%s)" % {k: len(v) for k, v in pts.items()})
+        return 1
+
+    def z_at(curve, x):
+        cs = sorted(curve)
+        for (x0, z0), (x1, z1) in zip(cs, cs[1:]):
+            if x0 <= x <= x1:
+                return z0 + (z1 - z0) * ((x - x0) / (x1 - x0) if x1 > x0 else 0.0)
+        return None
+
+    def dev(a, b, mirror):
+        """max |z_a(x) - z_b(+-x)| over a's samples (b mirrored when asked)."""
+        worst = 0.0
+        for x, z in a:
+            zb = z_at(b, -x if mirror else x)
+            if zb is not None:
+                worst = max(worst, abs(z - zb))
+        return worst
+
+    failed = 0
+    peak = max(abs(z) for x, z in pts["D1"])
+    same = dev(pts["D2"], pts["D1"], False)
+    ok = same < 1e-6
+    failed += not ok
+    print("%s D2 (FCP on the +X tip) == D1 (no FCP) -- max dz %.2g mm (tol 1e-6; D1 peak %.3f mm)" % ("PASS" if ok else "FAIL", same, peak))
+    mir = dev(pts["D3"], pts["D1"], True)
+    old = dev(pts["D4"], pts["D1"], True)
+    ok = mir < 0.02 * peak and mir < 0.1 * old
+    failed += not ok
+    print("%s D3 (mirrored ski, FCP picked) is the mirror of D1 -- max dz %.3g mm (< 2%% of peak and < 10%% of D4's %.3g mm)"
+          % ("PASS" if ok else "FAIL", mir, old))
+    ok = old > 0.05 * peak
+    failed += not ok
+    print("%s D4 (mirrored, no FCP) is NOT the mirror of D1 (old behaviour, moment about +Y) -- max dz %.3g mm" % ("PASS" if ok else "FAIL", old))
+    return failed
+
+
 def main():
     feats = c.get(f"{BASE}/features")
     states = feats["featureStates"]
@@ -345,6 +424,7 @@ def main():
         failed += not ok
         print("PASS" if ok else "FAIL", f["name"], "--", text)
     failed += check_baselines(feats["features"])
+    failed += check_deflections(feats["features"])
     print("%d failed" % failed if failed else "all passed")
     return 1 if failed else 0
 
