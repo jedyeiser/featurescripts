@@ -19,6 +19,15 @@ export enum PrimitiveSource
     INPUT
 }
 
+/** How a picked datum places the measuring frame. */
+export enum PrimitiveDatumUse
+{
+    annotation { "Name" : "Origin only (world axes)" }
+    ORIGIN,
+    annotation { "Name" : "Coordinate system (connector axes)" }
+    COORDINATE_SYSTEM
+}
+
 /** The station pair the Table 2 average radius is taken between. */
 export enum PrimitiveRadiusBetween
 {
@@ -50,10 +59,11 @@ export enum PrimitiveTableKind
 export const PRIMITIVE_ATTRIBUTE = "publishPrimitive";
 export const PRIMITIVE_SCHEMA = "primitive/1";
 
-/** Cell text for rows that are present but not computed yet. */
-export const PRIMITIVE_PHASE_2 = "not computed (phase 2)";
 /** Cell text for a value that could not be found on this geometry. */
 export const PRIMITIVE_NOT_FOUND = "n/a";
+
+/** A baseline whose largest height above the FCP - ACP chord (within the RSL) is below this is flat: no rocker contacts, minima or camber. */
+export const PRIMITIVE_FLAT_BASELINE = 0.01 * millimeter;
 
 /** Radius plot scale: 10 mm of plot height per 1 m of radius (integrateFootprint "10mm [y] = 1m [radius]"). */
 export const PRIMITIVE_RADIUS_PLOT_SCALE = 0.01;
@@ -62,6 +72,25 @@ export const PRIMITIVE_DATA_POINTS_BOUNDS = { (unitless) : [2, 21, 501] } as Int
 export const PRIMITIVE_BAND_GAP_BOUNDS = { (millimeter) : [0, 50, 5000] } as LengthBoundSpec;
 export const PRIMITIVE_RADIUS_LIMIT_BOUNDS = { (meter) : [1, 50, 10000] } as LengthBoundSpec;
 export const PRIMITIVE_TICK_BOUNDS = { (millimeter) : [0.1, 10, 500] } as LengthBoundSpec;
+export const PRIMITIVE_TEXT_HEIGHT_BOUNDS = { (millimeter) : [1, 20, 500] } as LengthBoundSpec;
+
+/** Radius plot frame: ticks (and the optional dashed grid) every 10 m of radius, short ticks on the two end axes. */
+export const PRIMITIVE_RADIUS_GRID_STEP = 10;
+export const PRIMITIVE_AXIS_TICK = 3 * millimeter;
+export const PRIMITIVE_GRID_DASH = 4 * millimeter;
+export const PRIMITIVE_GRID_GAP = 4 * millimeter;
+
+/** Appearance per band (Part Studio colours; frame, ticks, grid and tick labels grey). */
+export const PRIMITIVE_COLOURS = {
+        "baseline" : color(0.09, 0.32, 0.69),
+        "profile" : color(0.0, 0.5, 0.25),
+        "footprint" : color(0.85, 0.4, 0.0),
+        "radius" : color(0.75, 0.1, 0.1),
+        "frame" : color(0.5, 0.5, 0.5)
+    };
+
+/** Band titles (text geometry, "Labels"). */
+export const PRIMITIVE_BAND_TITLES = { "baseline" : "BASELINE", "profile" : "PROFILE", "footprint" : "FOOTPRINT", "radius" : "RADIUS (m)" };
 
 /** Band keys, in stacking order (top to bottom), and their body-name labels. */
 export const PRIMITIVE_BANDS = ["baseline", "profile", "footprint", "radius"];

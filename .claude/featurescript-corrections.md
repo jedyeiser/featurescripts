@@ -1802,6 +1802,8 @@ brought no FCP / ACP / MRS / MP connectors: they are attached to sketch entities
 FRCP sits exactly 130 / 50 from the contacts. It snaps fcp_pt / acp_pt to the nearest of 200 MIDPOINT samples (exact
 only when FCP / ACP is a chain end, as on Generate baseline output); FULL_BASELINE runs on into the tip and tail.
 **Fix** (call site, Export primitive): re-measure FRCPl / ARCPl / FCPh / ACPh from the baseline point exactly at the
-FCP / ACP x (Newton on the chain). Upstream fix pending in analyzeBaseline.fs.
+FCP / ACP x (Newton on the chain). Upstream FIXED 2026-09-28 in the xSection workspace (not yet versioned):
+fcp_pt / acp_pt / mrs_pt = chain point at the exact X (chainPointAtX, bisection); RD 20TAC now 130.000 / 50.000,
+FCPh 5.000 / ACPh 0.500 (were 5.098 / 0.485). Remove the Export primitive workaround once it pins that version.
 **Lesson**: solve for a named point (x = x_FCP) instead of picking the nearest sample; a test fixture whose contacts
 are chain ends hides the error.

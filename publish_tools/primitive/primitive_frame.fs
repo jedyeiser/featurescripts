@@ -1,13 +1,13 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_types.fs
-export import(path : "ecde24520874030ab412c981", version : "9cfc4ec63350438da9517ec1");
+export import(path : "ecde24520874030ab412c981", version : "05c36021534085bb4f28766b");
 
 /**
  * Export Primitive -- frames and chains.
  *
- * Everything is measured in the LOCAL frame: the datum mate connector (or the world origin) is moved onto the
- * world origin, so x runs along the datum X, z is the datum Z (up) and y is across. The primitive's working
+ * Everything is measured in the LOCAL frame: the datum (see primitiveDatum; the world origin when none) is moved onto
+ * the world origin, so x runs along the datum X, z is the datum Z (up) and y is across. The primitive's working
  * copies (section, outline, baseline) are transformed into that frame; the finished composite is moved back.
  *
  * A chain is an ordered run of edges: { edges, flipped, lengths, starts, total }. Its arc position `a` runs from
@@ -58,19 +58,26 @@ export function primitivePoints(context is Context, picks is Query) returns arra
 }
 
 /**
- * The datum frame: the picked mate connector, or the world origin with world axes when none is picked.
- * X runs along the ski, Z is up, Y across; the profile / drawing plane is the datum XZ plane.
+ * The datum frame; X runs along the ski, Z is up, Y across, and the profile / drawing plane is the datum XZ plane.
+ *     nothing picked       the world origin with world axes
+ *     ORIGIN               the picked vertex / point / connector origin with WORLD axes: x is measured along world X
+ *                          from the datum point (a ski's own connectors often have Z along the ski)
+ *     COORDINATE_SYSTEM    the picked mate connector's own frame, axes as they are
  */
-export function primitiveDatum(context is Context, datum is Query) returns CoordSystem
+export function primitiveDatum(context is Context, datum is Query, uses is PrimitiveDatumUse) returns CoordSystem
 {
     if (isQueryEmpty(context, datum))
     {
         return coordSystem(vector(0, 0, 0) * meter, vector(1, 0, 0), vector(0, 0, 1));
     }
+    if (uses == PrimitiveDatumUse.ORIGIN)
+    {
+        return coordSystem(primitivePoint(context, datum, "the datum", "datum"), vector(1, 0, 0), vector(0, 0, 1));
+    }
     const connectors = evaluateQuery(context, qBodyType(qOwnerBody(datum), BodyType.MATE_CONNECTOR));
     if (size(connectors) == 0)
     {
-        throw regenError("The datum must be a mate connector.", ["datum"]);
+        throw regenError("Datum uses Coordinate system: the datum must be a mate connector.", ["datum", "datumUses"]);
     }
     return evMateConnector(context, { "mateConnector" : connectors[0] });
 }
