@@ -19,10 +19,10 @@ Cases (names carry the expectation):
   P7  = P1 with the datum = the derived MRS connector (Z along the ski), Datum uses ORIGIN: same values, x - 885
   P8  = P1 + Target EI EI_const_150 + typed tip / tail block names: deflection = P L^3 / 48 EI (L = RSL), block rows
   P9  = P5 with Datum uses COORDINATE_SYSTEM (the connector is world-aligned): P5 values
-  P10 = P1 with the dashed radius grid on and labels off: P1 values, grid dashes at every 10 m, no text
+  P10 = P1 with Grid lines on and labels off: P1 values, ONE light-grey GRID edge per 10 m level (2026-09-29), no text
   P11 = P1 + extra key points FB_Mass_location (the MP connector, key line) and "Mass AB" (Datum_x500_z10, no key
-        line), Key lines on, Plot region WIDEST: key rows + forced data rows at x 807.97 / 500 (23 rows), points,
-        ticks, key lines at FCP MP MRS ACP FB_Mass_location
+        line), Key lines on, Plot region WIDEST: key rows + forced data rows at x 807.97 / 500 (39 rows), points,
+        ticks, key lines (one edge each) at FCP MP MRS ACP FB_Mass_location
   P12 = P1 with Plot CURVATURE, Plot region INFLECTION: curvature band (1/m) between the inflections, tables = P1
   P13 = extra key points "FB mass" + "FB_mass" (the same id): ERROR on the item
   P15 = P1 with Plot x-range INFLECTION (radius): the fixed frame (2026-09-29) -> axes, reference line and band
@@ -35,6 +35,8 @@ Cases (names carry the expectation):
         (-31.43, 3.38) mm on Top, extruded REMOVE through all) cut into the tail of a SECOND derived copy
         (Bite copy: the derived VOLUME copied in place), baseline FULL_BASELINE, footprint from VOLUME, picks as P1:
         the bite appears in the footprint band with its true shape (unwrap = isometry of the base)
+
+Data rows: every case uses 35 (the feature default since 2026-09-29): P1 -> 37 rows (+ XS1, XS2; MRS is a grid row).
 
 Studio: "Primitive tests" by default; PRIMITIVE_STUDIO=<name> builds (and creates) another one. NEW=0 leaves out
 the 2026-09-28 parameters (datumUses, targetEI, tip / tail block), for a run against the phase-1 code.
@@ -249,7 +251,7 @@ def ei_sketch():
 
 
 def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseline=None, footprint=None,
-              region="FULL", points=21, qv="", datum_uses="ORIGIN", ei=None, tip_block="", tail_block="",
+              region="FULL", points=35, qv="", datum_uses="ORIGIN", ei=None, tip_block="", tail_block="",
               grid=False, labels=True, plot="RADIUS", curvature_scale="50 mm", extras=(), key_lines=False, junctions=True,
               radius_axis_min="10", max_curvature="0.1", curvature_axis_min="0.02", ei_axis_max="450"):
     params = [
@@ -343,10 +345,10 @@ def cases(dv, mi, dm, ei, bt=None):
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X),
               datum='qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.MATE_CONNECTOR)' % dm,
               datum_uses="COORDINATE_SYSTEM", prefix="P9 TAC datum CS")),
-        ("P10 TAC as P1, dashed radius grid, no labels -> P1 values, GRID dashes, no text, INFO",
+        ("P10 TAC as P1, radius grid lines, no labels -> P1 values, 1 GRID edge per level, no text, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P10 TAC grid",
               grid=True, labels=False)),
-        ("P11 TAC as P1 + extra key points, key lines, plot region WIDEST -> 23 data rows, extra rows / points / ticks / lines, INFO",
+        ("P11 TAC as P1 + extra key points, key lines, plot region WIDEST -> 39 data rows, extra rows / points / ticks / lines, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P11 TAC extra",
               extras=[("FB_Mass_location", mc_at(dv, MP_X), True), ("Mass AB", dm_q, False)], key_lines=True, region="WIDEST")),
         ("P12 TAC as P1, plot CURVATURE, region INFLECTION -> curvature band 1/m, tables = P1, INFO",

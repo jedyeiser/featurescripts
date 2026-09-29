@@ -5,8 +5,8 @@ import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 DefineIconNamespace::import(path : "5952d6dd4ff6b28dc31edc36", version : "22380bf432ee24dce3f8b51e");
 // IMPORT: close_case_icon.svg (feature icon)
 CloseIconNamespace::import(path : "a541081abe5d434e4a46669f", version : "920993e17dc692908d2d23a8");
-// IMPORT: case_pattern_icon.svg (feature icon)
-PatternIconNamespace::import(path : "43ecc8444d55ee8be1ecba57", version : "7de38dec2759e6efe06cf4e7");
+// IMPORT: case_icon.svg (feature icon)
+CaseIconNamespace::import(path : "a907927a4685054579fd324b", version : "cbf86416cfcbdb84156e27a5");
 
 /**
  * Case Pattern v3: a repeatable feature chain, written like a function and called per case.
@@ -266,7 +266,7 @@ export const defineCase = defineFeature(function(context is Context, id is Id, d
 // Case
 // ---------------------------------------------------------------------------------------------
 
-annotation { "Feature Type Name" : "Case", "Icon" : PatternIconNamespace::BLOB_DATA,
+annotation { "Feature Type Name" : "Case", "Icon" : CaseIconNamespace::BLOB_DATA,
         "Editing Logic Function" : "caseEditLogic",
         "Feature Type Description" : "One further case of a Define case: a selection per input and a value per value. It runs nothing by itself; list it in a Close case, which runs it." }
 export const caseFeature = defineFeature(function(context is Context, id is Id, definition is map)

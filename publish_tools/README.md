@@ -137,10 +137,10 @@ Input wires (flat FPT_L + FPT_R, taken as already unwrapped and aligned at MRS; 
 (array `extraPoints`: keyName + keyPoint (vertex / point / MC) + showKeyLine; name -> op-id key via primitiveKey, an
 empty, reserved (FCP ACP MRS MP.. XS1 XS2 TIP TAIL, footprint point names) or duplicate key is a regenError on that
 item), Data points N (+ "Force key locations", id `forceStations`: rows at XS1 / MRS / XS2 and every extra key point
-inside the RSL), Station numbers (default on: # column on Key locations and Data), Plot (`plotMode` RADIUS default /
+inside the RSL), "Show # column in RSL data (table 6)" (id `stationNumbers`, default on; table 6 only since 2026-09-29), Plot (`plotMode` RADIUS default /
 CURVATURE), Plot region (`plotRegion`, FULL default / RSL (value id CONTACTS) / WIDEST / INFLECTION: the x-range of the
 radius / curvature band -- plot, reference, axes, key and junction ticks), Curvature scale (5 mm per 0.01 1/m), Layout
-(band gap 50 mm, radius plot limit 50 m, tick 10 mm, EI scale 2 N*m^2 per mm, Dashed grid default OFF, Key lines
+(band gap 50 mm, radius plot limit 50 m, tick 10 mm, EI scale 2 N*m^2 per mm, Grid lines (id `dashedGrid`) default OFF, Key lines
 default OFF, Junction ticks default ON, Labels default ON + Text height 20 mm), Query variable (default `primitive`).
 The average radius is ALWAYS taken between the inflection points (2026-09-28; the old "Average radius between"
 parameter `radiusBetween` is gone -- its saved value is ignored, so saved features keep the full radius plot). The name prefix
@@ -163,24 +163,24 @@ decimals every multiple that keeps them 1.25 label heights apart (default: 0 and
 the inflection, curvature jumps +0.047 -> -0.98);
 REFERENCE line; TICKs at FCP ACP MRS MP XS1 XS2, extra key points and FB/AB widest + inflection (inside the plot region);
 `FOOTPRINT JUNCTION` / `RADIUS JUNCTION` 3 mm ticks at every +y footprint edge junction (op ids from u in um); `KEY
-LINE <name>` dashed verticals (4 / 4 mm, opPattern) over all bands at FCP MP(s) MRS ACP + extra points with Show key line; scale frame: `RADIUS AXIS TIP` / `TAIL`
+LINE <name>` verticals (ONE light-grey edge each since 2026-09-29) over all bands at FCP MP(s) MRS ACP + extra points with Show key line; scale frame: `RADIUS AXIS TIP` / `TAIL`
 at the band's two x ends over every 10 m level covering the plot (outward, capped at the limit), 3 mm `RADIUS TICK +10
-TIP` ticks outward at each level on both axes, optional `RADIUS GRID -20` dashed lines (4 mm dash / 4 mm gap, one
-opPattern per level) at every level but 0). Each band has a `<band> DATUM` point at x = 0 on its reference line.
+TIP` ticks outward at each level on both axes, optional `RADIUS GRID -20` grid lines (ONE light-grey edge per level
+since 2026-09-29) at every level but 0). Each band has a `<band> DATUM` point at x = 0 on its reference line.
 Labels (outline text as wires: sketch text -> opExtractWires of its REGION edges, the text's own curves overlap):
 `<band> TITLE` (BASELINE / PROFILE / FOOTPRINT / RADIUS (m)) right-aligned in one column left of everything, centred on
 each band's reference line; `RADIUS LABEL +10` numbers (0.6 x text height) left of the low-x axis. Colours
 (APPEARANCE, kept by wires and points): baseline blue, profile green, footprint orange, radius plot red, reference /
-ticks / frame / grid / numbers / datum points grey, titles in their band's colour. All rows live in the composite's attribute `publishPrimitive` (schema primitive/1)
+ticks / frame / numbers / datum points grey, grid and key lines light grey (0.8), titles in their band's colour. All rows live in the composite's attribute `publishPrimitive` (schema primitive/1)
 and in the producer slot (Extract variables keys: primitive, rsl, averageRadius, naturalRadiusWidest,
 naturalRadiusInflection, taperAngleWidest, taperAngleInflection, deflection, stiffness (0 = no target EI); queries primitive, baseline, profileBottom,
-profileTop, footprint, radius or curvature). Tables: add "Primitive tables" (filter "Primitives containing", pick "Table"; the data table is "6 Data (RSL)", 4 stays reserved for the SW rout table).
+profileTop, footprint, radius or curvature). Tables: add "Primitive tables" (filter "Primitives containing", pick "Table"; the data table is "6 RSL data", 4 stays reserved for the SW rout table).
 
 Definitions: x from the datum; s = distance along the bottom wire from the datum, same direction as x (signed arc
 length, zero at the bottom-wire point at x = 0, ds/dx > 0 whichever way the tip points; past an end of the wire it runs
 on along that end's tangent; MCl's s is measured the same way, not taken from analyzeBaseline; 2026-09-28 user rule);
-Key locations and Data rows sorted by x ascending, `station` 0.. from the lowest x (stored always, # column with
-"Station numbers"); h along the bottom wire's normal into the
+Key locations and Data rows sorted by x ascending, `station` 0.. from the lowest x (stored always; the # column only
+on table 6, see below); h along the bottom wire's normal into the
 ski; XS1 / XS2 halfway FCP..MRS / MRS..ACP in x; RSL = |x(ACP) - x(FCP)| in the datum; ski_thck = normal thickness;
 baseline_height = baseline above the straight line through its FCP / ACP points; Table 1 top lengths run between
 the bottom stations carried to the top along the normal.
@@ -273,3 +273,22 @@ analyzeBaseline (xSection) FCP/ACP sample-grid snap: FIXED upstream, re-pinned t
 * Tests: P15 (radius, region INFLECTION), P16 (curvature, region FULL), SD1 (new Station definition, spec default);
   P12 rebuilt at the new 50 mm default. 135 / 135 in "Primitive tests (agent)" (incl. --before P1-P6 vs the session
   start); after the unwrap change 129 / 129 + every value = the pre-change snapshot. Left with P1 + P8 active, SD1 kept.
+
+### Solid grid / key lines, table 6 names (2026-09-29, user decisions)
+
+* Key lines and grid lines are ONE solid edge each (primitiveGridLine; was primitiveDashedLine: a 4 mm seed dash +
+  opPattern copies), still composite members named by key / level (`KEY LINE <name>`, `<band> GRID +10`), appearance
+  light grey (PRIMITIVE_COLOURS.grid 0.8/0.8/0.8); the user restyles them dashed / coloured in the drawing.
+  "Dashed grid" is now labelled "Grid lines" (id `dashedGrid` unchanged). P10 (grid on): grid 1344 -> 6 edges, composite
+  1444 -> 106 edges; P11 (key lines on): key lines 615 -> 5 edges, composite 1426 -> 816. Regen (REST re-post, only that
+  case active): P10 3.09 -> 3.18 s, P11 3.38 -> 3.55 s, P1 3.05 -> 3.51 s -- the increase is the tests' rows going
+  21 -> 35 (the default; P1 now 37 rows = 35 + XS1 + XS2), not the lines.
+* "#" column: only table 6 ("6 RSL data", enum value DATA unchanged; was "6 Data (FCP to ACP)"); table 3 has none.
+  Option relabelled "Show # column in RSL data (table 6)" (id `stationNumbers`). A table 6 row whose x is within
+  0.01 mm of FCP, ACP, XS1, MRS, XS2, MP(s) or an extra key point shows that key's name in the # cell (several joined with
+  "/", e.g. "MP/FB_Mass_location"); numbers still count every row (0 at the lowest x). Data rows store both
+  `station` (number) and `name` ("" when none). Station count unchanged (forced XS1 / XS2 rows -> 37 at 35 points).
+* Tests: build uses 35 rows for every case; checks updated (P1 37 rows, named rows ACP 0 / XS2 / MRS 18 / XS1 / FCP 36,
+  continuous numbers; P11 39 rows incl. "Mass AB" + "MP/FB_Mass_location"; grid = 1 body / 1 edge per level; key
+  lines = 1 edge each, light grey). 132 / 132 in "Primitive tests (agent)" (left with P1 + P8 + SD1 active). The
+  custom table's rendering itself is not read back (no REST endpoint for FS tables); it only maps the stored rows.

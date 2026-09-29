@@ -169,8 +169,9 @@ it with nothing still leaves the name). So the aim is fewer names, reused.
   Build sketches on geometry derived from the inputs. Untested live.
 - **Not in a pattern**: sheet metal and derived features.
 - **Cost**: every rebuild runs the body once per case (plus case 1).
-- **Dialog labels**: after *Update from Define case* the grey slot labels may show old names until the dialog is
-  reopened; the stored values are right.
+- **Dialog labels**: in a new Case, the grey slot names (`#top`, `#rim`) stay blank right after picking the Define
+  case -- the slots, and the values pre-filled from case 1, are there. Press *Update from Define case* once (or
+  reopen the dialog) and the names appear. Onshape repaints a read-only field only when it changes while visible.
 - **From v2**: Case pattern features are gone. Each of its case rows becomes a Case feature, listed in the Close case,
   and the Close case's outputs are typed as query-variable names.
 

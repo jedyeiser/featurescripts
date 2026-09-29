@@ -10,6 +10,8 @@ statuses, and compares:
   * P8 (target EI 150 N*m^2 constant): deflection = P L^3 / 48 EI, stiffness = 48 EI (1 in) / L^3, block rows;
   * only rows with data (no "n/a" / phase-2 rows); P1's flat baseline has no rocker / camber rows or points;
   * structure: composite members, band bodies, key points;
+  * 2026-09-29: key lines and grid lines are ONE light-grey edge each (were dash segments); P1 (35 rows, the default)
+    has 37 RSL data rows (+ XS1 / XS2), rows at key locations carry the key's name, numbers stay continuous;
   * fixed chart axes (2026-09-29): P1 / P6 / P11 / P15 (radius, regions FULL / RSL / WIDEST / INFLECTION) share one
     frame geometry and band stacking, as do P12 / P16 (curvature INFLECTION / FULL); P16's full-ski curvature stays
     inside its axis; P8's EI frame spans the volume and 0 .. 450 N*m^2;
@@ -48,12 +50,14 @@ function(context is Context, queries)
     {
         const data = getAttribute(context, { "entity" : body, "name" : "publishPrimitive" });
         var counts = {};
+        var edgeCounts = {};
         var colours = {};
         var extents = {};
         for (var m in evaluateQuery(context, qContainedInCompositeParts(body)))
         {
             const name = getProperty(context, { "entity" : m, "propertyType" : PropertyType.NAME });
             counts[name] = (counts[name] == undefined ? 0 : counts[name]) + 1;
+            edgeCounts[name] = (edgeCounts[name] == undefined ? 0 : edgeCounts[name]) + size(evaluateQuery(context, qOwnedByBody(m, EntityType.EDGE)));
             const a = getProperty(context, { "entity" : m, "propertyType" : PropertyType.APPEARANCE });
             colours[name] = round(a.red * 100) / 100 ~ "/" ~ round(a.green * 100) / 100 ~ "/" ~ round(a.blue * 100) / 100;
             // x / z ranges (mm) of the plot band's plot, reference line, junction and key-location ticks, per body (world frame).
@@ -102,7 +106,7 @@ function(context is Context, queries)
         {
             members = append(members, entry.key);
         }
-        out = append(out, "JSON " ~ toString({ "data" : data, "members" : members, "counts" : counts, "colours" : colours, "extents" : extents, "shapes" : shapes,
+        out = append(out, "JSON " ~ toString({ "data" : data, "members" : members, "counts" : counts, "edges" : edgeCounts, "colours" : colours, "extents" : extents, "shapes" : shapes,
                     "name" : getProperty(context, { "entity" : body, "propertyType" : PropertyType.NAME }),
                     "bom" : getProperty(context, { "entity" : body, "propertyType" : PropertyType.EXCLUDE_FROM_BOM }) }));
     }
@@ -338,7 +342,7 @@ def run_checks(prims, before=None):
     sf = rows(p1, "scaleFactors")
     check("P1", "running surface top/bottom %", "slightly > 100", sf["runningSurface"]["ratio"], 100.0 < sf["runningSurface"]["ratio"] < 100.1)
     check("P1", "tip top/bottom %", "< 100", sf["tip"]["ratio"], sf["tip"]["ratio"] < 100.0)
-    check("P1", "data rows (N 21 incl. XS1/MRS/XS2)", 21, len(p1["data"]), len(p1["data"]) == 21)
+    check("P1", "RSL data rows (N 35 + XS1 + XS2; MRS is a grid row)", 37, len(p1["data"]), len(p1["data"]) == 37)
     at_fcp = [r for r in p1["data"] if near(r["x"], 1625.0, 1e-3)]
     check("P1", "ski_thck at FCP mm (X-Sect SPA)", 6.75, at_fcp and at_fcp[0]["skiThck"], at_fcp and near(at_fcp[0]["skiThck"], 6.75, 0.01))
     # 2026-09-28 station numbers: Key locations and Data sorted by x ascending, # from 0 at the lowest x
@@ -347,6 +351,17 @@ def run_checks(prims, before=None):
         st = [r.get("station") for r in p1[sec]]
         check("P1", "%s by x ascending, station 0.." % sec, "sorted, 0..%d" % (len(xs) - 1), "%s .. %s, %s" % (xs[0], xs[-1], st[:3]),
               xs == sorted(xs) and st == [float(i) for i in range(len(xs))])
+    # 2026-09-29: RSL data rows at a key location carry its name (the # cell shows it); numbers count every row.
+    named = {r["name"]: r["station"] for r in p1["data"] if r.get("name")}
+    want_named = {"ACP": 145.0, "XS2": 515.0, "MRS": 885.0, "XS1": 1255.0, "FCP": 1625.0}
+    xs_named = {r["name"]: r["x"] for r in p1["data"] if r.get("name")}
+    check("P1", "RSL data: rows named ACP XS2 MRS XS1 FCP at their x (MP 807.97 is no sample: unnamed), others ''",
+          sorted(want_named), xs_named,
+          set(xs_named) == set(want_named) and all(near(xs_named[k], v, 1e-3) for k, v in want_named.items())
+          and all(r.get("name") == "" for r in p1["data"] if r["name"] not in want_named))
+    check("P1", "RSL data: named rows keep their number (ACP 0, MRS 18, FCP 36)", "0 / 18 / 36",
+          "%s / %s / %s" % (named.get("ACP"), named.get("MRS"), named.get("FCP")),
+          named.get("ACP") == 0.0 and named.get("MRS") == 18.0 and named.get("FCP") == 36.0)
     kx = [(r["key"], r["station"]) for r in rows(p1, "keyLocations").values() if r["key"] in ("ACP", "FCP")]
     check("P1", "ACP (x 145) = station 1 after TAIL, FCP before TIP", "ACP 1, FCP n-2", kx,
           dict(kx).get("ACP") == 1.0 and dict(kx).get("FCP") == float(len(p1["keyLocations"]) - 2))
@@ -425,11 +440,11 @@ def run_checks(prims, before=None):
     check("P1", "tick levels every 10 m, 0 incl., within the limit", "step 10, |max| <= 50",
           levels, levels and all(b - a == 10 for a, b in zip(levels, levels[1:])) and 0 in levels and max(abs(v) for v in levels) <= 50)
     grid1 = [m for m in m1 if " RADIUS GRID " in m]
-    check("P1", "dashed grid off by default", "none", grid1, not grid1)
-    grid10 = {m: full["P10"]["counts"][m] for m in m10 if " RADIUS GRID " in m}
+    check("P1", "grid lines off by default", "none", grid1, not grid1)
+    grid10 = {m: (full["P10"]["counts"][m], full["P10"]["edges"][m]) for m in m10 if " RADIUS GRID " in m}
     lv10 = sorted(int(m.split()[-1]) for m in grid10)
-    check("P10", "dashed grid: a line of dashes at every level but 0", "levels = P1 ticks - 0, > 100 dashes each",
-          "%s %s" % (lv10, sorted(set(grid10.values()))), lv10 == [v for v in levels if v != 0] and all(n > 100 for n in grid10.values()))
+    check("P10", "grid lines: ONE body / edge at every level but 0 (2026-09-29, was dashes)", "levels = P1 ticks - 0, 1 edge each",
+          "%s %s" % (lv10, sorted(set(grid10.values()))), lv10 == [v for v in levels if v != 0] and all(n == (1, 1) for n in grid10.values()))
     text10 = [m for m in m10 if m.endswith(" TITLE") or " RADIUS LABEL " in m]
     check("P10", "labels off: no text", "none", text10, not text10)
     compare("P10 vs P1", p1, d["P10"], 1e-6)
@@ -444,7 +459,7 @@ def run_checks(prims, before=None):
     bad = ["%s %s" % (k, col.get("P1 TAC PRIMITIVE " + k)) for k, v in want.items() if norm(col.get("P1 TAC PRIMITIVE " + k, "0/0/0")) != norm(v)]
     check("P1", "appearance per band (read back from the composite members)", "band colours", bad or "all", not bad)
     grey = norm(full["P10"]["colours"].get("P10 TAC grid PRIMITIVE RADIUS GRID +10", "0/0/0"))
-    check("P10", "grid dashes grey (pattern copies keep it)", "0.5/0.5/0.5", grey, grey == "0.5/0.5/0.5")
+    check("P10", "grid lines light grey", "0.8/0.8/0.8", grey, grey == "0.8/0.8/0.8")
 
     # 2026-09-28 EI band (P8 only: target EI 150 N*m^2, scale 2 N*m^2 per mm -> 75 mm high, ticks 0..150 by 50)
     m8 = full["P8"]["members"]
@@ -560,21 +575,29 @@ def run_checks_b(d, full):
     check("P11", "key locations sorted by x incl. extras, stations 0..", "sorted, P1 + 2", "%d rows" % len(xs),
           xs == sorted(xs) and st == [float(i) for i in range(len(xs))] and len(xs) == len(p1["keyLocations"]) + 2)
     dx = [r["x"] for r in p11["data"]]
-    check("P11", "extra points forced into the data table (x 807.97, 500): 23 rows", 23,
+    check("P11", "extra points forced into the data table (x 807.97, 500): 39 rows", 39,
           "%d rows, 807.97 %s, 500 %s" % (len(dx), any(near(x, 807.9668, 1e-3) for x in dx), any(near(x, 500.0, 1e-3) for x in dx)),
-          len(dx) == 23 and any(near(x, 807.9668, 1e-3) for x in dx) and any(near(x, 500.0, 1e-3) for x in dx))
+          len(dx) == 39 and any(near(x, 807.9668, 1e-3) for x in dx) and any(near(x, 500.0, 1e-3) for x in dx))
     common = [(r, q) for r in p11["data"] for q in p1["data"] if near(r["x"], q["x"], 1e-6)]
     same = all(near(r[f], q[f], 1e-6) or r[f] == q[f] for r, q in common for f in q if f != "station")
-    check("P11", "other data rows and metadata = P1", "equal, 21 common", "%d common rows" % len(common),
-          same and len(common) == 21 and p11["metadata"] == p1["metadata"])
+    check("P11", "other data rows and metadata = P1", "equal, 37 common", "%d common rows" % len(common),
+          same and len(common) == 37 and p11["metadata"] == p1["metadata"])
+    n11 = {r["name"]: r["station"] for r in p11["data"] if r.get("name")}
+    check("P11", "RSL data: forced extra rows named (MP coincides with FB_Mass_location -> joined), numbers continuous",
+          "Mass AB, MP/FB_Mass_location; 0..38", sorted(n11),
+          set(n11) == {"ACP", "XS2", "MRS", "XS1", "FCP", "Mass AB", "MP/FB_Mass_location"}
+          and [r["station"] for r in p11["data"]] == [float(i) for i in range(len(p11["data"]))])
     m11 = full["P11"]["members"]
     want = ["PROFILE FB_Mass_location", "PROFILE Mass AB", "RADIUS TICK FB_Mass_location", "RADIUS TICK Mass AB"]
     missing = [n for n in want if "P11 TAC extra PRIMITIVE " + n not in m11]
     check("P11", "extra points: profile points + radius ticks", "present", missing or "all", not missing)
     lines = sorted(m.split(" KEY LINE ")[1] for m in m11 if " KEY LINE " in m)
-    dashes = [count(full["P11"], "KEY LINE " + n) for n in lines]
-    check("P11", "key lines FCP MP MRS ACP + FB_Mass_location (not Mass AB), dashed", "5 lines, > 50 dashes",
-          "%s %s" % (lines, dashes), lines == sorted(["FCP", "MP", "MRS", "ACP", "FB_Mass_location"]) and min(dashes or [0]) > 50)
+    norm = lambda v: "/".join("%g" % float(x) for x in str(v).split("/"))
+    kl = {n: (full["P11"]["counts"]["P11 TAC extra PRIMITIVE KEY LINE " + n], full["P11"]["edges"]["P11 TAC extra PRIMITIVE KEY LINE " + n],
+              norm(full["P11"]["colours"]["P11 TAC extra PRIMITIVE KEY LINE " + n])) for n in lines}
+    check("P11", "key lines FCP MP MRS ACP + FB_Mass_location (not Mass AB): ONE light-grey edge each (2026-09-29)",
+          "5 lines, 1 body / 1 edge, 0.8/0.8/0.8", kl,
+          lines == sorted(["FCP", "MP", "MRS", "ACP", "FB_Mass_location"]) and all(v == (1, 1, "0.8/0.8/0.8") for v in kl.values()))
     no_lines = [m for m in full["P1"]["members"] if " KEY LINE " in m]
     check("P1", "key lines off by default", "none", no_lines, not no_lines)
     check("P13", "duplicate extra key point name: no primitive", "no composite", "composite" if "P13" in d else "none", "P13" not in d)

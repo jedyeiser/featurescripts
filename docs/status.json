@@ -443,9 +443,14 @@
           "date": "2026-09-29",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-29",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "f92cc30fe674",
+      "written_hash": "a64618431008",
       "sources_hash": "cc7d27ec125f"
     },
     {

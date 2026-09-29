@@ -327,3 +327,8 @@ its FeatureList and push the frame itself; then outside clicks resolve AND the o
   outside reference + edit of outside geometry in one case.
 Open: Case dialog layout (editing logic) not yet exercised in the UI; explainer still v2; spike tab spike_outside.fs
 and "Case pattern outside-ref spikes" studio to delete; user must version the document.
+UI check 2026-09-29 (headless browser, "Case pattern tests"): existing Case dialog shows labelled slots with B's selections
+and values; Update keeps them by name; a NEW Case lays out the right slots and pre-fills values on picking the Define case,
+but the read-only slot names stay blank until Update is pressed once (repaint lag). Lesson: always cancel the dialog
+with its X before closing the browser -- closing with a dialog open SAVES it ("Changes saved when Onshape closed").
+Spike tab spike_outside.fs and the "Case pattern outside-ref spikes" studio DELETED 2026-09-29 (user OK); devtools/onshape/spike_case_outside.py kept as the record of the spike (its tab is gone). Explainer rewritten for v3.
