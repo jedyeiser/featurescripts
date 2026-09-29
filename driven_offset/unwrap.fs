@@ -4,7 +4,7 @@ import(path : "onshape/std/common.fs", version : "3070.0");
 // IMPORT: edge_offset_utils.fs (same document; export-imports curve_core: chains, classifyPoints, emitters)
 export import(path : "a2665e22c07b7a6929ce4e80", version : "3356bea0c847dcdb94230682");
 // IMPORT: undrape_utils.fs (same document; the undrape map)
-import(path : "283b8f7562a16e9c9ccc01b7", version : "2088e78f1b9decd4e628cdc6");
+import(path : "283b8f7562a16e9c9ccc01b7", version : "79fd4945bcc0c6a0ab087fa3");
 // IMPORT: unwrap_part.fs (same document; solid unwrap)
 import(path : "fc976128871c5b4b2d33a91c", version : "01c70414ddbd625dd6e582c3");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
