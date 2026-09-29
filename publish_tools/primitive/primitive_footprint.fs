@@ -779,6 +779,7 @@ export function primitiveUnwrap(context is Context, id is Id, frame is map, edge
             }
             if (size(extra) > 0)
             {
+                println("DBGEXTRA missing " ~ size(missing) ~ " levels " ~ size(extra));
                 through = addSectionLevels(context, id + "extraSections", through, extra, frame);
                 extraBodies = through.bodies;
                 var subPoints = [];

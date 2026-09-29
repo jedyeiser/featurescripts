@@ -1,5 +1,6 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 
 /**
  * THROWAWAY spike (2026-09-29): what an outside reference can and cannot do inside a Case pattern.
