@@ -1,7 +1,7 @@
 FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 // IMPORT: edge_offset_utils.fs (same document)
-export import(path : "a2665e22c07b7a6929ce4e80", version : "ff3d2909e89ded4e32a5c49b");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "3356bea0c847dcdb94230682");
 
 /**
  * UNDRAPE MAP: the flat outline of a constant-thickness plate draped over the target.
@@ -2305,10 +2305,13 @@ export function undrapeKernelSection(context is Context, kid is Id, kernel is ma
  * plane cuts a face lengthwise (the pressed step running across the stations at the tail and tip
  * U-turns), crosses an overhang, or meets an edge with no section tangent.
  *
- * CURRENT RULE: literal section-by-section. The station's own mid-surface section, from kernel sections
- * of both sides (undrapeKernelSection), exactly as everywhere else -- only measured by the kernel. The
- * user has NOT yet decided whether to blend to another rule near the ends (sections normal to the step's
- * plan direction, or a least-distortion fill); a blend would replace the body of this function.
+ * LITERAL RULE (default): section-by-section. The station's own mid-surface section, from kernel sections
+ * of both sides (undrapeKernelSection), exactly as everywhere else -- only measured by the kernel. Where the
+ * station plane turns tangent to the step wall (the apex of a U-turn) the section's wall length, and so the
+ * unrolled width, grows like a square root: the literal outline has a spike there (0.8 mm on the topsheet's tip)
+ * that no sampling resolves. BLEND (options.uTurn "blend", 2026-09-29): this function is not called for a refused
+ * station unless it holds a vertex or an end-tangent request (undrapeResolveBatch); the outline crosses the zone
+ * as the fit's cubic between the measured samples either side. The user has not chosen the default yet.
  *
  * A plane exactly through a vertex can fail in the kernel ("Failed to completely disambiguate created
  * topology"); the station is retried shifted by UNDRAPE_KERNEL_RETRIES. The frame actually used is
@@ -2486,6 +2489,10 @@ export function undrapeRimLoops(tables is array, rim is array) returns map
  *          safety cap only, the tolerance sets the density.
  *      @field deformation {boolean} : compute the deformation report (stretch / shear along the rim and bend
  *          lines); false leaves stretchMin / stretchMax / shearMax at 0.
+ *      @field uTurn {string} : "literal" (default): a refused station (the U-turns) is measured by a kernel section,
+ *          section by section as everywhere else; "blend": it is measured only when it holds a vertex or an end
+ *          tangent request, otherwise its samples are left out and the fit crosses the zone smoothly (research note
+ *          open decision 9.1; the literal rule is singular where the station plane turns tangent to the step wall).
  * }}
  * @returns {map} : {
  *   "edges" : array, one per outline (rim) edge of the chosen side, each {
@@ -2493,7 +2500,9 @@ export function undrapeRimLoops(tables is array, rim is array) returns map
  *        "points" : array of [x, y] plain metres in the flat chart frame -- same convention as unwrapFast: x = length along
  *                   the target minus the alignment's, y = chart.alignV - (signed mid-surface arc from the centreline),
  *        "startTangent" : [tx, ty], "endTangent" : [tx, ty] unit, the way the points run,
- *        "arcs" : the chart arc (metres) of each point's station (extra, for checks) },
+ *        "arcs" : the chart arc (metres) of each point's station (extra, for checks),
+ *        "kernel" : per point, true where a kernel section of a refused station measured it (the U-turn zones:
+ *                   held to UNDRAPE_KERNEL_TOL and UNDRAPE_KERNEL_MIN_SPAN only) },
  *     consecutive edges of a loop share their end point EXACTLY (each shared vertex is computed once).
  *     Loop 0 is the outer loop (largest area) and runs counter-clockwise in (x, y); the others clockwise.
  *   "report" : { "stations" (all passes), "samples" (outline points), "passes", "tableSamples" (side edge samples),
@@ -2501,7 +2510,8 @@ export function undrapeRimLoops(tables is array, rim is array) returns map
  *                limit), "fallbacks", "stretchMin", "stretchMax", "stretchWhere" ([x, y] metres), "shearMax" (radians),
  *                "rim3d", "rimFlat" (ValueWithUnits), "failed" (stations that could not be measured), "failedArcs" (their
  *                chart arcs, mm), "droppedPoints" (outline samples left out because their station failed),
- *                "shifted" (refused stations the kernel sectioned only at a shifted arc) },
+ *                "shifted" (refused stations the kernel sectioned only at a shifted arc),
+ *                "blended" (refused stations left out under uTurn "blend") },
  *   Throws when a rim loop does not close, or when a station through an outline vertex cannot be measured.
  *   "lines" : array of strings for a debug print }
  */
@@ -2513,6 +2523,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
     const tol = (options.tolerance == undefined) ? UNDRAPE_TOLERANCE : max(options.tolerance.value, 1e-9);
     const cap = (options.spacing == undefined) ? UNDRAPE_MAX_GAP : max(options.spacing.value, 5e-4);
     const withDeformation = options.deformation != false;
+    const blend = options.uTurn == "blend";
 
     // 1. Side: the one with fewer edges (either works); the other is only read by the kernel fallback.
     // Unless the two sides' areas disagree by more than 1 %: then one of them was found incomplete (its faces
@@ -2559,13 +2570,29 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
     var shareArcs = seeds.shareArcs;
 
     // 5-8. Passes: stations for the new requests, then each edge's checks and its next midpoints.
-    const env = { "chart" : chart, "tables" : tables, "tk" : tk, "sideSign" : sideSign, "sideA" : sideA, "sideB" : sideB };
+    // Blend (options.uTurn "blend"): a refused station is only measured (by the kernel) when it holds a vertex or an
+    // end-tangent request; any other refused station is left out and the fit crosses it (undrapeResolveBatch).
+    var mustMeasure = {};
+    if (blend)
+    {
+        for (var r in rim)
+        {
+            for (var q in concatenateArrays([eps[r].tanStart, eps[r].tanEnd]))
+            {
+                mustMeasure[q] = true;
+            }
+        }
+    }
+    const env = { "chart" : chart, "tables" : tables, "tk" : tk, "sideSign" : sideSign, "sideA" : sideA, "sideB" : sideB,
+            "blend" : blend, "mustMeasure" : mustMeasure };
     var results = [];
     var records = [];
     var lost = [];
     var kernel = undefined;
     var fallbacks = 0;
     var fallbackArcs = [];
+    var blended = 0;
+    var blendedArcs = [];
     var failed = [];
     var shifted = 0;
     var candidateTotal = 0;
@@ -2588,6 +2615,8 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
         kernel = batch.kernel;
         fallbacks += batch.fallbacks;
         fallbackArcs = concatenateArrays([fallbackArcs, batch.fallbackArcs]);
+        blended += batch.blended;
+        blendedArcs = concatenateArrays([blendedArcs, batch.blendedArcs]);
         failed = concatenateArrays([failed, batch.failed]);
         shifted += batch.shifted;
         candidateTotal += batch.candidateTotal;
@@ -2708,7 +2737,9 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
                         ~ (unsettled > 0 ? ", " ~ unsettled ~ " span(s) left unsettled" : "") ~ "), "
                         ~ roundToPrecision(candidateTotal / max(nSt, 1), 1) ~ " candidate edges per station, " ~ fallbacks
                         ~ " kernel fallbacks" ~ (size(fallbackArcs) > 0 ? " at arc (mm) " ~ undrapeJoin(fallbackArcs) : "")
-                        ~ (shifted > 0 ? " (" ~ shifted ~ " sectioned at a shifted arc)" : ""),
+                        ~ (shifted > 0 ? " (" ~ shifted ~ " sectioned at a shifted arc)" : "")
+                        ~ (blend ? ", " ~ blended ~ " refused station(s) blended across" ~ (size(blendedArcs) > 0 ? " at arc (mm) "
+                                ~ undrapeJoin(blendedArcs) : "") : ""),
                     withDeformation ? ("undrape: stretch along rim and bend lines " ~ roundToPrecision(deform.stretchMin * 100, 3)
                             ~ " % .. " ~ roundToPrecision(deform.stretchMax * 100, 3) ~ " % (max at x "
                             ~ roundToPrecision(deform.where[0] * 1000, 1) ~ ", y " ~ roundToPrecision(deform.where[1] * 1000, 1)
@@ -2726,6 +2757,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
             "tableSamples" : sampled.samples,
             "unsettled" : unsettled,
             "fallbacks" : fallbacks,
+            "blended" : blended,
             "failed" : size(failed),
             "failedArcs" : failed,
             "droppedPoints" : dropped,
@@ -2749,6 +2781,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
  * @returns {map} : { "results" (one per request of the batch, undrapeResolve, with a trailing 1 where the kernel
  *      fallback measured it; undefined where not measured),
  *      "records" (per station [arc, frame, section, crossings]), "lost" (request indices whose station failed),
+ *      "blended", "blendedArcs" (refused stations left unmeasured under env.blend: no vertex or end-tangent request),
  *      "kernel", "fallbacks", "fallbackArcs", "failed", "shifted", "candidateTotal", "lines" }
  */
 export function undrapeResolveBatch(context is Context, id is Id, env is map, requests is array, first is number, kernel) returns map
@@ -2786,6 +2819,8 @@ export function undrapeResolveBatch(context is Context, id is Id, env is map, re
     var kernelFaces = kernel;
     var fallbacks = 0;
     var fallbackArcs = [];
+    var blended = 0;
+    var blendedArcs = [];
     var failed = [];
     var shifted = 0;
     var lines = [];
@@ -2813,6 +2848,27 @@ export function undrapeResolveBatch(context is Context, id is Id, env is map, re
             }
         }
         var section = undrapeSection(crossings, tk, env.sideSign);
+        if (!section.ok && env.blend == true)
+        {
+            // Blend: no kernel section unless the station holds a vertex or an end-tangent request; its samples stay
+            // unmeasured and the fitted outline crosses the station (the U-turn rule, undrapeRefusedSection).
+            var needed = false;
+            for (var k in atStation[s])
+            {
+                if (env.mustMeasure[first + k] == true)
+                {
+                    needed = true;
+                    break;
+                }
+            }
+            if (!needed)
+            {
+                blended += 1;
+                blendedArcs = append(blendedArcs, roundToPrecision(fr.arc * 1000, 2));
+                records[s] = [arcs[s], fr, { "ok" : false, "blended" : true }, crossings];
+                continue;
+            }
+        }
         if (!section.ok)
         {
             if (kernelFaces == undefined)
@@ -2870,7 +2926,7 @@ export function undrapeResolveBatch(context is Context, id is Id, env is map, re
         }
     }
     return { "results" : results, "records" : records, "lost" : lost, "kernel" : kernelFaces, "fallbacks" : fallbacks,
-            "fallbackArcs" : fallbackArcs, "failed" : failed, "shifted" : shifted, "candidateTotal" : candidateTotal,
+            "fallbackArcs" : fallbackArcs, "blended" : blended, "blendedArcs" : blendedArcs, "failed" : failed, "shifted" : shifted, "candidateTotal" : candidateTotal,
             "lines" : lines };
 }
 
@@ -3597,6 +3653,7 @@ export function undrapeAssemble(plan is map, results is array, loopData is map) 
             const er = plan.byTable[entry[0]];
             var points = [];
             var arcs = [];
+            var kernelFlags = [];
             for (var i = 0; i < size(er.points); i += 1)
             {
                 const q = results[er.points[i]];
@@ -3613,6 +3670,8 @@ export function undrapeAssemble(plan is map, results is array, loopData is map) 
                 }
                 points = append(points, [q[0], q[1]]);
                 arcs = append(arcs, q[5]);
+                // measured by the kernel fallback (a refused station: the U-turns)
+                kernelFlags = append(kernelFlags, size(q) > 6);
             }
             var startTangent = undrapeEndTangent(results, er.startTangent, false);
             var endTangent = undrapeEndTangent(results, er.endTangent, true);
@@ -3629,6 +3688,7 @@ export function undrapeAssemble(plan is map, results is array, loopData is map) 
             {
                 points = reverse(points);
                 arcs = reverse(arcs);
+                kernelFlags = reverse(kernelFlags);
                 const swap = startTangent;
                 startTangent = [-endTangent[0], -endTangent[1]];
                 endTangent = [-swap[0], -swap[1]];
@@ -3637,7 +3697,8 @@ export function undrapeAssemble(plan is map, results is array, loopData is map) 
             {
                 area += points[i][0] * points[i + 1][1] - points[i + 1][0] * points[i][1];
             }
-            edges = append(edges, { "points" : points, "arcs" : arcs, "startTangent" : startTangent, "endTangent" : endTangent });
+            edges = append(edges, { "points" : points, "arcs" : arcs, "kernel" : kernelFlags, "startTangent" : startTangent,
+                        "endTangent" : endTangent });
         }
         loops = append(loops, { "edges" : edges, "area" : 0.5 * area });
     }
@@ -3658,7 +3719,7 @@ export function undrapeAssemble(plan is map, results is array, loopData is map) 
             if (flip)
             {
                 const swap = edge.startTangent;
-                edge = { "points" : reverse(edge.points), "arcs" : reverse(edge.arcs),
+                edge = { "points" : reverse(edge.points), "arcs" : reverse(edge.arcs), "kernel" : reverse(edge.kernel),
                         "startTangent" : [-edge.endTangent[0], -edge.endTangent[1]], "endTangent" : [-swap[0], -swap[1]] };
             }
             edge.loop = l;

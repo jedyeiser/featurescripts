@@ -5,7 +5,7 @@ import(path : "onshape/std/extendsheetshapetype.gen.fs", version : "3070.0");
 
 // IMPORT: edge_offset_utils.fs (same document; the chart: unwrapFast, packChart, referencePointAtArc; export-imports
 // curve_core: classifyPoints, emitArcCurve)
-export import(path : "a2665e22c07b7a6929ce4e80", version : "ff3d2909e89ded4e32a5c49b");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "3356bea0c847dcdb94230682");
 
 /*
  * Unwrap a SOLID through the unwrap chart (research_unwrap_part.md).

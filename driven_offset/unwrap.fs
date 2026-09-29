@@ -2,11 +2,11 @@ FeatureScript 3070;
 import(path : "onshape/std/common.fs", version : "3070.0");
 
 // IMPORT: edge_offset_utils.fs (same document; export-imports curve_core: chains, classifyPoints, emitters)
-export import(path : "a2665e22c07b7a6929ce4e80", version : "ff3d2909e89ded4e32a5c49b");
+export import(path : "a2665e22c07b7a6929ce4e80", version : "3356bea0c847dcdb94230682");
 // IMPORT: undrape_utils.fs (same document; the undrape map)
-import(path : "283b8f7562a16e9c9ccc01b7", version : "2274ad753904a933662a9d79");
+import(path : "283b8f7562a16e9c9ccc01b7", version : "ea473cf83e5f30e879db8c59");
 // IMPORT: unwrap_part.fs (same document; solid unwrap)
-import(path : "fc976128871c5b4b2d33a91c", version : "5e4c78078e0711b31db5464f");
+import(path : "fc976128871c5b4b2d33a91c", version : "01c70414ddbd625dd6e582c3");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
@@ -137,6 +137,18 @@ export enum UnwrapPartFaces
     KEEP,
     annotation { "Name" : "Simplify (merge tangent faces)" }
     MERGE
+}
+
+/**
+ * How an undrape crosses the stations it cannot section across (the pressed step turning across the part at the tip
+ * and tail U-turns: the station plane cuts the step wall lengthwise). research_undrape_map.md open decision 9.1.
+ */
+export enum UndrapeUTurn
+{
+    annotation { "Name" : "Section literally" }
+    LITERAL,
+    annotation { "Name" : "Blend across" }
+    BLEND
 }
 
 /** Where a plate's undrape target (the wire whose extrusion the mid-surface maps onto) comes from. */
@@ -301,6 +313,10 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
         {
             annotation { "Name" : "Maximum sample gap", "Description" : "Outline samples are placed adaptively (per edge from its structure, refined until the outline is within a quarter of the fit tolerance); this only caps the largest gap." }
             isLength(definition.sampleSpacing, UNWRAP_SPACING_BOUNDS);
+
+            annotation { "Name" : "U-turn zones", "Default" : UndrapeUTurn.LITERAL, "UIHint" : UIHint.SHOW_LABEL,
+                        "Description" : "Where a station plane cuts the part lengthwise (a pressed step turning across the part at the tip or tail), unrolling section by section is singular. Section literally: those stations are sectioned by the kernel like any other (slower; the outline keeps a sharp bump where the plane turns tangent to the step). Blend across: they are not measured and the outline crosses the zone as a smooth cubic between the measured stations either side (faster; the flat outline there is a blend, not a measurement)." }
+            definition.uTurnRule is UndrapeUTurn;
         }
 
         annotation { "Group Name" : "Lines, arcs & fitting", "Collapsed By Default" : true }
@@ -479,6 +495,7 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
             "debugKeepLengthCurves" : false,
             "targetFrom" : UndrapeTargetSource.WIRE,
             "sampleSpacing" : 50 * millimeter,
+            "uTurnRule" : UndrapeUTurn.LITERAL,
             "recogniseShapes" : true,
             "approximationDegree" : 3,
             "approximationTolerance" : 0.005 * millimeter,
@@ -1209,11 +1226,233 @@ function emitFlatCurves(context is Context, ids is array, entries is array, sett
     {
         // Unit tangents: approximateFamily scales them by the run's chord itself. Pre-scaling them made the end
         // speed a chord squared and no fit could reach tolerance.
-        emitRunShape(context, ids[k], shapes[k], items[k].points, settings.approximation);
+        // A freeform run is fitted through its samples AND points of the cubic the sampling was refined against
+        // (fitPoints): through the samples alone the fit came back interpolating and rang between them (325 um on the
+        // topsheet's tip outline, 19 um at 4305's wing roots, against the 0.005 mm tolerance).
+        const fitted = (shapes[k].kind == "freeform")
+            ? fitPoints(items[k].points, shapes[k].startTangent, shapes[k].endTangent, items[k].monotone)
+            : items[k].points;
+        emitRunShape(context, ids[k], shapes[k], fitted, settings.approximation);
         const note = shapes[k].note;
         out = append(out, { "shape" : shapes[k], "gate" : entries[k].gate ~ ((note == undefined) ? "" : " (" ~ note ~ ")") });
     }
     return out;
+}
+
+/**
+ * Interior points added per sample span to the points a freeform flat edge is fitted through (fitPoints), and the
+ * spans too short for them: shorter than UNWRAP_FIT_MIN_SPAN metres or UNWRAP_FIT_MIN_FRACTION of the run's chord
+ * (approximateSpline refuses parameters closer than 1e-6).
+ */
+const UNWRAP_FIT_DENSIFY = 3;
+const UNWRAP_FIT_MIN_SPAN = 2e-5;
+const UNWRAP_FIT_MIN_FRACTION = 8e-6;
+
+/**
+ * The points a freeform flat edge is fitted through: its samples, plus UNWRAP_FIT_DENSIFY points inside every span on
+ * the cubic Hermite the sampling was refined against (chord length; at each sample the slope of the quadratic through
+ * it and its neighbours, the unit end tangents at the ends -- undrapeMiss checks the outline samples against this
+ * curve to a quarter of the fit tolerance, spanMidMiss the edge samples against its parameter-space twin). At samples
+ * flagged in `monotone` the slope is shape-preserving (Fritsch-Carlson, per coordinate), so a sparse, spiky stretch
+ * (a U-turn under the literal rule) gets no overshoot. Fitted through the samples alone, approximateSpline adds knots
+ * until it passes every sample and then interpolates them: between samples it rang by up to 325 um (2026-09-29).
+ */
+function fitPoints(points is array, startTangent, endTangent, monotone) returns array
+{
+    const n = size(points);
+    if (n < 2)
+    {
+        return points;
+    }
+    var P = makeArray(n);
+    var ts = makeArray(n, 0);
+    for (var i = 0; i < n; i += 1)
+    {
+        P[i] = points[i] / meter;
+        if (i > 0)
+        {
+            ts[i] = ts[i - 1] + norm(P[i] - P[i - 1]);
+        }
+    }
+    const total = ts[n - 1];
+    if (total < 1e-12)
+    {
+        return points;
+    }
+    var S = makeArray(n);
+    for (var i = 0; i < n; i += 1)
+    {
+        if (i == 0)
+        {
+            S[i] = (startTangent != undefined) ? startTangent : quadraticSlope(P, ts, i);
+        }
+        else if (i == n - 1)
+        {
+            S[i] = (endTangent != undefined) ? endTangent : quadraticSlope(P, ts, i);
+        }
+        else if (monotone != undefined && monotone[i] == true)
+        {
+            S[i] = monotoneSlope(P, ts, i);
+        }
+        else
+        {
+            S[i] = quadraticSlope(P, ts, i);
+        }
+    }
+    const minSpan = max(UNWRAP_FIT_MIN_SPAN, UNWRAP_FIT_MIN_FRACTION * total);
+    var out = [points[0]];
+    for (var i = 0; i + 1 < n; i += 1)
+    {
+        const h = ts[i + 1] - ts[i];
+        if (h > minSpan)
+        {
+            for (var k = 1; k <= UNWRAP_FIT_DENSIFY; k += 1)
+            {
+                const f = k / (UNWRAP_FIT_DENSIFY + 1);
+                const f2 = f * f;
+                const f3 = f2 * f;
+                const q = (2 * f3 - 3 * f2 + 1) * P[i] + ((f3 - 2 * f2 + f) * h) * S[i] + (-2 * f3 + 3 * f2) * P[i + 1]
+                    + ((f3 - f2) * h) * S[i + 1];
+                out = append(out, q * meter);
+            }
+        }
+        out = append(out, points[i + 1]);
+    }
+    return out;
+}
+
+/**
+ * Slope d(point)/d(chord length) at sample i of plain points P (chord positions ts): the derivative of the quadratic
+ * through it and its two neighbours; one-sided at the ends (the next two samples); the chord when only two samples exist
+ * or samples coincide.
+ */
+function quadraticSlope(P is array, ts is array, i is number) returns Vector
+{
+    const n = size(P);
+    var j = i - 1;
+    var k = i + 1;
+    if (i == 0)
+    {
+        j = 1;
+        k = 2;
+    }
+    else if (i == n - 1)
+    {
+        j = n - 2;
+        k = n - 3;
+    }
+    if (k < 0 || k >= n || j < 0 || j >= n || abs(ts[i] - ts[j]) < 1e-12 || abs(ts[i] - ts[k]) < 1e-12 || abs(ts[j] - ts[k]) < 1e-12)
+    {
+        const a = (i == n - 1) ? n - 2 : i;
+        const b = a + 1;
+        const dt = ts[b] - ts[a];
+        return (dt < 1e-15) ? normalize(P[n - 1] - P[0]) : (P[b] - P[a]) / dt;
+    }
+    const t0 = ts[i];
+    const t1 = ts[j];
+    const t2 = ts[k];
+    const w0 = (2 * t0 - t1 - t2) / ((t0 - t1) * (t0 - t2));
+    const w1 = (t0 - t2) / ((t1 - t0) * (t1 - t2));
+    const w2 = (t0 - t1) / ((t2 - t0) * (t2 - t1));
+    return w0 * P[i] + w1 * P[j] + w2 * P[k];
+}
+
+/**
+ * Shape-preserving slope at interior sample i (Fritsch-Carlson weighted harmonic mean of the two secants, per
+ * coordinate, 0 where a coordinate turns): the cubic between samples then stays within their range.
+ */
+function monotoneSlope(P is array, ts is array, i is number) returns Vector
+{
+    const h0 = ts[i] - ts[i - 1];
+    const h1 = ts[i + 1] - ts[i];
+    if (h0 < 1e-12 || h1 < 1e-12)
+    {
+        return quadraticSlope(P, ts, i);
+    }
+    var m = [0, 0, 0];
+    for (var c = 0; c < 3; c += 1)
+    {
+        const d0 = (P[i][c] - P[i - 1][c]) / h0;
+        const d1 = (P[i + 1][c] - P[i][c]) / h1;
+        if (d0 * d1 > 0)
+        {
+            m[c] = 3 * (h0 + h1) / ((2 * h1 + h0) / d0 + (h1 + 2 * h0) / d1);
+        }
+    }
+    return vector(m[0], m[1], m[2]);
+}
+
+/**
+ * The unit slope at sample i of an outline edge (quadraticSlope on chord length): the tangent two pieces of one edge
+ * share where kernelZonePieces cuts it.
+ */
+function sampleSlope(points is array, i is number) returns Vector
+{
+    const n = size(points);
+    var P = makeArray(n);
+    var ts = makeArray(n, 0);
+    for (var k = 0; k < n; k += 1)
+    {
+        P[k] = points[k] / meter;
+        if (k > 0)
+        {
+            ts[k] = ts[k - 1] + norm(P[k] - P[k - 1]);
+        }
+    }
+    return normalize(quadraticSlope(P, ts, i));
+}
+
+/**
+ * An outline edge cut into pieces at the measured samples bounding each run of kernel-measured samples (undrape's
+ * "kernel" flags), so the run is fitted on its own. Each piece { "from", "to" } (sample indices, inclusive) shares
+ * its end sample with the next; "monotone" flags the kernel-measured samples (for the whole edge). One piece when the
+ * edge has none.
+ */
+function kernelZonePieces(points is array, kernel) returns array
+{
+    const n = size(points);
+    var monotone = makeArray(n, false);
+    var cuts = [];
+    if (kernel != undefined && size(kernel) == n)
+    {
+        var i = 0;
+        while (i < n)
+        {
+            if (kernel[i] != true)
+            {
+                i += 1;
+                continue;
+            }
+            var j = i;
+            while (j + 1 < n && kernel[j + 1] == true)
+            {
+                j += 1;
+            }
+            for (var m = i; m <= j; m += 1)
+            {
+                monotone[m] = true;
+            }
+            for (var cut in [i - 1, j + 1])
+            {
+                if (cut > 0 && cut < n - 1 && (size(cuts) == 0 || cuts[size(cuts) - 1] != cut))
+                {
+                    cuts = append(cuts, cut);
+                }
+            }
+            i = j + 1;
+        }
+    }
+    var pieces = [];
+    var from = 0;
+    for (var cut in concatenateArrays([cuts, [n - 1]]))
+    {
+        if (cut > from)
+        {
+            pieces = append(pieces, { "from" : from, "to" : cut, "monotone" : monotone });
+            from = cut;
+        }
+    }
+    return pieces;
 }
 
 function addTally(a is map, b is map) returns map
@@ -1551,7 +1790,8 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
                 "tolerance" : definition.approximationTolerance / 4,
                 "spacing" : definition.sampleSpacing,
                 "deformation" : definition.measureDeformation,
-                "sideAreas" : [sides.area0, sides.area1]
+                "sideAreas" : [sides.area0, sides.area1],
+                "uTurn" : (definition.uTurnRule == UndrapeUTurn.BLEND) ? "blend" : "literal"
             });
 
     // The mid-surface lands on the target, chart height 0 on it: cs z = -alignHeight. Laid on the plane,
@@ -1572,6 +1812,7 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
     var tally = { "line" : 0, "arc" : 0, "freeform" : 0 };
     var outlineIds = [];
     var outlineEntries = [];
+    var outlineNames = [];
     for (var k = 0; k < size(undraped.edges); k += 1)
     {
         const edge = undraped.edges[k];
@@ -1594,12 +1835,36 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
             for (var i = 0; i < size(edge.points); i += 1)
             {
                 pts = pts ~ " " ~ roundToPrecision(edge.points[i][0] * 1000, 4) ~ "," ~ roundToPrecision(edge.points[i][1] * 1000, 4)
-                    ~ (edge.arcs != undefined ? "@" ~ roundToPrecision(edge.arcs[i] * 1000, 3) : "");
+                    ~ (edge.arcs != undefined ? "@" ~ roundToPrecision(edge.arcs[i] * 1000, 3) : "")
+                    ~ ((edge.kernel != undefined && edge.kernel[i]) ? "k" : "");
             }
             println("        points:" ~ pts);
         }
-        outlineIds = append(outlineIds, edgeId);
-        outlineEntries = append(outlineEntries, flatCurveItem(points, startTangent, endTangent, settings));
+        // Samples measured by kernel sections of refused stations (the U-turns under the literal rule) are sparse
+        // and carry the rule's spike: that stretch is fitted as its own piece, with shape-preserving slopes, so it
+        // cannot bend the measured outline either side of it.
+        const pieces = kernelZonePieces(points, edge.kernel);
+        for (var p = 0; p < size(pieces); p += 1)
+        {
+            const piece = pieces[p];
+            const first = (piece.from == 0);
+            const last = (piece.to == size(points) - 1);
+            var entry = flatCurveItem(subArray(points, piece.from, piece.to + 1),
+                first ? startTangent : sampleSlope(points, piece.from), last ? endTangent : sampleSlope(points, piece.to), settings);
+            // a cut keeps the slope both pieces share (flatCurveItem's end check is for the edge's true ends)
+            if (!first)
+            {
+                entry.item.startTangent = sampleSlope(points, piece.from);
+            }
+            if (!last)
+            {
+                entry.item.endTangent = sampleSlope(points, piece.to);
+            }
+            entry.item.monotone = subArray(piece.monotone, piece.from, piece.to + 1);
+            outlineIds = append(outlineIds, (size(pieces) == 1) ? edgeId : edgeId + ("piece" ~ p));
+            outlineEntries = append(outlineEntries, entry);
+            outlineNames = append(outlineNames, (size(pieces) == 1) ? toString(k) : toString(k) ~ "." ~ toString(p));
+        }
     }
 
     const outlineEmitted = emitFlatCurves(context, outlineIds, outlineEntries, settings);
@@ -1610,7 +1875,7 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
         curves = append(curves, qCreatedBy(outlineIds[k], EntityType.BODY));
         if (settings.print)
         {
-            println("    outline edge " ~ k ~ " -> " ~ emitted.shape.kind
+            println("    outline edge " ~ outlineNames[k] ~ " -> " ~ emitted.shape.kind
                 ~ (emitted.shape.kind == "arc" ? " R " ~ fmtMM(emitted.shape.radius, 4, 0) : "") ~ emitted.gate);
         }
     }

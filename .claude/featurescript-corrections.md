@@ -1873,3 +1873,24 @@ the bound spec's unit.
 **Fix**: give a new length parameter a millimetre bound spec, or (done here) make it a plain number in the unit it names
 ("Radius axis min (m)", isReal) under a fresh id (`radiusAxisLow`) so the stale `10.0*mm` is ignored. Check a new
 parameter's migrated value in the REST feature list of an existing feature before trusting the default.
+
+---
+
+## Correction 61: migrating features by REST -- versions, sub-features, and downstream clicks (2026-09-29, RD 20FOU 28)
+
+- **A feature cannot be moved to another library version by REST**: updating it with a new `namespace` is refused
+  ("Feature does not match"); `features/updates` (BTUpdateFeaturesCall-1748) returns OK but keeps the old namespace.
+  Replace instead: insert a new feature at the old one's index (POST /features inserts AT the rollback bar and moves
+  the bar down one; move the bar with POST /features/rollback {rollbackIndex}), then delete the old one.
+- **Copy `subFeatures` too**: a mate connector created inside a feature's dialog is a sub-feature, referenced as
+  `qCreatedBy(id + "<subId>")`. Copying only the parameters loses it (Define core case's #inside_pt).
+- **Enums of different library versions never compare equal**: a v2 Define case's CaseValueKind values fail v3's
+  checks, so every feature of a library family must be on the same version.
+- **Workspace GETs return clicks as qCompressed strings**, not deterministic ids, and they cannot be evaluated outside
+  their feature (`id` is unbound). A VERSION's GET returns deterministic ids; check them in the workspace with
+  qTransient at `rollbackBarIndex`. The eval API evaluates at the CURRENT rollback bar unless `rollbackBarIndex` is
+  given -- pass it explicitly (a "baseline" taken at the user's bar missed half the tree).
+- **Downstream clicks die when the creating feature changes** (geometry once made by Case pattern, now by Close case).
+  devtools/onshape/repick_by_geometry.py re-points them: describe each clicked entity in the version (type, owner name,
+  box centre / MC origin), find the unique match in the workspace at the feature's position, write deterministic ids.
+  Sketch-internal references (projected edges) are not parameters and are not covered.
