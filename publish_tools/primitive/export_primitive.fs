@@ -44,8 +44,8 @@ const REGION_TOLERANCE = 1e-6 * meter;
  *                   the key locations and junction ticks there; the REFERENCE (0) line and the scale frame (end axes,
  *                   ticks, numbers) are FIXED (2026-09-29): full footprint length, whole axis, whatever the data
  *     The EI band's frame is fixed the same way: the volume's x extent, EI 0 .. "EI axis max".
- * Each band has a DATUM point at x = 0 on its reference line; "Key lines" adds dashed vertical lines through every
- * band at FCP, MP(s), MRS, ACP and the extra key points that ask for one. All bodies are points and wires, so the
+ * Each band has a DATUM point at x = 0 on its reference line; "Key lines" adds a vertical line (ONE light-grey edge;
+ * the drawing restyles it dashed) through every band at FCP, MP(s), MRS, ACP and the extra key points that ask for one. All bodies are points and wires, so the
  * composite can be moved or copied as a unit.
  *
  * Tables: every row is stored in the composite's attribute (schema primitive/1, primitive_types.fs) and shown by
@@ -138,7 +138,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                 item.keyPoint is Query;
 
                 annotation { "Name" : "Include in key lines (Plot > Key lines)", "Default" : false,
-                            "Description" : "With Key lines (Plot) on: a dashed vertical line through every band at this point." }
+                            "Description" : "With Key lines (Plot) on: a vertical line through every band at this point." }
                 item.showKeyLine is boolean;
             }
         }
@@ -188,12 +188,12 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                 isLength(definition.textHeight, PRIMITIVE_TEXT_HEIGHT_BOUNDS);
             }
 
-            annotation { "Name" : "Dashed grid", "Default" : false,
-                        "Description" : "Horizontal grid lines at every tick level (10 m of radius, the curvature ticks, 50 N*m^2 of EI) across the plot and EI bands, drawn as short dashes (4 mm dash, 4 mm gap) so they read lighter than the plots." }
+            annotation { "Name" : "Grid lines", "Default" : false,
+                        "Description" : "Horizontal grid lines at every tick level (10 m of radius, the curvature ticks, 50 N*m^2 of EI) across the plot and EI bands: one light-grey edge per level; restyle them (dashed, colour) in the drawing." }
             definition.dashedGrid is boolean;
 
             annotation { "Name" : "Key lines", "Default" : false,
-                        "Description" : "Dashed vertical lines (4 mm dash, 4 mm gap) through every band, top to bottom, at FCP, MP(s), MRS, ACP and the extra key points marked for key lines." }
+                        "Description" : "Vertical lines through every band, top to bottom, at FCP, MP(s), MRS, ACP and the extra key points marked for key lines: one light-grey edge per line; restyle them (dashed, colour) in the drawing." }
             definition.keyLines is boolean;
 
             annotation { "Name" : "Edge junction ticks", "Default" : true,
@@ -269,8 +269,8 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                         "Description" : "Add rows at XS1, MRS, XS2 and every extra key point between FCP and ACP when no row falls there (within 0.01 mm)." }
             definition.forceStations is boolean;
 
-            annotation { "Name" : "Show row number (#) column", "Default" : true,
-                        "Description" : "Key locations and Data rows are sorted by x (ascending) and numbered from 0 at the lowest x. The numbers are always stored; this shows the # column." }
+            annotation { "Name" : "Show # column in RSL data (table 6)", "Default" : true,
+                        "Description" : "RSL data rows are sorted by x (ascending) and numbered from 0 at the lowest x; a row at a key location (FCP, ACP, XS1, MRS, XS2, MP, extra key points) shows that name instead of its number. Numbers and names are always stored; this shows the # column." }
             definition.stationNumbers is boolean;
         }
 
@@ -468,9 +468,19 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             radiusU = append(radiusU, u + inward);
         }
         const crossings = primitiveFootprintAtMany(unwrapped.samples, concatenateArrays([rowU, radiusU]));
+        // A row at a key location (|dx| < 0.01 mm; not TIP / TAIL) is named by it ("MRS", several joined with "/");
+        // the number still counts every row.
         var dataRows = [];
         for (var j = 0; j < size(dataX); j += 1)
         {
+            var rowName = "";
+            for (var kp in keyPoints)
+            {
+                if (kp.key != "TIP" && kp.key != "TAIL" && abs(keys[kp.key].x - dataX[j]) < 0.01 * millimeter)
+                {
+                    rowName = rowName == "" ? kp.name : rowName ~ "/" ~ kp.name;
+                }
+            }
             const b = dataBottom[j];
             const s = primitiveS(frame, b.a);
             const up = primitiveUp(frame, b.tangent);
@@ -479,6 +489,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             const radius = crossings[size(dataX) + j].radius;
             dataRows = append(dataRows, {
                         "station" : j,
+                        "name" : rowName,
                         "x" : primitiveMM(dataX[j]),
                         "s" : primitiveMM(s),
                         "y" : across.hit ? primitiveMM(across.yMax) : PRIMITIVE_NOT_FOUND,
@@ -756,7 +767,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             members = append(members, datumPoint);
         }
 
-        // Key lines: dashed verticals through every band, from the top band's top to the bottom band's bottom.
+        // Key lines: one light-grey vertical edge each through every band, from the top band's top to the bottom band's bottom.
         var keyLineNames = [];
         if (definition.keyLines)
         {
@@ -767,8 +778,8 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                 const wanted = kp.extra == true ? extraShowsLine(extras, kp.key) : (kp.key == "FCP" || kp.key == "ACP" || kp.key == "MRS" || match(kp.key, "MP[0-9]*").hasMatch);
                 if (wanted)
                 {
-                    members = concatenateArrays([members, primitiveDashedLine(context, id + ("keyLine" ~ primitiveKey(kp.key)),
-                                        vector(keys[kp.key].x, zero, zTop), vector(0, 0, -1), zTop - zBottom, title ~ " KEY LINE " ~ kp.name)]);
+                    members = append(members, primitiveGridLine(context, id + ("keyLine" ~ primitiveKey(kp.key)),
+                                vector(keys[kp.key].x, zero, zTop), vector(keys[kp.key].x, zero, zBottom), title ~ " KEY LINE " ~ kp.name));
                     keyLineNames = append(keyLineNames, kp.name);
                 }
             }

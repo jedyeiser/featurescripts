@@ -79,7 +79,7 @@ export enum PrimitiveTableKind
     KEY_LOCATIONS,
     annotation { "Name" : "5 Baseline" }
     BASELINE,
-    annotation { "Name" : "6 Data (FCP to ACP)" }
+    annotation { "Name" : "6 RSL data" }
     DATA
 }
 
@@ -122,13 +122,14 @@ export const PRIMITIVE_CURVATURE_UNIT = 0.01;
 /** At most about this many tick levels on a scale whose step adapts (curvature). */
 export const PRIMITIVE_MAX_LEVELS = 20;
 
-/** Radius plot frame: ticks (and the optional dashed grid) every 10 m of radius, short ticks on the two end axes. */
+/** Radius plot frame: ticks (and the optional grid lines) every 10 m of radius, short ticks on the two end axes. */
 export const PRIMITIVE_RADIUS_GRID_STEP = 10;
 export const PRIMITIVE_AXIS_TICK = 3 * millimeter;
-export const PRIMITIVE_GRID_DASH = 4 * millimeter;
-export const PRIMITIVE_GRID_GAP = 4 * millimeter;
 
-/** Appearance per band (Part Studio colours; frame, ticks, grid and tick labels grey). */
+/**
+ * Appearance per band (Part Studio colours; frame, ticks and tick labels grey; grid lines and key lines light grey --
+ * single solid edges since 2026-09-29, a drawing restyles them dashed / coloured).
+ */
 export const PRIMITIVE_COLOURS = {
         "baseline" : color(0.09, 0.32, 0.69),
         "profile" : color(0.0, 0.5, 0.25),
@@ -136,7 +137,8 @@ export const PRIMITIVE_COLOURS = {
         "radius" : color(0.75, 0.1, 0.1),
         "curvature" : color(0.75, 0.1, 0.1),
         "ei" : color(0.45, 0.2, 0.6),
-        "frame" : color(0.5, 0.5, 0.5)
+        "frame" : color(0.5, 0.5, 0.5),
+        "grid" : color(0.8, 0.8, 0.8)
     };
 
 /** Band titles (text geometry, "Labels"). */

@@ -13,10 +13,11 @@ IconNamespace::import(path : "eb32ed1a7e9ecf0a7ef61a7c", version : "a0113143f1b8
  *     3 Key locations               FCP ACP MRS MP(s) XS1 XS2 TIP TAIL + extra key points by x (ascending): [x, y, z] and [s, w, h]
  *     5 Baseline                    Tip / Tail block (when named), FCPh FRCP FRCPl FB_Roll MCh MCl AB_Roll ARCPl ARCP ACPh
  *                                   (not on a baseline that is flat within the RSL)
- *     6 Data (FCP to ACP)           x, s, y, ski_width, z, ski_thck, baseline_height, radius within the RSL, by x
+ *     6 RSL data                    x, s, y, ski_width, z, ski_thck, baseline_height, radius within the RSL, by x
  * (4 is reserved for the sidewall rout table, not built yet.)
  * x from the datum; s = distance along the bottom wire from the datum, same direction as x.
- * With "Station numbers" on (Export primitive), Key locations and Data start with a # column: 0 at the lowest x.
+ * With "Show # column in RSL data" on (Export primitive), RSL data starts with a # column: 0 at the lowest x; a row at
+ * a key location shows the key's name (e.g. "MRS", several joined with "/") instead of its number.
  * Only rows with data are stored, and a table without rows is not returned.
  * A drawing inserts every table this returns: filter by primitive name and pick one table per insertion.
  */
@@ -129,7 +130,7 @@ function metadataTable(data is map, body is Query) returns Table
                 ], rows, body);
 }
 
-/** True when the primitive asks for the station # column and its rows carry numbers. */
+/** True when the primitive asks for the # column (RSL data only) and its rows carry numbers. */
 function showStations(data is map, rows is array) returns boolean
 {
     return data.settings is map && data.settings.stationNumbers == true && size(rows) > 0 && rows[0].station is number;
@@ -146,13 +147,13 @@ function keyTable(data is map, body is Query) returns Table
     var rows = [];
     for (var r in data.keyLocations)
     {
-        rows = append(rows, tableRow({ "station" : r.station is number ? r.station : "", "name" : r.name, "x" : cell2(r.x), "y" : cell2(r.y), "z" : cell2(r.z),
+        rows = append(rows, tableRow({ "name" : r.name, "x" : cell2(r.x), "y" : cell2(r.y), "z" : cell2(r.z),
                         "s" : cell2(r.s), "w" : cell2(r.w), "h" : cell2(r.h) }));
     }
-    return table(data.title ~ " - 3 Key locations", withStation([
+    return table(data.title ~ " - 3 Key locations", [
                     column("name", "Location"), column("x", "x (mm)"), column("y", "y (mm)"), column("z", "z (mm)"),
                     column("s", "s (mm)"), column("w", "w (mm)"), column("h", "h (mm)")
-                ], showStations(data, data.keyLocations)), rows, body);
+                ], rows, body);
 }
 
 function baselineTable(data is map, body is Query) returns Table
@@ -167,16 +168,26 @@ function baselineTable(data is map, body is Query) returns Table
                 ], rows, body);
 }
 
+/** The # cell of an RSL data row: the key name(s) at a key location, else the row number. */
+function dataRowLabel(r is map)
+{
+    if (r.name is string && r.name != "")
+    {
+        return r.name;
+    }
+    return r.station is number ? r.station : "";
+}
+
 function dataTable(data is map, body is Query) returns Table
 {
     var rows = [];
     for (var r in data.data)
     {
-        rows = append(rows, tableRow({ "station" : r.station is number ? r.station : "", "x" : cell2(r.x), "s" : cell2(r.s), "y" : cell2(r.y), "skiWidth" : cell2(r.skiWidth),
+        rows = append(rows, tableRow({ "station" : dataRowLabel(r), "x" : cell2(r.x), "s" : cell2(r.s), "y" : cell2(r.y), "skiWidth" : cell2(r.skiWidth),
                         "z" : cell2(r.z), "skiThck" : cell2(r.skiThck), "baselineHeight" : cell2(r.baselineHeight),
                         "radius" : cellN(r.radius, 3) }));
     }
-    return table(data.title ~ " - 6 Data (FCP to ACP)", withStation([
+    return table(data.title ~ " - 6 RSL data", withStation([
                     column("x", "x (mm)"), column("s", "s (mm)"), column("y", "y (mm)"), column("skiWidth", "ski_width (mm)"),
                     column("z", "z (mm)"), column("skiThck", "ski_thck (mm)"), column("baselineHeight", "baseline_height (mm)"),
                     column("radius", "Radius (m)")

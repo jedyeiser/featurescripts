@@ -267,50 +267,31 @@ export function primitiveLabelStep(step is number, perLevel is ValueWithUnits, l
 }
 
 /**
- * A dashed straight line from `start` along the unit `direction` over `span`: a PRIMITIVE_GRID_DASH seed dash named
- * `name` (grey first: the pattern copies name and colour) and opPattern copies one dash + gap apart. Returns the
- * bodies (none when not even one dash fits).
+ * A grid or key line: ONE straight wire from `start` to `end` named `name`, light grey (PRIMITIVE_COLOURS.grid) in
+ * the Part Studio. Drawings restyle it (dashed / colour) themselves (2026-09-29: one edge per line instead of hundreds
+ * of short dash segments). Returns the body (qNothing() for a zero-length line).
  */
-export function primitiveDashedLine(context is Context, id is Id, start is Vector, direction is Vector, span is ValueWithUnits,
-    name is string) returns array
+export function primitiveGridLine(context is Context, id is Id, start is Vector, end is Vector, name is string) returns Query
 {
-    const pitch = PRIMITIVE_GRID_DASH + PRIMITIVE_GRID_GAP;
-    const count = floor((span + PRIMITIVE_GRID_GAP) / pitch);
-    if (count < 1)
-    {
-        return [];
-    }
-    const dash = primitiveSegment(context, id + "dash", start, start + direction * PRIMITIVE_GRID_DASH, name);
-    primitiveColour(context, dash, PRIMITIVE_COLOURS.frame);
-    var bodies = [dash];
-    var transforms = [];
-    var names = [];
-    for (var k = 1; k < count; k += 1)
-    {
-        transforms = append(transforms, transform(direction * (k * pitch)));
-        names = append(names, "d" ~ k);
-    }
-    if (size(transforms) > 0)
-    {
-        opPattern(context, id + "copies", { "entities" : dash, "transforms" : transforms, "instanceNames" : names });
-        bodies = append(bodies, qCreatedBy(id + "copies", EntityType.BODY));
-    }
-    return bodies;
+    const body = primitiveSegment(context, id, start, end, name);
+    primitiveColour(context, body, PRIMITIVE_COLOURS.grid);
+    return body;
 }
 
 /**
  * A scale band's frame in the LOCAL XZ plane (band "RADIUS", "CURVATURE" or "EI"): a vertical axis at each end of the
  * band (x = xLo / xHi, named by the ski end it is on: "<band> AXIS TIP" / "<band> AXIS TAIL") over the levels (or from
  * format.axisLo to format.axisHi, level units, when given: the fixed axes of 2026-09-29), a
- * PRIMITIVE_AXIS_TICK tick outward at every level on both axes ("<band> TICK +10 TIP"), optionally a dashed line at
- * every level but 0 ("<band> GRID -20", PRIMITIVE_GRID_DASH dashes, PRIMITIVE_GRID_GAP apart) and, with a text height,
+ * PRIMITIVE_AXIS_TICK tick outward at every level on both axes ("<band> TICK +10 TIP"), optionally a grid line at
+ * every level but 0 ("<band> GRID -20", one light-grey edge across the band, primitiveGridLine) and, with a text height,
  * the level numbers left of the low-x axis ("<band> LABEL +10"). Levels are whole level units, `perLevel` = plot height
  * of one unit. `format` = { digits (decimals of one level unit: 0 for radius m / EI N*m^2, 2 for curvature in 0.01
  * 1/m), signed (the label TEXT keeps its "+"; body names always do), labelStep (numbers only on its multiples) }.
- * Operation ids and names come from the level and the end, never from list positions. Returns the bodies (all grey).
+ * Operation ids and names come from the level and the end, never from list positions. Returns the bodies (grey; the
+ * grid lines light grey).
  */
 export function primitiveScaleFrame(context is Context, id is Id, band is string, levels is array, perLevel is ValueWithUnits,
-    xLo is ValueWithUnits, xHi is ValueWithUnits, zRef is ValueWithUnits, dirSign is number, dashed is boolean, textHeight,
+    xLo is ValueWithUnits, xHi is ValueWithUnits, zRef is ValueWithUnits, dirSign is number, grid is boolean, textHeight,
     prefix is string, format is map) returns array
 {
     const zero = 0 * meter;
@@ -336,19 +317,6 @@ export function primitiveScaleFrame(context is Context, id is Id, band is string
                         vector(e.x + e.out * PRIMITIVE_AXIS_TICK, zero, z), prefix ~ " " ~ band ~ " TICK " ~ levelName(level, digits) ~ " " ~ e.end));
         }
     }
-    if (dashed)
-    {
-        for (var level in levels)
-        {
-            if (level == 0)
-            {
-                continue;
-            }
-            bodies = concatenateArrays([bodies, primitiveDashedLine(context, id + ("grid" ~ levelKey(level, digits)),
-                                vector(xLo, zero, zRef + level * perLevel), vector(1, 0, 0), xHi - xLo,
-                                prefix ~ " " ~ band ~ " GRID " ~ levelName(level, digits))]);
-        }
-    }
     if (textHeight is ValueWithUnits)
     {
         for (var level in levels)
@@ -363,6 +331,19 @@ export function primitiveScaleFrame(context is Context, id is Id, band is string
         }
     }
     primitiveColour(context, qUnion(bodies), PRIMITIVE_COLOURS.frame);
+    if (grid)
+    {
+        for (var level in levels)
+        {
+            if (level == 0)
+            {
+                continue;
+            }
+            const z = zRef + level * perLevel;
+            bodies = append(bodies, primitiveGridLine(context, id + ("grid" ~ levelKey(level, digits)), vector(xLo, zero, z),
+                        vector(xHi, zero, z), prefix ~ " " ~ band ~ " GRID " ~ levelName(level, digits)));
+        }
+    }
     return bodies;
 }
 
