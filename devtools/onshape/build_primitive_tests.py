@@ -58,8 +58,9 @@ D, W = "73271cfcd708b3f5e3fc315c", "fea83d30106dba0a4e066761"
 STUDIO = os.environ.get("PRIMITIVE_STUDIO", "Primitive tests")
 NEW = os.environ.get("NEW", "1") != "0"
 SRC_D, SRC_V, SRC_E, SRC_M = "6212b76fdc6e7eca7cc56d8e", "2a679ea0cd06d118ae47d0e5", "512aefb5494db48a1c058b03", "25245f3384cbcc4242e60112"
-# Design Master @ V1 part ids: VOLUME, FULL_BASELINE, REF_WIRE, FPT_L, FPT_R
-SRC_PARTS = ["RxKH", "RNGD", "RLCD", "J9D", "RDBD"]
+# Design Master @ V1 part ids: VOLUME, FULL_BASELINE, REF_WIRE, FPT_L, FPT_R, SW_ROUT_SURFACE (sheet, 2026-09-29: built
+# in the RD model from SW_Rout_Angle 5 deg, SW_Rout_Above_Bottom 4 mm, SW_Rout_Step_In 0.8 mm)
+SRC_PARTS = ["RxKH", "RNGD", "RLCD", "J9D", "RDBD", "REKD"]
 
 ELEMENTS = c.list_elements(D, W)
 studios = {e["name"]: e["id"] for e in ELEMENTS if e["elementType"] == "PARTSTUDIO"}

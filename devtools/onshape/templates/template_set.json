@@ -105,6 +105,22 @@
    "drawing": "7cc951e510a24b988c8c6114",
    "logo": "610127ab0ce95a6d0d7889a3",
    "build_s": 83
+  },
+  "K2SNOW A2": {
+   "brand": "K2SNOW",
+   "size": "A2",
+   "name": "K2 SNOWBOARDING - A2 (template)",
+   "drawing": "1318bfd2b43e84ecc31d49d4",
+   "logo": "54bd5ed37896941a5d85b171",
+   "build_s": 81
+  },
+  "RIDE A2": {
+   "brand": "RIDE",
+   "size": "A2",
+   "name": "RIDE - A2 (template)",
+   "drawing": "4c6533f9c6d80a62ddf385cd",
+   "logo": "be36bda38c12fca2580e96af",
+   "build_s": 79
   }
  }
 }

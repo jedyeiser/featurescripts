@@ -1020,6 +1020,10 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
 const ROUT_PLANE_SIZE = 20 * meter;
 /** A rout surface whose x extent reaches MRS within this is cut there. */
 const ROUT_REACH = 1e-6 * meter;
+/** A section end within this of the ski's outside (|y|) counts as on it, not inside. */
+const ROUT_OUTSIDE_TOLERANCE = 1e-3 * millimeter;
+/** Section ends within this in height are level (the start edge's tie-break). */
+const ROUT_TIE = 1e-6 * meter;
 
 /**
  * Table 4, SW rout (2026-09-29, user definitions; undefined without a rout surface). In the LOCAL frame (datum X
@@ -1028,7 +1032,9 @@ const ROUT_REACH = 1e-6 * meter;
  *                      wire's s at that x (primitiveS), Dist. from tail = |x - x(TAIL)|
  *     section          the rout faces cut by the datum YZ plane through MRS; the +Y side's edges (the -Y side's,
  *                      mirrored, when the surface is only there)
- *     start edge       the section's end point closest to the centreline (smallest |y|)
+ *     start edge       the section's LOWEST end point inside the ski's outside (a height tie goes to the edge rising
+ *                      from it); none inside -> the end closest to the centreline. (User rule 2026-09-29 was "the end
+ *                      closest to the centreline"; see routAtMrs for why the lowest inner end is used.)
  *     angle            between the section's tangent at the start edge and Z (0..90 deg)
  *     step-in          outside - |y(start edge)|, outside = the volume's largest |y| on that side in the same plane
  *                      (the ski's outermost point at MRS, normally the base edge); + = start edge inside the ski
@@ -1109,7 +1115,7 @@ function swRout(context is Context, id is Id, definition is map, datum is CoordS
         section = { "x" : primitiveMM(frame.xMrs), "side" : measured.side > 0 ? "+Y" : "-Y",
                 "startY" : primitiveMM(measured.start[1]), "startZ" : primitiveMM(measured.start[2]),
                 "outsideY" : primitiveMM(measured.outsideY), "outsideZ" : primitiveMM(measured.outsideZ),
-                "baseZ" : primitiveMM(measured.baseZ), "edges" : measured.edges };
+                "baseZ" : primitiveMM(measured.baseZ), "edges" : measured.edges, "startRule" : measured.rule };
     }
     rows = concatenateArrays([rows, [
                 mergeMaps({ "key" : "start", "name" : "Start", "value" : "", "unit" : "", "note" : origins.start }, positions.start),
@@ -1138,7 +1144,8 @@ function routAtMrs(context is Context, id is Id, faces is Query, volume is Query
     var result = undefined;
     if (size(routEdges) > 0 && !isQueryEmpty(context, volumeEdges))
     {
-        // End points and tangents of every section edge (local), and each edge's side (its midpoint's y).
+        // End points and tangents of every section edge (local), each edge's side (its midpoint's y) and its rise at
+        // that end (the other end's z minus this one's).
         var ends = [];
         var anyPlus = false;
         for (var e in routEdges)
@@ -1146,13 +1153,21 @@ function routAtMrs(context is Context, id is Id, faces is Query, volume is Query
             const tls = evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 0.5, 1] });
             const edgeSide = (toLocal * tls[1].origin)[1] >= 0 * meter ? 1 : -1;
             anyPlus = anyPlus || edgeSide > 0;
-            for (var j in [0, 2])
-            {
-                ends = append(ends, { "point" : toLocal * tls[j].origin, "direction" : toLocal.linear * tls[j].direction, "side" : edgeSide });
-            }
+            const p0 = toLocal * tls[0].origin;
+            const p1 = toLocal * tls[2].origin;
+            ends = append(ends, { "point" : p0, "direction" : toLocal.linear * tls[0].direction, "side" : edgeSide, "rise" : p1[2] - p0[2] });
+            ends = append(ends, { "point" : p1, "direction" : toLocal.linear * tls[2].direction, "side" : edgeSide, "rise" : p0[2] - p1[2] });
         }
         const side = anyPlus ? 1 : -1;
+        const volumeBox = evBox3d(context, { "topology" : volumeEdges, "cSys" : datum, "tight" : true });
+        const outsideY = side > 0 ? volumeBox.maxCorner[1] : volumeBox.minCorner[1];
+        // The start edge: the LOWEST section end inside the ski's outside (a tie in height goes to the edge that rises
+        // from it, i.e. the rout face rather than a shelf). The user's rule was "the end closest to the centreline";
+        // on a rout that leans in going up (RD 20TAC: 7 deg, 0.8 mm step-in, 4 mm up, the face running on past the
+        // ski's top) that end is the overshoot above the top, while the lowest inner end is the designed start edge.
+        // On a rout leaning out both rules pick the same end. No end inside: the end closest to the centreline.
         var best = undefined;
+        var closest = undefined;
         var count = 0;
         for (var candidate in ends)
         {
@@ -1161,18 +1176,29 @@ function routAtMrs(context is Context, id is Id, faces is Query, volume is Query
                 continue;
             }
             count += 1;
-            if (best == undefined || side * candidate.point[1] < side * best.point[1])
+            if (closest == undefined || side * candidate.point[1] < side * closest.point[1])
+            {
+                closest = candidate;
+            }
+            if (side * (outsideY - candidate.point[1]) <= ROUT_OUTSIDE_TOLERANCE)
+            {
+                continue;
+            }
+            if (best == undefined || candidate.point[2] < best.point[2] - ROUT_TIE ||
+                (abs(candidate.point[2] - best.point[2]) <= ROUT_TIE && candidate.rise > best.rise))
             {
                 best = candidate;
             }
         }
-        const volumeBox = evBox3d(context, { "topology" : volumeEdges, "cSys" : datum, "tight" : true });
-        const outsideY = side > 0 ? volumeBox.maxCorner[1] : volumeBox.minCorner[1];
+        if (best == undefined)
+        {
+            best = closest;
+        }
         const d = normalize(best.direction);
         result = { "side" : side, "start" : best.point, "angle" : acos(min(1, abs(d[2]))),
                 "stepIn" : side * (outsideY - best.point[1]), "distAboveBase" : best.point[2] - base[2],
                 "outsideY" : outsideY, "outsideZ" : outermostZ(context, volumeEdges, toLocal, outsideY), "baseZ" : base[2],
-                "edges" : count / 2 };
+                "edges" : count / 2, "rule" : best == closest ? "closest to the centreline" : "lowest inside the ski" };
     }
     opDeleteBodies(context, id + "deleteSections", { "entities" : qUnion([qCreatedBy(id + "mrsPlane", EntityType.BODY),
                     qCreatedBy(id + "routSection", EntityType.BODY), qCreatedBy(id + "volumeSection", EntityType.BODY)]) });
