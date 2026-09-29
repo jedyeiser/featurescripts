@@ -1818,6 +1818,21 @@ export function planarCap(samples is map, tol is number)
             "depth" : 2 * max(halfU, halfV) + UNWRAP_PART_CAP_MARGIN, "dev" : dev };
 }
 
+/** A cap's envelope fit: the outermost of the trim's and the whole parameter box's "outs", station by station. */
+export function capEnvelope(fit is map, whole is map) returns map
+{
+    if (whole.dev >= UNWRAP_PART_NO_FIT || whole.alongU != fit.alongU)
+    {
+        return fit;
+    }
+    var outs = fit.outs;
+    for (var i = 0; i < size(outs); i += 1)
+    {
+        outs[i] = max(outs[i], whole.outs[i]);
+    }
+    return mergeMaps(fit, { "outs" : outs });
+}
+
 /** Per-station values with the missing ones taken from the nearest station that has one (0 when none has). */
 export function filledStations(values is array) returns array
 {
@@ -1933,16 +1948,15 @@ export function prismAnalysis(context is Context, chart is map, piece is Query, 
                 // The envelope over the face's whole parameter box: the grid on the trim need not reach the cap's corners,
                 // where a lean carries the plane past the sampled envelope (4103: 22 um short at the cap's top). The
                 // cut takes the band back to the plane anyway.
-                var outs = W.outs;
-                const whole = viewFit(prismFaceSamples(context, chart, face, false, settings.part), 1);
-                if (whole.dev < UNWRAP_PART_NO_FIT && whole.alongU == W.alongU)
+                // It closes the side view the same way (an end cap may be the only face closing it there).
+                const wholeSamples = prismFaceSamples(context, chart, face, false, settings.part);
+                rows = append(rows, prismRow(context, chart, face, "WALL", capEnvelope(W, viewFit(wholeSamples, 1)), true, refine,
+                        settings.part));
+                if (P.dev < UNWRAP_PART_NO_FIT)
                 {
-                    for (var i = 0; i < size(outs); i += 1)
-                    {
-                        outs[i] = max(outs[i], whole.outs[i]);
-                    }
+                    rows = append(rows, prismRow(context, chart, face, "PROFILE", capEnvelope(P, viewFit(wholeSamples, 2)), true, refine,
+                            settings.part));
                 }
-                rows = append(rows, prismRow(context, chart, face, "WALL", mergeMaps(W, { "outs" : outs }), true, refine, settings.part));
                 caps = append(caps, cap);
                 envelopes += 1;
                 continue;
