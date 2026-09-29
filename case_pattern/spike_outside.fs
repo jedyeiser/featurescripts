@@ -236,22 +236,42 @@ export const innerReplay = defineFeature(function(context is Context, id is Id, 
             functions = valuesSortedById(context, byFeature);
         }
         var errors = [];
-        if (mode == "own")
+        if (mode == "own" || mode == "retry")
         {
             setFeaturePatternInstanceData(context, id, { "transform" : identityTransform() });
         }
         for (var i = 0; i < size(functions); i += 1)
         {
+            var failed = undefined;
             try
             {
                 functions[i](id);
             }
             catch (err)
             {
-                errors = append(errors, "feature " ~ (i + 1) ~ ": " ~ errText(err));
+                failed = errText(err);
+            }
+            if (failed != undefined && mode == "retry" && indexOf(failed, "SELF_INTERSECTING_CURVE_SELECTED") >= 0)
+            {
+                // Pop only our own frame; the caller's frame (if any) stays.
+                unsetFeaturePatternInstanceData(context, id);
+                try
+                {
+                    functions[i](id + ("direct" ~ i));
+                    failed = undefined;
+                }
+                catch (err)
+                {
+                    failed = "retry: " ~ errText(err);
+                }
+                setFeaturePatternInstanceData(context, id, { "transform" : identityTransform() });
+            }
+            if (failed != undefined)
+            {
+                errors = append(errors, "feature " ~ (i + 1) ~ ": " ~ failed);
             }
         }
-        if (mode == "own")
+        if (mode == "own" || mode == "retry")
         {
             unsetFeaturePatternInstanceData(context, id);
         }

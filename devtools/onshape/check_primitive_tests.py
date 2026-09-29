@@ -674,29 +674,33 @@ def run_checks_unwrap(d, full):
         for x, z in e["p"]:
             if x < 50.0:
                 continue
-            for f in r1:
-                pts = f["p"]
-                if min(pts[0][0], pts[-1][0]) <= x <= max(pts[0][0], pts[-1][0]):
-                    zs = [a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0]) for a, b in zip(pts, pts[1:])
-                          if min(a[0], b[0]) <= x <= max(a[0], b[0]) and a[0] != b[0]]
-                    if zs:
-                        worst = max(worst, min(abs(z - dz - v) for v in zs))
-    check("P14", "radius band beyond the bite (u >= 50) = P1's (mm of plot height)", "<= 0.01", round(worst, 5), worst <= 0.01)
+            zs = [a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0]) for f in r1 for a, b in zip(f["p"], f["p"][1:])
+                  if min(a[0], b[0]) <= x <= max(a[0], b[0]) and a[0] != b[0]]
+            if zs:
+                worst = max(worst, min(abs(z - dz - v) for v in zs))
+    # 0.03 mm of plot height (3 mm of radius): the plots are fitted through 5 mm samples that start at different points
+    # (P14's tail edge starts at the bite corner), ~0.016 mm apart on TAC's tail curve.
+    check("P14", "radius band beyond the bite (u >= 50) = P1's (mm of plot height; fit resolution)", "<= 0.03", round(worst, 5), worst <= 0.03)
     tail = [e for e in r14 if min(p[0] for p in e["p"]) < 50.0]
     steps = [abs(b[1] - a[1]) for e in tail for a, b in zip(e["p"], e["p"][1:])]
     check("P14", "radius runs through the bite region: no spikes (largest step between 101 samples, mm)", "< 1",
           round(max(steps), 4) if steps else "no run", bool(steps) and max(steps) < 1.0)
     # Inside the RSL the bite changes nothing: data table and radius metadata = P3 (same baseline and footprint source).
+    # s is compared from MRS: s is zero at x = 0, which lies past the bitten bottom wire's end (straight extension).
     bad = []
+    mrs3 = [r["s"] for r in d["P3"]["data"] if near(r["x"], 885.0, 1e-3)][0]
+    mrs14 = [r["s"] for r in d["P14"]["data"] if near(r["x"], 885.0, 1e-3)][0]
     for a, b in zip(d["P3"]["data"], d["P14"]["data"]):
         for field, va in a.items():
             vb = b.get(field)
+            if field == "s":
+                va, vb = va - mrs3, vb - mrs14
             if isinstance(va, float) and not near(va, vb, 0.01):
                 bad.append("%s %s vs %s" % (field, va, vb))
     for key in ("averageRadius", "naturalRadiusWidest", "naturalRadiusInflection", "taperAngleWidest", "rsl"):
         if not near(meta(d["P3"], key), meta(d["P14"], key), 1e-4):
             bad.append(key)
-    check("P14", "inside the RSL = P3: data rows (0.01 mm) and radius metadata", "equal, %d rows" % len(d["P3"]["data"]),
+    check("P14", "inside the RSL = P3: data rows (0.01 mm, s from MRS) and radius metadata", "equal, %d rows" % len(d["P3"]["data"]),
           "%d rows, %d differences %s" % (len(d["P14"]["data"]), len(bad), bad[:3]), not bad and len(d["P14"]["data"]) == len(d["P3"]["data"]))
 
 

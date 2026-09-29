@@ -269,8 +269,8 @@ function addSectionLevels(context is Context, id is Id, base is map, ys is array
 
 /**
  * A mapping section: a chain in the plane y = `y` running TAIL -> TIP, with a seed table (a, x, z at
- * SECTION_TABLE_ROWS + 1 even arc positions; sense = +1 / -1 when x is strictly monotonic along it), its x range and
- * uOffset (u = uOffset + dirSign * a). Aligned at x(MRS) (u = x(MRS) there) when it reaches it; otherwise at the
+ * SECTION_TABLE_ROWS + 1 even arc positions; sense = +1 / -1 when x is strictly monotonic along it), its x range, its
+ * straight edges (lines[i]: { p0, dir, normal } or undefined) and uOffset (u = uOffset + dirSign * a). Aligned at x(MRS) (u = x(MRS) there) when it reaches it; otherwise at the
  * overlap point nearest x(MRS) with the nearest-in-y section of `anchored` it overlaps (u equal there). undefined when
  * it can be aligned to nothing.
  */
@@ -305,7 +305,20 @@ function unwrapSection(context is Context, chain is map, y is ValueWithUnits, fr
             break;
         }
     }
-    var section = { "chain" : chain, "y" : y, "a" : arcs, "x" : xs, "z" : zs, "sense" : sense, "xLo" : xLo, "xHi" : xHi };
+    // Straight edges (lines): chain-oriented start point, direction and in-plane normal, for exact feet.
+    var lines = [];
+    for (var i = 0; i < size(chain.edges); i += 1)
+    {
+        var line = undefined;
+        if (evCurveDefinition(context, { "edge" : chain.edges[i] }) is Line)
+        {
+            const tl = evEdgeTangentLine(context, { "edge" : chain.edges[i], "parameter" : chain.flipped[i] ? 1 : 0 });
+            const dir = chain.flipped[i] ? -tl.direction : tl.direction;
+            line = { "p0" : tl.origin, "dir" : dir, "normal" : normalize(cross(vector(0, 1, 0), dir)) };
+        }
+        lines = append(lines, line);
+    }
+    var section = { "chain" : chain, "y" : y, "a" : arcs, "x" : xs, "z" : zs, "sense" : sense, "xLo" : xLo, "xHi" : xHi, "lines" : lines };
     if (xLo <= frame.xMrs && xHi >= frame.xMrs)
     {
         const at = primitiveChainAtX(context, chain, { "a" : arcs, "x" : xs }, [frame.xMrs])[0];
@@ -439,12 +452,40 @@ function sectionSeedRow(section is map, p is Vector) returns number
 function sectionFeet(context is Context, section is map, points is array) returns array
 {
     var arcs = [];
-    for (var p in points)
-    {
-        arcs = append(arcs, section.a[sectionSeedRow(section, p)]);
-    }
     var results = makeArray(size(points));
-    var active = size(points) == 0 ? [] : range(0, size(points) - 1);
+    var active = [];
+    const chain = section.chain;
+    for (var j = 0; j < size(points); j += 1)
+    {
+        const p = points[j];
+        var a = section.a[sectionSeedRow(section, p)];
+        // Over a straight edge the foot is exact without the kernel (most of a ski base).
+        var i = 0;
+        for (var k = 1; k < size(chain.edges); k += 1)
+        {
+            if (chain.starts[k] <= a)
+            {
+                i = k;
+            }
+        }
+        const line = section.lines[i];
+        if (line != undefined)
+        {
+            const d0 = p - line.p0;
+            const d = vector(d0[0], 0 * meter, d0[2]);
+            const along = dot(d, line.dir);
+            if (along >= -SECTION_REACH_TOL && along <= chain.lengths[i] + SECTION_REACH_TOL)
+            {
+                results[j] = { "a" : chain.starts[i] + along, "tangent" : line.dir, "normal" : line.normal, "curvature" : 0 / meter,
+                        "h" : dot(d, line.normal) };
+                arcs = append(arcs, chain.starts[i] + along);
+                continue;
+            }
+            a = chain.starts[i] + max(0 * meter, min(chain.lengths[i], along));
+        }
+        arcs = append(arcs, a);
+        active = append(active, j);
+    }
     for (var step = 0; step <= SECTION_FOOT_STEPS && size(active) > 0; step += 1)
     {
         var activeArcs = [];

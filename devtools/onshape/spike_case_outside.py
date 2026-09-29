@@ -75,6 +75,26 @@ f4 = body("O4", qv("entities", "top4"), T, corner, mc)
 feature("O4 Top-frame replay, #top4 = B's top", "topFrameReplay",
         [flist("features", f4), s("bindName", "top4"), sel("bindQuery", top(B)), s("caseName", "B")], SNS)
 
+# N1-N3: where the frame lives. Outer replay -> Inner replay (FeatureList) -> body, like Case pattern -> Close case.
+# Body: probes, boss up to the clicked tower top, rim fillet on #rim (edits outside geometry), QV created by boss,
+# boss-edge fillet via that QV (in-list remap).
+for tag, y, outer, mode in [("N1 outer no frame, inner own frame (= Case pattern today)", 600, False, "own"),
+                            ("N2 outer frame, inner none", 750, True, "none"),
+                            ("N3 outer frame, inner own (nested)", 900, True, "own"),
+                            ("N4 outer frame, inner own + retry outside own frame", 1050, True, "retry"),
+                            ("N5 outer no frame, inner own + retry (= Case pattern today, full)", 1200, False, "retry")]:
+    t = tag.split()[0]
+    A, B, C, T, corner, mc = row(t, y)
+    dn = define_case("%s Define case A: #top%s #rim%s" % (t, t, t), "A", [("top" + t, top(A)), ("rim" + t, rim(A))])
+    fb = [probe(t + " probe face", top(T)), probe(t + " probe MC", mc),
+          up_to(t + " boss up to tower top (clicked outside)", qv("entities", "top" + t), top(T))]
+    fb.append(feature(t + " rim fillet #rim 2 mm (outside geometry edit)", "fillet", [qv("entities", "rim" + t), num("radius", "2 mm")]))
+    fb.append(feature(t + " #bossE = edges created by boss (native QV)", "queryVariable", native_qv("bossE" + t, [fb[2]], "EDGE")))
+    fb.append(feature(t + " boss fillet #bossE 1 mm (in-list remap)", "fillet", [qv("entities", "bossE" + t), num("radius", "1 mm")]))
+    inner = feature(t + " Inner replay", "innerReplay", [flist("features", fb)], SNS)
+    feature("%s Outer replay -> case B" % tag, "outerReplay", [flist("inner", [inner]), s("bindName", "top" + t), sel("bindQuery", top(B)),
+            s("bindName2", "rim" + t), sel("bindQuery2", rim(B)), b("outerFrame", outer), s("innerMode", mode)], SNS)
+
 feats = c.get(f"{BASE}/features")
 print("\nSTATUS")
 for f in feats["features"]:
@@ -82,7 +102,7 @@ for f in feats["features"]:
     print("  %-8s %s" % (st, f["name"]))
 script = ('function(context is Context, queries) { var out = try silent(getVariable(context, "-probeLog")); '
           'var bodies = []; for (var b in evaluateQuery(context, qBodyType(qEverything(EntityType.BODY), BodyType.SOLID))) '
-          '{ const bb = evBox3d(context, { "topology" : b }); bodies = append(bodies, roundToPrecision(bb.minCorner[0] / millimeter, 1) ~ "," '
+          '{ const bb = evBox3d(context, { "topology" : b }); const fc = qOwnedByBody(b, EntityType.FACE); bodies = append(bodies, size(evaluateQuery(context, qUnion([qGeometry(fc, GeometryType.CYLINDER), qGeometry(fc, GeometryType.TORUS)]))) ~ "R " ~ roundToPrecision(bb.minCorner[0] / millimeter, 1) ~ "," '
           '~ roundToPrecision(bb.minCorner[1] / millimeter, 1) ~ " z" ~ roundToPrecision(bb.minCorner[2] / millimeter, 1) ~ ".." '
           '~ roundToPrecision(bb.maxCorner[2] / millimeter, 1)); } return toString({ "log" : out, "bodies" : bodies }); }')
 r = c.post(f"{BASE}/featurescript", json_data={"script": script})
