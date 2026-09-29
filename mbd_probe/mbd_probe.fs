@@ -85,7 +85,7 @@ export const mbdProbe = defineFeature(function(context is Context, id is Id, def
         const userTolerant = tolerant["thickness"] != undefined;
         if (definition.autoTolerance && !userTolerant)
         {
-            dim.tolerances = { "toleranceType" : ToleranceType.SYMMETRICAL, "upper" : 0.1 * millimeter, "lower" : 0.1 * millimeter };
+            dim.tolerances = { "toleranceType" : ToleranceType.SYMMETRICAL, "upper" : 0.1 * millimeter, "lower" : -0.1 * millimeter };
             dim.nominal = definition.thickness;
         }
 

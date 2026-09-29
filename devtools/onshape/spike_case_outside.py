@@ -32,7 +32,7 @@ def probe(label, ref_expr):
 
 def up_to(name, entities, face_expr):
     return feature(name, "extrude", [en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
-                                     entities, en("endBound", "BoundingType", "UP_TO_FACE"), sel("endBoundEntityFace", face_expr)])
+                                     entities, en("endBound", "BoundingType", "UP_TO_SURFACE"), sel("endBoundEntityFace", face_expr)])
 
 
 def row(tag, y):

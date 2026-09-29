@@ -779,7 +779,6 @@ export function primitiveUnwrap(context is Context, id is Id, frame is map, edge
             }
             if (size(extra) > 0)
             {
-                println("DBGEXTRA missing " ~ size(missing) ~ " levels " ~ size(extra));
                 through = addSectionLevels(context, id + "extraSections", through, extra, frame);
                 extraBodies = through.bodies;
                 var subPoints = [];
@@ -864,12 +863,6 @@ export function primitiveUnwrap(context is Context, id is Id, frame is map, edge
             }
         }
         samples = append(samples, { "u" : us, "y" : ys, "R" : radii, "K" : curvatures });
-        var ul = 0 * meter;
-        for (var q = 1; q < size(points2); q += 1)
-        {
-            ul += norm(points2[q] - points2[q - 1]);
-        }
-        println("DBGEDGE len " ~ roundToPrecision(e.len / millimeter, 4) ~ " poly " ~ roundToPrecision(ul / millimeter, 4) ~ " n " ~ size(points2) ~ " p0 " ~ toString(e.results[0].frame.origin / millimeter) ~ " p1 " ~ toString(e.results[size(e.results) - 1].frame.origin / millimeter) ~ " exact " ~ exact);
         if (exact)
         {
             var placed = false;

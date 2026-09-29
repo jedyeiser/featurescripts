@@ -9,7 +9,10 @@ statuses, and compares:
   * P7 (datum = MRS connector, Datum uses ORIGIN) against P1: x - 885; P9 (COORDINATE_SYSTEM) against P5;
   * P8 (target EI 150 N*m^2 constant): deflection = P L^3 / 48 EI, stiffness = 48 EI (1 in) / L^3, block rows;
   * only rows with data (no "n/a" / phase-2 rows); P1's flat baseline has no rocker / camber rows or points;
-  * structure: composite members, band bodies, key points.
+  * structure: composite members, band bodies, key points;
+  * P14 (the user's tail bite on a copy of the volume): the unwrap is an isometry (periphery length, base area), the
+    footprint reaches the bite's true depth on the centreline, only the bite adds corners, the radius band beyond the
+    bite = P1's and has no spikes through it, and inside the RSL everything = P3.
 With --before <json> (a --json snapshot of an earlier run): P1 .. P6 values unchanged, except the rows the
 2026-09-28 decisions removed (phase-2 placeholders; P1 / P5 / P6 rocker rows on a flat baseline).
 
@@ -56,12 +59,44 @@ function(context is Context, queries)
                 extents[name] = append(extents[name] == undefined ? [] : extents[name], row);
             }
         }
+        // Sampled footprint / plot-band geometry (x, z mm; start / end tangents) for the unwrap checks (P1, P14 only).
+        var shapes = {};
+        if (data.prefix == "P1 TAC" || data.prefix == "P14 TAC bite")
+        {
+            var ts = [];
+            for (var i = 0; i <= 100; i += 1)
+            {
+                ts = append(ts, i / 100);
+            }
+            for (var m in evaluateQuery(context, qContainedInCompositeParts(body)))
+            {
+                const name = getProperty(context, { "entity" : m, "propertyType" : PropertyType.NAME });
+                if (name != data.prefix ~ " PRIMITIVE FOOTPRINT" && name != data.prefix ~ " PRIMITIVE RADIUS")
+                {
+                    continue;
+                }
+                var edges = [];
+                for (var e in evaluateQuery(context, qOwnedByBody(m, EntityType.EDGE)))
+                {
+                    const tls = evEdgeTangentLines(context, { "edge" : e, "parameters" : ts });
+                    var pts = [];
+                    for (var tl in tls)
+                    {
+                        pts = append(pts, [round(tl.origin[0] / millimeter * 1e5) / 1e5, round(tl.origin[2] / millimeter * 1e5) / 1e5]);
+                    }
+                    const d0 = tls[0].direction;
+                    const d1 = tls[100].direction;
+                    edges = append(edges, { "p" : pts, "t0" : [d0[0], d0[2]], "t1" : [d1[0], d1[2]] });
+                }
+                shapes[name] = append(shapes[name] == undefined ? [] : shapes[name], edges);
+            }
+        }
         var members = [];
         for (var entry in counts)
         {
             members = append(members, entry.key);
         }
-        out = append(out, "JSON " ~ toString({ "data" : data, "members" : members, "counts" : counts, "colours" : colours, "extents" : extents,
+        out = append(out, "JSON " ~ toString({ "data" : data, "members" : members, "counts" : counts, "colours" : colours, "extents" : extents, "shapes" : shapes,
                     "name" : getProperty(context, { "entity" : body, "propertyType" : PropertyType.NAME }),
                     "bom" : getProperty(context, { "entity" : body, "propertyType" : PropertyType.EXCLUDE_FROM_BOM }) }));
     }
@@ -425,6 +460,8 @@ def run_checks(prims, before=None):
     check("P6", "average radius always between the inflections: = P1 (region RSL)", meta(p1, "averageRadius"), meta(p6, "averageRadius"),
           near(meta(p6, "averageRadius"), meta(p1, "averageRadius"), 1e-4))
     run_checks_b(d, full)
+    if "P14" in d:
+        run_checks_unwrap(d, full)
 
     width = max(len(r[1]) for r in RESULTS)
     fails = 0
@@ -548,6 +585,119 @@ def run_checks_b(d, full):
           "%s %s / %s %s" % (e150, e50, r10, rm10), e150 == 4 and e50 == 3 and r10 == 4 and rm10 == 4)
     et = full["P8"]["counts"].get("P8 TAC EI PRIMITIVE EI TITLE")
     check("P8", "EI title 'EI (Nm^2)': E I ( N m ) 2 = 7 glyph loops (no '*')", 7, et, et == 7)
+
+
+def band_edges(full_case, band):
+    """The sampled edges ({p: [[x, z], ...], t0, t1}) of '<prefix> PRIMITIVE <band>' (P1 / P14 only)."""
+    return [e for name, groups in full_case.get("shapes", {}).items() if name.endswith(" PRIMITIVE " + band) for g in groups for e in g]
+
+
+def chain_loop(edges):
+    """The edges' sample points chained end to end into one loop (nearest free end next)."""
+    import math
+    left = [list(e["p"]) for e in edges]
+    loop = left.pop(0)
+    while left:
+        best = None
+        for i, e in enumerate(left):
+            for rev in (False, True):
+                dd = math.dist(e[-1] if rev else e[0], loop[-1])
+                if best is None or dd < best[0]:
+                    best = (dd, i, rev)
+        e = left.pop(best[1])
+        loop += (e[::-1] if best[2] else e)[1:]
+    return loop
+
+
+def loop_area(points):
+    return abs(sum(x0 * z1 - x1 * z0 for (x0, z0), (x1, z1) in zip(points, points[1:] + points[:1]))) / 2
+
+
+def crossings(edges, z0):
+    """x where the sampled edges cross z = z0 (linear between samples)."""
+    out = []
+    for e in edges:
+        for (x0, a), (x1, b) in zip(e["p"], e["p"][1:]):
+            if (a - z0) * (b - z0) <= 0 and a != b:
+                out.append(x0 + (x1 - x0) * (z0 - a) / (b - a))
+    return out
+
+
+def corners(edges, min_angle=2.0):
+    """[(x, z, angle deg)] at edge junctions (ends within 1 um) whose tangents differ by more than min_angle."""
+    import math
+    ends = []
+    for e in edges:
+        ends.append((e["p"][0], e["t0"]))
+        ends.append((e["p"][-1], e["t1"]))
+    out = []
+    for i in range(len(ends)):
+        for j in range(i + 1, len(ends)):
+            (p, t), (q, u) = ends[i], ends[j]
+            if math.dist(p, q) < 1e-3 and j // 2 != i // 2:
+                c = abs(t[0] * u[0] + t[1] * u[1]) / (math.hypot(*t) * math.hypot(*u))
+                ang = math.degrees(math.acos(min(1.0, c)))
+                if ang > min_angle:
+                    out.append((round(p[0], 3), round(p[1], 3), round(ang, 2)))
+    return out
+
+
+def run_checks_unwrap(d, full):
+    """2026-09-28 unwrap through base sections (the user's tail bite): P14 = P1's volume with the bite cut into its tail."""
+    for case in ("P1", "P14"):
+        un = d[case]["footprint"].get("unwrap", {})
+        check(case, "unwrap is an isometry: unwrapped length = base periphery length (mm)", "|diff| <= 0.01",
+              "%s vs %s" % (un.get("unwrappedLength"), un.get("sourceLength")),
+              near(un.get("unwrappedLength"), un.get("sourceLength"), 0.01))
+        fp = band_edges(full[case], "FOOTPRINT")
+        area = loop_area(chain_loop(fp)) if fp else 0.0
+        base = un.get("baseArea")
+        check(case, "unwrapped footprint area = base faces' area (mm^2)", "rel <= 1e-4", "%.1f vs %s" % (area, base),
+              isinstance(base, float) and abs(area - base) <= 1e-4 * base)
+        k = rows(d[case], "keyLocations")
+        z0 = d[case]["bands"]["footprint"]
+        u_of = lambda key: 885.0 + k[key]["s"] - k["MRS"]["s"]
+        xs = crossings(fp, z0)
+        check(case, "footprint on the centreline ends at u(TAIL) / u(TIP) (the bite's true depth on P14)", "%.3f / %.3f" % (u_of("TAIL"), u_of("TIP")),
+              "%.3f / %.3f" % (min(xs), max(xs)) if xs else "no crossing",
+              bool(xs) and near(min(xs), u_of("TAIL"), 0.01) and near(max(xs), u_of("TIP"), 0.01))
+    c1 = corners(band_edges(full["P1"], "FOOTPRINT"))
+    c14 = corners(band_edges(full["P14"], "FOOTPRINT"))
+    check("P14", "footprint corners: P1's + the bite's two, at the tail (u < 60); no kinks elsewhere", "%d + 2" % len(c1),
+          "P1 %s / P14 %s" % (c1, c14), len(c14) == len(c1) + 2 and all(c[0] < 60 for c in c14 if c not in c1))
+    # Radius band: beyond the bite = P1 (band offset), and continuous through the bite region.
+    r1 = band_edges(full["P1"], "RADIUS")
+    r14 = band_edges(full["P14"], "RADIUS")
+    dz = d["P14"]["bands"]["radius"] - d["P1"]["bands"]["radius"]
+    worst = 0.0
+    for e in r14:
+        for x, z in e["p"]:
+            if x < 50.0:
+                continue
+            for f in r1:
+                pts = f["p"]
+                if min(pts[0][0], pts[-1][0]) <= x <= max(pts[0][0], pts[-1][0]):
+                    zs = [a[1] + (b[1] - a[1]) * (x - a[0]) / (b[0] - a[0]) for a, b in zip(pts, pts[1:])
+                          if min(a[0], b[0]) <= x <= max(a[0], b[0]) and a[0] != b[0]]
+                    if zs:
+                        worst = max(worst, min(abs(z - dz - v) for v in zs))
+    check("P14", "radius band beyond the bite (u >= 50) = P1's (mm of plot height)", "<= 0.01", round(worst, 5), worst <= 0.01)
+    tail = [e for e in r14 if min(p[0] for p in e["p"]) < 50.0]
+    steps = [abs(b[1] - a[1]) for e in tail for a, b in zip(e["p"], e["p"][1:])]
+    check("P14", "radius runs through the bite region: no spikes (largest step between 101 samples, mm)", "< 1",
+          round(max(steps), 4) if steps else "no run", bool(steps) and max(steps) < 1.0)
+    # Inside the RSL the bite changes nothing: data table and radius metadata = P3 (same baseline and footprint source).
+    bad = []
+    for a, b in zip(d["P3"]["data"], d["P14"]["data"]):
+        for field, va in a.items():
+            vb = b.get(field)
+            if isinstance(va, float) and not near(va, vb, 0.01):
+                bad.append("%s %s vs %s" % (field, va, vb))
+    for key in ("averageRadius", "naturalRadiusWidest", "naturalRadiusInflection", "taperAngleWidest", "rsl"):
+        if not near(meta(d["P3"], key), meta(d["P14"], key), 1e-4):
+            bad.append(key)
+    check("P14", "inside the RSL = P3: data rows (0.01 mm) and radius metadata", "equal, %d rows" % len(d["P3"]["data"]),
+          "%d rows, %d differences %s" % (len(d["P14"]["data"]), len(bad), bad[:3]), not bad and len(d["P14"]["data"]) == len(d["P3"]["data"]))
 
 
 if __name__ == "__main__":
