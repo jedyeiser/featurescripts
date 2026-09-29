@@ -191,7 +191,8 @@ export function unwrapSolid(context is Context, id is Id, chart is map, cs is Co
             "faceMode" : (options.faceMode == "merge") ? "merge" : "keep",
             "shapeTolerance" : shapeTolerance,
             "arcTolerance" : shapeTolerance * UNWRAP_PART_SHAPE_ARC_SHARE,
-            "part" : part
+            "part" : part,
+            "keepFailed" : options.keepFailed == true
         };
     var report = mergeMaps(emptyPartReport(), { "pieces" : 0, "rigidPieces" : 0, "rebuiltPieces" : 0, "prismPieces" : 0,
                 "cellPieces" : 0, "methods" : [], "approximationMax" : 0 * meter, "reverseCheckMax" : 0 * meter });
@@ -355,6 +356,12 @@ export function rebuildCurvedPiece(context is Context, id is Id, chart is map, p
             }
             reason = "the band rebuild missed the source by " ~ roundToPrecision(check.distance * 1000, 4) ~ " mm at flat "
                 ~ flatText(check.where) ~ " (limit " ~ roundToPrecision(limit * 1000, 4) ~ " mm)";
+            if (settings.keepFailed)
+            {
+                println("KEEPFAIL " ~ reason);
+                endFeature(context, pid);
+                return { "body" : built.body, "method" : "prism", "report" : mergeMaps(emptyPartReport(), { "reverseCheck" : check.distance }), "notes" : [], "text" : "KEPT FAILED " ~ reason };
+            }
         }
         abortFeature(context, pid);
     }
