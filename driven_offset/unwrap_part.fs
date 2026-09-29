@@ -342,7 +342,7 @@ export function rebuildCurvedPiece(context is Context, id is Id, chart is map, p
         }
         catch (e)
         {
-            reason = "the band rebuild failed (" ~ errorText(e) ~ ")";
+            reason = "the band rebuild failed (" ~ errorText(e) ~ "; " ~ analysis.text ~ ")";
         }
         if (built != undefined)
         {
