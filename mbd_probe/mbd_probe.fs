@@ -48,9 +48,14 @@ export const mbdProbe = defineFeature(function(context is Context, id is Id, def
 
         annotation { "Name" : "Auto tolerance (+/- 0.1 mm)", "Default" : true }
         definition.autoTolerance is boolean;
+
+        annotation { "Name" : "Slot (x 150 mm, y 100 mm)" }
+        isInteger(definition.slot, { (unitless) : [0, 0, 100] } as IntegerBoundSpec);
     }
     {
         const sheet = probeSheet(context, id + "sheet", definition.shape);
+        opTransform(context, id + "place", { "bodies" : sheet,
+                    "transform" : transform(vector(150 * (definition.slot % 4), 100 * floor(definition.slot / 4), 0) * millimeter) });
         opThicken(context, id + "thicken", {
                     "entities" : sheet,
                     "thickness1" : definition.thickness,
@@ -93,7 +98,7 @@ export const mbdProbe = defineFeature(function(context is Context, id is Id, def
             definition.registration ~ ", user tolerant " ~ userTolerant ~ ", auto tolerance " ~ (dim.tolerances != undefined);
         println(message);
         reportFeatureInfo(context, id, message);
-    }, { "autoTolerance" : true, "registration" : MbdProbeRegistration.QUERIES });
+    }, { "autoTolerance" : true, "registration" : MbdProbeRegistration.QUERIES, "slot" : 0 });
 
 /** A 100 x 60 mm sheet body at the origin; returns a query for it. */
 function probeSheet(context is Context, id is Id, shape is MbdProbeShape) returns Query
