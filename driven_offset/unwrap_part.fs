@@ -599,15 +599,14 @@ export function chartFootAt(chart is map, point is Vector, previous) returns arr
     return unwrapFast(chart, point, undefined);
 }
 
-/** The name of the first solid of a selection, for messages ("the part" when it has none). */
+/**
+ * How messages name the part. Not its name: getProperty cannot run in a feature body (correction 36) -- it threw
+ * inside the error messages that used it, so a refusal surfaced as a getProperty warning and its own text was lost
+ * (4103 over FULL_BASELINE, 2026-09-29). The part is highlighted instead.
+ */
 export function partName(context is Context, part is Query) returns string
 {
-    const solids = evaluateQuery(context, qBodyType(part, BodyType.SOLID));
-    if (size(solids) == 0)
-    {
-        return "the part";
-    }
-    return "\"" ~ getProperty(context, { "entity" : solids[0], "propertyType" : PropertyType.NAME }) ~ "\"";
+    return "the part";
 }
 
 /**
