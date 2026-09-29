@@ -501,10 +501,10 @@ function betweenLabel(between is PrimitiveRadiusBetween) returns string
 }
 
 /** Table 2 rows: { key, name, value (number or text), unit, note }. */
-function metadataRows(fpt is map, fcp is Vector, acp is Vector, box is Box3d, between is PrimitiveRadiusBetween, frame is map) returns array
+function metadataRows(fpt is map, fcp is Vector, acp is Vector, volumeBox is Box3d, between is PrimitiveRadiusBetween, frame is map) returns array
 {
     const r = fpt.result;
-    const dims = box.maxCorner - box.minCorner;
+    const dims = volumeBox.maxCorner - volumeBox.minCorner;
     return [
         { "key" : "rsl", "name" : "RSL", "value" : primitiveMM(abs(acp[0] - fcp[0])), "unit" : "mm", "note" : "FCP to ACP along the datum X" },
         { "key" : "dimensions", "name" : "Dimensions (L x W x H)",
