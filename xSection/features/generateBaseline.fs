@@ -36,14 +36,15 @@ IconNamespace::import(path : "92cb84f99f9acfdb3db593ed", version : "7d3663080744
  *
  * Algorithm:
  *   1. Resolve xFCP, xACP, xMount
- *   2. Derive xFRCP = xFCP + FRCPL,  xARCP = xACP - ARCPL
+ *   2. Derive xFRCP = xFCP -/+ FRCPL,  xARCP = xACP +/- ARCPL (towards MRS)
  *   3. Inner solve (camber pocket + rocker sections) for inner target height H
- *   4. Outer bisection on H until actualCamber = MCH_target ± 0.01 mm
+ *   4. Outer bisection on H until actualCamber = MCH_target +/- 0.01 mm
  *   5. Fit approximateSpline through assembled points, create curve body
  *
  * Coordinate convention:
  *   - All geometry in XZ plane (Y = 0)
- *   - X = along-ski axis;  xFCP < xACP
+ *   - X = along-ski axis; FCP may lie on either side of ACP (tip = FCP side).
+ *     stdDir = (xFCP < xACP) selects the side-dependent signs below.
  *   - Z = vertical; positive = up = camber
  */
 
@@ -532,11 +533,14 @@ export const generateBaseline = defineFeature(function(context is Context, id is
         // ----------------------------------------------------------------
         if (definition.createWeightedBaseline)
         {
-            // FRCP and ARCP in the transformed coordinate system are the first
-            // and last control points of the (clamped, interpolated) camber spline.
+            // FRCP and ARCP in the transformed coordinate system are the end control
+            // points of the (clamped, interpolated) camber spline. The pocket is fitted
+            // low X -> high X, so the FRCP end is the first point only when FCP is at low X.
             var nCPCamber = size(baselineBSplines[0].controlPoints);
-            var wbFrcpPt  = baselineBSplines[0].controlPoints[0];
-            var wbArcpPt  = baselineBSplines[0].controlPoints[nCPCamber - 1];
+            var camberLowPt  = baselineBSplines[0].controlPoints[0];
+            var camberHighPt = baselineBSplines[0].controlPoints[nCPCamber - 1];
+            var wbFrcpPt  = stdDir ? camberLowPt : camberHighPt;
+            var wbArcpPt  = stdDir ? camberHighPt : camberLowPt;
 
             // Zero-camber section: straight line from FRCP to ARCP
             var wbCamber = bSplineCurve({
@@ -557,7 +561,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             if (hasForeRocker)
             {
                 var fbRocker = baselineBSplines[wbRockerIdx];
-                var fbCP0 = fbRocker.controlPoints[0]; // FRCP — pivot
+                var fbCP0 = fbRocker.controlPoints[0]; // FRCP -- pivot
                 var fbCP1 = fbRocker.controlPoints[1];
                 var fbCP2 = fbRocker.controlPoints[2];
                 var oldFbDir = normalize(fbCP1 - fbCP0);
@@ -578,7 +582,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             if (hasAftRocker)
             {
                 var abRocker = baselineBSplines[wbRockerIdx];
-                var abCP0 = abRocker.controlPoints[0]; // ARCP — pivot
+                var abCP0 = abRocker.controlPoints[0]; // ARCP -- pivot
                 var abCP1 = abRocker.controlPoints[1];
                 var abCP2 = abRocker.controlPoints[2];
                 var oldAbDir = normalize(abCP1 - abCP0);
@@ -624,7 +628,7 @@ export const generateBaseline = defineFeature(function(context is Context, id is
             });
         }
 
-        // Baseline sketch — analyze the generated curve and output measurement geometry
+        // Baseline sketch -- analyze the generated curve and output measurement geometry
         if (definition.addBaselineSketch)
         
         {

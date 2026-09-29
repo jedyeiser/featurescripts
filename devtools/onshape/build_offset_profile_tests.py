@@ -10,6 +10,12 @@
       -> one piece, one degree-2 edge; w 0.25 at 8025, 1 at 8050; slope 0 at 8000, 0.08 at 8100
   T9  Regions: 'Quad' QUADRATIC flat at END 9000 .. 9100, w 0 -> 4, h 0 (no buffers)
       -> one piece, one degree-2 edge; w 1.75 at 9025, 3 at 9050; slope 0.08 at 9000, 0 at 9100
+  T10 Regions entered toward -X (tip at +X, 2026-09-28): 'Rev' LINEAR start 10100 -> end 10000, w 0 -> 4, h 1,
+      start buffer 20 -> one piece 10000 .. 10100; w 0 at 10090, 2 at 10040, 4 at 10000
+  T11 Regions toward -X: 'Quad' QUADRATIC flat at START, start 11100 -> end 11000, w 0 -> 4
+      -> one degree-2 edge; w 0.25 at 11075, 1 at 11050; slope 0 at 11100, -0.08 at 11000
+  T12 Regions toward -X, two touching: 'A' CONSTANT w 1 from 12200 -> 12100, 'B' LINEAR w 1 -> 3 from 12100 -> 12000
+      -> one piece 12000 .. 12200; w 1 at 12150, 2 at 12050
 
 usage (repo root, Git Bash): PYTHONPATH=. MSYS_NO_PATHCONV=1 python devtools/onshape/build_offset_profile_tests.py
 """
@@ -97,12 +103,12 @@ def station(prefix, value=None, pick=None, offset="0 mm"):
             num(ids[2], offset), num(ids[3], value or "0 mm")]
 
 
-def region(name, start, end, shape, cw="0 mm", ch="0 mm", w0="0 mm", w1="0 mm", h0="0 mm", h1="0 mm", flat="START"):
+def region(name, start, end, shape, cw="0 mm", ch="0 mm", w0="0 mm", w1="0 mm", h0="0 mm", h1="0 mm", flat="START", b0="0 mm", b1="0 mm"):
     """Every item parameter, hidden ones included (correction 38); `flat` is QUADRATIC's "Flat at"."""
     return item(s("regionName", name), *start, *end, en("shape", "OffsetProfileShape", shape),
                 en("quadraticFlat", "OffsetQuadraticFlat", flat),
                 num("constantWidth", cw), num("constantHeight", ch), num("startWidth", w0), num("endWidth", w1),
-                num("startHeight", h0), num("endHeight", h1), num("startBuffer", "0 mm"), num("endBuffer", "0 mm"))
+                num("startHeight", h0), num("endHeight", h1), num("startBuffer", b0), num("endBuffer", b1))
 
 
 def profile(name, mode, regions=(), points=()):
@@ -134,3 +140,12 @@ profile("T8 Regions QUADRATIC flat at start 8000..8100 w 0->4 -> w 0.25 at 8025,
     region("Quad", station("start", "8000 mm"), station("end", "8100 mm"), "QUADRATIC", w0="0 mm", w1="4 mm", flat="START")])
 profile("T9 Regions QUADRATIC flat at end 9000..9100 w 0->4 -> w 1.75 at 9025, 3 at 9050, slope 0 at 9100", "REGIONS", regions=[
     region("Quad", station("start", "9000 mm"), station("end", "9100 mm"), "QUADRATIC", w0="0 mm", w1="4 mm", flat="END")])
+
+# T10 / T11 / T12: regions entered toward -X (start station above end station), e.g. FCP -> ACP with the tip at +X
+profile("T10 Regions toward -X linear 10100->10000 w 0->4 start buffer 20 -> w 0 at 10090, 2 at 10040, 4 at 10000", "REGIONS", regions=[
+    region("Rev", station("start", "10100 mm"), station("end", "10000 mm"), "LINEAR", w0="0 mm", w1="4 mm", h0="1 mm", h1="1 mm", b0="20 mm")])
+profile("T11 Regions toward -X QUADRATIC flat at start 11100->11000 w 0->4 -> w 0.25 at 11075, slope 0 at 11100", "REGIONS", regions=[
+    region("Quad", station("start", "11100 mm"), station("end", "11000 mm"), "QUADRATIC", w0="0 mm", w1="4 mm", flat="START")])
+profile("T12 Regions toward -X constant 12200->12100 w1, linear 12100->12000 w 1->3 -> one piece, w 2 at 12050", "REGIONS", regions=[
+    region("A", station("start", "12200 mm"), station("end", "12100 mm"), "CONSTANT", cw="1 mm"),
+    region("B", station("start", "12100 mm"), station("end", "12000 mm"), "LINEAR", w0="1 mm", w1="3 mm")])

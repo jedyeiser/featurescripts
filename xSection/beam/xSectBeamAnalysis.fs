@@ -11,7 +11,11 @@ import(path : "onshape/std/common.fs", version : "3083.0");
  * -------------------
  *   - Simply supported at FCP (front contact point) and ACP (aft contact point)
  *   - Point load at MRS (midpoint of FCP-ACP)
- *   - Beam span L = xACP - xFCP
+ *   - Beam span L = |xACP - xFCP|
+ *
+ * Direction: FCP may lie on either side of ACP in world X (tip toward -X or +X).
+ * The centre-loaded simply supported beam is symmetric, so every integral runs from
+ * min(xFCP, xACP) to max(xFCP, xACP); for xFCP < xACP this is the original arithmetic.
  *
  * Two Analysis Methods:
  * ---------------------
@@ -93,7 +97,8 @@ export const INTEGRATION_SEGMENTS = 200;
 export function computeBeamStiffness(eiData is array, xFCP is ValueWithUnits, 
                                       xACP is ValueWithUnits) returns map
 {
-    var L = xACP - xFCP;
+    // Span is unsigned: FCP may be on either side of ACP (tip toward -X or +X).
+    var L = abs(xACP - xFCP);
     var xMRS = (xFCP + xACP) / 2;
     
     // =====================================================================
@@ -151,7 +156,7 @@ export function computeBeamStiffness(eiData is array, xFCP is ValueWithUnits,
 /**
  * Compute average EI between two x positions using trapezoidal integration.
  *
- *   EI_bar = (1/L) * integral_{xFCP}^{xACP} EI(x) dx
+ *   EI_bar = (1/L) * integral_{xLo}^{xHi} EI(x) dx,  xLo/xHi = min/max(xFCP, xACP)
  *
  * Uses dense uniform sampling with linear interpolation between data points.
  *
@@ -163,20 +168,24 @@ export function computeBeamStiffness(eiData is array, xFCP is ValueWithUnits,
 export function computeEIBar(eiData is array, xFCP is ValueWithUnits, 
                               xACP is ValueWithUnits) returns ValueWithUnits
 {
-    var L = xACP - xFCP;
+    // Integrate low X -> high X whichever end is FCP (the average does not depend on direction).
+    const xLo = min(xFCP, xACP);
+    var L = abs(xACP - xFCP);
     if (L <= 0 * meter)
+    {
         return 0 * newton * meter * meter;
+    }
     
     var numSegs = INTEGRATION_SEGMENTS;
     var dx = L / numSegs;
     
     // Trapezoidal integration
     var integral = 0 * newton * meter * meter * meter;  // EI * length
-    var prevEI = interpolateEI(eiData, xFCP);
+    var prevEI = interpolateEI(eiData, xLo);
     
     for (var i = 1; i <= numSegs; i += 1)
     {
-        var x = xFCP + i * dx;
+        var x = xLo + i * dx;
         var currEI = interpolateEI(eiData, x);
         
         integral += (prevEI + currEI) / 2 * dx;
@@ -196,7 +205,9 @@ export function computeEIBar(eiData is array, xFCP is ValueWithUnits,
  *
  *   C = integral_{0}^{L} s(xi)^2 / EI(xi) dxi
  *
- * where s(xi) is the moment shape function for midpoint loading.
+ * where s(xi) is the moment shape function for midpoint loading. xi runs from
+ * min(xFCP, xACP); s is symmetric about the midpoint, so the result is the same
+ * whichever support is FCP.
  *
  * Units: s [m], s^2 [m^2], EI [N*m^2], s^2/EI [1/N], dx [m]
  *   => C [m/N] (inverse spring rate: deflection per unit force)
@@ -209,9 +220,13 @@ export function computeEIBar(eiData is array, xFCP is ValueWithUnits,
 export function computeCompliance(eiData is array, xFCP is ValueWithUnits, 
                                    xACP is ValueWithUnits) returns ValueWithUnits
 {
-    var L = xACP - xFCP;
+    // Local coordinate xi starts at the low-X support whichever end is FCP.
+    const xLo = min(xFCP, xACP);
+    var L = abs(xACP - xFCP);
     if (L <= 0 * meter)
+    {
         return 0 * meter / newton;
+    }
     
     var halfL = L / 2;
     var numSegs = INTEGRATION_SEGMENTS;
@@ -221,13 +236,13 @@ export function computeCompliance(eiData is array, xFCP is ValueWithUnits,
     
     // First evaluation point (xi = 0 => s = 0 => integrand = 0)
     var prevXi = 0 * meter;
-    var prevEI = interpolateEI(eiData, xFCP);
+    var prevEI = interpolateEI(eiData, xLo);
     var prevF = evaluateIntegrand(prevXi, halfL, prevEI);
     
     for (var i = 1; i <= numSegs; i += 1)
     {
         var xi = i * dx;
-        var x_world = xFCP + xi;
+        var x_world = xLo + xi;
         
         var EI = interpolateEI(eiData, x_world);
         var f = evaluateIntegrand(xi, halfL, EI);
@@ -358,16 +373,16 @@ const EI_SAMPLE_COUNT = 100;
  *
  * The EI curve produced by xSectVisualization.fs encodes EI as:
  *   point = vector(worldX, 0, EI_in_Nm2 * millimeter)
- * so Z / millimeter = EI in N·m².
+ * so Z / millimeter = EI in N*m^2.
  *
  * Samples EI_SAMPLE_COUNT evenly spaced parametric points per edge, decodes EI from Z,
- * sorts by X, and linearly extrapolates to FCP/ACP if the curve doesn't reach those bounds
- * (extrapolated values are clamped to zero if negative).
+ * sorts by X (ascending, whichever end is the tip) and clamps negative EI to zero.
+ * No extrapolation is done here: interpolateEI holds the end values flat beyond the data.
  *
  * @param context {Context}
  * @param eiEdges {Query} : Edge(s) of the EI visualization curve
- * @param xFCP {ValueWithUnits} : Front contact point world X (extrapolation front boundary)
- * @param xACP {ValueWithUnits} : Aft contact point world X (extrapolation rear boundary)
+ * @param xFCP {ValueWithUnits} : Front contact point world X (unused; kept for the signature)
+ * @param xACP {ValueWithUnits} : Aft contact point world X (unused; kept for the signature)
  * @returns {array} : Sorted array of { x: ValueWithUnits, EI: ValueWithUnits }
  */
 export function getEIFromEdges(context is Context, eiEdges is Query, xFCP is ValueWithUnits, xACP is ValueWithUnits) returns array
@@ -400,7 +415,7 @@ export function getEIFromEdges(context is Context, eiEdges is Query, xFCP is Val
 
     // Clamp all sampled EI values to non-negative.
     // opFitSpline can produce negative Z near steep endpoints (cubic overshoot),
-    // which decodes as negative EI — physically impossible and can cause k=0 spikes
+    // which decodes as negative EI -- physically impossible and can cause k=0 spikes
     // in downstream solvers (e.g. solveCamberBeam) that introduce spurious inflections.
     for (var i = 0; i < size(points); i += 1)
     {
@@ -471,7 +486,7 @@ export function extractNAData(crossSectionData is map) returns array
 /**
  * Sort array of maps by their `x` field using insertion sort.
  *
- * O(n²) worst case, but for typical cross-section counts (n < 200) this is faster
+ * O(n^2) worst case, but for typical cross-section counts (n < 200) this is faster
  * than a recursive sort due to low overhead and good cache behavior on small arrays.
  *
  * @param data {array} : Array of maps each with an `x: ValueWithUnits` field

@@ -1,6 +1,6 @@
 """Check the Create offset profile test cases in BeamBuilder Testbed's "Offset profile tests" Part Studio.
 
-The cases are real feature instances in the tree (T1..T9, named by case and expected result), so anyone can open
+The cases are real feature instances in the tree (T1..T12, named by case and expected result), so anyone can open
 them. This script measures their output geometry and published values through the eval API and prints PASS / FAIL.
 Error cases are checked with temporary instances that are inserted, read and deleted again.
 
@@ -178,6 +178,33 @@ CHECKS = {
             && k0 is number && abs(k0 - 0.08) < 1e-8 && k1 is number && abs(k1) < 1e-8;
         return [ok, pieces ~ " piece, edge degrees " ~ toString(deg) ~ ", width at 9025 / 9050 = " ~ fmt(a[0]) ~ " / " ~ fmt(m[0])
             ~ ", slope at 9000 / 9100 = " ~ toString(k0) ~ " / " ~ toString(k1)];''',
+    "T10": r'''
+        const s0 = out.variable.startStation.value;
+        const s1 = out.variable.endStation.value;
+        const a = valueAt(wires, 10090);
+        const m = valueAt(wires, 10040);
+        const e = valueAt(wires, 10000);
+        const ok = pieces == 1 && near(s0, 10000, 1e-6) && near(s1, 10100, 1e-6) && near(a[0], 0, 1e-6) && near(m[0], 2, 1e-6)
+            && near(e[0], 4, 1e-6) && near(m[1], 1, 1e-6);
+        return [ok, pieces ~ " piece, " ~ fmt(s0) ~ " .. " ~ fmt(s1) ~ ", width at 10090 / 10040 / 10000 = " ~ fmt(a[0]) ~ " / "
+            ~ fmt(m[0]) ~ " / " ~ fmt(e[0]) ~ ", height " ~ fmt(m[1])];''',
+    "T11": r'''
+        const a = valueAt(wires, 11075);
+        const m = valueAt(wires, 11050);
+        const k0 = slopeAt(wires, 11100);
+        const k1 = slopeAt(wires, 11000);
+        const deg = degreesOf(wires);
+        const ok = pieces == 1 && deg == [2] && near(a[0], 0.25, 1e-6) && near(m[0], 1, 1e-6)
+            && k0 is number && abs(k0) < 1e-8 && k1 is number && abs(k1 + 0.08) < 1e-8;
+        return [ok, pieces ~ " piece, edge degrees " ~ toString(deg) ~ ", width at 11075 / 11050 = " ~ fmt(a[0]) ~ " / " ~ fmt(m[0])
+            ~ ", slope at 11100 / 11000 = " ~ toString(k0) ~ " / " ~ toString(k1)];''',
+    "T12": r'''
+        const s0 = out.variable.startStation.value;
+        const s1 = out.variable.endStation.value;
+        const a = valueAt(wires, 12150);
+        const m = valueAt(wires, 12050);
+        const ok = pieces == 1 && near(s0, 12000, 1e-6) && near(s1, 12200, 1e-6) && near(a[0], 1, 1e-6) && near(m[0], 2, 1e-6);
+        return [ok, pieces ~ " piece, " ~ fmt(s0) ~ " .. " ~ fmt(s1) ~ ", width at 12150 / 12050 = " ~ fmt(a[0]) ~ " / " ~ fmt(m[0])];''',
 }
 
 

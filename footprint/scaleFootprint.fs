@@ -11,19 +11,19 @@ import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/ef834eed6e0d2df
 import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/99e84dbe2a4e2350792fa693", version : "91ebe2327e2b0654bb603e52");
 
 // IMPORT: fpt_geometry.fs (prepareFootprintCurves, filterAndTrimBSplines, etc.)
-export import(path : "67c190b80e8b74dcee72e7ff", version : "89446acd00aa71384f74fd8a");
+export import(path : "67c190b80e8b74dcee72e7ff", version : "d76dff5e3a45ad1f43439664");
 
 // IMPORT: fpt_analyze.fs (edgesToBSplines, findWidestPoint, findInflectionPoint, etc.)
-export import(path : "71d853c0fd2f10ca3bb20a4b", version : "d30593b1d10021e1a6b5b134");
+export import(path : "71d853c0fd2f10ca3bb20a4b", version : "72eb18a0de3e0501d4122f42");
 
 // IMPORT: arcFit.fs (approximateSplinesWithPolyArcs, primitivesToBSplines)
 import(path : "66f4f03cf728e94b8f823585", version : "72150f7fbb1546cf1ee01c88");
 
 // IMPORT: integrateFootprint.fs (forceQuadraticNurbs)
-import(path : "5d198387b3966ae60a549555", version : "a45ecf01ed15b6c11544e2fc");
+import(path : "5d198387b3966ae60a549555", version : "70791e9b6ff2a11fc026ee4c");
 
 // IMPORT: footprint_math.fs (getBSplineCurvatureAtParam)
-import(path : "d3ad341f5b87924b36b5aba8", version : "f1609d01a8fb2c0f775abd6f");
+import(path : "d3ad341f5b87924b36b5aba8", version : "b67dd4ede072b1ec3f088772");
 
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");

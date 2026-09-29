@@ -272,14 +272,14 @@ export const mapCurve = defineFeature(function(context is Context, id is Id, def
                     "outputDescription" : "The mapped wires",
                     "inputs" : qUnion([definition.fromEdges, definition.toEdges]),
                     "variables" : {
-                        "spanStart" : extractableVariable(s0, "Start of the from-chain, measured from its reference point."),
-                        "spanEnd" : extractableVariable(s1, "End of the from-chain, measured from its reference point."),
-                        "toStart" : extractableVariable(t0, "Where the span starts on the to-chain (arc length from its start)."),
-                        "toEnd" : extractableVariable(t1, "Where the span ends on the to-chain (arc length from its start)."),
+                        "spanStart" : extractableVariable(s0, "Low-X end of the from-chain (chains run toward +X, whichever end is the tip), measured from its reference point."),
+                        "spanEnd" : extractableVariable(s1, "High-X end of the from-chain, measured from its reference point."),
+                        "toStart" : extractableVariable(t0, "Where the from-chain's low-X end lands on the to-chain (arc length from the to-chain's low-X end; its high-X end when flipped)."),
+                        "toEnd" : extractableVariable(t1, "Where the from-chain's high-X end lands on the to-chain (arc length as toStart)."),
                         "stationCount" : extractableVariable(summary.stations, "Stations sampled along the from-chain (0 for Trim to edges).")
                     },
                     "queries" : {
-                        "startVertex" : extractableQuery(ends.startVertex, "The end of the wire where its source starts.", DebugColor.GREEN),
+                        "startVertex" : extractableQuery(ends.startVertex, "The end of the wire at the to-chain's start: its low-X end (high-X end with Flip to-chain), whichever end is the tip.", DebugColor.GREEN),
                         "endVertex" : extractableQuery(ends.endVertex, "The other end of the wire.", DebugColor.RED),
                         "startEdge" : extractableQuery(ends.startEdge, "The edge at startVertex.", DebugColor.GREEN),
                         "endEdge" : extractableQuery(ends.endEdge, "The edge at endVertex.", DebugColor.RED)
@@ -561,13 +561,13 @@ function checkSpan(toChain is map, t0 is ValueWithUnits, t1 is ValueWithUnits)
     if (startOverrun > SPAN_TOLERANCE)
     {
         throw regenError("The from-edges run " ~ roundToPrecision(startOverrun / millimeter, 3)
-            ~ " mm past the START of the to-edges, measured from the reference point. Shorten the from-edges, extend the to-edges, or move the reference point.",
+            ~ " mm past the START (low-X end; high-X end when flipped) of the to-edges, measured from the reference point. Shorten the from-edges, extend the to-edges, or move the reference point.",
             ["fromEdges", "toEdges"]);
     }
     if (endOverrun > SPAN_TOLERANCE)
     {
         throw regenError("The from-edges run " ~ roundToPrecision(endOverrun / millimeter, 3)
-            ~ " mm past the END of the to-edges, measured from the reference point. Shorten the from-edges, extend the to-edges, or move the reference point.",
+            ~ " mm past the END (high-X end; low-X end when flipped) of the to-edges, measured from the reference point. Shorten the from-edges, extend the to-edges, or move the reference point.",
             ["fromEdges", "toEdges"]);
     }
 }

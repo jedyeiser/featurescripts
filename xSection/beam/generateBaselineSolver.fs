@@ -11,25 +11,25 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "3e5aa388bc17618e2d42d030");
  * Beam-bending and geometry solvers for the Generate Baseline feature.
  * Imported by generateBaseline.fs.
  *
- * Call hierarchy (feature body entry point → leaves):
+ * Call hierarchy (feature body entry point -> leaves):
  *   buildBaseline
- *     ├─ solveCamberBeam   (uses interpolateEI from xSectBeamAnalysis)
- *     │    OR solveCamberCubic
- *     ├─ computeTipZ
- *     ├─ solveRockerQuadratic
- *     ├─ interpZ
- *     ├─ slopeAt
- *     ├─ measureCamberHeight
- *     └─ rotateTranslate
+ *     +- solveCamberBeam   (uses interpolateEI from xSectBeamAnalysis)
+ *     |    OR solveCamberCubic
+ *     +- computeTipZ
+ *     +- solveRockerQuadratic
+ *     +- interpZ
+ *     +- slopeAt
+ *     +- measureCamberHeight
+ *     +- rotateTranslate
  *
  * Dependencies:
- *   - onshape/std/common.fs  — standard FeatureScript library
- *   - xSectBeamAnalysis.fs   — interpolateEI
+ *   - onshape/std/common.fs  -- standard FeatureScript library
+ *   - xSectBeamAnalysis.fs   -- interpolateEI
  */
 
 
 // =============================================================================
-// CAMBER POCKET — BEAM BENDING  (off-center simply-supported)
+// CAMBER POCKET -- BEAM BENDING  (off-center simply-supported)
 // =============================================================================
 
 /**
@@ -39,10 +39,10 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "3e5aa388bc17618e2d42d030");
  * Returns dense 2D samples [{x, z}] with max(z) = H * meter.
  *
  * All internal arithmetic uses plain numbers (SI units stripped).
- * κ values are stored as plain numbers where the physical κ[1/m] = kappa_plain[i] / m.
+ * kappa values are stored as plain numbers where the physical kappa[1/m] = kappa_plain[i] / m.
  * dx_m is the step size in meters (plain).
- * slope[i] = ∫₀ˣ κ dx   (dimensionless, angle in rad)
- * defl[i]  = ∫₀ˣ slope dx  (plain meters)
+ * slope[i] = int0^x kappa dx   (dimensionless, angle in rad)
+ * defl[i]  = int0^x slope dx  (plain meters)
  *
  * BCs enforced by subtracting the chord between endpoints.
  *
@@ -55,6 +55,14 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "3e5aa388bc17618e2d42d030");
  */
 export function solveCamberBeam(eiData is array, xFRCP is ValueWithUnits, xARCP is ValueWithUnits, xLoad is ValueWithUnits, H) returns array
 {
+    // The integration below runs low X -> high X (its chord correction and scaling assume a
+    // positive span). FCP may lie on either side of ACP, so solve the ascending span; the
+    // points are keyed by absolute X, so the result is the same set either way.
+    if (xFRCP > xARCP)
+    {
+        return solveCamberBeam(eiData, xARCP, xFRCP, xLoad, H);
+    }
+
     var N   = size(eiData);
     var L   = xARCP - xFRCP;
     var dx  = L / N;
@@ -64,7 +72,7 @@ export function solveCamberBeam(eiData is array, xFRCP is ValueWithUnits, xARCP 
     var b_r = (xARCP - xLoad) / L;   // b/L  (dimensionless)
     var a_r = (xLoad - xFRCP) / L;   // a/L  (dimensionless)
 
-    // Build x positions and compute κ (plain numbers; κ_physical[1/m] = k/m)
+    // Build x positions and compute kappa (plain numbers; kappa_physical[1/m] = k/m)
     var xs    = [];
     var kappa = [];
 
@@ -89,17 +97,17 @@ export function solveCamberBeam(eiData is array, xFRCP is ValueWithUnits, xARCP 
         var k = 0.0;
         if (EI >= 1e-10 * newton * meter * meter)
         {
-            // κ_plain = M_plain_m / EI_Nm2
-            // Physical κ[1/m] = (M[N·m] / EI[N·m²]) = (1N * M_plain_m) / (EI_Nm2 * N·m²)
-            //                  = M_plain_m / (EI_Nm2 * m) → kappa_plain / m ✓
+            // kappa_plain = M_plain_m / EI_Nm2
+            // Physical kappa[1/m] = (M[N*m] / EI[N*m^2]) = (1N * M_plain_m) / (EI_Nm2 * N*m^2)
+            //                  = M_plain_m / (EI_Nm2 * m) -> kappa_plain / m OK
             var EI_plain = EI / (newton * meter * meter);
             k = M_plain / EI_plain;
         }
         kappa = append(kappa, k);
     }
 
-    // Integrate κ → slope (trapz)
-    // ds = κ[1/m] * dx[m] = κ_plain * dx_m  (dimensionless)
+    // Integrate kappa -> slope (trapz)
+    // ds = kappa[1/m] * dx[m] = kappa_plain * dx_m  (dimensionless)
     var slope = [];
     slope = append(slope, 0.0);
     for (var i = 1; i <= N; i += 1)
@@ -108,8 +116,8 @@ export function solveCamberBeam(eiData is array, xFRCP is ValueWithUnits, xARCP 
         slope = append(slope, slope[i - 1] + ds);
     }
 
-    // Integrate slope → deflection (trapz)
-    // dd = slope[dimensionless] * dx[m] = slope * dx_m  → plain meters
+    // Integrate slope -> deflection (trapz)
+    // dd = slope[dimensionless] * dx[m] = slope * dx_m  -> plain meters
     var defl = [];
     defl = append(defl, 0.0);
     for (var i = 1; i <= N; i += 1)
@@ -153,11 +161,11 @@ export function solveCamberBeam(eiData is array, xFRCP is ValueWithUnits, xARCP 
 
 
 // =============================================================================
-// CAMBER POCKET — CONSTRAINED CUBIC  (no EI)
+// CAMBER POCKET -- CONSTRAINED CUBIC  (no EI)
 // =============================================================================
 
 /**
- * Solve a polynomial f(x) = a·x³ + b·x² + c·x + d satisfying:
+ * Solve a polynomial f(x) = a*x^3 + b*x^2 + c*x + d satisfying:
  *   f(xFRCP) = 0,  f(xARCP) = 0,  f(xLoad) = H,  f'(xLoad) = 0
  *
  * Works in shifted local coordinates (u = x - xFRCP, in meters).
@@ -190,14 +198,14 @@ export function solveCamberCubic(xFRCP is ValueWithUnits, xARCP is ValueWithUnit
 
     if (abs(denom1) < 1e-9 * abs(L_m))
     {
-        // Load near midpoint → a = 0, parabola
-        // From: f(L) = bL² + cL = 0  →  c = -bL
-        //       f(uL) = b·uL² + c·uL = b·uL² - bL·uL = b·uL·(uL - L) = H
-        //       b = H / (uL·(uL - L))
+        // Load near midpoint -> a = 0, parabola
+        // From: f(L) = bL^2 + cL = 0  ->  c = -bL
+        //       f(uL) = b*uL^2 + c*uL = b*uL^2 - bL*uL = b*uL*(uL - L) = H
+        //       b = H / (uL*(uL - L))
         var denom_mid = uL_m * (uL_m - L_m);
         if (abs(denom_mid) < 1e-20)
         {
-            // Degenerate — return flat
+            // Degenerate -- return flat
             var flatPts = [];
             for (var i = 0; i <= N; i += 1)
             {
@@ -219,7 +227,7 @@ export function solveCamberCubic(xFRCP is ValueWithUnits, xARCP is ValueWithUnit
         var denom2 = uL_m * uL_m * uL_m + bOverA * uL_m * uL_m + cOverA * uL_m;
         if (abs(denom2) < 1e-20)
         {
-            // Degenerate — return flat
+            // Degenerate -- return flat
             var flatPts2 = [];
             for (var i = 0; i <= N; i += 1)
             {
@@ -383,7 +391,7 @@ export function findMinZBothSides(curves is array, xPosition is ValueWithUnits, 
 }
 
 // Returns the X-distance from startPoint to the minimum-Z point on the curve,
-// for a given tension value. Pure helper — no solver state.
+// for a given tension value. Pure helper -- no solver state.
 function computeMinZXDist(startPoint is Vector, endPoint is Vector, startTangent is Vector, tension is number) returns ValueWithUnits
 {
     const tHat    = normalize(startTangent);
@@ -451,7 +459,7 @@ export function solveForTension(startPoint is Vector, endPoint is Vector, startT
     }
 
     const maxIter   = 60;
-    const tolerance = 1e-9 * meter; // ValueWithUnits — matches fMid units
+    const tolerance = 1e-9 * meter; // ValueWithUnits -- matches fMid units
 
     for (var i = 0; i < maxIter; i += 1)
     {

@@ -15,6 +15,7 @@ tail; raw sketch arcs are all counter-clockwise -- see AF7).
   FX1  S14, tip at -X, centred on X = 0            FX2  CHAIN at X = 4000        FX3  CHAIN at X = 8000, 13 edges
   FX4  S14, tip at +X, at X = 12000                FX5  S14 at X = 16000         FX6  ASYM at X = 20000
   FX9  S14 at X = 24000, contact-to-contact sidecut drawn as ONE interpolated spline, tip/tail arcs
+  FX7  ASYM, tip at +X, at X = 52000 (FCP at the higher X: the direction-safety cases, 2026-09-28)
   FX10 spline through 9 points of a R14 m arc (X = 28000)
   FX11 S-curve spline through S14 points u = 0..750 (X = 32000)
   FX12 FX11 with 2 mm spans at the inflection (548, 550, 552) (X = 36000)
@@ -26,6 +27,8 @@ tail; raw sketch arcs are all counter-clockwise -- see AF7).
   AR1-AR4 Arc fit: arcs/lines only, within tolerance of the input both ways (no gaps), one wire
   IF1-IF7 Integrate footprint: exact arcs, radii, centres, G1, waist / taper drivers
   SF1-SF5 Scale Footprint: accordion, keep taper, scale radius, spline sidecut (knot preservation)
+  FCP > ACP (tip toward +X; user decision 2026-09-28, nothing may require ACP > FCP): AF4, AF8, GP2, GP4, IF9,
+  SF6, SF7; GP5 = the FCP pick with the tip at -X (must equal GP1)
 
 The case table (ids, names with the expected results, expected values) is CASES below.
 
@@ -201,6 +204,7 @@ FIX = {
     "FX5": Profile("FX5", 16000.0, 1, S14, S14),
     "FX6": Profile("FX6", 20000.0, 1, ASYM_FB, ASYM_AB),
     "FX9": Profile("FX9", 24000.0, 1, S14, S14),
+    "FX7": Profile("FX7", 52000.0, -1, ASYM_FB, ASYM_AB),
 }
 FX10_ARC = Profile("FX10", 28000.0, 1, S14, S14)
 FX11_S = Profile("FX11", 32000.0, 1, S14, S14)
@@ -283,6 +287,11 @@ for cid, fx, what in [
         what, e["averageRadius"], e["naturalInflection"], r3(e["fbInflection"][0]), r3(e["abInflection"][0]), e["taper"]),
         "analyze", fixture=fx, source="wire", expect=e)
 
+p = FIX["FX7"]
+e = analyze_expect(p)
+add("AF8", "asymmetric flanks R2 m / R4 m, tip at +X (FCP > ACP) -> taper %.4f deg (tail wider), inflections x %g / %g" % (
+    e["taper"], r3(e["fbInflection"][0]), r3(e["abInflection"][0])), "analyze", fixture="FX7", source="wire", expect=e)
+
 e = analyze_expect(FIX["FX1"])
 add("AF7", "FX1 raw sketch edges (arcs all counter-clockwise) -> inflections x -550 / 550, avg radius 14.00 m",
     "analyze", fixture="FX1", source="sketch", expect=e)
@@ -304,6 +313,10 @@ add("GP1", "S14 wire, RSL -750..750 -> 23 tip points x -924.567..-750, 80 RSL po
     "points", fixture="FX1", rsl="rsl", expect=points_expect(p))
 add("GP2", "S14 wire, tip at +X (Tip toward +X on) -> 23 tip points x 12750..12924.567 (tip end), 80 RSL points, 23 tail points x 11075.433..11250",
     "points", fixture="FX4", rsl="rsl", tipAtPositiveX=True, expect=points_expect(FIX["FX4"]))
+add("GP4", "S14 wire, tip at +X, FCP picked (Tip toward +X off) -> same as GP2: tip points x 12750..12924.567",
+    "points", fixture="FX4", rsl="rsl", fcpPick=True, expect=points_expect(FIX["FX4"]))
+add("GP5", "S14 wire, tip at -X, FCP picked -> same as GP1: tip points x -924.567..-750",
+    "points", fixture="FX1", rsl="rsl", fcpPick=True, expect=points_expect(p))
 add("GP3", "S14 wire, RSL -700..700 inside the flanks (edges split at the planes) -> RSL points -700..700, tip -924.567..-700",
     "points", fixture="FX1", rsl="rsl2", expect=points_expect(p, contact=700.0))
 
@@ -349,6 +362,11 @@ if_case("IF5", "one line R14 m at X = 40000, taper 0.25 deg, width 250 -> arc ce
         [((39450, 140), (40550, 140))], 125.0, (39450, 140), driver="TAPER_ANGLE", taper=0.25,
         expect={"edges": [{"R": 14000.0, "c": (40000.0 + uc5, 14125.0)}], "waist": (40000.0 + uc5, 125.0),
                 "ctol": (0.5, 0.05), "taper": 0.25})
+uc9 = taper_centre(14000.0, 550.0, 0.25)
+if_case("IF9", "IF5 with the FCP at +X (X = 48550), taper 0.25 deg -> arc centre x %.3f (mirror of IF5), end heights give 0.25 deg" % (48000 - uc9),
+        [((47450, 140), (48550, 140))], 125.0, (48550, 140), driver="TAPER_ANGLE", taper=0.25,
+        expect={"edges": [{"R": 14000.0, "c": (48000.0 - uc9, 14125.0)}], "waist": (48000.0 - uc9, 125.0),
+                "ctol": (0.5, 0.05), "taper": 0.25, "fbHighX": True})
 if_case("IF6", "R14 m core line + sloped 14 -> 25 m transitions -> one wire, exact R14000 core, 2 spline transitions, G1",
         [((-550, 250), (-400, 140)), ((-400, 140), (400, 140)), ((400, 140), (550, 250))], 100.0, (-550, 250),
         expect={"edges": [{"R": None}, {"R": 14000.0, "c": (0.0, 14100.0)}, {"R": None}], "waist": (0.0, 100.0),
@@ -365,8 +383,8 @@ if_case("IF7", "sloped profile only (14 -> 25 m), Strict on -> every output edge
 
 
 def scale_expect(p, k):
-    """Accordion by k about the FCP (tip at -X fixtures): contacts at waist +- 750 k, tip / tail translated."""
-    fcpx, acpx = p.x0 - 750 * k, p.x0 + 750 * k
+    """Accordion by k about the waist: contacts at waist -+ 750 k along the tip direction, tip / tail translated."""
+    fcpx, acpx = p.x0 - 750 * k * p.d, p.x0 + 750 * k * p.d
     return {
         "newFcp": fcpx, "newAcp": acpx,
         "tipEnd": (fcpx - (p.fcp()[0] - p.tip_end()[0]), 0.0),
@@ -387,6 +405,18 @@ add("SF2", "keep taper (pin ACP) ASYM to RSL 1650 -> taper %.4f deg kept (accord
     p.taper(), math.degrees(math.atan2(p.widest(-1)[1] - p.widest(1)[1], 1.1 * (p.widest(1)[0] - p.widest(-1)[0]))), p.acp()[1]),
     "scale", fixture="FX6", newrsl="newrsl", mode="KEEP_TAPER", expect=e)
 # SF3 / SF4 (Scale radius) removed with the mode, 2026-09-25.
+p = FIX["FX4"]
+e = scale_expect(p, 1.1)
+e.update({"contacts": [(e["newFcp"], p.fcp()[1]), (e["newAcp"], p.acp()[1])], "waist": (p.x0, W),
+          "widest": [(p.x0 + (p.widest(-1)[0] - p.x0) * 1.1, p.widest(-1)[1]), (p.x0 + (p.widest(1)[0] - p.x0) * 1.1, p.widest(1)[1])],
+          "mirror": True})
+add("SF6", "accordion S14 tip at +X (FCP picked) to RSL 1650 -> contacts x 12825 / 11175, tip end x 12999.567, waist (12000, 50), -Y mirror",
+    "scale", fixture="FX4", newrsl="newrsl", mode="ACCORDION", fcpPick=True, expect=e)
+p = FIX["FX7"]
+e = scale_expect(p, 1.1)
+e.update({"taper": p.taper(), "acpWidth": (e["newAcp"], p.acp()[1]), "mirror": True})
+add("SF7", "keep taper (pin ACP) ASYM tip at +X (FCP picked) to RSL 1650 -> taper %.4f deg kept, ACP width %.3f kept (mirror of SF2)" % (
+    p.taper(), p.acp()[1]), "scale", fixture="FX7", newrsl="newrsl", mode="KEEP_TAPER", fcpPick=True, expect=e)
 p = FIX["FX9"]
 e = scale_expect(p, 1.1)
 e.update({"contacts": [(e["newFcp"], p.fcp()[1]), (e["newAcp"], p.acp()[1])], "affine": {"x0": p.x0, "k": 1.1}})
@@ -571,7 +601,7 @@ def build_fixtures():
         F[key + ".wire"] = feature(n["wire"], "compositeCurve", [q("edges", edges(F[key + ".sketch"]))])
         f, a = p.fcp(), p.acp()
         F[key + ".rsl"] = sketch(n["rsl"], [seg("l", f[0], 0, a[0], 0)])
-        if key in ("FX1", "FX6", "FX9"):
+        if key in ("FX1", "FX6", "FX9", "FX4", "FX7"):
             F[key + ".newrsl"] = sketch(n["newrsl"], [seg("l", p.x0 - 825, 0, p.x0 + 825, 0)])
         if key == "FX1":
             F[key + ".rsl2"] = sketch(n["rsl2"], [seg("l", p.x0 - 700, 0, p.x0 + 700, 0)])
@@ -594,10 +624,12 @@ def build_case(case, F):
             b("outputSketch", True)])
     if kind == "points":
         fx = case["fixture"]
+        p = FIX[fx]
         return custom(case["name"], "getFootprintPoints", [
             q("fptEdges", wire_edges(F[fx + ".wire"])), q("rslQuery", edges(F[fx + "." + case["rsl"]])),
             b("sketchPoints", True), b("retainCurves", False), b("retainPlanes", False),
-            b("tipAtPositiveX", case.get("tipAtPositiveX", False))],
+            b("tipAtPositiveX", case.get("tipAtPositiveX", False))]
+            + ([q("fcpReference", vertex_at(F[fx + "." + case["rsl"]], p.fcp()[0], 0))] if case.get("fcpPick") else []),
             {"sourceType": "EDGES"})
     if kind == "arcfit":
         how, fx = case["source"]
@@ -620,6 +652,8 @@ def build_case(case, F):
         fx = case["fixture"]
         given = [q("refEdges", wire_edges(F[fx + ".wire"])), q("refRslEdge", edges(F[fx + ".rsl"])),
                  q("newRslEdge", edges(F[fx + "." + case["newrsl"]])), b("keepReference", True)]
+        if case.get("fcpPick"):
+            given.append(q("refFcpReference", vertex_at(F[fx + ".rsl"], FIX[fx].fcp()[0], 0)))
         if "targetRadius" in case:
             given.append(num("targetRadius", "%g m" % case["targetRadius"]))
         return custom(case["name"], "scaleFootprint", given,

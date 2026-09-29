@@ -431,8 +431,10 @@ def body_integrate(case, fid):
         ok = ok && near(fw, %.6f, %.6f, 1.5, 0.01) && near(aw, %.6f, %.6f, 1.5, 0.01);
         msg = msg ~ ", widest " ~ fpt(fw) ~ " " ~ fpt(aw) ~ " (expected (%.3f, %.3f) (%.3f, %.3f))";''' % (fx_, fy_, ax_, ay_, fx_, fy_, ax_, ay_)
     if "taper" in e:
-        extra += r'''
-        const tp = atan2(s[0].p[1] - s[size(s) - 1].p[1], abs(s[size(s) - 1].p[0] - s[0].p[0]));
+        # taper = forebody (FCP side) end height minus aftbody end height; the FCP side is the low-x end unless fbHighX
+        fb, ab = ("s[size(s) - 1]", "s[0]") if e.get("fbHighX") else ("s[0]", "s[size(s) - 1]")
+        extra += (r'''
+        const tp = atan2(FB.p[1] - AB.p[1], abs(s[size(s) - 1].p[0] - s[0].p[0]));'''.replace("FB", fb).replace("AB", ab)) + r'''
         ok = ok && abs(tp - %.6f * degree) <= 0.002 * degree;
         msg = msg ~ ", taper from the end heights " ~ fdeg(tp) ~ " (expected %.4f deg)";''' % (e["taper"], e["taper"])
     wx, wy = e["waist"]
@@ -481,11 +483,14 @@ def body_integrate(case, fid):
 def body_scale(case, fid):
     e = case["expect"]
     fcpx, acpx = e["newFcp"], e["newAcp"]
+    # the FCP may be at either x (tip toward +X: fcpx > acpx); samples run low x -> high x
+    lox, hix = min(fcpx, acpx), max(fcpx, acpx)
+    endLo, endHi = sorted([e["tipEnd"][0], e["tailEnd"][0]])
     parts = []
     parts.append(r'''
         ok = ok && near(s[0].p, %.6f, 0, 0.05, 0.01) && near(s[size(s) - 1].p, %.6f, 0, 0.05, 0.01);
         msg = msg ~ ", ends " ~ fpt(s[0].p) ~ " " ~ fpt(s[size(s) - 1].p) ~ " (expected x %.3f / %.3f)";''' % (
-        e["tipEnd"][0], e["tailEnd"][0], e["tipEnd"][0], e["tailEnd"][0]))
+        endLo, endHi, endLo, endHi))
     for k, cp in enumerate(e.get("contacts", [])):
         parts.append(r'''
         const dC%d = evDistance(context, { "side0" : %s, "side1" : pe }).distance;
@@ -561,9 +566,12 @@ def body_scale(case, fid):
         {
             return [false, msg ~ ", no output between the contact points"];
         }
-        const fw = extreme(s, %.6f * mm, wst[0], false);
-        const aw = extreme(s, wst[0], %.6f * mm, false);%s
-        return [ok, msg];''' % (fcpx + 0.25 * (acpx - fcpx), acpx - 0.25 * (acpx - fcpx), fcpx, acpx, "".join(parts))
+        const fw = %s;
+        const aw = %s;%s
+        return [ok, msg];''' % (lox + 0.25 * (hix - lox), hix - 0.25 * (hix - lox),
+                                ("extreme(s, %.6f * mm, wst[0], false)" % fcpx) if fcpx <= acpx else ("extreme(s, wst[0], %.6f * mm, false)" % fcpx),
+                                ("extreme(s, wst[0], %.6f * mm, false)" % acpx) if fcpx <= acpx else ("extreme(s, %.6f * mm, wst[0], false)" % acpx),
+                                "".join(parts))
 
 
 BODIES = {"analyze": body_analyze, "points": body_points, "arcfit": body_arcfit, "integrate": body_integrate, "scale": body_scale}
