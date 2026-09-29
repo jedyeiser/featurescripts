@@ -6,6 +6,8 @@ export import(path : "8a8c023e223cf0814d973a63", version : "33837d750b6c0df3aee6
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
+// IMPORT: station_geometry_icon.svg (feature icon)
+IconNamespace::import(path : "4f939c6501b1063acaaa9e08", version : "b34c34d69f99fc93661e1b56");
 
 /** How a picked datum places the measuring frame (plan = its XY, profile = its XZ, x along its X). */
 export enum StationDatumUse
@@ -15,8 +17,6 @@ export enum StationDatumUse
     annotation { "Name" : "Mate connector's axes" }
     COORDINATE_SYSTEM
 }
-// IMPORT: station_geometry_icon.svg (feature icon)
-IconNamespace::import(path : "4f939c6501b1063acaaa9e08", version : "b34c34d69f99fc93661e1b56");
 
 /**
  * Station geometry: the drawing-aid geometry for one part, generated instead of hand-built
