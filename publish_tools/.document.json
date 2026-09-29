@@ -4,7 +4,7 @@
   "document_name": "publish_tools",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/73271cfcd708b3f5e3fc315c/w/fea83d30106dba0a4e066761",
-  "last_sync": "2026-09-29T03:51:18.749649+00:00",
+  "last_sync": "2026-09-29T03:52:16.720125+00:00",
   "feature_studios": {
     "station_utils": "8a8c023e223cf0814d973a63",
     "station_definition": "8b522e33d07f67c10c37ba11",
@@ -12,10 +12,18 @@
     "station_table": "07f13dc8a33435e0fb1c5a7f",
     "primitive_types": "ecde24520874030ab412c981",
     "primitive_frame": "5808546b3b3d863d82796d24",
-    "primitive_table": "4e49f8a0b8f0c2bd75c919e7"
+    "primitive_table": "4e49f8a0b8f0c2bd75c919e7",
+    "primitive_baseline": "b827b10bc0bdc678c2db28cd",
+    "primitive_footprint": "fbc957543e769a649f00c5cc",
+    "primitive_output": "6f122edb2547a6a46991d9fd",
+    "primitive_profiles": "5865b24d55ff270a56088adf"
   },
   "tab_folders": {
     "primitive_frame": "primitive",
-    "primitive_table": "primitive"
+    "primitive_table": "primitive",
+    "primitive_baseline": "primitive",
+    "primitive_footprint": "primitive",
+    "primitive_output": "primitive",
+    "primitive_profiles": "primitive"
   }
 }
