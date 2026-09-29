@@ -1763,7 +1763,7 @@ export function viewFit(samples is map, ib is number) returns map
 /**
  * A face whose flat image is a plane within `tol` (metres) and faces along flat x (|normal x| >= 0.5): the plane
  * (origin = mean point, unit outward normal = mean flat normal), an in-plane axis u, the half extents of a cutting
- * box over it (the face's extent in the plane plus UNWRAP_PART_CAP_MARGIN) and its depth (twice the larger half
+ * box over it (1.5 x the sampled extent in the plane plus UNWRAP_PART_CAP_MARGIN) and its depth (twice the larger half
  * extent plus the margin: the envelope row lies within the face's own extent). undefined otherwise.
  */
 export function planarCap(samples is map, tol is number)
@@ -1812,7 +1812,9 @@ export function planarCap(samples is map, tol is number)
     {
         return undefined;
     }
-    return { "origin" : o, "normal" : n, "u" : u, "halfU" : halfU + UNWRAP_PART_CAP_MARGIN, "halfV" : halfV + UNWRAP_PART_CAP_MARGIN,
+    // The grid covers the face's parameter box, which need not reach its trimmed corners (4103's tip cap: the box
+    // stopped 0.45 mm short of the cap's top): the box reaches half as far again past the sampled extent.
+    return { "origin" : o, "normal" : n, "u" : u, "halfU" : 1.5 * halfU + UNWRAP_PART_CAP_MARGIN, "halfV" : 1.5 * halfV + UNWRAP_PART_CAP_MARGIN,
             "depth" : 2 * max(halfU, halfV) + UNWRAP_PART_CAP_MARGIN, "dev" : dev };
 }
 
