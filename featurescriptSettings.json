@@ -324,6 +324,17 @@
       "last_push": null,
       "document_id": "13e432ceae756ed1a698c9c0",
       "workspace_id": "e8eef939e8b4d967c04a6aee"
+    },
+    {
+      "name": "mbd_probe",
+      "description": "Throwaway: MBD feature-dimension probe (2026-09-29)",
+      "working_directory": "mbd_probe",
+      "onshape_url": "https://k2-sports.onshape.com/documents/a0bc32b83cb5e3d85128fb46/w/110f5924a7f91773d2db2f8d",
+      "references": [],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "a0bc32b83cb5e3d85128fb46",
+      "workspace_id": "110f5924a7f91773d2db2f8d"
     }
   ],
   "sync_metadata": {}

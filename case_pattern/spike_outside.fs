@@ -185,3 +185,20 @@ function errText(err) returns string
     }
     return toString(err);
 }
+
+annotation { "Feature Type Name" : "Spike mate connector" }
+export const spikeMateConnector = defineFeature(function(context is Context, id is Id, definition is map)
+    precondition
+    {
+        annotation { "Name" : "At vertex", "Filter" : EntityType.VERTEX, "MaxNumberOfPicks" : 1 }
+        definition.at is Query;
+
+        annotation { "Name" : "Owner", "Filter" : EntityType.BODY, "MaxNumberOfPicks" : 1 }
+        definition.owner is Query;
+    }
+    {
+        opMateConnector(context, id + "mc", {
+                    "coordSystem" : coordSystem(evVertexPoint(context, { "vertex" : definition.at }), vector(1, 0, 0), vector(0, 0, 1)),
+                    "owner" : definition.owner
+                });
+    });
