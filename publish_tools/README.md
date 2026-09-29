@@ -401,3 +401,7 @@ scale inside follows the data:
 ### Primitive tables: "Show definitions" (2026-09-29)
 New table parameter "Show definitions" (default OFF): 2 Metadata shows Item | Value | Unit; the Definition column only
 when switched on (review copies). Definitions stay in the published data. Verified via REST fstable on P1 (3 vs 4 columns).
+
+Note (2026-09-29): keep only ONE Export primitive instance active in "Primitive tests" (use `--keep P8`, which has every
+band incl. EI). Instances share the same position, so two active ones draw their bands and labels on top of each
+other -- it looked like missing letters.

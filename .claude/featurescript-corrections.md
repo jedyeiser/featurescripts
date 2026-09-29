@@ -1909,3 +1909,17 @@ between-sample miss 325 -> 5.5 um and FEWER control points. Measure a fit betwee
 **Also**: a helper that called getProperty(NAME) inside a regenError message (unwrap_part `partName`) made every
 refusal surface as "@getProperty: Cannot get properties during feature regeneration" and lost the real message --
 never call getProperty in a feature body, not even in an error path (correction 36).
+
+## Correction 64: a NEW parameter on a custom TABLE breaks every table already placed (2026-09-29)
+
+**Symptom**: after adding "Show definitions" (`definition.showDefinitions is boolean`) to the Primitive tables
+custom table, existing tables in drawings failed to update ("table could not regenerate"); the REST fstable call
+without the parameter returned `Precondition failed (definition.showDefinitions is boolean)`.
+
+**Cause**: `defineTable` has no defaults map (std/table.fs: it just calls the function), and a placed table's
+parameters are not migrated with the annotation default the way feature parameters are (correction 25). A placed
+custom table's parameters also can't be edited in a drawing afterwards.
+
+**Fix / rule**: avoid adding parameters to a published custom table; put new options on the producing FEATURE (its
+published data) or add a new table choice to an existing enum. If a parameter must be added, every placed table must
+be deleted and re-inserted. REST fstable callers must pass every parameter.

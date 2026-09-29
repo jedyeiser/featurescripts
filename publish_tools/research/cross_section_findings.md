@@ -81,3 +81,25 @@ All model features regenerate OK -- the breakage is entirely in the drawing laye
   73271cfc, dimension it via API, add a station, regen, copy workspace, audit)?
 - Hatching vs shaded layers; which dimensions per station are canonical (list above is TAC's).
 - Section of the flat Parts composite (3D_Parts_Composite) vs the 3D_Ski (mirrored/split) body -- which is truth?
+
+## Proposal v2 (2026-09-29, after reviewing RD 20ONE's X-Sect)
+Reference: RD 20ONE 28 178 (did 0ce37e0a...), drawing "RD 20ONE 28 178_X-Sect" = 5 A4 sheets at 1:1 (SPA, XS1, MRS,
+"A - A" (= XS2, inconsistent name), EDA), native section views of composite "Ski_Parts_3D" in 3D_Ski, hand dimensions
+(total / core / sidewall heights, top + base widths, SW angle 15 deg, step 4). 3D_Ski holds real layer parts with
+materials: base 4101_3D (P-Tex), edges 4103_L/R, core strips "Part 1..13" (Poplar / Beech), glass 4305_3D / 4310_3D,
+topsheet 6005_3D, sidewalls 4401_L/R (ABS), shear rubbers, 4802/4803; stations today from the hand sketch
+"X-Sect-Sketch"; "EI and Cross Section 1" already cuts the same parts.
+
+1. "Section geometry" feature (publish_tools, runs in the 3D studio): stations from a Station definition (SPA/XS1/MRS/
+   XS2/EDA = FCP/XS1/MRS/XS2/ACP). Per station: cut the layer parts, one flat FACE per part (keeps the part's material
+   colour), laid out in a stacked column (all stations on one sheet), station label as text geometry. One closed
+   composite per station + one for the set.
+2. ONE section table, a row per station: x, s, ski_thck, core_thck, sw_height, sw_width, sw_left_in_ski, cavity_depth
+   (+ width at base / top, optionally EI / GJ at the station). Layer ROLES by explicit picks (Base, Core, Sidewall,
+   Topsheet ...) -- names/materials vary ("Part 7"), picks are robust.
+3. Drawing: one A3 at 1:1 (sections ~130 x 15 mm each, 5 stack easily) + the table; shaded view shows the layup by
+   colour (test whether drawing SHADED views keep face colours -- wires are black, faces may not be). No hand dims.
+   Optional A4-per-station set for the shop.
+4. Summary sheet (earlier decision): plan + profile + summary table.
+Open: role picks vs material rules; cavity_depth definition; station names shown (SPA/EDA vs FCP/ACP); one sheet vs
+per-station sheets; include EI/GJ per station?

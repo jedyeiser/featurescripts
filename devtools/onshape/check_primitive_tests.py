@@ -33,9 +33,9 @@ With --before <json> (a --json snapshot of an earlier run): P1 .. P6 values unch
 2026-09-28 decisions removed (phase-2 placeholders; P1 / P5 / P6 rocker rows on a flat baseline).
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/check_primitive_tests.py [--dump | --json <out> | --before <json>]
-                   [--unsuppress] [--keep P1,P8]
+                   [--unsuppress] [--keep P8]
   --unsuppress   unsuppress every P case first (the checks need all of them regenerated)
-  --keep P1,P8   afterwards suppress every P case except these, so the studio regenerates fast (2026-09-28: many
+  --keep P8      afterwards suppress every P case except these (ONE instance: overlapping instances draw on top of each other), so the studio regenerates fast (2026-09-28: many
                  Export primitive instances make a studio slow)
 """
 import json
@@ -555,7 +555,7 @@ def fstable(kind, name_filter):
     ns = "e%s::m%s" % (t["id"], t["microversionId"])
     r = c.get(f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}/fstable",
               {"tableType": "primitiveTables", "tableNamespace": ns,
-               "tableParameters": 'tableKind=PrimitiveTableKind.%s;nameFilter="%s"' % (kind, name_filter)})
+               "tableParameters": 'tableKind=PrimitiveTableKind.%s;nameFilter="%s";showDefinitions=false' % (kind, name_filter)})
     return r.get("tables", [])
 
 

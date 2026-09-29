@@ -5,6 +5,16 @@ import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 export import(path : "8a8c023e223cf0814d973a63", version : "33837d750b6c0df3aee6127e");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
+
+
+/** How a picked datum places the measuring frame (plan = its XY, profile = its XZ, x along its X). */
+export enum StationDatumUse
+{
+    annotation { "Name" : "World axes (datum is a point only)" }
+    ORIGIN,
+    annotation { "Name" : "Mate connector's axes" }
+    COORDINATE_SYSTEM
+}
 // IMPORT: station_geometry_icon.svg (feature icon)
 IconNamespace::import(path : "4f939c6501b1063acaaa9e08", version : "b34c34d69f99fc93661e1b56");
 
@@ -53,9 +63,13 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
                         "Description" : "The solid, sheet or composite to measure." }
             definition.part is Query;
 
-            annotation { "Name" : "Datum (measuring origin)", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
-                        "Description" : "X runs along the ski, Z up. Empty = world origin. X is the measuring axis." }
+            annotation { "Name" : "Datum (measuring origin)", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1,
+                        "Description" : "Where x = 0. Empty = world origin. With 'World axes' only its position counts: x runs along world X, plan = world XY, profile = world XZ." }
             definition.datum is Query;
+
+            annotation { "Name" : "Datum axes", "Default" : StationDatumUse.ORIGIN,
+                        "Description" : "World axes: the datum is a point only (a ski's own mate connectors usually have Z along the ski, which would turn every view). Mate connector's axes: the picked connector's X is the measuring axis and its XY the plan plane." }
+            definition.datumUses is StationDatumUse;
 
             annotation { "Name" : "Name prefix", "Default" : "", "MaxLength" : 128,
                         "Description" : "Starts every body name: <prefix> PLAN, <prefix> PLAN ST MRS, ... Filled with the part's name when the part is picked." }
@@ -196,7 +210,7 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
         {
             reportFeatureInfo(context, id, summary);
         }
-    }, {});
+    }, { "datumUses" : StationDatumUse.ORIGIN });
 
 /**
  * Fills the name prefix with the part's name when the part is picked, and follows a part
@@ -231,7 +245,23 @@ function viewFrames(context is Context, definition is map) returns array
     var datum = coordSystem(vector(0, 0, 0) * meter, vector(1, 0, 0), vector(0, 0, 1));
     if (!isQueryEmpty(context, definition.datum))
     {
-        datum = evMateConnector(context, { "mateConnector" : definition.datum });
+        const connectors = evaluateQuery(context, qBodyType(qOwnerBody(definition.datum), BodyType.MATE_CONNECTOR));
+        if (definition.datumUses == StationDatumUse.COORDINATE_SYSTEM)
+        {
+            if (size(connectors) == 0)
+            {
+                throw regenError("Datum axes = Mate connector's axes: the datum must be a mate connector.", ["datum", "datumUses"]);
+            }
+            datum = evMateConnector(context, { "mateConnector" : connectors[0] });
+        }
+        else
+        {
+            // World axes: only the datum's position. A ski's own connectors have Z along the ski; using their
+            // frame put every station at x = 0 and measured the base thickness as the "width" (2026-09-29).
+            const origin = size(connectors) > 0 ? evMateConnector(context, { "mateConnector" : connectors[0] }).origin
+                : evVertexPoint(context, { "vertex" : definition.datum });
+            datum = coordSystem(origin, vector(1, 0, 0), vector(0, 0, 1));
+        }
     }
 
     var views = [];
