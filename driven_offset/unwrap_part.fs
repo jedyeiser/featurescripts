@@ -1930,13 +1930,17 @@ export function prismAnalysis(context is Context, chart is map, piece is Query, 
             const cap = planarCap(samples, tol);
             if (cap != undefined)
             {
-                // The envelope pushed out by UNWRAP_PART_CAP_MARGIN: the grid need not reach the cap's trimmed corners,
+                // The envelope over the face's whole parameter box: the grid on the trim need not reach the cap's corners,
                 // where a lean carries the plane past the sampled envelope (4103: 22 um short at the cap's top). The
                 // cut takes the band back to the plane anyway.
                 var outs = W.outs;
-                for (var i = 0; i < size(outs); i += 1)
+                const whole = viewFit(prismFaceSamples(context, chart, face, false, settings.part), 1);
+                if (whole.dev < UNWRAP_PART_NO_FIT && whole.alongU == W.alongU)
                 {
-                    outs[i] += UNWRAP_PART_CAP_MARGIN;
+                    for (var i = 0; i < size(outs); i += 1)
+                    {
+                        outs[i] = max(outs[i], whole.outs[i]);
+                    }
                 }
                 rows = append(rows, prismRow(context, chart, face, "WALL", mergeMaps(W, { "outs" : outs }), true, refine, settings.part));
                 caps = append(caps, cap);
