@@ -397,3 +397,7 @@ scale inside follows the data:
   R3 one face x 1463-1567 -> start / stop only. Table 3 / 4 read back through fstable; embedded keys checked.
   163 / 163 (143 earlier checks + 20 new; the 9 `--before` checks need a pre-change snapshot, none exists at 35 rows);
   studio left with P1 + P8 + SD1 active, R1-R3 suppressed.
+
+### Primitive tables: "Show definitions" (2026-09-29)
+New table parameter "Show definitions" (default OFF): 2 Metadata shows Item | Value | Unit; the Definition column only
+when switched on (review copies). Definitions stay in the published data. Verified via REST fstable on P1 (3 vs 4 columns).

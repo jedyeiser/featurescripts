@@ -231,9 +231,10 @@ function dataTable(data is map, body is Query) returns Table
                         "z" : cell2(r.z), "skiThck" : cell2(r.skiThck), "baselineHeight" : cell2(r.baselineHeight),
                         "radius" : cellN(r.radius, 3) }));
     }
-    return table(data.title ~ " - 6 RSL data", withStation([
-                    column("x", "x (mm)"), column("s", "s (mm)"), column("y", "y (mm)"), column("skiWidth", "ski_width (mm)"),
-                    column("z", "z (mm)"), column("skiThck", "ski_thck (mm)"), column("baselineHeight", "baseline_height (mm)"),
-                    column("radius", "Radius (m)")
+    // Short headings keep the columns narrow (a custom table can't set column widths): lengths in mm, radius in m.
+    return table(data.title ~ " - 6 RSL data (mm)", withStation([
+                    column("x", "x"), column("s", "s"), column("y", "y"), column("skiWidth", "w"),
+                    column("z", "z"), column("skiThck", "thck"), column("baselineHeight", "baseline"),
+                    column("radius", "radius (m)")
                 ], showStations(data, data.data)), rows, body);
 }
