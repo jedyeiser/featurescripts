@@ -1,0 +1,46 @@
+{
+ "fr_b": [
+  "frame",
+  "h:100001E7"
+ ],
+ "fr_r": [
+  "frame",
+  "h:100001E8"
+ ],
+ "fr_t": [
+  "frame",
+  "h:100001E9"
+ ],
+ "fr_l": [
+  "frame",
+  "h:100001EA"
+ ],
+ "cm_b": [
+  "frame",
+  "h:100001EB"
+ ],
+ "cm_t": [
+  "frame",
+  "h:100001EC"
+ ],
+ "cm_l": [
+  "frame",
+  "h:100001ED"
+ ],
+ "cm_r": [
+  "frame",
+  "h:100001EE"
+ ],
+ "tb_top": [
+  "zones",
+  "h:100001EF"
+ ],
+ "tb_left": [
+  "zones",
+  "h:100001F0"
+ ],
+ "lb_notes": [
+  "zones",
+  "h:100001F1"
+ ]
+}

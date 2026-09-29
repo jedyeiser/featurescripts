@@ -100,6 +100,7 @@ def relayout(eid, size):
     """Move every API-made annotation of a copied master to its sheet_layout(size) position (edits keep the
     property links and layers; they work on locked format layers)."""
     spec = sheet_layout(size)
+    IDS = size_ids(size)
     anns = []
     for _layer, x1, y1, x2, y2, alias in spec["lines"]:
         anns.append({"type": "Onshape::Line", "line": {"logicalId": IDS[alias][1], "startPoint": pt(x1, y1),
