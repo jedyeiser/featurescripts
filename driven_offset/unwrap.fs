@@ -1795,10 +1795,8 @@ function plateFromOutline(context is Context, id is Id, wireEdges is Query, flat
 function unwrapPlate(context is Context, id is Id, definition is map, part is Query, alignPoint is Vector,
     cs is CoordSystem, settings is map) returns map
 {
-    if (definition.nameSuffix == "__stop0") { throw regenError("PROFILE STOP 0"); }
     const sides = plateSidesGeneral(context, part);
     const thickness = sides.thickness;
-    if (definition.nameSuffix == "__stop1") { throw regenError("PROFILE STOP 1"); }
 
     var wire = definition.reference;
     var temporary = [];
@@ -1830,7 +1828,6 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
         temporary = [mid, wire];
     }
 
-    if (definition.nameSuffix == "__stop2") { throw regenError("PROFILE STOP 2"); }
     const offset = definition.flipTargetOffset ? -definition.targetOffset : definition.targetOffset;
     const chart = checkedChart(context, wire, (definition.targetFrom == UndrapeTargetSource.FACE) ? "profileFace" : "reference",
         alignPoint, offset);
@@ -1839,11 +1836,9 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
                 "spacing" : definition.sampleSpacing,
                 "deformation" : definition.measureDeformation,
                 "sideAreas" : [sides.area0, sides.area1],
-                "uTurn" : (definition.uTurnRule == UndrapeUTurn.BLEND) ? "blend" : "literal",
-                "stop" : definition.nameSuffix
+                "uTurn" : (definition.uTurnRule == UndrapeUTurn.BLEND) ? "blend" : "literal"
             });
 
-    if (definition.nameSuffix == "__stop3") { throw regenError("PROFILE STOP 3"); }
     // The mid-surface lands on the target, chart height 0 on it: cs z = -alignHeight. Laid on the plane,
     // the plate's lower face is on cs's XY plane instead.
     const zMid = definition.layOnPlane ? 0.5 * thickness : -chart.alignHeight * meter;
@@ -1911,7 +1906,6 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
     }
 
     const outlineEmitted = emitFlatCurves(context, outlineIds, outlineEntries, settings);
-    if (definition.nameSuffix == "__stop4") { throw regenError("PROFILE STOP 4"); }
     for (var k = 0; k < size(outlineIds); k += 1)
     {
         const emitted = outlineEmitted[k];
@@ -1930,7 +1924,6 @@ function unwrapPlate(context is Context, id is Id, definition is map, part is Qu
     const plates = plateFromOutline(context, id + "plate", qOwnedByBody(outlineWires, EntityType.EDGE), flatPlane, thickness);
     opDeleteBodies(context, id + "deleteTemp", { "entities" : qUnion(concatenateArrays([[curveBodies, outlineWires], temporary])) });
 
-    if (definition.nameSuffix == "__stop5") { throw regenError("PROFILE STOP 5"); }
     const lowerPlane = plane(flatPlane.origin - 0.5 * thickness * cs.zAxis, cs.zAxis, cs.xAxis);
     const lowerFace = qCoincidesWithPlane(qOwnedByBody(plates, EntityType.FACE), lowerPlane);
 

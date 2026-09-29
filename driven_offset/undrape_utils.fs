@@ -2535,13 +2535,11 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
     const area0 = (options.sideAreas != undefined) ? options.sideAreas[0] : evArea(context, { "entities" : side0 });
     const area1 = (options.sideAreas != undefined) ? options.sideAreas[1] : evArea(context, { "entities" : side1 });
     const useFirst = (abs(area0 - area1) > 0.01 * max(area0, area1)) ? (area0 > area1) : (count0 <= count1);
-    if (options.stop == "u1") { throw regenError("PROFILE u1"); }
     const sideA = useFirst ? side0 : side1;
     const sideB = useFirst ? side1 : side0;
 
     // 2-3. Edge sampling and tables.
     const sampled = undrapeSampleSide(context, sideA, c, UNDRAPE_TABLE_TOL * tol);
-    if (options.stop == "u2") { throw regenError("PROFILE u2"); }
     const tables = sampled.tables;
     const sideSign = undrapeSideSign(c, tables);
 
@@ -2567,7 +2565,6 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
                 ~ ") mm.");
     }
     const seeds = undrapeSeeds(c, tables, rim, loopData, cap, undrapeChartBreaks(c));
-    if (options.stop == "u3") { throw regenError("PROFILE u3"); }
     var requests = seeds.requests;
     var eps = seeds.edges;
     var shareArcs = seeds.shareArcs;
@@ -2652,7 +2649,6 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
         }
     }
 
-    if (options.stop == "u4") { throw regenError("PROFILE u4"); }
     // Each edge's samples in order along it, vertices included.
     var byTable = {};
     var edgeRequests = [];
@@ -2700,7 +2696,6 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
     // Edges and loops.
     const assembled = undrapeAssemble(plan, results, loopData);
 
-    if (options.stop == "u5") { throw regenError("PROFILE u5"); }
     // 9. Deformation report, over every station of every pass in arc order.
     const nSt = size(records);
     var deform = { "stretchMin" : 0, "stretchMax" : 0, "where" : [0, 0], "shearMax" : 0 };
