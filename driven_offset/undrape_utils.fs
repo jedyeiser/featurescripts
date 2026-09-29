@@ -2593,6 +2593,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
     var fallbackArcs = [];
     var blended = 0;
     var blendedArcs = [];
+    var isBlended = {};
     var failed = [];
     var shifted = 0;
     var candidateTotal = 0;
@@ -2617,6 +2618,10 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
         fallbackArcs = concatenateArrays([fallbackArcs, batch.fallbackArcs]);
         blended += batch.blended;
         blendedArcs = concatenateArrays([blendedArcs, batch.blendedArcs]);
+        for (var q in batch.blendedRequests)
+        {
+            isBlended[q] = true;
+        }
         failed = concatenateArrays([failed, batch.failed]);
         shifted += batch.shifted;
         candidateTotal += batch.candidateTotal;
@@ -2628,7 +2633,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
         for (var r in rim)
         {
             const refined = undrapeRefine(r, eps[r], c, tables[r], requests, results, tol, pass == 0,
-                pass < UNDRAPE_REFINE_PASSES);
+                pass < UNDRAPE_REFINE_PASSES, isBlended);
             eps[r] = refined.edge;
             requests = concatenateArrays([requests, refined.requests]);
             shareArcs = concatenateArrays([shareArcs, refined.arcs]);
@@ -2782,6 +2787,7 @@ export function undrapeOutline(context is Context, id is Id, chart is map, side0
  *      fallback measured it; undefined where not measured),
  *      "records" (per station [arc, frame, section, crossings]), "lost" (request indices whose station failed),
  *      "blended", "blendedArcs" (refused stations left unmeasured under env.blend: no vertex or end-tangent request),
+ *      "blendedRequests" (the request indices at them),
  *      "kernel", "fallbacks", "fallbackArcs", "failed", "shifted", "candidateTotal", "lines" }
  */
 export function undrapeResolveBatch(context is Context, id is Id, env is map, requests is array, first is number, kernel) returns map
@@ -2821,6 +2827,7 @@ export function undrapeResolveBatch(context is Context, id is Id, env is map, re
     var fallbackArcs = [];
     var blended = 0;
     var blendedArcs = [];
+    var blendedRequests = [];
     var failed = [];
     var shifted = 0;
     var lines = [];
@@ -2865,6 +2872,10 @@ export function undrapeResolveBatch(context is Context, id is Id, env is map, re
             {
                 blended += 1;
                 blendedArcs = append(blendedArcs, roundToPrecision(fr.arc * 1000, 2));
+                for (var k in atStation[s])
+                {
+                    blendedRequests = append(blendedRequests, first + k);
+                }
                 records[s] = [arcs[s], fr, { "ok" : false, "blended" : true }, crossings];
                 continue;
             }
@@ -2926,7 +2937,8 @@ export function undrapeResolveBatch(context is Context, id is Id, env is map, re
         }
     }
     return { "results" : results, "records" : records, "lost" : lost, "kernel" : kernelFaces, "fallbacks" : fallbacks,
-            "fallbackArcs" : fallbackArcs, "blended" : blended, "blendedArcs" : blendedArcs, "failed" : failed, "shifted" : shifted, "candidateTotal" : candidateTotal,
+            "fallbackArcs" : fallbackArcs, "blended" : blended, "blendedArcs" : blendedArcs,
+            "blendedRequests" : blendedRequests, "failed" : failed, "shifted" : shifted, "candidateTotal" : candidateTotal,
             "lines" : lines };
 }
 
@@ -3241,11 +3253,12 @@ export function undrapeArcRequests(arcs is array, edges is map, requests is arra
  *      extent (u at the far end), dir, a0 (lengthwise: u = dir * (arc - a0); else u = arc length along the table),
  *      samples ([u, request], ascending), fresh (this pass's, not yet joined), checks (this pass's: [u0, u1, request0,
  *      request1, u of the check point, 1 for an end check]), checkReq (the check points' requests) }
+ * `blended` (request index -> true) marks checks whose station was blended (uTurn "blend"): they split their span.
  * @returns {map} : { "edge", "requests" (new point requests), "arcs" (new shared arcs), "unsettled" (failed spans
  *      that get no further check) }
  */
 export function undrapeRefine(r is number, edge is map, c is map, tb is map, requests is array, results is array, tol is number,
-    firstPass is boolean, more is boolean) returns map
+    firstPass is boolean, more is boolean, blended is map) returns map
 {
     var ep = edge;
     if (!firstPass && size(ep.checks) == 0 && size(ep.fresh) == 0)
@@ -3264,6 +3277,15 @@ export function undrapeRefine(r is number, edge is map, c is map, tb is map, req
             const q = (idx == undefined) ? undefined : results[idx];
             if (q == undefined)
             {
+                // Blend: a check that landed on a blended station still splits its span (flagged 1 at [6]), so the
+                // refinement closes in on the zone's ends instead of leaving measurable stations inside the gap.
+                const lastFailed = size(failedSpans) - 1;
+                const blendSpan = ep.checks[k];
+                if (idx != undefined && blended[idx] == true
+                    && (lastFailed < 0 || failedSpans[lastFailed][0] != blendSpan[0] || failedSpans[lastFailed][1] != blendSpan[1]))
+                {
+                    failedSpans = append(failedSpans, append(blendSpan, 1));
+                }
                 continue;
             }
             const span = ep.checks[k];
@@ -3375,9 +3397,13 @@ export function undrapeRefine(r is number, edge is map, c is map, tb is map, req
             }
         }
     }
-    // failed spans that got no check (too narrow, or the last pass)
+    // failed spans that got no check (too narrow, or the last pass); a blended zone's end is not a miss
     for (var span in failedSpans)
     {
+        if (size(span) > 6)
+        {
+            continue;
+        }
         var checked = false;
         for (var ck in ep.checks)
         {
