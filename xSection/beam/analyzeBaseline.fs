@@ -255,27 +255,6 @@ function sampleChain(context is Context, chain is array, n is number) returns ar
 }
 
 /**
- * Return the index of the sample whose world X is closest to x.
- */
-function findSampleAtX(samples is array, x) returns number
-{
-    var bestIdx  = 0;
-    var bestDist = undefined;
-
-    for (var i = 0; i < size(samples); i += 1)
-    {
-        var d = abs(samples[i].pt[0] - x);
-        if (bestDist == undefined || d < bestDist)
-        {
-            bestDist = d;
-            bestIdx  = i;
-        }
-    }
-
-    return bestIdx;
-}
-
-/**
  * Return {idx, pt, curveIdx, u} of the sample with minimum Z in [xLow, xHigh].
  * Returns {idx: -1, pt: undefined} if no samples fall in range.
  */
@@ -509,6 +488,20 @@ function chainParamAtX(context is Context, chain is array, x)
 }
 
 /**
+ * The baseline point with world X = x (chainParamAtX, exact to the bisection tolerance). When no
+ * chain edge spans x (a reference beyond the baseline) it is the chain end nearer in X.
+ */
+function chainPointAtX(context is Context, chain is array, x, chainStartPt is Vector, chainEndPt is Vector) returns Vector
+{
+    const pos = chainParamAtX(context, chain, x);
+    if (pos != undefined)
+    {
+        return evEdgeTangentLine(context, { "edge" : chain[pos.ci].edge, "parameter" : pos.u }).origin;
+    }
+    return abs(chainStartPt[0] - x) <= abs(chainEndPt[0] - x) ? chainStartPt : chainEndPt;
+}
+
+/**
  * Ternary search for the point of largest perpendicular distance from the chord line
  * (chordOrigin, chordDir) on an edge within a native [uLo, uHi] bracket.
  */
@@ -590,37 +583,16 @@ export function analyzeBaselineGeometry(context is Context,
     var chainStartPt = chainStartCurv[0].frame.origin;
     var chainEndPt   = chainEndCurv[0].frame.origin;
 
+    // FCP / ACP / MRS on the baseline at their exact world X (bisection on the chain edge that
+    // spans that X). Until 2026-09-28 these were the nearest of the 200 midpoint samples unless
+    // FCP / ACP was a chain end, which put FRCPL / ARCPL / FCPH / ACPH off by up to half a sample
+    // spacing on a baseline that runs past the contacts (RD 20TAC FULL_BASELINE: FRCPL 131.25 for
+    // 130, ARCPL 49.26 for 50) -- correction 59. Direction-free: FCP may be on either side of ACP.
     var mrsX   = (fcpX + acpX) / 2;
-    var fcpIdx = findSampleAtX(samples, fcpX);
-    var acpIdx = findSampleAtX(samples, acpX);
-    var mrsIdx = findSampleAtX(samples, mrsX);
-
-    // Use exact chain endpoint for fcp_pt / acp_pt if it is closer in X than the
-    // nearest midpoint sample (covers edge-endpoint FCP/ACP without regressing
-    // the case where FCP/ACP are mate connectors in the middle of a span).
-    var fcpPt         = samples[fcpIdx].pt;
-    var distFcpSample = abs(fcpPt[0] - fcpX);
-    if (abs(chainStartPt[0] - fcpX) < distFcpSample)
-    {
-        fcpPt = chainStartPt;
-    }
-    else if (abs(chainEndPt[0] - fcpX) < distFcpSample)
-    {
-        fcpPt = chainEndPt;
-    }
-
-    var acpPt         = samples[acpIdx].pt;
-    var distAcpSample = abs(acpPt[0] - acpX);
-    if (abs(chainStartPt[0] - acpX) < distAcpSample)
-    {
-        acpPt = chainStartPt;
-    }
-    else if (abs(chainEndPt[0] - acpX) < distAcpSample)
-    {
-        acpPt = chainEndPt;
-    }
-
-    var mrsPt = samples[mrsIdx].pt;
+    var mrsPos = chainParamAtX(context, chain, mrsX);
+    var fcpPt  = chainPointAtX(context, chain, fcpX, chainStartPt, chainEndPt);
+    var acpPt  = chainPointAtX(context, chain, acpX, chainStartPt, chainEndPt);
+    var mrsPt  = chainPointAtX(context, chain, mrsX, chainStartPt, chainEndPt);
 
     // Step 4: FB / AB minimum-Z points in each half
     var fbXLow  = (fcpX < mrsX) ? fcpX : mrsX;
@@ -842,7 +814,6 @@ export function analyzeBaselineGeometry(context is Context,
         result.mcl_x  = mcRef.pt[0];
 
         // Signed arc length from MRS, positive towards FCP (the tip).
-        const mrsPos = chainParamAtX(context, chain, mrsX);
         if (mrsPos != undefined)
         {
             var lengths = [];

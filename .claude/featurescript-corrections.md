@@ -1777,3 +1777,31 @@ x = 0).
 
 **Lesson**: any quadratic whose leading coefficient is a DIFFERENCE of nearly equal measurements needs the stable
 root form; check a translated copy of a symmetric fixture.
+
+## Correction 57: opCreateOutline re-fits silhouette edges -- never take curvature from an outline (2026-09-28)
+
+**Symptom** (publish_tools Export primitive, RD 20TAC): the footprint radius at FCP read R 3.93 m on the ski and
+R 8.82 m on its mirror image; the volume's own base edge there is an exact R 1.020 m arc on both.
+**Cause**: `opCreateOutline` returns the silhouette as re-fitted splines: positions are fine, but end curvature is
+garbage (the same edge read R 1.047 / 1.02 / 1.287 / 3.93 m along it; its tip neighbour started at R 2.7e8 m).
+**Fix**: take curvature-sensitive geometry from the body's own edges. Export primitive finds the base periphery as
+the edges bounding exactly one "base" face (faces the section's bottom wire lies on, probed with qContainsPoint at
+interior points) and copies those with opExtractWires. Exact arcs stay exact.
+
+## Correction 58: importDerived "include mate connectors" skips connectors that hang off sketches (2026-09-28)
+
+**Symptom**: a REST-inserted derive of Design Master @ V1 (parts by deterministic id, includeMateConnectors true)
+brought no FCP / ACP / MRS / MP connectors: they are attached to sketch entities, not to a derived part.
+**Fix**: add a second query to `partQuery`: `qBodyType(qEverything(EntityType.BODY), BodyType.MATE_CONNECTOR)`
+(devtools/onshape/build_primitive_tests.py). Connectors cannot be named (correction 44), so pick them by position:
+`qContainsPoint(qOwnedByBody(<connectors>, EntityType.VERTEX), point)`.
+
+## Correction 59: a reference point taken from a sample grid is only as good as the grid (2026-09-28)
+
+**Symptom**: xSection analyzeBaselineGeometry (V57) gave FRCPl 131.25 / ARCPl 49.26 on RD 20TAC FULL_BASELINE where
+FRCP sits exactly 130 / 50 from the contacts. It snaps fcp_pt / acp_pt to the nearest of 200 MIDPOINT samples (exact
+only when FCP / ACP is a chain end, as on Generate baseline output); FULL_BASELINE runs on into the tip and tail.
+**Fix** (call site, Export primitive): re-measure FRCPl / ARCPl / FCPh / ACPh from the baseline point exactly at the
+FCP / ACP x (Newton on the chain). Upstream fix pending in analyzeBaseline.fs.
+**Lesson**: solve for a named point (x = x_FCP) instead of picking the nearest sample; a test fixture whose contacts
+are chain ends hides the error.

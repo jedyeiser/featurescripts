@@ -17,7 +17,6 @@ Cases (names carry the expectation):
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_primitive_tests.py [P1 P3 ...]
 """
-import copy
 import json
 import sys
 
