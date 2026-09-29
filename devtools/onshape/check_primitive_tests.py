@@ -167,6 +167,8 @@ def compare(case, a, b, tol, dx=0.0, dz=0.0, sign=1.0):
         ra, rb = rows(a, section), rows(b, section)
         for key, row in ra.items():
             for field, va in row.items():
+                if field == "station" and sign < 0:
+                    continue  # mirrored: the x order (and so the numbering) reverses
                 vb = rb.get(key, {}).get(field)
                 if field == "x" and isinstance(va, float):
                     va = sign * va + dx
@@ -179,8 +181,12 @@ def compare(case, a, b, tol, dx=0.0, dz=0.0, sign=1.0):
                     bad.append("%s.%s.%s %r vs %r" % (section, key, field, va, vb))
     if len(a["data"]) != len(b["data"]):
         bad.append("data rows %d vs %d" % (len(a["data"]), len(b["data"])))
-    for i, (ra, rb) in enumerate(zip(a["data"], b["data"])):
+    # Data rows run by ascending x: mirrored, they pair up in reverse.
+    data_b = b["data"] if sign > 0 else list(reversed(b["data"]))
+    for i, (ra, rb) in enumerate(zip(a["data"], data_b)):
         for field, va in ra.items():
+            if field == "station" and sign < 0:
+                continue
             vb = rb.get(field)
             if field == "x" and isinstance(va, float):
                 va = sign * va + dx
@@ -238,7 +244,18 @@ def run_checks(prims, before=None):
     check("P1", "running surface top/bottom %", "slightly > 100", sf["runningSurface"]["ratio"], 100.0 < sf["runningSurface"]["ratio"] < 100.1)
     check("P1", "tip top/bottom %", "< 100", sf["tip"]["ratio"], sf["tip"]["ratio"] < 100.0)
     check("P1", "data rows (N 21 incl. XS1/MRS/XS2)", 21, len(p1["data"]), len(p1["data"]) == 21)
-    check("P1", "ski_thck at FCP mm (X-Sect SPA)", 6.75, p1["data"][0]["skiThck"], near(p1["data"][0]["skiThck"], 6.75, 0.01))
+    at_fcp = [r for r in p1["data"] if near(r["x"], 1625.0, 1e-3)]
+    check("P1", "ski_thck at FCP mm (X-Sect SPA)", 6.75, at_fcp and at_fcp[0]["skiThck"], at_fcp and near(at_fcp[0]["skiThck"], 6.75, 0.01))
+    # 2026-09-28 station numbers: Key locations and Data sorted by x ascending, # from 0 at the lowest x
+    for sec in ("keyLocations", "data"):
+        xs = [r["x"] for r in p1[sec]]
+        st = [r.get("station") for r in p1[sec]]
+        check("P1", "%s by x ascending, station 0.." % sec, "sorted, 0..%d" % (len(xs) - 1), "%s .. %s, %s" % (xs[0], xs[-1], st[:3]),
+              xs == sorted(xs) and st == [float(i) for i in range(len(xs))])
+    kx = [(r["key"], r["station"]) for r in rows(p1, "keyLocations").values() if r["key"] in ("ACP", "FCP")]
+    check("P1", "ACP (x 145) = station 1 after TAIL, FCP before TIP", "ACP 1, FCP n-2", kx,
+          dict(kx).get("ACP") == 1.0 and dict(kx).get("FCP") == float(len(p1["keyLocations"]) - 2))
+    check("P1", "settings.stationNumbers", True, p1["settings"].get("stationNumbers"), p1["settings"].get("stationNumbers") is True)
     shown = [(sec, r["key"]) for case in ("P1", "P2", "P3", "P4", "P5", "P6", "P7", "P9") for sec in ("metadata", "baseline")
              for r in d[case][sec] if r.get("value") in UNAVAILABLE or (r["key"] in REMOVED)]
     check("P1-P9", "no unavailable / phase-2 rows (no EI, no blocks)", "none", shown, not shown)

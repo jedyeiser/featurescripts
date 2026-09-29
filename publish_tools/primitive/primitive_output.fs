@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_frame.fs
-export import(path : "5808546b3b3d863d82796d24", version : "c5a2ade5b038e795de4b90b3");
+export import(path : "5808546b3b3d863d82796d24", version : "6736d3998246dc5bd08cb2e8");
 
 /**
  * Export Primitive -- output geometry helpers: named point bodies and segments, band stacking and the closed

@@ -204,6 +204,7 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
         q("targetEI", *([ei] if ei else [])),
         num("dataPoints", str(points), True),
         b("forceStations", True),
+        b("stationNumbers", True),
         q("tipBlockWire"),
         s("tipBlock", tip_block),
         q("tailBlockWire"),
@@ -219,7 +220,7 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
     if not NEW:
         params = [p for p in params if p["parameterId"] not in
                   ("datumUses", "targetEI", "tipBlockWire", "tipBlock", "tailBlockWire", "tailBlock",
-                   "dashedGrid", "labels", "textHeight")]
+                   "dashedGrid", "labels", "textHeight", "stationNumbers")]
     return upsert(name, "exportPrimitive", params, ns)
 
 

@@ -2,13 +2,13 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 // IMPORT: primitive_profiles.fs
-export import(path : "5865b24d55ff270a56088adf", version : "9963114c4ec0f4b03502cc39");
+export import(path : "5865b24d55ff270a56088adf", version : "42c56ae1f5f4ebf763dd797f");
 // IMPORT: primitive_footprint.fs
-export import(path : "fbc957543e769a649f00c5cc", version : "42e79c3cf1add296e5c7d626");
+export import(path : "fbc957543e769a649f00c5cc", version : "a503910a82367e09972629a1");
 // IMPORT: primitive_baseline.fs
-export import(path : "b827b10bc0bdc678c2db28cd", version : "8bbadad03871f4302c005390");
+export import(path : "b827b10bc0bdc678c2db28cd", version : "d4bcfc718083eb7c8fab4ac2");
 // IMPORT: primitive_output.fs
-export import(path : "6f122edb2547a6a46991d9fd", version : "d5c40ef99ada6eccfe464e1b");
+export import(path : "6f122edb2547a6a46991d9fd", version : "5545cb62d0c10c08f4c68d76");
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs) -- same pin as station_geometry
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: xSection V57 xSectBeamAnalysis.fs (getEIFromEdges, computeBeamStiffness; direction-safe)
@@ -117,6 +117,10 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         annotation { "Name" : "Force XS1 / MRS / XS2", "Default" : true,
                     "Description" : "Add rows at XS1, MRS and XS2 when no data point falls there (within 0.01 mm)." }
         definition.forceStations is boolean;
+
+        annotation { "Name" : "Station numbers", "Default" : true,
+                    "Description" : "Number the Key locations and Data rows (both sorted by x, ascending): 0 at the lowest x (nearest the datum's -X side), increasing with +x. The numbers are always stored; this shows the # column." }
+        definition.stationNumbers is boolean;
 
         annotation { "Group Name" : "Tooling blocks", "Collapsed By Default" : false }
         {
@@ -239,6 +243,12 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                         "x" : primitiveMM(loc.x), "y" : primitiveMM(loc.y), "z" : primitiveMM(loc.z),
                         "s" : primitiveMM(loc.s), "w" : primitiveMM(loc.w), "h" : primitiveMM(loc.h) });
         }
+        // Table 3 in x order (ascending), numbered from 0 at the lowest x.
+        keyRows = sort(keyRows, function(a, b) { return a.x - b.x; });
+        for (var i = 0; i < size(keyRows); i += 1)
+        {
+            keyRows[i].station = i;
+        }
 
         // ---- Table 1: theoretical scale factors ----
         const scale = primitiveScaleFactors(context, frame, profile.topChain, keys.FCP.a, keys.ACP.a);
@@ -311,6 +321,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             const inward = abs(u - frame.xMrs) > RADIUS_SIDE_STEP ? (frame.xMrs > u ? 1 : -1) * RADIUS_SIDE_STEP : 0 * meter;
             const radius = primitiveFootprintAt(unwrapped.samples, u + inward).radius;
             dataRows = append(dataRows, {
+                        "station" : j,
                         "x" : primitiveMM(dataX[j]),
                         "s" : primitiveMM(s),
                         "y" : across.hit ? primitiveMM(across.yMax) : PRIMITIVE_NOT_FOUND,
@@ -507,6 +518,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                     "radiusBetween" : betweenLabel(definition.radiusBetween),
                     "dataPoints" : definition.dataPoints,
                     "forceStations" : definition.forceStations,
+                    "stationNumbers" : definition.stationNumbers,
                     "tipTowards" : dirSign > 0 ? "+X" : "-X"
                 },
                 "bands" : { "baseline" : primitiveMM(zBaseline), "profile" : primitiveMM(zProfile),
@@ -599,7 +611,7 @@ function wireEdges(pick is Query) returns Query
     return qUnion([qEntityFilter(pick, EntityType.EDGE), qOwnedByBody(qBodyType(qEntityFilter(pick, EntityType.BODY), BodyType.WIRE), EntityType.EDGE)]);
 }
 
-/** Data-table x positions: N evenly spaced FCP..ACP (both included), plus XS1 / MRS / XS2 when forced; FCP first. */
+/** Data-table x positions: N evenly spaced FCP..ACP (both included), plus XS1 / MRS / XS2 when forced; ascending x. */
 function dataStations(definition is map, xFcp is ValueWithUnits, xAcp is ValueWithUnits, forced is array) returns array
 {
     const n = definition.dataPoints;
@@ -627,7 +639,7 @@ function dataStations(definition is map, xFcp is ValueWithUnits, xAcp is ValueWi
             }
         }
     }
-    return sort(xs, function(a, b) { return (abs(a - xFcp) - abs(b - xFcp)) / meter; });
+    return sort(xs, function(a, b) { return (a - b) / meter; });
 }
 
 function betweenLabel(between is PrimitiveRadiusBetween) returns string
