@@ -1503,7 +1503,7 @@ function plateSidesGeneral(context is Context, part is Query) returns map
     }
     if (best != undefined)
     {
-        best = withSideAreas(context, allFaces, best);
+        best = withSideAreas(context, part, allFaces, best);
     }
 
     // No pair covering most of the part: seed from an inward raycast on the largest faces instead.
@@ -1512,7 +1512,7 @@ function plateSidesGeneral(context is Context, part is Query) returns map
         var raycast = raycastSides(context, part);
         if (raycast != undefined)
         {
-            raycast = withSideAreas(context, allFaces, raycast);
+            raycast = withSideAreas(context, part, allFaces, raycast);
             if (best == undefined || raycast.coverage > best.coverage)
             {
                 best = raycast;
@@ -1530,12 +1530,25 @@ function plateSidesGeneral(context is Context, part is Query) returns map
 /**
  * A side candidate with its areas: each side's, and the fraction of the part's area the two cover (the part's area
  * as sides + walls, the walls being the few faces left over -- cheaper than the whole part again).
+ *
+ * Only ONE side's area is measured (evArea on a draped side costs ~1.6 s: 124 spline faces of the topsheet): the one
+ * undrapeOutline prefers, with fewer edges. The other follows from the volume: two sides offset t apart bound
+ * area0 + area1 = 2 V / t (to t^2 times the total Gaussian curvature: ~1 mm^2 in 282000 on the topsheet). When the
+ * measured side is complete the estimate is the other side's true area and the two agree; when the measured side
+ * misses faces the estimate comes out larger by what is missing, so undrapeOutline's larger-side rule still picks the
+ * complete side.
  */
-function withSideAreas(context is Context, allFaces is Query, candidate is map) returns map
+function withSideAreas(context is Context, part is Query, allFaces is Query, candidate is map) returns map
 {
     const walls = qSubtraction(allFaces, qUnion([candidate.side0, candidate.side1]));
-    const area0 = evArea(context, { "entities" : candidate.side0 });
-    const area1 = evArea(context, { "entities" : candidate.side1 });
+    const count0 = size(evaluateQuery(context, qAdjacent(candidate.side0, AdjacencyType.EDGE, EntityType.EDGE)));
+    const count1 = size(evaluateQuery(context, qAdjacent(candidate.side1, AdjacencyType.EDGE, EntityType.EDGE)));
+    const measureFirst = count0 <= count1;
+    const measured = evArea(context, { "entities" : measureFirst ? candidate.side0 : candidate.side1 });
+    const volume = evVolume(context, { "entities" : part });
+    const other = max(0 * meter * meter, 2 * volume / candidate.thickness - measured);
+    const area0 = measureFirst ? measured : other;
+    const area1 = measureFirst ? other : measured;
     const wallArea = isQueryEmpty(context, walls) ? 0 * meter ^ 2 : evArea(context, { "entities" : walls });
     return mergeMaps(candidate, {
                 "walls" : walls,

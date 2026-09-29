@@ -31,7 +31,8 @@ Tables > Font (left at Noto Sans). In notes created by API the font is written w
 | Role | Height | Where set |
 |---|---|---|
 | Title-block field labels, zone label "NOTES" | 2.5 regular (NOTES bold) | per note (API `textHeight`) |
-| Title-block values, notes, dimensions, table content + header, revision table title | 3.5 | Drawing properties > Dimensions / Annotations > Notes / Tables (3.5 is the default; revision + general table *title row* changed 4.55 -> 3.5) |
+| Title-block values, notes, dimensions | 3.5 | Drawing properties > Dimensions / Annotations > Notes (3.5 is the default) |
+| **All tables** (BOM, custom, cut list, hole, revision, general): title, header and content rows | **2.5** (header bold -- Onshape's default B toggle on header rows, kept) | Drawing properties > Tables > each table type > Header / Content (/ Title) row text |
 | Title-block part name (bold), units "mm" | 5 | per note |
 | View labels (section / detail names, scale under the label) | 5 | Drawing properties > Views > View labels height |
 | 7 mm | reserved for the large sheets (PRIMITIVE A0 title) | -- |
@@ -39,7 +40,14 @@ Tables > Font (left at Noto Sans). In notes created by API the font is written w
 Why 5 (not 7) for the part name on A3: names like "RD 20TAC 28 178 4101" plus variant suffixes run 25-40
 characters; at 7 mm they would overflow the 144 mm field, at 5 mm they fit with room (measured: 27 characters =
 about 80 mm). Labels 2.5 / values 3.5 is the one "label vs value" rule used in the title block and in tables
-(bold headers). Dense tables may drop content to 2.5 per table (ISO minimum for A3).
+(bold headers).
+
+Why 2.5 for tables (user decision 2026-09-29): our tables are dense engineering tables (Station table, the six
+primitive tables with 35+ data rows, the revision history) that must fit next to full-length views; 2.5 mm is the
+ISO 3098 minimum for A3 and larger sheets (ISO 3098-0 / ISO 5457: 2.5 on A0-A3, 3.5 would be the A4-lettered
+minimum only for hand-lettering), still reads cleanly in Noto Sans on laser prints and PDF, and matches the
+title-block label height, so the sheet has one "small" size. Row height follows from text + padding: 2.5 mm text
+with the default 1.5 mm vertical padding gives the minimum row of 7.17 mm (Onshape refuses anything lower).
 
 ## 3. Line weights (ISO 128 line group 0.5 / 0.25, frame 0.7)
 | Element | Weight | Where |
@@ -70,7 +78,7 @@ the layer. So the template uses exactly the three format layers + the drawing la
 | Arrowhead | 2.5 mm filled (default; Onshape offers size only, no style choice) | ISO 129 closed filled arrow | Dimensions / Annotations > Arrowhead |
 | Text alignment | aligned with dimension line (ISO, default) | | Dimensions |
 | Projection | **first angle** (ISO E) + symbol in the title block | ISO default; open question in the plan: confirm K2 practice | Views > Projection angle |
-| View labels | style **A-A**, **scale label On** (scale under the label, as today's EDA - EDA / 1:2) | | Views |
+| View labels | style **A-A**, **scale label On** (scale under the label, as today's EDA - EDA / 1:2) | Onshape offers only On / Off for the scale label (checked 2026-09-29) -- there is no "only when it differs from the sheet scale". Kept On; on single-scale sheets delete or hide the label per view. | Views > Insert view defaults > Scale label |
 | Date format in the title block | **yyyy-mm-dd** (ISO 8601) | unambiguous for US + EU readers; Onshape default is yyyy/mm/dd | note editor > date field > Date time format |
 
 ## 5. Title block (ISO 7200 style, 180 x 40, bottom right)
@@ -86,6 +94,10 @@ x230      266                                                      410
  |        | DRAWN BY | DATE     | SIZE| SHEET | REV |    | mm [1st] |
  +--------+----------+----------+-----+-------+-----+----+----------+ y10
 ```
+Text placement (v2, measured in the exported PDF): labels 2.5 at 0.6 below the cell's top line; 3.5 values at
+3.7 below it, which puts every value baseline 1.7 mm above the cell's lower line (descenders of "g" / "J" clear
+it by 0.6-0.8 mm) and the value's cap top 0.55 mm under the label baseline. Part name (5 bold) baseline 2.4 mm
+above its line.
 Fields and sources (all live property links, not typed text):
 | Field | Link |
 |---|---|
@@ -104,22 +116,32 @@ duplicated logo. Labels are small uppercase black (no grey: grey prints unevenly
 Logo cell 36 x 40: logo 28 mm wide (aspect kept), "SKI ENGINEERING" 2.5 bold under it. Source: brand PNG from
 `icons/brands/<brand>_drawing.png`, uploaded as a blob tab; image placed with two corner clicks.
 
-## 6. Sheet zones (PART A3, from the plan) and layers
-View zone y150-287 (plan view 1:5 + profile), table zone x20-230 y50-150, revisions x230-410 y50-150 (Onshape
-revision table, top-left corner fixed at (230,150), 5 visible rows, grows down), notes x20-230 y10-50, title block
-x230-410 y10-50. ISO 5457 frame 20 left / 10 elsewhere; centring marks in the margin only (the standard's 5 mm
-overrun into the frame would clash with the y150 zone line). No grid references (A-F / 1-8) -- not needed for
-PDF-first use; add later if prints are marked up by zone.
+## 6. Sheet layout (v2, user decision 2026-09-29): open sheet, no interior zones
+Only four things are fixed; everything inside the frame is open space where users place views and tables:
+| Element | A3 position | Rule (all sizes, `devtools/onshape/templates/sheet_layout.py`) |
+|---|---|---|
+| ISO 5457 frame + centring marks | x 20-410, y 10-287; marks at x 210 / y 148.5 in the margin only | margins 20 left / 10 elsewhere |
+| Title block 180 x 40 | x 230-410, y 10-50 | bottom-right corner of the frame |
+| Revision table (Onshape's own) | x 230-410, top at y 287; columns Revision 18 / Revision description 110 / State 24 / Date approved 28; rows 7.17; 5 visible rows | fixed corner TOP-RIGHT at the frame's top-right corner, so its right edge = the title block's right edge; it grows downward |
+| "NOTES" label (2.5 bold, no lines) | x 22, top at y 48.8 | bottom-left, top aligned with the title block top |
+The title block's own top and left edges are 0.35 lines on the Border zones layer (the frame supplies bottom and
+right). No grid references (A-F / 1-8) -- not needed for PDF-first use.
 
-Layers: frame + centring marks -> Border frame; zone lines + "NOTES" -> Border zones; title block lines, labels,
-values, symbol, logo -> Title block; **Formats > Lock = Locked** (users cannot move or delete them; property links
-still update). The revision table stays on the drawing layer (it must be editable).
+Layers: frame + centring marks -> Border frame; title-block outer edges + "NOTES" -> Border zones; title block
+cells, labels, values, symbol, logo -> Title block; **Formats > Lock = Locked** (users cannot move or delete them;
+property links still update). The revision table stays on the drawing layer (it must be editable).
 
 ## 7. How to reproduce / known Onshape limits
-Scripts: `devtools/onshape/templates/` (README in the module docstrings). Order: `build_part_a3_master.py`
+Scripts: `devtools/onshape/templates/` (README in the module docstrings). Geometry for every sheet size comes from
+`sheet_layout.py` (`sheet_layout("A4" | "A3" | "A1" ...)`); `build_part_a3_master.py --size A4` builds that size's
+tab (`K2 SKIS - PART A4 (template)`, layout json `part_a4_layout.json`). v2 rework of the existing A3 master:
+`rework_part_a3_v2.py` (API) + UI: Tables text 2.5, revision table fixed corner / column widths / row heights /
+drag to the frame corner. Order for a new master: `build_part_a3_master.py`
 (phase 1 value notes) -> `ui_link_properties.py` -> `build_part_a3_master.py --phase rest` ->
-`ui_drawing_properties.py` -> `ui_layers.py` (frame, zones, tb, tb2; `move_zone_lines.py away/restore` around the tb
-window pick) -> `upload_logo.py` + insert image (UI) -> revision table (UI) -> lock -> `export_dwt.py`.
+`ui_drawing_properties.py` (add the 2.5 table rows) -> `ui_layers.py` (pixel picks are A3-specific; the tb window
+pick no longer needs `move_zone_lines.py`, which is obsolete in v2) -> `upload_logo.py` + insert image (UI) ->
+revision table (UI: toolbar Revision table, fixed corner top-right, click the frame's top-right corner; then per
+column right-click > Resize... width, and row height 7.17) -> lock -> `export_dwt.py --replace`.
 - The drawings API has no line weight, layer, font-per-document, image or property-field support; MText formatting
   (font, bold, \P) does work in API notes.
 - A note keeps the width it was created with (text wraps inside it), so property notes are created with a long

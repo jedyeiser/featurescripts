@@ -19,9 +19,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import TD, TW, c, elements, modify, pt  # noqa: E402
 
-BRANDS = {"K2": {"tab": "K2 SKIS - PART A3 (template)", "dept": "SKI ENGINEERING"}}
+BRANDS = {"K2": {"tab": "K2 SKIS - PART %s (template)", "dept": "SKI ENGINEERING"}}
 BRAND = sys.argv[sys.argv.index("--brand") + 1] if "--brand" in sys.argv else "K2"
-TAB = BRANDS[BRAND]["tab"]
+TAB = BRANDS[BRAND]["tab"] % (sys.argv[sys.argv.index("--size") + 1] if "--size" in sys.argv else "A3")
 
 FONT = "Noto Sans"
 
@@ -30,98 +30,24 @@ def txt(s, bold=False):
     return "{\\f%s|b%d|i0|c0|p0;%s}" % (FONT, 1 if bold else 0, s)
 
 
-# ------------------------------------------------------------------ geometry (sheet mm, origin lower-left)
-L = []   # (layer, x1, y1, x2, y2, alias)
+# ------------------------------------------------------------------ geometry: devtools/onshape/templates/sheet_layout.py
+# (parametric in the sheet size; this script builds the A3 master, --size A4 / A1 for the next masters)
+from sheet_layout import sheet_layout  # noqa: E402
 
-
-def line(layer, x1, y1, x2, y2, alias):
-    L.append((layer, x1, y1, x2, y2, alias))
-
-
-# ISO 5457 frame: 20 left, 10 elsewhere -> 0.7 mm (Border frame layer)
-line("frame", 20, 10, 410, 10, "fr_b")
-line("frame", 410, 10, 410, 287, "fr_r")
-line("frame", 410, 287, 20, 287, "fr_t")
-line("frame", 20, 287, 20, 10, "fr_l")
-# centring marks, in the margin only (sheet 420 x 297)
-line("frame", 210, 0, 210, 10, "cm_b")
-line("frame", 210, 287, 210, 297, "cm_t")
-line("frame", 0, 148.5, 20, 148.5, "cm_l")
-line("frame", 410, 148.5, 420, 148.5, "cm_r")
-# zone structure 0.35 (Border zones layer): views above y150, tables|revisions y50-150, notes|title block y10-50
-line("zones", 20, 150, 410, 150, "z_view")
-line("zones", 20, 50, 410, 50, "z_band")
-line("zones", 230, 10, 230, 150, "z_split")
-# title block cells 0.25 (Title block layer). Block x230-410, y10-50: logo column x230-266;
-# rows: title y38-50, description y28-38, row C y19-28, row D y10-19; units/projection cell x374-410, y10-28
-line("tb", 266, 10, 266, 50, "tb_logo")
-line("tb", 266, 38, 410, 38, "tb_r1")
-line("tb", 266, 28, 410, 28, "tb_r2")
-line("tb", 266, 19, 374, 19, "tb_r3")
-line("tb", 374, 10, 374, 28, "tb_units")
-line("tb", 322, 19, 322, 28, "tb_c1")
-line("tb", 350, 19, 350, 28, "tb_c2")
-for i, x in enumerate((302, 332, 346, 362)):
-    line("tb", x, 10, x, 19, "tb_d%d" % i)
-# first-angle projection symbol (ISO 5456-2): trapezoid, short side AWAY from the circles
-cy = 18.5
-line("tb", 391, cy - 1.75, 391, cy + 1.75, "pj_a")
-line("tb", 391, cy + 1.75, 398, cy + 3.5, "pj_b")
-line("tb", 398, cy + 3.5, 398, cy - 3.5, "pj_c")
-line("tb", 398, cy - 3.5, 391, cy - 1.75, "pj_d")
-CIRCLES = [("tb", 404.5, cy, 3.5, "pj_o"), ("tb", 404.5, cy, 1.75, "pj_i")]
-
-# ------------------------------------------------------------------ notes (position = top-left of the text)
-LBL, VAL, TTL = 2.5, 3.5, 5.0
-N = []   # (layer, x, ytop, contents, height, alias)
-
-
-def note(layer, x, y, s, h, alias, bold=False):
-    N.append((layer, x, y, txt(s, bold), h, alias))
-
-
-def cell(x, ytop, label, alias, value="", vbold=False, vh=VAL):
-    note("tb", x + 1.5, ytop - 0.6, label, LBL, "lb_" + alias)
-    if value:
-        note("tb", x + 1.5, ytop - 4.4, value, vh, "v_" + alias, vbold)
-
-
-note("tb", 232.6, 21.0, BRANDS[BRAND]["dept"], LBL, "lb_dept", bold=True)
-cell(266, 50, "TITLE", "title")
-cell(266, 38, "DESCRIPTION", "desc")
-cell(266, 28, "MATERIAL", "mat")
-cell(322, 28, "WEIGHT", "mass")
-cell(350, 28, "SCALE", "scale")
-cell(266, 19, "DRAWN BY", "drawn")
-cell(302, 19, "DATE", "date")
-cell(332, 19, "SIZE", "size")
-cell(346, 19, "SHEET", "sheet")
-cell(362, 19, "REV", "rev")
-note("tb", 375.5, 27.4, "UNITS / PROJECTION", LBL, "lb_units")
-note("tb", 375.8, 21.0, "mm", TTL, "st_units")
-note("zones", 22, 48.8, "NOTES", LBL, "lb_notes", bold=True)
-
-# Property-linked value notes. Phase "values" creates them alone, spread out over the empty view zone, so the UI
-# can link each one without hitting a neighbour; phase "rest" moves them into their cells (a position-only
-# onshapeEditAnnotations keeps the property link) and adds everything else. The placeholder length fixes the
-# note's wrap width (Onshape keeps the created width), so it is sized to the cell.
-# (alias, final x, final ytop, height, bold, wrap width mm, property source, property items)
-VALUES = [
-    ("v_title", 267.5, 45.6, TTL, True, 140, [("sheet", "Name")]),
-    ("v_desc", 267.5, 33.6, VAL, False, 140, [("sheet", "Description")]),
-    ("v_mat", 267.5, 23.6, VAL, False, 60, [("sheet", "Material")]),
-    ("v_mass", 323.5, 23.6, VAL, False, 25, [("sheet", "Mass")]),
-    ("v_rev", 363.5, 14.6, VAL, False, 13, [("sheet", "Revision")]),
-    ("v_drawn", 267.5, 14.6, VAL, False, 33, [("drawing", "Drawing drawn by")]),
-    ("v_date", 303.5, 14.6, VAL, False, 22, [("drawing", "Drawing date drawn")]),
-    ("v_scale", 351.5, 23.6, VAL, False, 13, [("drawing", "Sheet scale")]),
-    ("v_size", 333.5, 14.6, VAL, False, 11, [("drawing", "Sheet size")]),
-    ("v_sheet", 347.5, 14.6, VAL, False, 15, [("drawing", "Sheet number"), ("text", " / "), ("drawing", "Total sheets")]),
-]
+SIZE = sys.argv[sys.argv.index("--size") + 1] if "--size" in sys.argv else "A3"
+LAYOUT_SPEC = sheet_layout(SIZE, BRANDS[BRAND]["dept"])
+L = LAYOUT_SPEC["lines"]          # (layer, x1, y1, x2, y2, alias)
+CIRCLES = LAYOUT_SPEC["circles"]  # (layer, x, y, r, alias)
+N = [(layer, x, y, txt(s, bold), h, alias) for layer, x, y, s, h, alias, bold in LAYOUT_SPEC["notes"]]
+# property-linked value notes: (alias, final x, final ytop, height, bold, wrap width mm, property items).
+# Phase "values" creates them alone at staging spots so the UI can link each one without hitting a neighbour;
+# phase "rest" moves them into their cells (a position-only onshapeEditAnnotations keeps the property link) and
+# adds everything else. The placeholder length fixes the note's wrap width (Onshape keeps the created width).
+VALUES = LAYOUT_SPEC["values"]
 
 
 def staging(k):
-    return 40.0 + 190.0 * (k % 2), 275.0 - 22.0 * (k // 2)
+    return LAYOUT_SPEC["staging"][k]
 
 
 def annotations():
@@ -137,7 +63,7 @@ def annotations():
     return out
 
 
-LAYOUT = Path(__file__).parent / "part_a3_layout.json"
+LAYOUT = Path(__file__).parent / ("part_%s_layout.json" % SIZE.lower())
 
 
 def phase_values():
@@ -147,7 +73,7 @@ def phase_values():
     for e in existing:
         c._request("DELETE", f"/api/v6/elements/d/{TD}/w/{TW}/e/{e['id']}")
     eid = c.post(f"/api/v6/drawings/d/{TD}/w/{TW}/create", json_data={
-        "drawingName": TAB, "border": False, "titleblock": False, "size": "A3", "units": "MILLIMETER",
+        "drawingName": TAB, "border": False, "titleblock": False, "size": SIZE, "units": "MILLIMETER",
         "standard": "ISO", "projection": "First", "decimalSeparator": "PERIOD", "views": "zero"})["id"]
     anns = []
     for k, (alias, _x, _y, h, bold, w, _p) in enumerate(VALUES):
