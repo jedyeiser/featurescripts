@@ -25,10 +25,22 @@ import(path : "c2c3edd39b85fde5e6062533", version : "9cf03ed1102fc8e100e8e3f1");
  *
  * Camber height = maximum height of baseline from baseline_bottom_line between forebody and aftbody minima.
  *
- * Find rocker points - or the outermost inflection points along our baseline edges.
+ * Rocker contact points (FRCP / ARCP): the contact point when the ski is weighted (camber
+ * straightened). Definition (user, 2026-09-28): on each half, the baseline INFLECTION point
+ * closest to that half's lowest point (forebody / aftbody minimum), on the side of the
+ * minimum towards MRS. On a Generate baseline curve this is the camber/rocker join.
  *
  * Find tangent lines to baseline at inflection points (FB/Aftbody). Measure minimum distance between these lines and the curve intersection point at FCP/ACP.
  * These are our FCP/ACP heights.
+ *
+ * Lengths (all |dx| in world X; checked 2026-09-28 on RD 20TAC / 20FOU: |dx| is within
+ * 0.09 mm of the arc length for every one of them):
+ *   FRCPL / ARCPL   : FCP -> FRCP, ACP -> ARCP
+ *   FB_Roll/AB_Roll : forebody / aftbody minimum -> FRCP / ARCP
+ * MCl: position of the max camber point -- world X, and arc length along the baseline from
+ *      MRS (positive towards FCP, i.e. the tip).
+ *
+ * Direction: FCP may lie on either side of ACP in world X; every range below is min/max.
  *
  * Function just runs editing logic. Logic can be used elsewhere.
  */
@@ -55,7 +67,7 @@ function round2(x is number) returns number
  *
  * Performs greedy traversal: starts from the first edge, then at each step finds the
  * unused edge whose endpoint matches the current chain tip (within GEOM_TOL). Edges
- * are marked as reversed if they must be traversed end→start to maintain chain direction.
+ * are marked as reversed if they must be traversed end->start to maintain chain direction.
  *
  * @param context {Context}
  * @param edgesQ {Query} : Query returning a set of connected (G1 continuous) edges
@@ -179,7 +191,7 @@ function buildEdgeChain(context is Context, edgesQ is Query) returns array
  * Reversed edges have their sample order flipped to maintain chain direction.
  *
  * @param context {Context}
- * @param chain {array} : Edge chain from buildEdgeChain — [{ edge, reversed }, ...]
+ * @param chain {array} : Edge chain from buildEdgeChain -- [{ edge, reversed }, ...]
  * @param n {number} : Approximate total number of samples (actual may be slightly higher)
  * @returns {array} : Array of { pt: Vector, curveIdx: number, u: number }
  *                    where curveIdx is the edge index in chain and u is the native parameter.
@@ -345,7 +357,7 @@ function perpDistToLine(pt is Vector, lineOrigin is Vector, lineDir is Vector) r
 /**
  * Find inflection points (curvature sign changes) on a single edge.
  * Uses evEdgeCurvatures with native [0,1] parameterization and finite
- * differences for curvature sign — no B-spline evaluation required.
+ * differences for curvature sign -- no B-spline evaluation required.
  * Returns [{pt, u, edge}, ...].
  */
 function findInflectionsOnCurve(context is Context, edge is Query) returns array
@@ -366,7 +378,7 @@ function findInflectionsOnCurve(context is Context, edge is Query) returns array
     }
 
     // Curvature sign via finite differences.
-    // Y-component of d1 × d2 captures curvature sign for XZ-plane curves:
+    // Y-component of d1 x d2 captures curvature sign for XZ-plane curves:
     //   crossY = d1[0]*d2[2] - d1[2]*d2[0]
     // d1 = central first difference, d2 = second difference (both in meters).
     var signs = makeArray(nSamples, 0);
@@ -418,6 +430,110 @@ export function formatLine(origin is Vector, dir is Vector) returns string
         ~ toString(round2(dir[0])) ~ ","
         ~ toString(round2(dir[1])) ~ ","
         ~ toString(round2(dir[2])) ~ ")";
+}
+
+
+/**
+ * Rocker contact point of one half (FRCP or ARCP): the inflection closest to that half's
+ * minimum point, on the side of the minimum towards MRS. Only inflections inside the half
+ * [xHalfLow, xHalfHigh] count. Returns undefined when there is none.
+ */
+function selectRockerContact(inflections is array, minPt is Vector, mrsX, xHalfLow, xHalfHigh)
+{
+    const xLo = min(minPt[0], mrsX);
+    const xHi = max(minPt[0], mrsX);
+    var best     = undefined;
+    var bestDist = undefined;
+    for (var infl in inflections)
+    {
+        const px = infl.pt[0];
+        if (px >= xHalfLow && px <= xHalfHigh && px >= xLo && px <= xHi)
+        {
+            const d = abs(px - minPt[0]);
+            if (bestDist == undefined || d < bestDist)
+            {
+                best     = infl;
+                bestDist = d;
+            }
+        }
+    }
+    return best;
+}
+
+/**
+ * Arc length along the chain to native parameter u of chain edge ci (edge parameters of
+ * evEdge* calls are arc-length parameters, so the partial length is u * edge length).
+ */
+function chainArcLength(chain is array, lengths is array, ci is number, u is number) returns ValueWithUnits
+{
+    var s = 0 * meter;
+    for (var k = 0; k < ci; k += 1)
+    {
+        s += lengths[k];
+    }
+    return s + (chain[ci].reversed ? 1 - u : u) * lengths[ci];
+}
+
+/**
+ * Chain position with world X = x: { ci, u }, or undefined when no edge spans x.
+ * Assumes X is monotonic along each edge (true for a baseline).
+ */
+function chainParamAtX(context is Context, chain is array, x)
+{
+    for (var ci = 0; ci < size(chain); ci += 1)
+    {
+        const ends = evEdgeTangentLines(context, { "edge" : chain[ci].edge, "parameters" : [0, 1] });
+        const x0 = ends[0].origin[0];
+        const x1 = ends[1].origin[0];
+        if (x >= min(x0, x1) && x <= max(x0, x1))
+        {
+            var lo = 0.0;
+            var hi = 1.0;
+            for (var iter = 0; iter < 50; iter += 1)
+            {
+                const mid  = (lo + hi) / 2;
+                const xMid = evEdgeTangentLine(context, { "edge" : chain[ci].edge, "parameter" : mid }).origin[0];
+                if ((xMid < x) == (x1 > x0))
+                {
+                    lo = mid;
+                }
+                else
+                {
+                    hi = mid;
+                }
+            }
+            return { "ci" : ci, "u" : (lo + hi) / 2 };
+        }
+    }
+    return undefined;
+}
+
+/**
+ * Ternary search for the point of largest perpendicular distance from the chord line
+ * (chordOrigin, chordDir) on an edge within a native [uLo, uHi] bracket.
+ */
+function refineMaxCamberOnEdge(context is Context, edge is Query, uLo is number, uHi is number,
+    chordOrigin is Vector, chordDir is Vector) returns map
+{
+    var lo = uLo;
+    var hi = uHi;
+    for (var iter = 0; iter < 40; iter += 1)
+    {
+        const m1 = lo + (hi - lo) / 3;
+        const m2 = hi - (hi - lo) / 3;
+        const d1 = perpDistToLine(evEdgeTangentLine(context, { "edge" : edge, "parameter" : m1 }).origin, chordOrigin, chordDir);
+        const d2 = perpDistToLine(evEdgeTangentLine(context, { "edge" : edge, "parameter" : m2 }).origin, chordOrigin, chordDir);
+        if (d1 > d2)
+        {
+            hi = m2;
+        }
+        else
+        {
+            lo = m1;
+        }
+    }
+    const u = (lo + hi) / 2;
+    return { "pt" : evEdgeTangentLine(context, { "edge" : edge, "parameter" : u }).origin, "u" : u };
 }
 
 
@@ -528,13 +644,14 @@ export function analyzeBaselineGeometry(context is Context,
     var fbMinPt = refineMinZOnEdge(context, fbEdge, fbULo, fbUHi);
     var abMinPt = refineMinZOnEdge(context, abEdge, abULo, abUHi);
 
-    // Step 5: Camber height — max perpendicular distance from FB-min→AB-min chord
+    // Step 5: Camber height -- max perpendicular distance from FB-min->AB-min chord
     var chordDir    = normalize(abMinPt - fbMinPt);
     var chordOrigin = fbMinPt;
     var xChordLow   = (fbMinPt[0] < abMinPt[0]) ? fbMinPt[0] : abMinPt[0];
     var xChordHigh  = (fbMinPt[0] > abMinPt[0]) ? fbMinPt[0] : abMinPt[0];
 
     var maxCamberPt  = fbMinPt;
+    var maxCamberIdx = -1;
     var camberHeight = 0 * meter;
 
     for (var i = 0; i < size(samples); i += 1)
@@ -547,6 +664,7 @@ export function analyzeBaselineGeometry(context is Context,
             {
                 camberHeight = d;
                 maxCamberPt  = samples[i].pt;
+                maxCamberIdx = i;
             }
         }
     }
@@ -564,10 +682,10 @@ export function analyzeBaselineGeometry(context is Context,
 
     // Step 6b: Check for inflections at chain junctions (G1 joins).
     // For multi-segment curves (e.g., generateBaseline output), inflections may
-    // occur exactly at the boundary between adjacent edges — no single edge
+    // occur exactly at the boundary between adjacent edges -- no single edge
     // contains the sign change, so the per-edge loop misses them.
     // Strategy: sample the principal-normal Z-component 20% inside each edge on
-    // both sides of every junction. A sign change → inflection at the junction.
+    // both sides of every junction. A sign change -> inflection at the junction.
     for (var ci = 0; ci < size(chain) - 1; ci += 1)
     {
         var edgeA    = chain[ci].edge;
@@ -593,7 +711,7 @@ export function analyzeBaselineGeometry(context is Context,
 
         if (signA != 0 && signB != 0 && signA != signB)
         {
-            // Inflection is at the junction — evaluate edgeA at its chain-end boundary
+            // Inflection is at the junction -- evaluate edgeA at its chain-end boundary
             var junctionParam = revA ? 0.0 : 1.0;
             var junctionCurv  = evEdgeCurvatures(context, { "edge" : edgeA, "parameters" : [junctionParam] });
             allInflections = append(allInflections, {
@@ -638,45 +756,29 @@ export function analyzeBaselineGeometry(context is Context,
         }
     }
 
-    // Step 7: Select inflection with lowest Z in each half (FRCP / ARCP)
+    // Step 7: FRCP / ARCP -- in each half, the inflection closest to that half's minimum on
+    // the side towards MRS (until 2026-09-28: the lowest-Z inflection of the half; the two
+    // agree on Generate baseline curves, where both are the camber/rocker join).
     var frcpPt   = undefined;
     var frcpU    = undefined;
     var frcpEdge = undefined;
-    var frcpZ    = undefined;
+    var frcpInfl = selectRockerContact(allInflections, fbMinPt, mrsX, fbXLow, fbXHigh);
+    if (frcpInfl != undefined)
+    {
+        frcpPt   = frcpInfl.pt;
+        frcpU    = frcpInfl.u;
+        frcpEdge = frcpInfl.edge;
+    }
 
     var arcpPt   = undefined;
     var arcpU    = undefined;
     var arcpEdge = undefined;
-    var arcpZ    = undefined;
-
-    for (var infl in allInflections)
+    var arcpInfl = selectRockerContact(allInflections, abMinPt, mrsX, abXLow, abXHigh);
+    if (arcpInfl != undefined)
     {
-        var px = infl.pt[0];
-        var pz = infl.pt[2];
-
-        // Forebody region: between FCP and MRS
-        if (px >= fbXLow && px <= fbXHigh)
-        {
-            if (frcpZ == undefined || pz < frcpZ)
-            {
-                frcpPt   = infl.pt;
-                frcpU    = infl.u;
-                frcpEdge = infl.edge;
-                frcpZ    = pz;
-            }
-        }
-
-        // Aftbody region: between MRS and ACP
-        if (px >= abXLow && px <= abXHigh)
-        {
-            if (arcpZ == undefined || pz < arcpZ)
-            {
-                arcpPt   = infl.pt;
-                arcpU    = infl.u;
-                arcpEdge = infl.edge;
-                arcpZ    = pz;
-            }
-        }
+        arcpPt   = arcpInfl.pt;
+        arcpU    = arcpInfl.u;
+        arcpEdge = arcpInfl.edge;
     }
 
     if (debug)
@@ -696,7 +798,7 @@ export function analyzeBaselineGeometry(context is Context,
         "camber_height" : camberHeight
     };
 
-    // Steps 8–10: FRCP tangent (from evEdgeCurvatures), arc length, height
+    // Steps 8-10: FRCP tangent (from evEdgeCurvatures), arc length, height
     if (frcpPt != undefined)
     {
         var frcpCurv = evEdgeCurvatures(context, { "edge" : frcpEdge, "parameters" : [frcpU] });
@@ -705,9 +807,10 @@ export function analyzeBaselineGeometry(context is Context,
         result.frcp_dir = frcpDir;
         result.frcpl    = abs(frcpPt[0] - fcpPt[0]);
         result.fcph     = perpDistToLine(fcpPt, frcpPt, frcpDir);
+        result.fb_roll  = abs(frcpPt[0] - fbMinPt[0]);
     }
 
-    // Steps 8–10: ARCP tangent, arc length, height
+    // Steps 8-10: ARCP tangent, arc length, height
     if (arcpPt != undefined)
     {
         var arcpCurv = evEdgeCurvatures(context, { "edge" : arcpEdge, "parameters" : [arcpU] });
@@ -716,6 +819,42 @@ export function analyzeBaselineGeometry(context is Context,
         result.arcp_dir = arcpDir;
         result.arcpl    = abs(acpPt[0] - arcpPt[0]);
         result.acph     = perpDistToLine(acpPt, arcpPt, arcpDir);
+        result.ab_roll  = abs(arcpPt[0] - abMinPt[0]);
+    }
+
+    // Step 11: MCl -- max camber position, refined on its edge (the 200-sample spacing is
+    // ~20 mm on a long camber edge). camber_height / max_camber_pt above stay sample-based.
+    if (maxCamberIdx >= 0)
+    {
+        const mcCi = samples[maxCamberIdx].curveIdx;
+        var nOnEdge = 0;
+        for (var smp in samples)
+        {
+            if (smp.curveIdx == mcCi)
+            {
+                nOnEdge += 1;
+            }
+        }
+        const du    = 1 / max(nOnEdge, 1);
+        const mcU0  = samples[maxCamberIdx].u;
+        const mcRef = refineMaxCamberOnEdge(context, chain[mcCi].edge, max(0, mcU0 - du), min(1, mcU0 + du), chordOrigin, chordDir);
+        result.mcl_pt = mcRef.pt;
+        result.mcl_x  = mcRef.pt[0];
+
+        // Signed arc length from MRS, positive towards FCP (the tip).
+        const mrsPos = chainParamAtX(context, chain, mrsX);
+        if (mrsPos != undefined)
+        {
+            var lengths = [];
+            for (var chainLink in chain)
+            {
+                lengths = append(lengths, evLength(context, { "entities" : chainLink.edge }));
+            }
+            const sMcl = chainArcLength(chain, lengths, mcCi, mcRef.u);
+            const sMrs = chainArcLength(chain, lengths, mrsPos.ci, mrsPos.u);
+            const fcpAtChainStart = abs(chainStartPt[0] - fcpX) < abs(chainEndPt[0] - fcpX);
+            result.mcl_s = (fcpAtChainStart ? -1 : 1) * (sMcl - sMrs);
+        }
     }
 
     return result;
@@ -740,6 +879,14 @@ export function analyzeBaselineEditLogic(context is Context, id is Id, oldDefini
     definition.abMinString           = formatVec(result.ab_min_pt);
     definition.maxCamberHeightString = formatVec(result.max_camber_pt);
     definition.camberHeight          = result.camber_height;
+    if (result.mcl_x != undefined)
+    {
+        definition.mclX = result.mcl_x;
+    }
+    if (result.mcl_s != undefined)
+    {
+        definition.mclS = result.mcl_s;
+    }
 
     if (result.frcp_pt != undefined)
     {
@@ -747,6 +894,7 @@ export function analyzeBaselineEditLogic(context is Context, id is Id, oldDefini
         definition.frcpl    = result.frcpl;
         definition.frcpLine = formatLine(result.frcp_pt, result.frcp_dir);
         definition.fcph     = result.fcph;
+        definition.fbRoll   = result.fb_roll;
     }
 
     if (result.arcp_pt != undefined)
@@ -755,6 +903,7 @@ export function analyzeBaselineEditLogic(context is Context, id is Id, oldDefini
         definition.arcpl    = result.arcpl;
         definition.arcpLine = formatLine(result.arcp_pt, result.arcp_dir);
         definition.acph     = result.acph;
+        definition.abRoll   = result.ab_roll;
     }
 
     return definition;
@@ -794,7 +943,13 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
             annotation { "Name" : "Camber height", "UIHint" : UIHint.READ_ONLY }
             isLength(definition.camberHeight, LENGTH_BOUNDS);
 
-            annotation { "Name" : "FRCP", "Description" : "Forebody rocker contact point", "UIHint" : UIHint.READ_ONLY }
+            annotation { "Name" : "MCl x", "Description" : "World X of the max camber point", "UIHint" : UIHint.READ_ONLY }
+            isLength(definition.mclX, LENGTH_BOUNDS);
+
+            annotation { "Name" : "MCl s", "Description" : "Arc length along the baseline from MRS to the max camber point; positive towards FCP (tip)", "UIHint" : UIHint.READ_ONLY }
+            isLength(definition.mclS, LENGTH_BOUNDS);
+
+            annotation { "Name" : "FRCP", "Description" : "Forebody rocker contact point: the inflection closest to the forebody minimum, towards MRS", "UIHint" : UIHint.READ_ONLY }
             definition.frcp is string;
 
             annotation { "Name" : "FRCPL", "Description" : "Forebody rocker contact point length. Distance between fcp and frcp", "UIHint" : UIHint.READ_ONLY }
@@ -806,7 +961,10 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
             annotation { "Name" : "FCPH", "Description" : "Height of FCP when baseline is weighted. Distance between FCP point and forebody rocker tangent line", "UIHint" : UIHint.READ_ONLY }
             isLength(definition.fcph, LENGTH_BOUNDS);
 
-            annotation { "Name" : "ARCP", "Description" : "Aftbody rocker contact point", "UIHint" : UIHint.READ_ONLY }
+            annotation { "Name" : "FB roll", "Description" : "Forebody roll length. X distance between the forebody minimum and FRCP", "UIHint" : UIHint.READ_ONLY }
+            isLength(definition.fbRoll, LENGTH_BOUNDS);
+
+            annotation { "Name" : "ARCP", "Description" : "Aftbody rocker contact point: the inflection closest to the aftbody minimum, towards MRS", "UIHint" : UIHint.READ_ONLY }
             definition.arcp is string;
 
             annotation { "Name" : "ARCPL", "Description" : "Aftebody rocker contact point length. Distance between fcp and frcp", "UIHint" : UIHint.READ_ONLY }
@@ -817,6 +975,9 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
 
             annotation { "Name" : "ACPH", "Description" : "Height of ACP when baseline is weighted. Distance between ACP point and aftbody rocker tangent line", "UIHint" : UIHint.READ_ONLY }
             isLength(definition.acph, LENGTH_BOUNDS);
+
+            annotation { "Name" : "AB roll", "Description" : "Aftbody roll length. X distance between the aftbody minimum and ARCP", "UIHint" : UIHint.READ_ONLY }
+            isLength(definition.abRoll, LENGTH_BOUNDS);
         }
 
         annotation { "Name" : "Output measurement sketch" }
@@ -837,7 +998,7 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
             return;
         }
 
-        // Foot of perp from max_camber_pt to fb_min→ab_min chord
+        // Foot of perp from max_camber_pt to fb_min->ab_min chord
         var chordDir   = normalize(result.ab_min_pt - result.fb_min_pt);
         var camberDiff = result.max_camber_pt - result.fb_min_pt;
         var camberFoot = result.fb_min_pt + dot(camberDiff, chordDir) * chordDir;
@@ -867,14 +1028,14 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
             "sketchPlane" : sketchPl
         });
 
-        // 1. Centerline: fb_min_pt → ab_min_pt
+        // 1. Centerline: fb_min_pt -> ab_min_pt
         skLineSegment(sketch, "minChord", {
             "start"        : worldToPlane(sketchPl, result.fb_min_pt),
             "end"          : worldToPlane(sketchPl, result.ab_min_pt),
             "construction" : true
         });
 
-        // 2. Centerline: FRCP → ARCP (if both inflection points exist)
+        // 2. Centerline: FRCP -> ARCP (if both inflection points exist)
         if (result.frcp_pt != undefined && result.arcp_pt != undefined)
         {
             skLineSegment(sketch, "inflChord", {
@@ -884,7 +1045,7 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
             });
         }
 
-        // 3a. FB triangle legs: FRCP ↔ foot-of-perp, FCP ↔ foot-of-perp
+        // 3a. FB triangle legs: FRCP <-> foot-of-perp, FCP <-> foot-of-perp
         if (result.frcp_pt != undefined && fbFoot != undefined)
         {
             skLineSegment(sketch, "fbTangentLeg", {
@@ -899,7 +1060,7 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
             });
         }
 
-        // 3b. AB triangle legs: ARCP ↔ foot-of-perp, ACP ↔ foot-of-perp
+        // 3b. AB triangle legs: ARCP <-> foot-of-perp, ACP <-> foot-of-perp
         if (result.arcp_pt != undefined && abFoot != undefined)
         {
             skLineSegment(sketch, "abTangentLeg", {
@@ -914,7 +1075,7 @@ export const analyzeBaseline = defineFeature(function(context is Context, id is 
             });
         }
 
-        // 4. Camber normal: max_camber_pt → camberFoot (perpendicular to min chord)
+        // 4. Camber normal: max_camber_pt -> camberFoot (perpendicular to min chord)
         skLineSegment(sketch, "camberNormal", {
             "start"        : worldToPlane(sketchPl, result.max_camber_pt),
             "end"          : worldToPlane(sketchPl, camberFoot),
