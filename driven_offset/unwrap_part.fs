@@ -106,6 +106,9 @@ export const UNWRAP_PART_PRISM_GRID = 5;
  */
 export const UNWRAP_PART_EXTRUSION_SHARE = 0.01;
 
+/** How far (metres) a planar cap's cutting box reaches past the cap's own extent (planarCap). */
+export const UNWRAP_PART_CAP_MARGIN = 5e-4;
+
 /** Rows: adaptive (seed every UNWRAP_PART_ROW_SEED_SPACING m, at least UNWRAP_PART_ROW_SEED_MIN, then split every
  * span whose mapped midpoint misses the cubic through its neighbours by more than shapeTolerance *
  * UNWRAP_PART_ROW_REFINE, up to UNWRAP_PART_ROW_PASSES passes), or fixed (UNWRAP_PART_ROW_FIXED_SPACING, at least
@@ -1757,6 +1760,62 @@ export function viewFit(samples is map, ib is number) returns map
             "spread" : max(spreadU, spreadV) };
 }
 
+/**
+ * A face whose flat image is a plane within `tol` (metres) and faces along flat x (|normal x| >= 0.5): the plane
+ * (origin = mean point, unit outward normal = mean flat normal), an in-plane axis u, the half extents of a cutting
+ * box over it (the face's extent in the plane plus UNWRAP_PART_CAP_MARGIN) and its depth (twice the larger half
+ * extent plus the margin: the envelope row lies within the face's own extent). undefined otherwise.
+ */
+export function planarCap(samples is map, tol is number)
+{
+    var pts = [];
+    var nx = 0;
+    var ny = 0;
+    var nz = 0;
+    for (var k = 0; k < size(samples.flat); k += 1)
+    {
+        if (samples.flat[k] == undefined || samples.normals[k] == undefined)
+        {
+            continue;
+        }
+        pts = append(pts, samples.flat[k]);
+        nx += samples.normals[k][0];
+        ny += samples.normals[k][1];
+        nz += samples.normals[k][2];
+    }
+    const len = sqrt(nx * nx + ny * ny + nz * nz);
+    if (size(pts) < 4 || len < 1e-9 || abs(nx / len) < 0.5)
+    {
+        return undefined;
+    }
+    const n = [nx / len, ny / len, nz / len];
+    var o = [0, 0, 0];
+    for (var p in pts)
+    {
+        o = [o[0] + p[0] / size(pts), o[1] + p[1] / size(pts), o[2] + p[2] / size(pts)];
+    }
+    // in-plane axes: u horizontal (normal x flat z), v = n x u
+    const ul = sqrt(n[0] * n[0] + n[1] * n[1]);
+    const u = [n[1] / ul, -n[0] / ul, 0];
+    const v = [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]];
+    var dev = 0;
+    var halfU = 0;
+    var halfV = 0;
+    for (var p in pts)
+    {
+        const d = [p[0] - o[0], p[1] - o[1], p[2] - o[2]];
+        dev = max(dev, abs(d[0] * n[0] + d[1] * n[1] + d[2] * n[2]));
+        halfU = max(halfU, abs(d[0] * u[0] + d[1] * u[1] + d[2] * u[2]));
+        halfV = max(halfV, abs(d[0] * v[0] + d[1] * v[1] + d[2] * v[2]));
+    }
+    if (dev > tol)
+    {
+        return undefined;
+    }
+    return { "origin" : o, "normal" : n, "u" : u, "halfU" : halfU + UNWRAP_PART_CAP_MARGIN, "halfV" : halfV + UNWRAP_PART_CAP_MARGIN,
+            "depth" : 2 * max(halfU, halfV) + UNWRAP_PART_CAP_MARGIN, "dev" : dev };
+}
+
 /** Per-station values with the missing ones taken from the nearest station that has one (0 when none has). */
 export function filledStations(values is array) returns array
 {
@@ -1839,6 +1898,7 @@ export function prismAnalysis(context is Context, chart is map, piece is Query, 
     var walls = 0;
     var both = 0;
     var envelopes = 0;
+    var caps = [];
     const faces = evaluateQuery(context, qOwnedByBody(piece, EntityType.FACE));
     for (var face in faces)
     {
@@ -1859,6 +1919,20 @@ export function prismAnalysis(context is Context, chart is map, piece is Query, 
         {
             wallOK = true;
             squaredHere = true;
+        }
+        if (!profileOK && !wallOK && W.dev < UNWRAP_PART_NO_FIT)
+        {
+            // A planar end cap skewed in plan AND leaning (4103's tip over FULL_BASELINE, 4401's end caps): no single
+            // view holds it, but its flat image is a plane. The plan view closes on its outward envelope and the
+            // band is then cut back to the plane (prismPiece).
+            const cap = planarCap(samples, tol);
+            if (cap != undefined)
+            {
+                rows = append(rows, prismRow(context, chart, face, "WALL", W, true, refine, settings.part));
+                caps = append(caps, cap);
+                envelopes += 1;
+                continue;
+            }
         }
         if (!profileOK && !wallOK)
         {
@@ -1906,10 +1980,10 @@ export function prismAnalysis(context is Context, chart is map, piece is Query, 
         }
     }
     const text = size(faces) ~ " faces: " ~ profiles ~ " profile, " ~ walls ~ " wall (" ~ both ~ " both), " ~ envelopes
-        ~ " envelope, " ~ approximated ~ " approximated (max " ~ roundToPrecision(approximationMax * 1000, 5) ~ " mm), "
+        ~ " envelope (" ~ size(caps) ~ " planar cap), " ~ approximated ~ " approximated (max " ~ roundToPrecision(approximationMax * 1000, 5) ~ " mm), "
         ~ squared ~ " squared, " ~ size(fallback) ~ " beyond tolerance";
     return { "rows" : rows, "fallback" : fallback, "fallbackMax" : fallbackMax, "squaredMax" : squaredMax,
-            "approximationMax" : approximationMax, "text" : text,
+            "approximationMax" : approximationMax, "text" : text, "caps" : caps,
             "report" : { "approximatedFaces" : approximated, "squaredWalls" : squared, "maxLean" : maxLean } };
 }
 
@@ -2874,6 +2948,20 @@ export function prismPiece(context is Context, id is Id, chart is map, piece is 
     {
         opBoolean(context, id + "unite", { "tools" : qUnion(results), "operationType" : BooleanOperationType.UNION });
     }
+    // Planar caps: the plan view closed on each cap's outward envelope; cut the band back to the cap's plane with a
+    // box standing on the plane's outward side, just over the cap (a cap is an end: nothing of the part lies there).
+    for (var c = 0; c < size(analysis.caps); c += 1)
+    {
+        const cap = analysis.caps[c];
+        const cid = id + ("cap" ~ c);
+        fCuboid(context, cid, { "corner1" : vector(-cap.halfU, -cap.halfV, 0) * meter,
+                    "corner2" : vector(cap.halfU, cap.halfV, cap.depth) * meter });
+        opTransform(context, cid + "place", { "bodies" : qCreatedBy(cid, EntityType.BODY),
+                    "transform" : toWorld(coordSystem(vector(cap.origin[0], cap.origin[1], cap.origin[2]) * meter,
+                            vector(cap.u[0], cap.u[1], cap.u[2]), vector(cap.normal[0], cap.normal[1], cap.normal[2]))) });
+        opBoolean(context, cid + "cut", { "targets" : qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SOLID),
+                    "tools" : qCreatedBy(cid, EntityType.BODY), "operationType" : BooleanOperationType.SUBTRACTION });
+    }
     const scrap = qBodyType(qCreatedBy(id, EntityType.BODY), [BodyType.SHEET, BodyType.WIRE, BodyType.POINT]);
     if (!isQueryEmpty(context, scrap))
     {
@@ -2887,7 +2975,7 @@ export function prismPiece(context is Context, id is Id, chart is map, piece is 
     }
     const counts = { "lines" : side.counts.lines + plan.counts.lines, "arcs" : side.counts.arcs + plan.counts.arcs,
         "splines" : side.counts.splines + plan.counts.splines };
-    const text = size(groups) ~ " band(s); side view " ~ size(pch) ~ " chains -> " ~ size(side.faces) ~ " cells, plan view "
+    const text = size(groups) ~ " band(s), " ~ size(analysis.caps) ~ " planar cap cut(s); side view " ~ size(pch) ~ " chains -> " ~ size(side.faces) ~ " cells, plan view "
         ~ size(wch) ~ " chains -> " ~ size(plan.faces) ~ " cells; curves " ~ counts.lines ~ " line, " ~ counts.arcs ~ " arc, "
         ~ counts.splines ~ " spline; " ~ membership.probes ~ " probes, " ~ membership.tests ~ " point tests";
     return { "body" : body, "bands" : size(groups), "tools" : size(pch) + size(wch), "counts" : counts, "snapped" : snapped,
