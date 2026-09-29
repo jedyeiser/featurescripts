@@ -187,5 +187,17 @@ check("T12 case A (tree) +X face moved toward the reference (x max 28)", len(a12
 check("T12 case B +X face moved toward the reference (x max 243)", len(b12) == 1 and near(b12[0]["x1"], 243), str(b12 and b12[0]["x1"]))
 check("T12 case C 54 deg face moved toward the reference (x max < 433.2)", len(c12) == 1 and c12[0]["x1"] < 433.2, str(c12 and c12[0]["x1"]))
 
+# ---- T13 / T14: clicked outside references ----
+r13 = row(1000)
+b13 = [b for b in at_x(r13, 200) if near(b["z0"], 20) and near(b["z1"], 60)]
+check("T13 case B boss up to the clicked tower top (z 20..60, named B_boss13)", len(b13) == 1 and b13[0]["name"] == "B_boss13", str(b13))
+check("T13 #B_boss13 on case B's boss", outputs["B_boss13"].endswith("on B_boss13"), outputs["B_boss13"])
+check("T13 #A_boss13 on case A's boss", outputs["A_boss13"].endswith("on A_boss13"), outputs["A_boss13"])
+r14 = row(1100)
+b14 = [b for b in at_x(r14, 200) if near(b["z0"], 20) and near(b["z1"], 60)]
+blk14 = [b for b in at_x(r14, 200) if near(b["z0"], 0) and near(b["z1"], 20)]
+check("T14 case B boss up to the clicked tower top, edges filleted", len(b14) == 1 and b14[0]["blends"] >= 8, str(b14))
+check("T14 block B rim filleted (edit of outside geometry, 4 blends)", len(blk14) == 1 and blk14[0]["blends"] == 4, str(blk14))
+
 print("\n%d failure(s)" % fails)
 sys.exit(1 if fails else 0)

@@ -305,3 +305,25 @@ retry for edits of outside geometry fails (the outer frame cannot be left). Spik
 if a feature refuses with SELF_INTERSECTING, roll the attempt back and rerun the case the current way. Not built.
 Row O5 (2026-09-29): user's reorder -- Define case, body, case features, then an executor that owns the body list --
 passes everything at once (outside clicks, in-list QV remap, outside-geometry edit via retry). Candidate v3 shape.
+
+## 12. v3 (BUILT 2026-09-29; tests T1-T14 all pass, check_case_pattern_tests.py)
+
+Tree: Define case -> body -> Case (one feature per further case) -> Close case (Define case + body FeatureList + Case
+FeatureList; runs every case). Case pattern is gone. Why: correction 60 -- the feature that replays the body must own
+its FeatureList and push the frame itself; then outside clicks resolve AND the outside-edit retry works.
+- Case: slots laid out by caseEditLogic from the Define case's signature (same slot machinery as v2 rows), button
+  "Update from Define case"; publishes a record variable {caseRecord, defineKey, caseName, selections, values}.
+  Validation errors land on the Case feature itself (T11).
+- Close case: publishes case 1's outputs (once per Define case, marker "<namesKey>-caseOnePublished"), then per Case:
+  bind (resolved before the frame), frame on id + "case_<name>", runListedFeature (retry outside the frame on
+  SELF_INTERSECTING), drop unkept bodies, read outputs with getQueryVariable(<name>) AFTER the case, publish.
+  Restores case 1's inputs, values AND output variables afterwards.
+- Outputs are declared by the query variable's NAME (a picked query parameter resolves at call time, so the
+  executor cannot re-read it after a case).
+- Re-close: a later Close case on the same Define case and body runs further Cases, which may select geometry the
+  first batch made (T7 case D on B's stud). The body must be re-picked (borrowing another Close case's list would
+  be the two-level call again).
+- New tests: T9a (reference clicked inside Offset+) now works; T13 extrude up to a clicked outside face; T14 clicked
+  outside reference + edit of outside geometry in one case.
+Open: Case dialog layout (editing logic) not yet exercised in the UI; explainer still v2; spike tab spike_outside.fs
+and "Case pattern outside-ref spikes" studio to delete; user must version the document.

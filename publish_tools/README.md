@@ -117,10 +117,10 @@ Tabs in tab folder `primitive` (local `publish_tools/primitive/`):
 | primitive_types | ecde24520874030ab412c981 | enums (PrimitiveSource, PrimitiveDatumUse, PrimitivePlotRegion, PrimitivePlot, PrimitiveTableKind), flat-baseline tolerance 0.01 mm, attribute name `publishPrimitive`, schema `primitive/1`, bounds, reserved key names |
 | primitive_frame | 5808546b3b3d863d82796d24 | point / datum resolution, edge chains, chain-at-x (Newton), foot, normal crossing, [s, w, h] |
 | primitive_profiles | 5865b24d55ff270a56088adf | mid-plane section -> BOTTOM / TOP / TIP END / TAIL END; Table 1 scale factors |
-| primitive_footprint | fbc957543e769a649f00c5cc | base periphery, unwrap along s, radius + signed curvature (chain rule, exact), fpt_analyze (footprint V32), plot runs / region clip / junctions |
-| primitive_baseline | b827b10bc0bdc678c2db28cd | analyzeBaselineGeometry (xSection V57) on a local copy + exact FCP/ACP re-measure; Table 5 |
+| primitive_footprint | fbc957543e769a649f00c5cc | base periphery, unwrap along s (centreline + one end section where cut back, 2026-09-29), radius + signed curvature (chain rule, exact), fpt_analyze (footprint V32), plot runs / region + axis clip / junctions |
+| primitive_baseline | b827b10bc0bdc678c2db28cd | analyzeBaselineGeometry (xSection V58: FCP/ACP exact, workaround removed 2026-09-29) on a local copy; Table 5 |
 | primitive_output | 6f122edb2547a6a46991d9fd | named points / segments, band stacking, closed composite + attribute |
-| export_primitive | 3ce76ee786987ef00917b9b2 | feature "Export primitive"; target EI via xSection V57 xSectBeamAnalysis (getEIFromEdges, computeBeamStiffness) |
+| export_primitive | 3ce76ee786987ef00917b9b2 | feature "Export primitive"; target EI via xSection V58 xSectBeamAnalysis (getEIFromEdges, computeBeamStiffness) |
 | primitive_table | 4e49f8a0b8f0c2bd75c919e7 | custom table "Primitive tables" |
 
 Use: Export primitive (dialog groups, 2026-09-28: Inputs (open), Sources, Key locations, Plot, Stiffness, Tooling blocks,
@@ -242,5 +242,34 @@ radius plot and data table use the +y side only; the base periphery misses base 
 plane; a wrapped (3D) INPUT footprint is mapped on the bottom wire alone (untested); the Tip / Tail block WIRE -> name editing logic is untested in the UI (REST inserts skip editing logic);
 drawing views render every wire BLACK (tested 2026-09-28: APPEARANCE colours show only in the Part Studio; PDF export
 had no colour); with a COORDINATE_SYSTEM datum the EI band maps world x through the datum's x axis only;
-analyzeBaseline (xSection) takes FCP/ACP from its sample grid unless they are chain ends -- re-measured here, fix
-upstream then re-pin.
+analyzeBaseline (xSection) FCP/ACP sample-grid snap: FIXED upstream, re-pinned to V58 2026-09-29 (workaround gone).
+
+### Pass 5 (2026-09-29): V58 re-pin, dialog audit, fixed chart axes, simpler unwrap
+* xSection V58 (ad6a3958dd2e8873f6dd0b0d; analyzeBaseline tab microversion d8b52bb8 = the exact-FCP/ACP fix) pinned in
+  primitive_baseline and export_primitive; the exactContacts / distanceToLine re-measure is gone. Tables unchanged at
+  1e-6 mm (FRCPl 130, ARCPl 50).
+* UI audit items 1-37 (research/ui_audit_2026-09-28.md, marked there): labels, dropdowns instead of HORIZONTAL_ENUM
+  (Baseline / Footprint source, Plot type, Tip / Tail block name source), enum names, groups (Export primitive:
+  "Baseline and footprint source", EI settings under Stiffness, row settings under Data table, "Tooling blocks
+  (Table 5)"; Station geometry: Part and datum / Views / Stations / Geometry to create / Debug), descriptions. Ids
+  unchanged. Station definition "Also store as # variable (optional)" default "" for NEW features (saved ones keep
+  "stations", verified on the fixture); Custom view name default "" (empty = regenError); station entry "Point / first
+  point" (two-branch declaration is refused, correction 46); table "6 Data (FCP to ACP)".
+* Fixed chart axes: the radius / curvature band's axes, reference line, grid and numbers span the FULL footprint (u) and
+  a fixed range -- radius -"Radius axis min (m)" (radiusAxisLow, 10) .. +Max radius (50 m); curvature -"Curvature axis
+  min" (0.02 1/m) .. +"Max curvature" (0.1 1/m), "Curvature plot scale" default 50 mm per 0.01 1/m (was 5). Plot x-range
+  cuts only the plotted data (plus key-location / junction ticks); data outside the axis breaks the line (Liang-Barsky
+  clip, primitiveClipPolyline). EI band: frame over the volume's x extent, 0 .. "EI axis max" (450 N*m^2). Band sizes
+  no longer depend on the data: P1 / P6 / P11 / P15 (any region) stack identically. attribute bands: frameFrom/To,
+  axisFrom/To, radiusLimit, radiusAxisMin | maxCurvature / curvatureAxisMin, eiAxisMax, eiFrameFrom/To.
+  Visible change on existing features: radius axis now to +50 m (was up to the data, 30 m on TAC): the radius band is
+  200 mm taller and sits 200 mm lower; with a target EI the EI band runs to 450 (was 150 on P8): everything below it
+  moves down 150 mm. TAC's full-ski curvature: the tip / tail arcs (-0.98 1/m) are cut, only the sidecut shows.
+* Correction 62: a NEW length parameter's default migrates into saved features in mm (10 m -> 10 mm), so the radius axis
+  min is a plain number in m under a new id.
+* Unwrap simplified (user: the base is developable): points map on the centreline bottom wire; where it is cut back, ONE
+  base section per end at the y where the base reaches furthest; no y interpolation. Every table value of P1-P16
+  identical to before (stored 1e-4 mm); P14 2 sections (was 20). Regen: P1 3.71 -> 3.23 s, P14 4.24 -> 3.19 s.
+* Tests: P15 (radius, region INFLECTION), P16 (curvature, region FULL), SD1 (new Station definition, spec default);
+  P12 rebuilt at the new 50 mm default. 135 / 135 in "Primitive tests (agent)" (incl. --before P1-P6 vs the session
+  start); after the unwrap change 129 / 129 + every value = the pre-change snapshot. Left with P1 + P8 active, SD1 kept.

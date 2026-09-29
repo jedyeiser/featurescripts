@@ -95,7 +95,7 @@ export const PRIMITIVE_FLAT_BASELINE = 0.01 * millimeter;
 /** Radius plot scale: 10 mm of plot height per 1 m of radius (integrateFootprint "10mm [y] = 1m [radius]"). */
 export const PRIMITIVE_RADIUS_PLOT_SCALE = 0.01;
 
-export const PRIMITIVE_DATA_POINTS_BOUNDS = { (unitless) : [2, 21, 501] } as IntegerBoundSpec;
+export const PRIMITIVE_DATA_POINTS_BOUNDS = { (unitless) : [2, 35, 501] } as IntegerBoundSpec;
 export const PRIMITIVE_BAND_GAP_BOUNDS = { (millimeter) : [0, 50, 5000] } as LengthBoundSpec;
 export const PRIMITIVE_RADIUS_LIMIT_BOUNDS = { (meter) : [1, 50, 10000] } as LengthBoundSpec;
 export const PRIMITIVE_TICK_BOUNDS = { (millimeter) : [0.1, 10, 500] } as LengthBoundSpec;

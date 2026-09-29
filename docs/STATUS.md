@@ -9,37 +9,37 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | id | title | state | flags | file | last change |
 |---|---|---|---|---|---|
 | x_unwrap | Unwrap (pre-existing) | **draft** | edited by user, code changed since written | `driven_offset/docs/unwrap_explained.md` | 2026-09-25 written by Claude |
-| x_reference_side | Reference-side features | **reviewed** | changed since reviewed, code changed since written | `docs/explainers/reference_side/reference_side_explained.md` | 2026-09-25 written by Claude |
-| x_curve_tools | Curve tools | **draft** | - | `docs/explainers/curve_tools/curve_tools_explained.md` | 2026-09-26 written by Claude |
-| x_variable_tools | Variable tools | **draft** | - | `docs/explainers/variable_tools/variable_tools_explained.md` | 2026-09-25 written by Claude |
-| x_case_pattern | Case pattern | **draft** | - | `docs/explainers/case_pattern/case_pattern_explained.md` | 2026-09-25 written by Claude; 2026-09-26 rewritten for v2 (Define case / Close case / Case pattern) |
+| x_reference_side | Reference-side features | **reviewed** | edited by user, changed since reviewed, code changed since written | `docs/explainers/reference_side/reference_side_explained.md` | 2026-09-25 written by Claude |
+| x_curve_tools | Curve tools | **draft** | code changed since written | `docs/explainers/curve_tools/curve_tools_explained.md` | 2026-09-26 written by Claude |
+| x_variable_tools | Variable tools | **draft** | edited by user | `docs/explainers/variable_tools/variable_tools_explained.md` | 2026-09-25 written by Claude |
+| x_case_pattern | Case pattern | **draft** | - | `docs/explainers/case_pattern/case_pattern_explained.md` | 2026-09-29 written by Claude |
 | x_driven_offset | Driven offset | **planned** | - | `docs/explainers/driven_offset/driven_offset_explained.md` |   |
 | x_publish_tools | Publish & drawing tools | **planned** | - | `docs/explainers/publish_tools/publish_tools_explained.md` |   |
 | x_solvers | Solvers | **draft** | - | `docs/explainers/solvers/solvers_explained.md` | 2026-09-26 written by Claude |
 | x_small_tools | Small tools | **draft** | - | `docs/explainers/small_tools/small_tools_explained.md` | 2026-09-26 written by Claude |
-| x_curve_mapping | Curve mapping (public) | **draft** | - | `docs/explainers/curve_mapping/curve_mapping_explained.md` | 2026-09-26 written by Claude |
-| x_footprint | Footprint | **draft** | - | `docs/explainers/footprint/footprint_explained.md` | 2026-09-26 written by Claude |
-| x_gordon_surface | Gordon surface | **draft** | - | `docs/explainers/gordon_surface/gordon_surface_explained.md` | 2026-09-26 written by Claude |
-| x_xsection | Cross-section (xSection) | **draft** | - | `docs/explainers/xsection/xsection_explained.md` | 2026-09-25 written by Claude |
+| x_curve_mapping | Curve mapping (public) | **draft** | code changed since written | `docs/explainers/curve_mapping/curve_mapping_explained.md` | 2026-09-26 written by Claude |
+| x_footprint | Footprint | **draft** | code changed since written | `docs/explainers/footprint/footprint_explained.md` | 2026-09-26 written by Claude |
+| x_gordon_surface | Gordon surface | **draft** | code changed since written | `docs/explainers/gordon_surface/gordon_surface_explained.md` | 2026-09-26 written by Claude |
+| x_xsection | Cross-section (xSection) | **draft** | code changed since written | `docs/explainers/xsection/xsection_explained.md` | 2026-09-25 written by Claude |
 
 ## Feature decks (.pptx -> .pdf for Onshape)
 
 | id | title | state | flags | file | last change |
 |---|---|---|---|---|---|
-| d_mutual_trim_plus | Mutual Trim+ | **draft** | - | `docs/decks/mutual_trim_plus/mutual_trim_plus.pptx` | 2026-09-25 written by Claude |
-| d_split_plus | Split+ | **draft** | - | `docs/decks/split_plus/split_plus.pptx` | 2026-09-25 written by Claude |
+| d_mutual_trim_plus | Mutual Trim+ | **draft** | code changed since written | `docs/decks/mutual_trim_plus/mutual_trim_plus.pptx` | 2026-09-25 written by Claude |
+| d_split_plus | Split+ | **draft** | code changed since written | `docs/decks/split_plus/split_plus.pptx` | 2026-09-25 written by Claude |
 | d_offset_plus | Offset+ | **draft** | code changed since written | `docs/decks/offset_plus/offset_plus.pptx` | 2026-09-25 written by Claude |
-| d_thicken_plus | Thicken+ | **draft** | - | `docs/decks/thicken_plus/thicken_plus.pptx` | 2026-09-25 written by Claude |
-| d_orient_to_reference | Orient to reference | **draft** | - | `docs/decks/orient_to_reference/orient_to_reference.pptx` | 2026-09-25 written by Claude |
+| d_thicken_plus | Thicken+ | **draft** | code changed since written | `docs/decks/thicken_plus/thicken_plus.pptx` | 2026-09-25 written by Claude |
+| d_orient_to_reference | Orient to reference | **draft** | code changed since written | `docs/decks/orient_to_reference/orient_to_reference.pptx` | 2026-09-25 written by Claude |
 | d_clean_wire | Clean wire | **draft** | code changed since written | `docs/decks/clean_wire/clean_wire.pptx` | 2026-09-25 written by Claude |
-| d_map_curve | Map curve | **draft** | - | `docs/decks/map_curve/map_curve.pptx` | 2026-09-26 written by Claude |
+| d_map_curve | Map curve | **draft** | code changed since written | `docs/decks/map_curve/map_curve.pptx` | 2026-09-26 written by Claude |
 | d_merge_curve | Merge curve | **draft** | - | `docs/decks/merge_curve/merge_curve.pptx` | 2026-09-25 written by Claude |
 | d_evaluate_profiles | Evaluate profiles | **draft** | - | `docs/decks/evaluate_profiles/evaluate_profiles.pptx` | 2026-09-26 written by Claude |
 | d_fillet_wire | Fillet wire | **draft** | - | `docs/decks/fillet_wire/fillet_wire.pptx` | 2026-09-25 written by Claude |
 | d_recognize_arcs | Recognize arcs | **draft** | - | `docs/decks/recognize_arcs/recognize_arcs.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
 | d_extract_variables | Extract variables | **draft** | - | `docs/decks/extract_variables/extract_variables.pptx` | 2026-09-25 written by Claude |
-| d_case_template | Case template | **draft** | - | `docs/decks/case_template/case_template.pptx` | 2026-09-25 written by Claude |
-| d_case_pattern | Case pattern | **draft** | - | `docs/decks/case_pattern/case_pattern.pptx` | 2026-09-25 written by Claude |
+| d_case_template | Case template | **draft** | code changed since written | `docs/decks/case_template/case_template.pptx` | 2026-09-25 written by Claude |
+| d_case_pattern | Case pattern | **draft** | code changed since written | `docs/decks/case_pattern/case_pattern.pptx` | 2026-09-25 written by Claude |
 | d_driven_edge_offset | Driven edge offset | **planned** | - | `docs/decks/driven_edge_offset/driven_edge_offset.pptx` |   |
 | d_driven_offset_surface | Driven offset surface | **planned** | - | `docs/decks/driven_offset_surface/driven_offset_surface.pptx` |   |
 | d_evaluate_offset | Evaluate offset | **planned** | - | `docs/decks/evaluate_offset/evaluate_offset.pptx` |   |
@@ -55,23 +55,23 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | d_wrap_curve | Wrap Curve | **draft** | - | `docs/decks/wrap_curve/wrap_curve.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
 | d_wrap_and_loft | Wrap and Loft | **draft** | - | `docs/decks/wrap_and_loft/wrap_and_loft.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
 | d_deform | Deform | **draft** | - | `docs/decks/deform/deform.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_offset_edges | Offset edges | **draft** | - | `docs/decks/offset_edges/offset_edges.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_generate_footprint_points | Generate Footprint Points | **draft** | - | `docs/decks/generate_footprint_points/generate_footprint_points.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_analyze_footprint | Analyze footprint | **draft** | - | `docs/decks/analyze_footprint/analyze_footprint.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_offset_edges | Offset edges | **draft** | code changed since written | `docs/decks/offset_edges/offset_edges.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_generate_footprint_points | Generate Footprint Points | **draft** | code changed since written | `docs/decks/generate_footprint_points/generate_footprint_points.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_analyze_footprint | Analyze footprint | **draft** | code changed since written | `docs/decks/analyze_footprint/analyze_footprint.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
 | d_integrate_footprint | Integrate footprint | **draft** | - | `docs/decks/integrate_footprint/integrate_footprint.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_scale_footprint | Scale Footprint | **draft** | - | `docs/decks/scale_footprint/scale_footprint.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_scale_footprint | Scale Footprint | **draft** | code changed since written | `docs/decks/scale_footprint/scale_footprint.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
 | d_arc_fit | Arc fit | **draft** | - | `docs/decks/arc_fit/arc_fit.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_gordon_surface | Gordon Surface | **draft** | - | `docs/decks/gordon_surface/gordon_surface.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_interior_curves | Interior curves | **draft** | - | `docs/decks/interior_curves/interior_curves.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_modify_curve_end | Modify curve end | **draft** | - | `docs/decks/modify_curve_end/modify_curve_end.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_pull_surface | Pull surface | **draft** | - | `docs/decks/pull_surface/pull_surface.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_scaled_curve | Scaled Curve | **draft** | - | `docs/decks/scaled_curve/scaled_curve.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_simplify_surface | Simplify surface | **draft** | - | `docs/decks/simplify_surface/simplify_surface.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_gordon_surface | Gordon Surface | **draft** | code changed since written | `docs/decks/gordon_surface/gordon_surface.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_interior_curves | Interior curves | **draft** | code changed since written | `docs/decks/interior_curves/interior_curves.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_modify_curve_end | Modify curve end | **draft** | code changed since written | `docs/decks/modify_curve_end/modify_curve_end.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_pull_surface | Pull surface | **draft** | code changed since written | `docs/decks/pull_surface/pull_surface.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_scaled_curve | Scaled Curve | **draft** | code changed since written | `docs/decks/scaled_curve/scaled_curve.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_simplify_surface | Simplify surface | **draft** | code changed since written | `docs/decks/simplify_surface/simplify_surface.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
 | d_makecurvescompitable | makeCurvesCompitable | **draft** | - | `docs/decks/makecurvescompitable/makecurvescompitable.pptx` | 2026-09-26 written by Claude |
-| d_ei_and_cross_section | EI and Cross Section | **draft** | - | `docs/decks/ei_and_cross_section/ei_and_cross_section.pptx` | 2026-09-25 written by Claude |
-| d_solve_gj | Solve GJ | **draft** | - | `docs/decks/solve_gj/solve_gj.pptx` | 2026-09-25 written by Claude |
-| d_generate_baseline | Generate baseline | **draft** | - | `docs/decks/generate_baseline/generate_baseline.pptx` | 2026-09-25 written by Claude |
-| d_analyze_baseline | Analyze baseline | **draft** | - | `docs/decks/analyze_baseline/analyze_baseline.pptx` | 2026-09-25 no dialog capture: the dialog did not open in Test2 within 2 min |
-| d_estimate_deflection | Estimate Deflection | **draft** | - | `docs/decks/estimate_deflection/estimate_deflection.pptx` | 2026-09-25 written by Claude |
-| d_estimate_stiffness | Estimate Stiffness | **draft** | - | `docs/decks/estimate_stiffness/estimate_stiffness.pptx` | 2026-09-25 written by Claude |
-| d_update_profile | Update profile | **draft** | - | `docs/decks/update_profile/update_profile.pptx` | 2026-09-25 written by Claude |
+| d_ei_and_cross_section | EI and Cross Section | **draft** | code changed since written | `docs/decks/ei_and_cross_section/ei_and_cross_section.pptx` | 2026-09-25 written by Claude |
+| d_solve_gj | Solve GJ | **draft** | code changed since written | `docs/decks/solve_gj/solve_gj.pptx` | 2026-09-25 written by Claude |
+| d_generate_baseline | Generate baseline | **draft** | code changed since written | `docs/decks/generate_baseline/generate_baseline.pptx` | 2026-09-25 written by Claude |
+| d_analyze_baseline | Analyze baseline | **draft** | code changed since written | `docs/decks/analyze_baseline/analyze_baseline.pptx` | 2026-09-25 no dialog capture: the dialog did not open in Test2 within 2 min |
+| d_estimate_deflection | Estimate Deflection | **draft** | code changed since written | `docs/decks/estimate_deflection/estimate_deflection.pptx` | 2026-09-25 written by Claude |
+| d_estimate_stiffness | Estimate Stiffness | **draft** | code changed since written | `docs/decks/estimate_stiffness/estimate_stiffness.pptx` | 2026-09-25 written by Claude |
+| d_update_profile | Update profile | **draft** | code changed since written | `docs/decks/update_profile/update_profile.pptx` | 2026-09-25 written by Claude |
