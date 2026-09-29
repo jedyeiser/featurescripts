@@ -57,6 +57,10 @@ const REGION_TOLERANCE = 1e-6 * meter;
  * the drawing restyles it dashed) through every band at FCP, MP(s), MRS, ACP and the extra key points that ask for one. All bodies are points and wires, so the
  * composite can be moved or copied as a unit.
  *
+ * SW rout (optional, Table 4, 2026-09-29): the rout surface cut by the datum YZ plane through MRS gives the angle to Z,
+ * step-in and distance above base at the section end closest to the centreline (swRout), plus start / stop x and s;
+ * a PROFILE SW ROUT point marks that start edge's height at MRS in the profile band.
+ *
  * Tables: every row is stored in the composite's attribute (schema primitive/1, primitive_types.fs) and shown by
  * the "Primitive tables" custom table; the same map and the headline values are embedded for Extract variables.
  * Only rows with data are stored: deflection / stiffness with a Target EI, Tip / Tail block when named, the rocker /
@@ -150,6 +154,22 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                             "Description" : "With Key lines (Plot) on: a vertical line through every band at this point." }
                 item.showKeyLine is boolean;
             }
+        }
+
+        // New 2026-09-29 (Table 4): all picks, empty by default, so saved features gain no table and no change.
+        annotation { "Group Name" : "SW rout", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "SW rout surface (optional)", "Filter" : EntityType.FACE || (EntityType.BODY && BodyType.SHEET),
+                        "Description" : "The sidewall rout surface: faces and / or sheet bodies (several faces allowed; both sides or one). Adds Table 4. Measured at MRS in the datum YZ plane through MRS, on the +Y side (the -Y side mirrored when the surface is only there)." }
+            definition.routSurface is Query;
+
+            annotation { "Name" : "Rout start (optional)", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                        "Description" : "A vertex, point or mate connector: the rout's start (its x). Empty = the surface's lowest x." }
+            definition.routStart is Query;
+
+            annotation { "Name" : "Rout stop (optional)", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                        "Description" : "A vertex, point or mate connector: the rout's stop (its x). Empty = the surface's highest x." }
+            definition.routStop is Query;
         }
 
         annotation { "Group Name" : "Plot", "Collapsed By Default" : true }
@@ -390,11 +410,21 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                         "x" : primitiveMM(loc.x), "y" : primitiveMM(loc.y), "z" : primitiveMM(loc.z),
                         "s" : primitiveMM(loc.s), "w" : primitiveMM(loc.w), "h" : primitiveMM(loc.h), "extra" : kp.extra == true });
         }
-        // Table 3 in x order (ascending), numbered from 0 at the lowest x.
+        // Table 3 in x order (ascending), numbered from 0 at the lowest x. Dist. from tail (2026-09-29) = |x - x(TAIL)|,
+        // along x from the profile's TAIL extreme point.
+        const xTail = keys.TAIL.x;
         keyRows = sort(keyRows, function(a, b) { return a.x - b.x; });
         for (var i = 0; i < size(keyRows); i += 1)
         {
             keyRows[i].station = i;
+            keyRows[i].distFromTail = primitiveMM(abs(keys[keyRows[i].key].x - xTail));
+        }
+
+        // ---- Table 4: SW rout (optional) ----
+        const rout = swRout(context, id + "swRout", definition, datum, toLocal, frame, definition.volume, xTail);
+        if (rout != undefined && rout.note != undefined)
+        {
+            notes = append(notes, rout.note);
         }
 
         // ---- Table 1: theoretical scale factors ----
@@ -745,6 +775,12 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         {
             members = append(members, primitivePointBody(context, id + "profilePtTopFCP", profileMove * scale.topFcp, title ~ " PROFILE TOP FCP"));
         }
+        if (rout != undefined && rout.start != undefined)
+        {
+            // The SW rout's start edge at MRS, seen from the side (x of MRS, its height).
+            members = append(members, primitivePointBody(context, id + "profilePtSwRout",
+                        profileMove * vector(rout.start[0], zero, rout.start[2]), title ~ " PROFILE SW ROUT"));
+        }
         if (scale.topAcp != undefined)
         {
             members = append(members, primitivePointBody(context, id + "profilePtTopACP", profileMove * scale.topAcp, title ~ " PROFILE TOP ACP"));
@@ -907,6 +943,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                     "keyLines" : keyLineNames,
                     "junctionTicks" : definition.junctionTicks,
                     "autoScale" : autoScale,
+                    "swRout" : rout != undefined,
                     "tipTowards" : dirSign > 0 ? "+X" : "-X"
                 },
                 "bands" : bandsData(bandZ, definition, region, [frameLo, frameHi], [axisLo, axisHi], levels, levelStep, perLevel, curvatureMode,
@@ -915,6 +952,8 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                 "scaleFactors" : scale.rows,
                 "metadata" : metaRows,
                 "keyLocations" : keyRows,
+                "swRout" : rout == undefined ? [] : rout.rows,
+                "swRoutSection" : rout == undefined ? {} : rout.section,
                 "baseline" : baselineRows,
                 "data" : dataRows,
                 "footprint" : footprintSummary(frame, fptPoints, fpt, unwrapped, source)
@@ -940,7 +979,14 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                         "taperAngleWidest" : extractableVariable(fr.foundTaperAngle, "Taper angle between the widest points (+ = forebody wider)."),
                         "taperAngleInflection" : extractableVariable(fr.taperAngleInflection, "Taper angle between the inflection points."),
                         "deflection" : extractableVariable(beam == undefined ? 0 : primitiveRound(beam.estimatedStiffness_mm, 4), "Theoretical deflection (mm / 30 kg at MRS, rollers at FCP / ACP) from the target EI; 0 = no target EI."),
-                        "stiffness" : extractableVariable(beam == undefined ? 0 : primitiveRound(beam.estimatedStiffness_lbin, 4), "Theoretical stiffness (lb/in, same load case) from the target EI; 0 = no target EI.")
+                        "stiffness" : extractableVariable(beam == undefined ? 0 : primitiveRound(beam.estimatedStiffness_lbin, 4), "Theoretical stiffness (lb/in, same load case) from the target EI; 0 = no target EI."),
+                        "swRoutAngle" : extractableVariable(routValue(rout, "angle") * degree, "SW rout angle to Z at MRS (start edge tangent); 0 = no rout surface or it does not cross MRS."),
+                        "swRoutStepIn" : extractableVariable(routValue(rout, "stepIn") * millimeter, "SW rout step-in at MRS: ski outside to the start edge along y (+ = inside); 0 = none."),
+                        "swRoutDistAboveBase" : extractableVariable(routValue(rout, "distAboveBase") * millimeter, "SW rout start edge height above the base at MRS (assumed definition); 0 = none."),
+                        "swRoutStartX" : extractableVariable(routPosition(rout, "start", "x") * millimeter, "SW rout start x (datum); 0 = no rout surface."),
+                        "swRoutStartS" : extractableVariable(routPosition(rout, "start", "s") * millimeter, "SW rout start s (bottom wire); 0 = no rout surface."),
+                        "swRoutStopX" : extractableVariable(routPosition(rout, "stop", "x") * millimeter, "SW rout stop x (datum); 0 = no rout surface."),
+                        "swRoutStopS" : extractableVariable(routPosition(rout, "stop", "s") * millimeter, "SW rout stop s (bottom wire); 0 = no rout surface.")
                     },
                     "queries" : queries
                 });
@@ -964,8 +1010,211 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         "curvatureAxisMin" : 0.02,
         "radiusAxisLow" : 10,
         "eiScale" : 2,
-        "eiAxisMax" : 450
+        "eiAxisMax" : 450,
+        "routSurface" : qNothing(),
+        "routStart" : qNothing(),
+        "routStop" : qNothing()
     });
+
+/** The section plane's size at MRS (SW rout). */
+const ROUT_PLANE_SIZE = 20 * meter;
+/** A rout surface whose x extent reaches MRS within this is cut there. */
+const ROUT_REACH = 1e-6 * meter;
+
+/**
+ * Table 4, SW rout (2026-09-29, user definitions; undefined without a rout surface). In the LOCAL frame (datum X
+ * along the ski, Z up):
+ *     start / stop     x of the picked Rout start / Rout stop, else the surface's lowest / highest x; s = the bottom
+ *                      wire's s at that x (primitiveS), Dist. from tail = |x - x(TAIL)|
+ *     section          the rout faces cut by the datum YZ plane through MRS; the +Y side's edges (the -Y side's,
+ *                      mirrored, when the surface is only there)
+ *     start edge       the section's end point closest to the centreline (smallest |y|)
+ *     angle            between the section's tangent at the start edge and Z (0..90 deg)
+ *     step-in          outside - |y(start edge)|, outside = the volume's largest |y| on that side in the same plane
+ *                      (the ski's outermost point at MRS, normally the base edge); + = start edge inside the ski
+ *     dist above base  z(start edge) - z(base), base = the profile's bottom wire at MRS (the centreline base)
+ *                      -- ASSUMED definition (user, 2026-09-29)
+ * Returns { rows (stored), section (the measured coordinates, mm), start (local point of the start edge, or undefined),
+ * values { angle deg, stepIn mm, distAboveBase mm } (undefined when not measured), positions { start, stop : { x, s,
+ * distFromTail } mm }, note (a message for the feature's info, or undefined) }.
+ */
+function swRout(context is Context, id is Id, definition is map, datum is CoordSystem, toLocal is Transform, frame is map,
+    volume is Query, xTail is ValueWithUnits)
+{
+    if (isQueryEmpty(context, definition.routSurface))
+    {
+        return undefined;
+    }
+    const faces = qUnion([qEntityFilter(definition.routSurface, EntityType.FACE),
+                qOwnedByBody(qBodyType(qEntityFilter(definition.routSurface, EntityType.BODY), BodyType.SHEET), EntityType.FACE)]);
+    if (isQueryEmpty(context, faces))
+    {
+        throw regenError("Select the SW rout surface as faces or sheet bodies.", ["routSurface"]);
+    }
+    const box = evBox3d(context, { "topology" : faces, "cSys" : datum, "tight" : true });
+    var xs = { "start" : box.minCorner[0], "stop" : box.maxCorner[0] };
+    var origins = { "start" : "surface extent (lowest x)", "stop" : "surface extent (highest x)" };
+    for (var which in ["start", "stop"])
+    {
+        const pick = which == "start" ? definition.routStart : definition.routStop;
+        if (!isQueryEmpty(context, pick))
+        {
+            xs[which] = (toLocal * primitivePoint(context, pick, "Rout " ~ which, which == "start" ? "routStart" : "routStop"))[0];
+            origins[which] = "picked";
+        }
+    }
+    const ends = primitiveChainAtX(context, frame.chain, frame.lookup, [xs.start, xs.stop, frame.xMrs]);
+    var positions = {};
+    for (var k = 0; k < 2; k += 1)
+    {
+        const which = k == 0 ? "start" : "stop";
+        positions[which] = { "x" : primitiveMM(xs[which]), "s" : primitiveMM(primitiveS(frame, ends[k].a)),
+                "distFromTail" : primitiveMM(abs(xs[which] - xTail)) };
+    }
+    const mrsPos = { "x" : primitiveMM(frame.xMrs), "s" : primitiveMM(primitiveS(frame, ends[2].a)),
+            "distFromTail" : primitiveMM(abs(frame.xMrs - xTail)) };
+
+    // ---- The section at MRS ----
+    var measured = undefined;
+    var note = undefined;
+    if (frame.xMrs < box.minCorner[0] - ROUT_REACH || frame.xMrs > box.maxCorner[0] + ROUT_REACH)
+    {
+        note = "the SW rout surface does not reach MRS (x " ~ primitiveRound(box.minCorner[0] / millimeter, 2) ~ " .. " ~
+            primitiveRound(box.maxCorner[0] / millimeter, 2) ~ " mm): Table 4 has start / stop only";
+    }
+    else
+    {
+        measured = routAtMrs(context, id, faces, volume, datum, toLocal, frame, ends[2].point);
+        if (measured == undefined)
+        {
+            note = "the SW rout surface does not cross the YZ plane through MRS: Table 4 has start / stop only";
+        }
+    }
+
+    var rows = [];
+    var section = {};
+    var values = undefined;
+    if (measured != undefined)
+    {
+        values = { "angle" : primitiveRound(measured.angle / degree, 4), "stepIn" : primitiveMM(measured.stepIn),
+                "distAboveBase" : primitiveMM(measured.distAboveBase) };
+        rows = [
+            mergeMaps({ "key" : "angle", "name" : "SW rout angle", "value" : values.angle, "unit" : "deg",
+                    "note" : "Rout section tangent at the start edge to Z, at MRS" }, mrsPos),
+            mergeMaps({ "key" : "stepIn", "name" : "Step-in", "value" : values.stepIn, "unit" : "mm",
+                    "note" : "Ski outside (largest |y| of the volume at MRS) to the start edge, along y; + = inside" }, mrsPos),
+            mergeMaps({ "key" : "distAboveBase", "name" : "Dist. above base", "value" : values.distAboveBase, "unit" : "mm",
+                    "note" : "Start edge height (z) above the base (bottom wire at MRS) -- assumed definition" }, mrsPos)
+        ];
+        section = { "x" : primitiveMM(frame.xMrs), "side" : measured.side > 0 ? "+Y" : "-Y",
+                "startY" : primitiveMM(measured.start[1]), "startZ" : primitiveMM(measured.start[2]),
+                "outsideY" : primitiveMM(measured.outsideY), "outsideZ" : primitiveMM(measured.outsideZ),
+                "baseZ" : primitiveMM(measured.baseZ), "edges" : measured.edges };
+    }
+    rows = concatenateArrays([rows, [
+                mergeMaps({ "key" : "start", "name" : "Start", "value" : "", "unit" : "", "note" : origins.start }, positions.start),
+                mergeMaps({ "key" : "stop", "name" : "Stop", "value" : "", "unit" : "", "note" : origins.stop }, positions.stop)
+            ]]);
+    return { "rows" : rows, "section" : section, "start" : measured == undefined ? undefined : measured.start,
+            "values" : values, "positions" : positions, "note" : note };
+}
+
+/**
+ * The rout faces and the volume cut by the datum YZ plane through MRS (`base` = the bottom wire's point at MRS, local):
+ * { side (+1 / -1), start (local point), angle, stepIn, distAboveBase, outsideY, outsideZ (signed y / z of the volume's
+ * outermost point on that side), baseZ, edges (section edges used) }, or undefined when the plane misses the faces.
+ */
+function routAtMrs(context is Context, id is Id, faces is Query, volume is Query, datum is CoordSystem, toLocal is Transform,
+    frame is map, base is Vector)
+{
+    const yAxis = cross(datum.zAxis, datum.xAxis);
+    const origin = toWorld(datum) * vector(frame.xMrs, 0 * meter, 0 * meter);
+    opPlane(context, id + "mrsPlane", { "plane" : plane(origin, datum.xAxis, yAxis), "width" : ROUT_PLANE_SIZE, "height" : ROUT_PLANE_SIZE });
+    const planeFace = qCreatedBy(id + "mrsPlane", EntityType.FACE);
+    opIntersectFaces(context, id + "routSection", { "tools" : planeFace, "targets" : faces });
+    opIntersectFaces(context, id + "volumeSection", { "tools" : planeFace, "targets" : volume });
+    const routEdges = evaluateQuery(context, qCreatedBy(id + "routSection", EntityType.EDGE));
+    const volumeEdges = qCreatedBy(id + "volumeSection", EntityType.EDGE);
+    var result = undefined;
+    if (size(routEdges) > 0 && !isQueryEmpty(context, volumeEdges))
+    {
+        // End points and tangents of every section edge (local), and each edge's side (its midpoint's y).
+        var ends = [];
+        var anyPlus = false;
+        for (var e in routEdges)
+        {
+            const tls = evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 0.5, 1] });
+            const edgeSide = (toLocal * tls[1].origin)[1] >= 0 * meter ? 1 : -1;
+            anyPlus = anyPlus || edgeSide > 0;
+            for (var j in [0, 2])
+            {
+                ends = append(ends, { "point" : toLocal * tls[j].origin, "direction" : toLocal.linear * tls[j].direction, "side" : edgeSide });
+            }
+        }
+        const side = anyPlus ? 1 : -1;
+        var best = undefined;
+        var count = 0;
+        for (var candidate in ends)
+        {
+            if (candidate.side != side)
+            {
+                continue;
+            }
+            count += 1;
+            if (best == undefined || side * candidate.point[1] < side * best.point[1])
+            {
+                best = candidate;
+            }
+        }
+        const volumeBox = evBox3d(context, { "topology" : volumeEdges, "cSys" : datum, "tight" : true });
+        const outsideY = side > 0 ? volumeBox.maxCorner[1] : volumeBox.minCorner[1];
+        const d = normalize(best.direction);
+        result = { "side" : side, "start" : best.point, "angle" : acos(min(1, abs(d[2]))),
+                "stepIn" : side * (outsideY - best.point[1]), "distAboveBase" : best.point[2] - base[2],
+                "outsideY" : outsideY, "outsideZ" : outermostZ(context, volumeEdges, toLocal, outsideY), "baseZ" : base[2],
+                "edges" : count / 2 };
+    }
+    opDeleteBodies(context, id + "deleteSections", { "entities" : qUnion([qCreatedBy(id + "mrsPlane", EntityType.BODY),
+                    qCreatedBy(id + "routSection", EntityType.BODY), qCreatedBy(id + "volumeSection", EntityType.BODY)]) });
+    return result;
+}
+
+/** z (local) of the volume section's sampled point nearest y = `y` (its outermost point on that side). */
+function outermostZ(context is Context, edges is Query, toLocal is Transform, y is ValueWithUnits) returns ValueWithUnits
+{
+    var ts = [];
+    for (var i = 0; i <= 32; i += 1)
+    {
+        ts = append(ts, i / 32);
+    }
+    var bestZ = 0 * meter;
+    var bestDy = undefined;
+    for (var e in evaluateQuery(context, edges))
+    {
+        for (var tl in evEdgeTangentLines(context, { "edge" : e, "parameters" : ts }))
+        {
+            const p = toLocal * tl.origin;
+            if (bestDy == undefined || abs(p[1] - y) < bestDy)
+            {
+                bestDy = abs(p[1] - y);
+                bestZ = p[2];
+            }
+        }
+    }
+    return bestZ;
+}
+
+/** A measured SW rout value (angle deg, stepIn / distAboveBase mm), 0 when there is none. */
+function routValue(rout, key is string) returns number
+{
+    return (rout == undefined || rout.values == undefined) ? 0 : rout.values[key];
+}
+
+/** A SW rout start / stop position (x or s, mm), 0 without a rout surface. */
+function routPosition(rout, end is string, field is string) returns number
+{
+    return rout == undefined ? 0 : rout.positions[end][field];
+}
 
 /** Where the Table 2 average radius is always taken (user, 2026-09-28). */
 const AVERAGE_BETWEEN = "between the inflection points";

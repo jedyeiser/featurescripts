@@ -12,9 +12,11 @@ statuses, and compares:
   * structure: composite members, band bodies, key points;
   * 2026-09-29: key lines and grid lines are ONE light-grey edge each (were dash segments); P1 (35 rows, the default)
     has 37 RSL data rows (+ XS1 / XS2), rows at key locations carry the key's name, numbers stay continuous;
-  * fixed chart axes (2026-09-29): P1 / P6 / P11 / P15 (radius, regions FULL / RSL / WIDEST / INFLECTION) share one
-    frame geometry and band stacking, as do P12 / P16 (curvature INFLECTION / FULL); P16's full-ski curvature stays
-    inside its axis; P8's EI frame spans the volume and 0 .. 450 N*m^2;
+  * auto scale (2026-09-29, default on): P1 / P6 / P11 / P15 (radius, every region) and P12 / P16 (curvature) share
+    the band height (150 mm, zero line 30 mm up), end axes, reference line and stacking; P1's largest plotted radius
+    sits at 85-95 % of the positive height on a nice step (TAC: 21.32 m, step 5 m, top 25 m, 0.853); P12 curvature
+    likewise (0.0635 1/m, top 0.07, 0.907); P8's EI band is 0..150 mm with 150 N*m^2 at 0.857 of top 175 (step 25);
+    P17 (Auto scale off) = P1 BEFORE auto scale (bands data, frame geometry, plot extent; needs --before);
   * xSection V58 pinned in primitive_baseline / export_primitive, the exactContacts workaround gone;
   * Station definition: the spec default of "variableName" is "" (new features: no # variable; SD1 in this studio),
     while the saved "Stations (test)" in Part Studio 1 keeps "stations" and its Station geometry features resolve;
@@ -228,6 +230,16 @@ def check(case, what, expected, actual, ok):
 
 def near(a, b, tol):
     return isinstance(a, float) and isinstance(b, float) and abs(a - b) <= tol
+
+
+def lvl_name(level, digits=0):
+    """A scale level (whole level units) as primitive_output's levelName: 0 -> "0", 25 -> "+25", -5 -> "-5",
+    5 with 2 digits -> "+0.05"."""
+    n = abs(int(round(level)))
+    if n == 0:
+        return "0"
+    text = str(n) if digits == 0 else "%d.%0*d" % (n // 10 ** digits, digits, n % 10 ** digits)
+    return ("+" if level > 0 else "-") + text
 
 
 def rows(d, section):
@@ -486,7 +498,7 @@ def run_checks(prims, before=None):
     check("P6", "average radius always between the inflections: = P1 (region RSL)", meta(p1, "averageRadius"), meta(p6, "averageRadius"),
           near(meta(p6, "averageRadius"), meta(p1, "averageRadius"), 1e-4))
     run_checks_b(d, full)
-    run_checks_axes(d, full)
+    run_checks_axes(d, full, before)
     run_checks_repin()
     run_checks_stations()
     if "P14" in d:
@@ -652,52 +664,115 @@ def same_geometry(a, b, tol=1e-3):
     return ""
 
 
-def run_checks_axes(d, full):
-    """2026-09-29 fixed chart axes: frames and band stacking do not move with the data or the Plot x-range."""
-    stack_keys = ("ei", "baseline", "profile", "footprint", "radius", "curvature")
-    frame_keys = ("frameFrom", "frameTo", "axisFrom", "axisTo", "plotLevels")
-    for band, cases in (("RADIUS", ("P1", "P6", "P11", "P15")), ("CURVATURE", ("P12", "P16"))):
-        ref = cases[0]
-        g0 = frame_geometry(full[ref], d[ref], band)
-        for case in cases[1:]:
-            diff = same_geometry(g0, frame_geometry(full[case], d[case], band))
-            check(case, "%s frame geometry (axes, reference, level ticks, numbers) = %s's (region %s vs %s)"
-                  % (band.lower(), ref, d[case]["settings"]["plotRegion"], d[ref]["settings"]["plotRegion"]),
-                  "identical, %d bodies" % len(g0), diff or "identical", not diff and len(g0) > 10)
-            sa = {k: d[ref]["bands"].get(k) for k in stack_keys + frame_keys}
-            sb = {k: d[case]["bands"].get(k) for k in stack_keys + frame_keys}
-            check(case, "band stacking + frame data = %s's" % ref, "equal", sb if sa != sb else "equal", sa == sb)
-    # Radius axis -10 .. +50 m at 10 mm per m: -100 .. +500 mm around the reference, x = the full footprint.
+def nice(step, bases):
+    """True when step is one of `bases` times 1, 10, 100, ..."""
+    for decade in (1, 10, 100, 1000, 10000):
+        if any(abs(step - b * decade) < 1e-9 for b in bases):
+            return True
+    return False
+
+
+def run_checks_axes(d, full, before=None):
+    """2026-09-29 auto scale (default): the radius / curvature band and the EI band keep a FIXED height (Radius band
+    height 150 mm, zero line 30 mm up; EI band height 150 mm) and position, whatever the data or the Plot x-range; the
+    scale inside is fitted: axis top = k * a nice step with the largest plotted value at 85-95 % of it. P17 (Auto scale
+    off) = P1 before auto scale (the fixed axes of the morning of 2026-09-29)."""
+    stack_keys = ("ei", "baseline", "profile", "footprint", "radius", "curvature", "plotBandHeight", "plotBandNegative")
+    # Band height / position: every region and radius vs curvature. The plot band's own z is keyed by its kind.
+    ref = d["P1"]["bands"]
+    for case in ("P6", "P11", "P15", "P12", "P16"):
+        b = d[case]["bands"]
+        band_z = b.get("radius", b.get("curvature"))
+        sa = {k: ref.get(k) for k in stack_keys if k not in ("radius", "curvature")}
+        sb = {k: b.get(k) for k in stack_keys if k not in ("radius", "curvature")}
+        ok = sa == sb and band_z == ref["radius"]
+        check(case, "band stacking + band height = P1's (region %s, %s)" % (d[case]["settings"]["plotRegion"], d[case]["settings"]["plot"]),
+              "equal, plot band z %s, 150 / 30 mm" % ref["radius"], "equal" if ok else "%s z %s" % (sb, band_z), ok)
+    # The end axes and the reference line: identical geometry (relative to the band's zero line) for all six.
+    def axes_of(case):
+        band = d[case]["settings"]["plot"]
+        g = frame_geometry(full[case], d[case], band)
+        return {k.split(" ", 1)[1]: v for k, v in g.items() if re.match(r"\w+ (AXIS (TIP|TAIL)|REFERENCE)$", k)}
+    a1 = axes_of("P1")
+    ax = a1.get("AXIS TIP", [[0, 0, 0, 0]])[0]
+    check("P1", "radius band: end axes -30 .. +120 mm around the zero line (150 mm, 20 % below)", "-30 / 120", ax,
+          near(ax[2], -30.0, 1e-3) and near(ax[3], 120.0, 1e-3) and len(a1) == 3)
+    for case in ("P6", "P11", "P15", "P12", "P16"):
+        diff = same_geometry(a1, axes_of(case))
+        check(case, "end axes + reference line geometry = P1's", "identical", diff or "identical", not diff)
+    # Same data (TAC: the largest radius lies inside every region) -> same ticks and numbers too.
+    g0 = frame_geometry(full["P1"], d["P1"], "RADIUS")
+    for case in ("P6", "P11", "P15"):
+        diff = same_geometry(g0, frame_geometry(full[case], d[case], "RADIUS"))
+        check(case, "radius frame incl. ticks / numbers = P1's (same largest radius in region %s)" % d[case]["settings"]["plotRegion"],
+              "identical, %d bodies" % len(g0), diff or "identical", not diff and len(g0) > 10)
+    g12 = frame_geometry(full["P12"], d["P12"], "CURVATURE")
+    diff = same_geometry(g12, frame_geometry(full["P16"], d["P16"], "CURVATURE"))
+    check("P16", "curvature frame incl. ticks / numbers = P12's (same largest curvature, FULL vs INFLECTION)",
+          "identical, %d bodies" % len(g12), diff or "identical", not diff and len(g12) > 10)
+
+    # P1: the largest plotted radius at 85-95 % of the positive axis; nice step; top = k * step.
     b1 = d["P1"]["bands"]
-    ax = frame_geometry(full["P1"], d["P1"], "RADIUS").get("RADIUS AXIS TIP", [[0, 0, 0, 0]])[0]
-    check("P1", "radius axis: -10 .. +50 m (-100 .. +500 mm), at the frame's x ends", "-100 / 500, x in %s" % [b1.get("frameFrom"), b1.get("frameTo")],
-          ax, near(ax[2], -100.0, 1e-3) and near(ax[3], 500.0, 1e-3) and (near(ax[0], b1["frameTo"], 1e-3) or near(ax[0], b1["frameFrom"], 1e-3)))
-    # Curvature full ski (P16): plotted, but cut at the axis (-0.02 .. +0.10 1/m) and inside the frame.
+    plot = span(full["P1"], "RADIUS")
+    top_z = plot[3] - b1["radius"]
+    frac = top_z / 120.0
+    check("P1", "largest plotted radius at 85-95 % of the band's positive height (120 mm)", "0.85..0.95",
+          "z %.3f mm = %.4f (plotMax %s m, plotFill %s)" % (top_z, frac, b1.get("plotMax"), b1.get("plotFill")),
+          0.85 <= frac <= 0.95 and near(frac, b1.get("plotFill"), 1e-3) and near(b1["plotMax"] * b1["radiusScaleMm"], top_z, 0.01))
+    step, top = b1["radiusTickStep"], b1["axisTo"]
+    check("P1", "tick step nice (1 2 5 10 20 25 50 m x 10^n), top = k * step, 2 <= k <= 10, scale = 120 mm / top",
+          "nice, k * step", "step %s, top %s, %s" % (step, top, b1.get("radiusScale")),
+          nice(step, (1, 2, 5, 10, 20, 25, 50)) and abs(top / step - round(top / step)) < 1e-9 and 2 <= round(top / step) <= 10
+          and near(b1["radiusScaleMm"], round(120.0 / top, 4), 1e-9) and b1["radiusScale"] == "%g mm per 1 m" % b1["radiusScaleMm"]
+          and b1.get("autoScale") is True and d["P1"]["settings"].get("autoScale") is True)
+    b12 = d["P12"]["bands"]
+    plot12 = span(full["P12"], "CURVATURE")
+    frac12 = (plot12[3] - b12["curvature"]) / 120.0
+    check("P12", "curvature: largest plotted at 85-95 %, nice step, published scale", "0.85..0.95",
+          "%.4f, step %s 1/m, top %s 1/m, %s" % (frac12, b12.get("curvatureTickStep"), b12.get("maxCurvature"), b12.get("curvatureScale")),
+          0.85 <= frac12 <= 0.95 and near(frac12, b12.get("plotFill"), 1e-3) and nice(round(b12["curvatureTickStep"] / 0.01, 6), (1, 2, 5, 10, 20, 25, 50)))
+    # P16 (curvature FULL): plotted, inside the axis (the tip / tail arcs, -0.98 1/m, are cut at the band's bottom).
     b16 = d["P16"]["bands"]
     plot = span(full["P16"], "CURVATURE")
     lo = b16["curvature"] + b16["axisFrom"] * b16["plotLevelHeight"]
     hi = b16["curvature"] + b16["axisTo"] * b16["plotLevelHeight"]
     fp = {k: v for k, v in d["P1"]["footprint"].items() if isinstance(v, dict)}
     inf = sorted([fp["FB_INFLECTION"]["u"], fp["AB_INFLECTION"]["u"]])
-    # (TAC: the tip / tail arcs start at the inflections with -0.98 1/m, beyond the -0.02 axis: only the sidecut shows.)
-    check("P16", "curvature FULL: plot inside the fixed axis (z) and frame (x)",
+    check("P16", "curvature FULL: plot inside the axis (z) and frame (x)",
           "z %.1f..%.1f, x %s..%s" % (lo, hi, b16["frameFrom"], b16["frameTo"]), plot,
           bool(plot) and plot[2] >= lo - 1e-3 and plot[3] <= hi + 1e-3 and plot[0] >= b16["frameFrom"] - 1e-3 and plot[1] <= b16["frameTo"] + 1e-3
           and plot[0] <= inf[0] + 1 and plot[1] >= inf[1] - 1)
-    check("P16", "settings: plot CURVATURE, region FULL, max 0.1 1/m, axis min 0.02 1/m", "CURVATURE FULL 0.1 0.02",
-          "%s %s %s %s" % (d["P16"]["settings"]["plot"], d["P16"]["settings"]["plotRegion"], b16.get("maxCurvature"), b16.get("curvatureAxisMin")),
-          d["P16"]["settings"]["plot"] == "CURVATURE" and d["P16"]["settings"]["plotRegion"] == "FULL"
-          and near(b16.get("maxCurvature"), 0.1, 1e-9) and near(b16.get("curvatureAxisMin"), 0.02, 1e-9))
-    # EI (P8): frame over the volume's x extent, 0 .. 450 N*m^2 (225 mm at 2 N*m^2 per mm); plot inside.
+
+    # EI (P8): band 0..150 mm, top = k * nice step, 150 N*m^2 at 85-95 % of it.
     b8 = d["P8"]["bands"]
     eg = frame_geometry(full["P8"], d["P8"], "EI")
     eax = eg.get("EI AXIS TIP", [[0, 0, 0, 0]])[0]
     eplot = span(full["P8"], "EI")
-    ok = (near(eax[2], 0.0, 1e-3) and near(eax[3], 225.0, 1e-3) and b8.get("eiAxisMax") == 450.0
-          and eplot and eplot[0] >= b8["eiFrameFrom"] - 1e-3 and eplot[1] <= b8["eiFrameTo"] + 1e-3
-          and near(eplot[2] - b8["ei"], 75.0, 1e-3))
-    check("P8", "EI frame: x = volume extent, 0..450 N*m^2 = 0..225 mm; plot (150 = 75 mm) inside", "0 / 225, plot 75",
-          "axis %s, frame x %s..%s, plot %s" % (eax, b8.get("eiFrameFrom"), b8.get("eiFrameTo"), eplot), bool(ok))
+    efrac = (eplot[2] - b8["ei"]) / 150.0 if eplot else 0
+    ok = (near(eax[2], 0.0, 1e-3) and near(eax[3], 150.0, 1e-3) and eplot and eplot[0] >= b8["eiFrameFrom"] - 1e-3
+          and eplot[1] <= b8["eiFrameTo"] + 1e-3 and 0.85 <= efrac <= 0.95 and near(efrac, b8.get("eiFill"), 1e-3)
+          and nice(b8["eiTickStep"], (10, 25, 50, 100)) and abs(b8["eiAxisMax"] / b8["eiTickStep"] - round(b8["eiAxisMax"] / b8["eiTickStep"])) < 1e-9
+          and near(b8["eiPerMm"], round(b8["eiAxisMax"] / 150.0, 6), 1e-9) and b8.get("eiBandHeight") == 150.0)
+    check("P8", "EI band 0..150 mm, 150 N*m^2 at 85-95 % of the top, nice step, published scale", "0 / 150, ~0.9",
+          "axis %s, fill %.4f, top %s step %s, %s" % (eax, efrac, b8.get("eiAxisMax"), b8.get("eiTickStep"), b8.get("eiScale")), bool(ok))
+
+    # P17 (Auto scale off) = P1 BEFORE auto scale: bands data, frame geometry, radius curve, tables.
+    b17 = d["P17"]["bands"]
+    ax17 = frame_geometry(full["P17"], d["P17"], "RADIUS").get("RADIUS AXIS TIP", [[0, 0, 0, 0]])[0]
+    check("P17", "Auto scale off: radius axis -10 .. +50 m at 10 mm per m (-100 .. +500 mm), ticks every 10 m",
+          "-100 / 500, step 10", "%s, step %s, %s" % (ax17, b17.get("plotLevelStep"), b17.get("radiusScale")),
+          near(ax17[2], -100.0, 1e-3) and near(ax17[3], 500.0, 1e-3) and b17.get("plotLevelStep") == 10.0 and b17.get("radiusScale") == "10 mm per 1 m"
+          and b17.get("autoScale") is False)
+    compare("P17 vs P1", d["P1"], d["P17"], 1e-6)
+    old = None if not before else {k.split()[0]: v for k, v in before.items()}.get("P1")
+    if old:
+        ob = old["data"]["bands"]
+        diffs = ["%s %s vs %s" % (k, ob[k], b17.get(k)) for k in ob if b17.get(k) != ob[k]]
+        check("P17", "bands data = P1 before auto scale (every old key; stacking incl.)", "equal", diffs or "equal", not diffs)
+        diff = same_geometry(frame_geometry(old, old["data"], "RADIUS"), frame_geometry(full["P17"], d["P17"], "RADIUS"))
+        check("P17", "radius frame geometry (axes, reference, ticks, numbers) = P1 before auto scale", "identical", diff or "identical", not diff)
+        po, p17 = span(old, "RADIUS"), span(full["P17"], "RADIUS")
+        check("P17", "radius plot extent = P1 before auto scale", po, p17, po and p17 and all(abs(a - b) < 1e-3 for a, b in zip(po, p17)))
 
 
 def run_checks_repin():

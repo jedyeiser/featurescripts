@@ -25,10 +25,10 @@ Cases (names carry the expectation):
         ticks, key lines (one edge each) at FCP MP MRS ACP FB_Mass_location
   P12 = P1 with Plot CURVATURE, Plot region INFLECTION: curvature band (1/m) between the inflections, tables = P1
   P13 = extra key points "FB mass" + "FB_mass" (the same id): ERROR on the item
-  P15 = P1 with Plot x-range INFLECTION (radius): the fixed frame (2026-09-29) -> axes, reference line and band
+  P15 = P1 with Plot x-range INFLECTION (radius): fixed band height (auto scale) -> axes, reference line and band
         stacking identical to P1 / P6 / P11; only the plotted data is cut
-  P16 = P12 with Plot x-range FULL (curvature at the default 50 mm per 0.01 1/m, Max curvature 0.1 1/m): the tip / tail
-        curvature is cut at the axis, frame and stacking = P12
+  P16 = P12 with Plot x-range FULL (auto scale): the tip / tail curvature (-0.98 1/m) is cut at the band's bottom,
+        frame and stacking = P12
   P17 = P1 with Auto scale OFF (2026-09-29): the manual scales / axes exactly as before auto scale (radius -10 .. +50 m
         at 10 mm per m, ticks every 10 m); every case above runs with Auto scale ON (the default): fixed band heights
         (Radius band height 150 mm, 20 % below zero; EI band height 150 mm), nice scale fitted to the data
@@ -365,10 +365,10 @@ def cases(dv, mi, dm, ei, bt=None):
         ("P13 TAC extra key points 'FB mass' + 'FB_mass' -> ERROR (duplicate name)",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), prefix="P13 TAC duplicate",
               extras=[("FB mass", mc_at(dv, MP_X), False), ("FB_mass", dm_q, False)])),
-        ("P15 TAC as P1, plot x-range INFLECTION -> fixed frame + stacking = P1, plot within the inflections, INFO",
+        ("P15 TAC as P1, plot x-range INFLECTION -> band height + stacking = P1, plot within the inflections, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P15 TAC inflection",
               region="INFLECTION")),
-        ("P16 TAC as P12, plot x-range FULL -> curvature cut at the axis (max 0.1 1/m), frame + stacking = P12, INFO",
+        ("P16 TAC as P12, plot x-range FULL -> tip / tail curvature cut at the band bottom, frame + stacking = P12, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P16 TAC curvature full",
               plot="CURVATURE", region="FULL")),
         ("P17 TAC as P1, Auto scale OFF -> the manual axes: radius -10 .. +50 m at 10 mm per m, bands = P1 before auto scale, INFO",

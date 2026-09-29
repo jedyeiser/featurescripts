@@ -274,6 +274,40 @@ analyzeBaseline (xSection) FCP/ACP sample-grid snap: FIXED upstream, re-pinned t
   P12 rebuilt at the new 50 mm default. 135 / 135 in "Primitive tests (agent)" (incl. --before P1-P6 vs the session
   start); after the unwrap change 129 / 129 + every value = the pre-change snapshot. Left with P1 + P8 active, SD1 kept.
 
+### Auto scale (2026-09-29, user: "why does the radius plot always go to 50 m?")
+Why: pass 5's fixed chart axes put the radius band's top at +Max radius (50 m, 500 mm) whatever the data; TAC's
+largest plotted radius is 21.3 m, so the curve used 43 % of a 600 mm band. Now (parameter `autoScale`, "Auto scale",
+Plot group, default ON -- saved features migrate to true, intended) the bands keep a FIXED height and position and the
+scale inside follows the data:
+* Radius / curvature band: "Radius band height" (`radiusBandHeight`, 150 mm; mm bounds, so the migrated default is
+  150 mm -- verified on every saved feature in both test studios, correction 62), zero line FIXED at 20 % from the
+  bottom (PRIMITIVE_PLOT_NEGATIVE_FRACTION; the negative side uses the same scale down to the band's bottom and breaks
+  there: a fixed zero line keeps bands aligned across skis, and taper / tip / tail values would otherwise decide the
+  size). Positive axis top = k * step (primitiveAutoAxis, primitive_output): step from 1 2 5 10 20 25 50 (x 10^n; m of
+  radius, 0.01 1/m of curvature), k = the fewest steps keeping the largest plotted value (inside the Plot x-range and
+  Max radius) <= 95 % of top; ranked k <= 10, fill within 85-95 %, 4 <= k <= 8, then the largest step (outside the
+  range: fill nearest 90 %). The top is always numbered (a number closer than 1.25 text heights below it gives way).
+  Nothing plotted: chosen as if Max radius / Max curvature were plotted at 90 % (gives 50 m / 0.1 1/m back). A radius
+  that runs to Max radius at a smooth inflection gets top 60 m (83 %): no nice k <= 10 reaches 85 % there.
+* EI band: "EI band height" (`eiBandHeight`, 150 mm), steps 10 25 50 100 (x 10^n), same rule on the largest EI inside
+  the frame (primitiveEIMax).
+* Off: the manual scales / axes exactly as before (ids kept: radiusAxisLow, curvatureScale, maxCurvature,
+  curvatureAxisMin, eiScale, eiAxisMax; hidden while Auto scale is on, defaults map covers them). Max radius stays
+  visible (it is the flat-above cut in both modes).
+* Attribute `bands` (keys added, none removed): autoScale, radiusScale text = the real scale ("4.8 mm per 1 m"),
+  radiusScaleMm, radiusTickStep (m) | curvatureScale text, curvatureScaleMm (per 0.01 1/m), curvatureTickStep (1/m),
+  maxCurvature / curvatureAxisMin / radiusAxisMin = the axis actually drawn; plotBandHeight, plotBandNegative (mm);
+  plotMax (m or 1/m), plotFill; EI: eiScale text, eiPerMm, eiAxisMax (= top), eiTickStep, eiBandHeight, eiMax, eiFill.
+  settings.autoScale.
+* TAC (P1): max R 21.32 m -> step 5 m, top 25 m, 4.8 mm per m, fill 0.853; curvature (P12) 0.0635 1/m -> step 0.01, top
+  0.07, 17.14 mm per 0.01 1/m, 0.907; EI 150 (P8) -> step 25, top 175, 0.857. Radius band 600 -> 150 mm (+ half a
+  number each end), EI band 225 -> 150 mm: bands below the EI band move up 74 mm, the plot band's zero line on P1 from
+  z -926 to -546.
+* Tests: P17 = P1 with Auto scale off = P1 before auto scale (bands data, frame geometry, plot extent, tables); checks
+  for fill 85-95 %, nice steps, identical band height / axes / stacking across P1 P6 P11 P15 P12 P16. 152 / 152 in
+  "Primitive tests (agent)" with --before (P1-P6 tables unchanged); left with P1 + P8 + SD1 active. P1 regen 3.6 s
+  (3.51 before; server noise to 10 s seen on single runs).
+
 ### Solid grid / key lines, table 6 names (2026-09-29, user decisions)
 
 * Key lines and grid lines are ONE solid edge each (primitiveGridLine; was primitiveDashedLine: a 4 mm seed dash +

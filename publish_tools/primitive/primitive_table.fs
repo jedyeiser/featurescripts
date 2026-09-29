@@ -10,11 +10,13 @@ IconNamespace::import(path : "eb32ed1a7e9ecf0a7ef61a7c", version : "a0113143f1b8
  * read from its attribute (schema primitive/1), so they follow every regeneration:
  *     1 Theoretical scale factors   Tip / Running surface / Tail length along bottom and top, top/bottom %
  *     2 Metadata                    RSL, dimensions, widths, radii, taper angles; deflection / stiffness with a target EI
- *     3 Key locations               FCP ACP MRS MP(s) XS1 XS2 TIP TAIL + extra key points by x (ascending): [x, y, z] and [s, w, h]
+ *     3 Key locations               FCP ACP MRS MP(s) XS1 XS2 TIP TAIL + extra key points by x (ascending): x, s and the
+ *                                   distance from the tail (|x - x(TAIL)|; y z w h stay in the attribute only)
+ *     4 SW rout                     (with a SW rout surface) angle to Z, step-in, distance above base at MRS; start / stop
+ *                                   x, s, distance from the tail
  *     5 Baseline                    Tip / Tail block (when named), FCPh FRCP FRCPl FB_Roll MCh MCl AB_Roll ARCPl ARCP ACPh
  *                                   (not on a baseline that is flat within the RSL)
  *     6 RSL data                    x, s, y, ski_width, z, ski_thck, baseline_height, radius within the RSL, by x
- * (4 is reserved for the sidewall rout table, not built yet.)
  * x from the datum; s = distance along the bottom wire from the datum, same direction as x.
  * With "Show # column in RSL data" on (Export primitive), RSL data starts with a # column: 0 at the lowest x; a row at
  * a key location shows the key's name (e.g. "MRS", several joined with "/") instead of its number.
@@ -30,7 +32,7 @@ export const primitiveTables = defineTable(function(context is Context, definiti
         definition.nameFilter is string;
 
         annotation { "Name" : "Table", "Default" : PrimitiveTableKind.ALL, "UIHint" : [UIHint.SHOW_LABEL],
-                    "Description" : "Which table to return; a drawing inserts every table returned, so pick one per insertion. 4 is reserved for the sidewall (SW) rout table, not built yet." }
+                    "Description" : "Which table to return; a drawing inserts every table returned, so pick one per insertion. 4 SW rout exists only for a primitive with a SW rout surface." }
         definition.tableKind is PrimitiveTableKind;
     }
     {
@@ -54,6 +56,10 @@ export const primitiveTables = defineTable(function(context is Context, definiti
             if (kind == PrimitiveTableKind.ALL || kind == PrimitiveTableKind.KEY_LOCATIONS)
             {
                 tables = appendTable(tables, keyTable(data, body));
+            }
+            if (kind == PrimitiveTableKind.ALL || kind == PrimitiveTableKind.SW_ROUT)
+            {
+                tables = appendTable(tables, swRoutTable(data, body));
             }
             if (kind == PrimitiveTableKind.ALL || kind == PrimitiveTableKind.BASELINE)
             {
@@ -142,17 +148,37 @@ function withStation(columns is array, show is boolean) returns array
     return show ? concatenateArrays([[column("station", "#")], columns]) : columns;
 }
 
+/** Key locations (2026-09-29, user): Location | x | s | Dist. from tail; y z w h stay in the attribute rows only. */
 function keyTable(data is map, body is Query) returns Table
 {
     var rows = [];
     for (var r in data.keyLocations)
     {
-        rows = append(rows, tableRow({ "name" : r.name, "x" : cell2(r.x), "y" : cell2(r.y), "z" : cell2(r.z),
-                        "s" : cell2(r.s), "w" : cell2(r.w), "h" : cell2(r.h) }));
+        rows = append(rows, tableRow({ "name" : r.name, "x" : cell2(r.x), "s" : cell2(r.s), "distFromTail" : cell2(r.distFromTail) }));
     }
     return table(data.title ~ " - 3 Key locations", [
-                    column("name", "Location"), column("x", "x (mm)"), column("y", "y (mm)"), column("z", "z (mm)"),
-                    column("s", "s (mm)"), column("w", "w (mm)"), column("h", "h (mm)")
+                    column("name", "Location"), column("x", "x (mm)"), column("s", "s (mm)"), column("distFromTail", "Dist. from tail (mm)")
+                ], rows, body);
+}
+
+/**
+ * SW rout (2026-09-29): angle (deg, 1 decimal), step-in and distance above base (mm) measured at MRS, with the MRS
+ * position; start / stop with their position only. No rows (no table) without a SW rout surface.
+ */
+function swRoutTable(data is map, body is Query) returns Table
+{
+    var rows = [];
+    if (data.swRout is array)
+    {
+        for (var r in data.swRout)
+        {
+            rows = append(rows, tableRow({ "name" : r.name, "value" : cellN(r.value, r.unit == "deg" ? 1 : 2), "unit" : r.unit,
+                            "x" : cell2(r.x), "s" : cell2(r.s), "distFromTail" : cell2(r.distFromTail) }));
+        }
+    }
+    return table(data.title ~ " - 4 SW rout", [
+                    column("name", "Measure"), column("value", "Value"), column("unit", "Unit"), column("x", "x (mm)"),
+                    column("s", "s (mm)"), column("distFromTail", "Dist. from tail (mm)")
                 ], rows, body);
 }
 

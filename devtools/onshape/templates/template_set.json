@@ -8,7 +8,7 @@
    "name": "K2 SKIS - A4 (template)",
    "drawing": "f1d1ca1bc41b306b7dfdc6e3",
    "logo": "c5078f3c8cbc3a36b75cae1b",
-   "dwt": null
+   "dwt": "2b40ec05a5f26c37bc5b9cfc"
   },
   "K2SKIS A3": {
    "brand": "K2SKIS",
@@ -24,7 +24,87 @@
    "name": "K2 SKIS - A2 (template)",
    "drawing": "fc6d835e8b1d0cfbb1af6a89",
    "logo": "c5078f3c8cbc3a36b75cae1b",
-   "dwt": null
+   "dwt": "55cebb5e61afb3ad2fe1ea81"
+  },
+  "RIDE A4": {
+   "brand": "RIDE",
+   "size": "A4",
+   "name": "RIDE - A4 (template)",
+   "drawing": "7d500b28acad74b8f65d484c",
+   "logo": "be36bda38c12fca2580e96af",
+   "build_s": 95
+  },
+  "K2SNOW A4": {
+   "brand": "K2SNOW",
+   "size": "A4",
+   "name": "K2 SNOWBOARDING - A4 (template)",
+   "drawing": "13b497c2afbb8f47fc83fcab",
+   "logo": "54bd5ed37896941a5d85b171",
+   "build_s": 96
+  },
+  "VOLKL A4": {
+   "brand": "VOLKL",
+   "size": "A4",
+   "name": "VOLKL - A4 (template)",
+   "drawing": "f3a036f18cf37f5660e53df5",
+   "logo": "2076768bc50d95f51d89ebae",
+   "build_s": 83
+  },
+  "LINE A4": {
+   "brand": "LINE",
+   "size": "A4",
+   "name": "LINE - A4 (template)",
+   "drawing": "772ad81c169bfd99546e3c41",
+   "logo": "69a980bb27145de7d69d508a",
+   "build_s": 83
+  },
+  "EOC A4": {
+   "brand": "EOC",
+   "size": "A4",
+   "name": "EOC - A4 (template)",
+   "drawing": "20a6db501c8aad58816d12d1",
+   "logo": "610127ab0ce95a6d0d7889a3",
+   "build_s": 92
+  },
+  "K2SNOW A3": {
+   "brand": "K2SNOW",
+   "size": "A3",
+   "name": "K2 SNOWBOARDING - A3 (template)",
+   "drawing": "3fb0e8294170b62523a66f3f",
+   "logo": "54bd5ed37896941a5d85b171",
+   "build_s": 189
+  },
+  "RIDE A3": {
+   "brand": "RIDE",
+   "size": "A3",
+   "name": "RIDE - A3 (template)",
+   "drawing": "c88c209849fb45401211cf80",
+   "logo": "be36bda38c12fca2580e96af",
+   "build_s": 83
+  },
+  "VOLKL A3": {
+   "brand": "VOLKL",
+   "size": "A3",
+   "name": "VOLKL - A3 (template)",
+   "drawing": "486069188db90b85aa4e33e0",
+   "logo": "2076768bc50d95f51d89ebae",
+   "build_s": 79
+  },
+  "LINE A3": {
+   "brand": "LINE",
+   "size": "A3",
+   "name": "LINE - A3 (template)",
+   "drawing": "f3af9114de55c333e378d78c",
+   "logo": "69a980bb27145de7d69d508a",
+   "build_s": 79
+  },
+  "EOC A3": {
+   "brand": "EOC",
+   "size": "A3",
+   "name": "EOC - A3 (template)",
+   "drawing": "7cc951e510a24b988c8c6114",
+   "logo": "610127ab0ce95a6d0d7889a3",
+   "build_s": 83
   }
  }
 }

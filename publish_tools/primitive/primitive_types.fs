@@ -64,8 +64,8 @@ export enum PrimitivePlot
 }
 
 /**
- * Which of the primitive's tables a "Primitive tables" instance returns (a drawing inserts all it returns). Table 4 is
- * reserved for the sidewall (SW) rout table, not built yet, so the numbering skips it.
+ * Which of the primitive's tables a "Primitive tables" instance returns (a drawing inserts all it returns). Table 4
+ * (SW rout, 2026-09-29) exists only when Export primitive has a SW rout surface.
  */
 export enum PrimitiveTableKind
 {
@@ -77,6 +77,8 @@ export enum PrimitiveTableKind
     METADATA,
     annotation { "Name" : "3 Key locations" }
     KEY_LOCATIONS,
+    annotation { "Name" : "4 SW rout" }
+    SW_ROUT,
     annotation { "Name" : "5 Baseline" }
     BASELINE,
     annotation { "Name" : "6 RSL data" }

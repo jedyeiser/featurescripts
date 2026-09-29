@@ -1,1 +1,15 @@
-{"eid": "3cc6b1be73b1b2b1776f8b3f", "name": "Template test 4101 (demo)"}
+{
+ "A3": {
+  "eid": "3cc6b1be73b1b2b1776f8b3f",
+  "name": "Template test 4101 (demo)"
+ },
+ "sizes": true,
+ "A4": {
+  "eid": "aa30715d6829bbad1b5ce1ba",
+  "name": "Template test A4 (demo)"
+ },
+ "A2": {
+  "eid": "35a13838885e452cd1353225",
+  "name": "Template test A2 (demo)"
+ }
+}

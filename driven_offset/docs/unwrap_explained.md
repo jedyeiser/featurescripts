@@ -301,8 +301,17 @@ The requirement is **0.01 mm** on the final geometry, and speed matters. The bud
 | Part rebuild tool fits | 0.1 um (arcs to 0.1 um, "snap flat" 0.001 mm) | unwrap_part.fs |
 | Kernel tolerances seen in real parts | 0.5 um section overlaps, 0.6 um vertex gaps, one 8 um tolerant vertex | notes |
 
-The fit takes half the budget on purpose: 0.005 mm leaves the other half for everything else. The known
-weak spot is long freeform edges crossing reference curvature jumps. U1 edge 0 needs about 60 control points
+The fit takes half the budget on purpose: 0.005 mm leaves the other half for everything else.
+
+**The fit is held between the samples too (2026-09-29).** approximateSpline only checks the points it is given.
+Fed only the samples, it added knots until it passed every sample -- and then interpolated them, ringing between
+them: up to **325 um** off the sampled curve on the topsheet's tip outline, 104 um at its tail, 19 um at 4305's wing
+roots (all "within 0.005 mm" at the samples). Every freeform flat edge is now fitted through its samples plus three
+points per span on the cubic the sampling was refined against (`fitPoints`: chord length, quadratic slopes, the end
+tangents). Worst miss between samples on the ten Copy 2 plates: 325 um -> 5.5 um, and the fits need fewer control
+points (topsheet edge 8: 47 -> 33, 3 -> 1 inflections).
+
+The known weak spot is long freeform edges crossing reference curvature jumps. U1 edge 0 needs about 60 control points
 for 5 um. A split-at-the-breaks-and-join fit (research_unwrap_perf.md 3.3) would get 2.7 um with 43 control
 points, but it has not been built.
 
@@ -355,6 +364,11 @@ entry says what the parameter means physically.
       - **Target offset** -- leave at 0: W already is the mid line.
   - **Maximum sample gap** -- only a cap on the largest gap between outline samples; the density itself comes from
     the fit **Tolerance** / 4.
+  - **U-turn zones** (2026-09-29) -- where a station plane cuts the part lengthwise (the pressed step turning across
+    the part at tip and tail, 2.5). *Section literally* (default, the old behaviour): kernel sections there; the
+    outline keeps the rule's spike, and that stretch is fitted as its own piece so it cannot bend the measured
+    outline either side. *Blend across*: those stations are not measured; the outline crosses the zone as a smooth
+    cubic between the measured stations either side (topsheet: 0 instead of 18 kernel sections, about 1.6 s less).
 - **Part (solid)**
   - **Parts to unwrap** -- any solid along the reference (a core, an extension, a sidewall).
   - **Wrapped reference** -- W, as in Edges mode.
@@ -483,7 +497,18 @@ Limits of the chart and inputs:
   alignment station.** The tip and tail mats and shears cannot use it.
 - A Face target must give **one** section piece: no hole, slot or notch on the section plane.
 
-**U-turns: resolution and rule.** On the topsheet the pressed step runs along the ski on each side, and at the tip and
+**U-turns, 2026-09-29.** The literal rule is singular, not just under-resolved: where the station plane turns
+tangent to the step wall (the apex of the U), the section's wall length -- and so the unrolled width -- grows like a
+square root, so the literal outline has a spike with a vertical tangent there (0.8 mm at the topsheet's tip, 1.6 mm
+from the plateau to its tip in the flat). No sampling resolves it and a spline cannot follow it: fitted through
+the sparse kernel samples it rang by up to 325 um. Now (literal) the zone is fitted as its own piece with
+shape-preserving slopes (no overshoot, within 22 um of its samples' curve next to the spike apex), and **Blend
+across** is offered: a smooth transition from the last measured station before the zone to the first after it.
+The default stays literal until you choose (open question in 2.7).
+
+![Literal vs blend at the topsheet tip and tail](img/fig15_uturn_blend.png)
+
+**U-turns: resolution and rule (2026-09-25 text).** On the topsheet the pressed step runs along the ski on each side, and at the tip and
 tail it wraps round the end of the raised centre, crossing the ski (a U-turn in plan). There the step wall runs nearly
 PARALLEL to the station planes, so a section slices along the wall instead of across it. Two separate issues follow:
 
@@ -573,14 +598,30 @@ wrong body. Faces are kept one-per-source-face (arcs preserved) or merged, per *
 | 4401 | camber, tol 0.03 mm | PRISM | 2.5 s | 25 um (its end caps) |
 
 Refused cleanly (error, never a wrong body): 4802 and the base over FULL_BASELINE (their tips do not follow the raised
-baseline tip -- they need their own reference or the plate path); 4103 over FULL_BASELINE (PRISM misses by 83 um at the
-tail, not yet diagnosed); 4401 below ~0.025 mm tolerance. **4401's twisted tops are not the blocker** -- they depart
+baseline tip -- they need their own reference or the plate path); 4401 below ~0.025 mm tolerance.
+
+**4103 over FULL_BASELINE, diagnosed and fixed (2026-09-29).** The 83 um miss was a classification bug. Its tip cap
+is a 6 mm^2 plane skewed in plan (flat normal y share 0.29) and leaning. `viewFit` chose the station direction by
+the spread in the view; on a small, nearly square face that picked stations along the width and measured the face
+across its height, so a skewed plane passed as a profile, was built as a vertical wall on its plan envelope, and
+missed its lean by 83 um. Stations now run along the grid direction that travels least along the extrusion
+direction (flat Y for a profile, Z for a wall). The cap is then (correctly) neither view within 0.005 mm (22.7 um
+best), and a new class handles it: a **planar cap** (flat image a plane within the shape tolerance, facing along x)
+closes both views on its outward envelope and the band is cut back to its plane by a box on its outer side. The exact
+cell rebuild is still tried first where a piece has caps (4401 over REF_WIRE keeps its cells, exact). 4103 over
+FULL_BASELINE: band rebuild + 1 cap cut, reverse check 5.5 um, length 1697.016 -> 1697.004 mm (-0.012 mm, the leaning
+cap's extreme). 4401 over FULL_BASELINE at 0.005 mm still refuses (now "no plan cell holds material" with both caps as
+planar caps; 0.03 mm works as before, 29 um) -- open. Test in the tree: "Unwrap 4103 L sidewall (part, along
+FULL_BASELINE, keep faces) - expect OK, band rebuild + planar tip cap".
+
+Also fixed: `partName` called getProperty in the feature body (illegal, correction 36), so every Part-mode refusal
+surfaced as a getProperty warning and lost its own message. Messages now say "the part" and highlight it. **4401's twisted tops are not the blocker** -- they depart
 by only 2.2 um. The blockers are its two tiny end caps (3 x 3-4 mm), which lean and are skewed in plan at once (best
 single-view fit 17 / 25 um); the cell fallback then refuses the spline tops. So "essentially a perfect rectangle"
 holds for the tops; the caps set the tolerance.
 
 Tests in the tree (Unwrap_Testing Copy 2): "Unwrap ... (part, along FULL_BASELINE, keep/merge faces) - expect ...".
-Open: 4103 on FULL_BASELINE; the ~2 s the chain-merge fix costs on the core; walls-normal vs world-vertical modelling
+Open: 4401 on FULL_BASELINE below 0.03 mm; the ~2 s the chain-merge fix costs on the core; walls-normal vs world-vertical modelling
 convention.
 
 ## 2.7 Your two questions
@@ -679,6 +720,13 @@ Mostly yes for plates, not yet for solids.
   flat**: they are offset by (delta d) x theta, about 2 mm between the base (d = 0.6) and 4802 (d = 3.8). That is
   right for cutting blanks, and wrong if the flat set is used together (a flat assembly, press tooling, nesting
   that relies on relative positions). Composite-part unwrap should force one choice for all its members.
+
+### (c) Open (2026-09-29): which U-turn rule should be the default?
+
+"Section literally" keeps a 0.8-1.6 mm spike at the tip and tail of the topsheet and 6005 (the rule is singular at
+the U apex; figure in 2.5). "Blend across" gives a smooth transition, measures nothing inside the zone, and saves
+the 18 kernel sections (about 1.6 s on the topsheet). Volume x0.999924 literal vs x0.999624 blend on the topsheet.
+Test in the tree: "Unwrap Topsheet (plate, own section, U-turns blended) - expect OK, smooth tip and tail".
 
 ---
 

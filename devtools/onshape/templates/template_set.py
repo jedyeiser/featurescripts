@@ -123,6 +123,8 @@ def set_dept(eid, brand, size):
     spec = sheet_layout(size, BRANDS[brand]["dept"])
     n = next(n for n in spec["notes"] if n[5] == "lb_dept")
     _layer, x, y, s, h, alias, bold = n
+    if len(s) > 16:      # wraps to two lines in the 36 mm logo cell -> raise it so both lines clear the frame
+        y += 2.0
     s2 = modify(TD, TW, eid, [{"messageName": "onshapeEditAnnotations", "formatVersion": "2021-01-01",
                                "annotations": [{"type": "Onshape::Note", "note": {
                                    "logicalId": IDS[alias][1], "position": pt(x, y), "contents": txt(s, bold),
