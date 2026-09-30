@@ -4,7 +4,8 @@
 The fingerprint reads only the STANDARD keys every producer publishes (`output`, `inputs`), so it works on Unwrap
 versions before and after the 2026-09-25 trim that stopped publishing lengthWrapped / lengthFlat / volumeRatio and
 the line/arc/spline counts. Per feature: number of output bodies, each body's total edge length and world bounding
-box (mm), and output / input solid volume. The wrapped-vs-flat length check itself is in the feature's info notice
+box (mm), and output / input solid volume (VolumeAccuracy.HIGH since 2026-09-29: the default estimate moved by up to
+2e-4 between regenerations of bit-identical geometry). The wrapped-vs-flat length check itself is in the feature's info notice
 (`python -m sync.main notices ... --monitor`).
 
 usage (repo root, Git Bash):
@@ -25,7 +26,7 @@ def features(E):
         except Exception as e:
             time.sleep(5)
     raise SystemExit("features failed")
-def evaluate(E, fids):
+def evaluate(E, fids, rollback):
     arr = ", ".join('"%s"' % f for f in fids)
     script = '''function(context is Context, queries)
 {
@@ -57,7 +58,8 @@ def evaluate(E, fids):
         const inSolids = o.query.inputs == undefined ? qNothing() : qBodyType(o.query.inputs.value, BodyType.SOLID);
         if (!isQueryEmpty(context, outSolids) && !isQueryEmpty(context, inSolids))
         {
-            ratio = evVolume(context, { "entities" : outSolids }) / evVolume(context, { "entities" : inSolids });
+            ratio = evVolume(context, { "entities" : outSolids, "accuracy" : VolumeAccuracy.HIGH })
+                / evVolume(context, { "entities" : inSolids, "accuracy" : VolumeAccuracy.HIGH });
         }
         text = text ~ " | bodies: " ~ size(bodies) ~ " | edgeLength:" ~ lengths ~ " | box:" ~ boxes
             ~ " | volumeRatio: " ~ toString(roundToPrecision(ratio, 6));
@@ -67,7 +69,7 @@ def evaluate(E, fids):
 }''' % arr
     for a in range(4):
         try:
-            r = c.post(f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}/featurescript", json_data={"script": script})
+            r = c.post(f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}/featurescript", json_data={"script": script, "rollbackBarIndex": rollback})
             for n in r.get("notices") or []:
                 if n.get("level") == "ERROR": print("   eval:", n.get("message"))
             found = []
@@ -90,7 +92,7 @@ def report(E, label):
     f = features(E)
     un = [x for x in f["features"] if x["featureType"] == "unwrap"]
     states = f.get("featureStates", {})
-    rows = evaluate(E, [x["featureId"] for x in un])
+    rows = evaluate(E, [x["featureId"] for x in un], len(f["features"]))  # the END of the tree, explicitly
     byid = {r.split(" | ")[0]: r for r in rows}
     print(label)
     out = []

@@ -1111,7 +1111,10 @@ function lengthFromArcs(context is Context, id is Id, chart is map, cs is CoordS
     var volumeRatio = 0;
     if (!isQueryEmpty(context, qBodyType(bodies, BodyType.SOLID)))
     {
-        volumeRatio = evVolume(context, { "entities" : bodies }) / evVolume(context, { "entities" : source });
+        // HIGH accuracy: the default estimate moved by up to 2e-4 between regenerations of identical geometry (4103
+        // over FULL_BASELINE: x0.998538 / x0.998559 / x0.998942; HIGH x0.998739 each time, +~20 ms per body).
+        volumeRatio = evVolume(context, { "entities" : bodies, "accuracy" : VolumeAccuracy.HIGH })
+            / evVolume(context, { "entities" : source, "accuracy" : VolumeAccuracy.HIGH });
     }
 
     if (keep)
