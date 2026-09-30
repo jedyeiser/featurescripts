@@ -38,12 +38,11 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | d_fillet_wire | Fillet wire | **draft** | - | `docs/decks/fillet_wire/fillet_wire.pptx` | 2026-09-25 written by Claude |
 | d_recognize_arcs | Recognize arcs | **draft** | - | `docs/decks/recognize_arcs/recognize_arcs.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
 | d_extract_variables | Extract variables | **draft** | - | `docs/decks/extract_variables/extract_variables.pptx` | 2026-09-25 written by Claude |
-| d_case_template | Case template | **draft** | code changed since written | `docs/decks/case_template/case_template.pptx` | 2026-09-25 written by Claude |
-| d_case_pattern | Case pattern | **draft** | code changed since written | `docs/decks/case_pattern/case_pattern.pptx` | 2026-09-25 written by Claude |
+| d_case_pattern | Case pattern (Define case, Case, Close case) | **draft** | - | `docs/decks/case_pattern/case_pattern.pptx` | 2026-09-29 written by Claude |
 | d_driven_edge_offset | Driven edge offset | **planned** | - | `docs/decks/driven_edge_offset/driven_edge_offset.pptx` |   |
 | d_driven_offset_surface | Driven offset surface | **planned** | - | `docs/decks/driven_offset_surface/driven_offset_surface.pptx` |   |
 | d_evaluate_offset | Evaluate offset | **planned** | - | `docs/decks/evaluate_offset/evaluate_offset.pptx` |   |
-| d_create_offset_profile | Create offset profile | **planned** | - | `docs/decks/create_offset_profile/create_offset_profile.pptx` |   |
+| d_create_offset_profile | Create offset profile | **draft** | - | `docs/decks/create_offset_profile/create_offset_profile.pptx` | 2026-09-29 written by Claude |
 | d_unwrap | Unwrap | **planned** | - | `docs/decks/unwrap/unwrap.pptx` |   |
 | d_station_definition | Station definition | **planned** | - | `docs/decks/station_definition/station_definition.pptx` |   |
 | d_station_geometry | Station geometry | **planned** | - | `docs/decks/station_geometry/station_geometry.pptx` |   |

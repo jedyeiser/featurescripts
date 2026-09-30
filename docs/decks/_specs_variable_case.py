@@ -1,10 +1,11 @@
-"""Writes the Extract variables, Case template and Case pattern deck specs. Run from the repo root.
+"""Writes the Extract variables deck spec. Run from the repo root.
+(The v2 Case template / Case pattern specs were removed 2026-09-29: the Case pattern family deck is written by
+_specs_case_pattern.py; Case template is retired, its v2 deck kept in docs/decks/_retired/case_template/.)
 See docs/decks/DECK_NOTES.md.
 """
 import json
 
 VT = "docs/explainers/variable_tools/img/"
-CP = "docs/explainers/case_pattern/img/"
 
 EV = {"slug": "extract_variables", "title": "Extract variables",
       "tagline": "One feature per block of the tree that turns what its features produced into named variables and query variables -- regions, cuts, chain ends, the largest faces -- instead of a query variable per name.",
@@ -56,73 +57,6 @@ EV = {"slug": "extract_variables", "title": "Extract variables",
               ["Explainer", "docs/explainers/variable_tools/variable_tools_explained.md"],
               ["Related", "Every producer: Split+, Mutual Trim+, Offset+, Thicken+, Orient to reference, Clean wire, Map / Merge curve, ..."]]}]}
 
-CT = {"slug": "case_template", "title": "Case template",
-      "tagline": "Name the inputs a chain of features is built on -- selections and values -- for case 1, and list the further cases a Case pattern will re-run the chain for.",
-      "document": "Case_Pattern", "icon": "icons/final/case_template_icon.svg", "status": "Draft 2026-09-25",
-      "slides": [
-          {"type": "why", "title": "What it does",
-           "problem": "To build the same detail on several places (a boss on each of three blocks, each its own height), build it once against names -- #top, #rim, #bossH -- and let a Case pattern re-run it. The Case template defines those names for case 1 and holds the other cases' selections and values.",
-           "useWhen": ["The same feature chain applies to several places", "Each place has its own selections and values", "A transform pattern cannot do it (the places differ)"],
-           "image": CP + "fig01_case_table.png", "caption": "The template's case table and the chain built on case A."},
-          {"type": "dialogshot", "title": "The dialog", "screenshot": "docs/decks/case_template/shots/dialog.png",
-           "params": [["Case 1 name", "The template's own case (default A); its suffix is swapped for each case's name."],
-                      ["Inputs", "Up to 8: a query-variable name and case 1's selection."],
-                      ["Case values", "Up to 4: a name, a type (Length / Angle / Area / Volume / Number / Text), case 1's value."],
-                      ["Input slots", "Read-only: the inputs as the case rows show them."],
-                      ["Further cases", "One row per case: its name, a selection per input, a value per value."],
-                      ["Debug", "Print bindings."]]},
-          {"type": "outputs",
-           "keys": [["the input names", "Query variables bound to case 1's selections."],
-                    ["the value names", "#variables with case 1's values."],
-                    ["(hidden) case signature", "What the Case pattern reads: every case's selections and values."]],
-           "messages": [["Error", "Case 1 selection for #x selects nothing", ""],
-                        ["Error", "Name #x is used twice / Case name \"B\" is used twice", ""],
-                        ["Error", "Add at least one input.", "At most 8 inputs and 4 values."]]},
-          {"type": "tips", "items": [
-              {"kind": "tip", "head": "Build the chain on the names", "body": "Every listed feature should use #top, #bossH ... -- never a clicked case-1 entity."},
-              {"kind": "limit", "head": "Rows follow the template", "body": "After adding an input or changing a type, edit the template once so every row gets the slot."}]},
-          {"type": "reference", "rows": [
-              ["Document", "Case_Pattern (2099413dd91f34578b385892)"], ["Tab", "case_pattern (both features)"],
-              ["Tests", "Case pattern tests studio: T1-T5"], ["Explainer", "docs/explainers/case_pattern/case_pattern_explained.md"],
-              ["Related", "Case pattern"]]}]}
-
-CPD = {"slug": "case_pattern", "title": "Case pattern",
-       "tagline": "Re-run a chain of features for every case of a Case template -- each case with its own selections and values -- and name the new bodies by case.",
-       "document": "Case_Pattern", "icon": "icons/final/case_pattern_icon.svg", "status": "Draft 2026-09-25",
-       "slides": [
-           {"type": "why", "title": "What it does",
-            "problem": "'Apply to each' for the feature tree. Onshape's Pattern moves copies by a transform; Evan Reese's Query Pattern rebinds one seed. Case pattern rebinds up to 8 query variables and 4 values per case and re-runs the listed features for each case.",
-            "useWhen": ["A detail repeats on places that differ in shape", "Each place needs its own dimensions", "The chain edits existing geometry (fillets, move face) as well as making new"],
-            "image": "docs/decks/case_pattern/shots/t1_side.png", "caption": "T1: the boss chain on three blocks, each at its own height and radius."},
-           {"type": "concept", "title": "The one rule",
-            "image": CP + "fig02_references_in_list.png",
-            "points": [{"head": "Inside the list", "body": "Geometry one listed feature made, used by another, must come through a Query variable 'created by' that feature."},
-                       {"head": "Why", "body": "Each case runs in a pattern frame that remaps those references onto the case's copies; clicks stay on case 1."},
-                       {"head": "Outside the list", "body": "References to existing geometry are fine: they are rebound through the template's names."}]},
-           {"type": "dialogshot", "title": "The dialog", "screenshot": "docs/decks/case_pattern/shots/dialog.png",
-            "params": [["Case template", "Exactly one Case template."],
-                       ["Features to repeat", "The chain built on the template's names."],
-                       ["Keep", "Which new bodies to keep per case (sketches off by default)."],
-                       ["Name separator", "Between name and case (default _): Boss_A -> Boss_B."]]},
-           {"type": "example", "title": "Example: bosses on three blocks (T1)",
-            "image": "docs/decks/case_pattern/shots/t1_side.png",
-            "head": "Chain: Boss (extrude #top by #bossH), rim fillet 2 mm, #bossEdges = edges created by Boss, fillet #bossEdges at #edgeR",
-            "body": "Case A: 15 mm, R3 (the template). Case B: 25 mm, R3. Case C (pentagon): 8 mm, R2. New bodies are named Boss_<case>. (In the studio case B is currently named 'Foobar!'.)"},
-           {"type": "outputs",
-            "keys": [["output", "The bodies each case created (filtered by Keep), named <name>_<case>."]],
-            "messages": [["Warning", "Not built: B: input 1 (#top) selects nothing; C: feature 2 failed (...)", "The other cases are still built."],
-                         ["Error", "No case was built.", ""],
-                         ["Info", "N bodies kept Onshape's default name", "Edit the Case pattern once to refresh case 1's names."]]},
-           {"type": "tips", "items": [
-               {"kind": "limit", "head": "Sketches", "body": "Re-solved per case, but references to input geometry stay on case 1. Build sketches on geometry derived from the inputs."},
-               {"kind": "limit", "head": "Order matters", "body": "Cases run in order and see earlier results; a failed case cannot undo edits to existing geometry."},
-               {"kind": "limit", "head": "Cost", "body": "(cases + 1) x the chain on every rebuild."},
-               {"kind": "tip", "head": "Verified", "body": "Fillet and Move face on existing geometry, new extrudes, native query variables (T1-T5)."}]},
-           {"type": "reference", "rows": [
-               ["Document", "Case_Pattern (2099413dd91f34578b385892)"], ["Tab", "case_pattern (both features)"],
-               ["Tests", "Case pattern tests studio: T1-T5 (T3, T4 must error)  -  devtools/onshape/build_case_pattern_tests.py"],
-               ["Explainer", "docs/explainers/case_pattern/case_pattern_explained.md"], ["Related", "Case template; Query variable"]]}]}
-
-for spec in (EV, CT, CPD):
+for spec in (EV,):
     json.dump(spec, open("docs/decks/%s/spec.json" % spec["slug"], "w"), indent=2)
     print("wrote", spec["slug"])

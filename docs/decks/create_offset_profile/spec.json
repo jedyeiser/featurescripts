@@ -1,0 +1,392 @@
+{
+  "slug": "create_offset_profile",
+  "title": "Create offset profile",
+  "tagline": "Type an offset profile as regions or points -- width and height against station -- and get exact wires for Driven edge offset and Driven offset surface.",
+  "document": "driven_offset (BeamBuilder Testbed)",
+  "icon": "icons/final/create_offset_profile_icon.svg",
+  "status": "Draft 2026-09-29",
+  "slides": [
+    {
+      "type": "why",
+      "title": "What it does",
+      "problem": "Driven edge offset (DEO) and Driven offset surface (DOS) read an offset profile: wires in profile coordinates, X = station, Y = width offset, Z = height offset. Create offset profile builds those wires from a table, exactly (polynomial Beziers, no sampling), instead of a hand-drawn sketch.",
+      "useWhen": [
+        "The offset is defined by regions: tip, running length, tail ...",
+        "Width or height ramps, holds or steps along X",
+        "Stations come from the part: a vertex or mate connector"
+      ],
+      "image": "docs/explainers/driven_offset/img/cop_fig01_regions_breaks.png",
+      "caption": "Test T1: Tip w 0, RSL w 3, Tail w 0. The values jump at 0 and 1000, so the profile breaks there: three wires."
+    },
+    {
+      "type": "concept",
+      "title": "Pieces and breaks",
+      "image": "docs/explainers/driven_offset/img/cop_fig04_points.png",
+      "points": [
+        {
+          "head": "A piece = one wire",
+          "body": "A continuous stretch of the profile, e.g. T4 left: three Smooth points, one piece. Touching regions with equal values join too."
+        },
+        {
+          "head": "A break",
+          "body": "Where the offset jumps (touching regions or two points at one station, different values -- T5 right) or is undefined (a gap in X), the profile ends and a new piece starts."
+        },
+        {
+          "head": "Ends",
+          "body": "The profile starts at the first item and stops at the last; nothing is extrapolated."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Region shapes",
+      "image": "docs/explainers/driven_offset/img/cop_fig02_shapes.png",
+      "points": [
+        {
+          "head": "Constant / Linear",
+          "body": "One width and height; or a straight change from start to end values (corners at the ends)."
+        },
+        {
+          "head": "Smooth",
+          "body": "Smootherstep: flat, zero curvature at both ends of the change, never overshoots. Buffers hold the end values first (shaded)."
+        },
+        {
+          "head": "Quadratic",
+          "body": "A parabola flat at one end ('Flat at' Start or End), a kink at the other. Width and height use the same shape."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Blending two regions",
+      "image": "docs/explainers/driven_offset/img/cop_fig03_blend.png",
+      "points": [
+        {
+          "head": "Intersections",
+          "body": "One entry per pair of consecutive regions, kept by region names. Blend off: join as they are if the values match, else break."
+        },
+        {
+          "head": "Blend on",
+          "body": "A Hermite bridge from a distance into the first region to a distance into the second, G0 / G1 / G2 at each side."
+        },
+        {
+          "head": "Drag arrows",
+          "body": "Each blend distance also has a drag arrow on the profile while the dialog is open."
+        }
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog: Regions",
+      "screenshot": "docs/decks/create_offset_profile/shots/dialog_regions.png",
+      "positions": {
+        "Start station": [
+          0.02,
+          0.325
+        ],
+        "End station": [
+          0.02,
+          0.518
+        ],
+        "Shape": [
+          0.02,
+          0.712
+        ]
+      },
+      "params": [
+        [
+          "Mode",
+          "Regions or Points."
+        ],
+        [
+          "Region name",
+          "Empty = Region n. Intersections are kept by these names, so they must differ."
+        ],
+        [
+          "Start station",
+          "Enter X (type the station) or At point."
+        ],
+        [
+          "Start point",
+          "At point: a vertex or mate connector (one can be created in the field)."
+        ],
+        [
+          "Start offset along X",
+          "Station = the point's world X plus this signed distance."
+        ],
+        [
+          "End station",
+          "The same for the end. A region may be entered toward -X (start > end)."
+        ],
+        [
+          "Shape",
+          "Constant, Linear, Smooth or Quadratic."
+        ],
+        [
+          "Start / end width, height",
+          "The values at each end (Constant: one Width, one Height)."
+        ],
+        [
+          "Intersections",
+          "Between consecutive regions, rebuilt automatically (next slides)."
+        ]
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog: Quadratic and buffers",
+      "screenshot": "docs/decks/create_offset_profile/shots/dialog_quadratic.png",
+      "positions": {
+        "Shape": [
+          0.02,
+          0.467
+        ],
+        "Flat at": [
+          0.02,
+          0.518
+        ],
+        "Start / end width, height": [
+          0.02,
+          0.573
+        ],
+        "Start / end buffer": [
+          0.02,
+          0.762
+        ]
+      },
+      "params": [
+        [
+          "Shape",
+          "Quadratic (test T8)."
+        ],
+        [
+          "Flat at",
+          "Start or End: the end of the change with zero slope; the other end meets its neighbour at a kink."
+        ],
+        [
+          "Start / end width, height",
+          "End values; width and height follow the same shape."
+        ],
+        [
+          "Start / end buffer",
+          "Hold the start (end) value this far in from that end; the change runs between the buffers. Not for Constant."
+        ]
+      ],
+      "note": "Entered toward -X, each end keeps its own values and buffer, and a quadratic's flat end stays at the end it was given (T11)."
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog: an intersection blend",
+      "screenshot": "docs/decks/create_offset_profile/shots/dialog_blend.png",
+      "params": [
+        [
+          "Intersections",
+          "One per consecutive pair (here A / B), labelled by the region names."
+        ],
+        [
+          "Blend",
+          "Off: touching regions with equal values join, anything else breaks. On: a blend."
+        ],
+        [
+          "Continuity with first region",
+          "G0, G1 (tangent) or G2 (curvature) where the blend leaves region A."
+        ],
+        [
+          "Distance into first region",
+          "How far back from A's end the blend starts."
+        ],
+        [
+          "Continuity with second region",
+          "The same where it joins region B."
+        ],
+        [
+          "Distance into second region",
+          "How far past B's start it ends. Both 0 only works across a gap in X."
+        ]
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "The dialog: Points",
+      "screenshot": "docs/decks/create_offset_profile/shots/dialog_points.png",
+      "params": [
+        [
+          "Mode",
+          "Points: the profile through a list of stations."
+        ],
+        [
+          "Station",
+          "Enter X or At point (vertex / mate connector plus a signed offset along +X)."
+        ],
+        [
+          "X",
+          "The station, typed."
+        ],
+        [
+          "Width",
+          "Width offset at this station."
+        ],
+        [
+          "Height",
+          "Height offset at this station."
+        ],
+        [
+          "To next point",
+          "Smooth (flat at both points, no overshoot), Linear, or Hold (keep this value to the next point, then break). Ignored on the last point."
+        ]
+      ],
+      "note": "Two points at one station with different values are a jump: the profile breaks there (T5)."
+    },
+    {
+      "type": "example",
+      "title": "Example: regions entered toward -X (T10, T12)",
+      "image": "docs/explainers/driven_offset/img/cop_fig05_reverse.png",
+      "head": "For a part whose tip is at +X, enter regions from the tip: start 10100, end 10000. The same region stated low to high.",
+      "body": "T10: Linear w 0 -> 4 with a start buffer of 20: width 0 held from 10100 to 10080, 4 at 10000. T12: two touching regions both entered toward -X join into one piece (w 1 at 12150, 2 at 12050)."
+    },
+    {
+      "type": "concept",
+      "title": "Driven edge offset takes regions directly",
+      "image": "docs/explainers/driven_offset/img/cop_fig06_deo_step.png",
+      "points": [
+        {
+          "head": "Profile source: Regions",
+          "body": "Driven edge offset has the same Regions table (same parameters, from offset_profile_core); no wire is made. Tests D1-D5: identical to the wire, within 1e-3 mm."
+        },
+        {
+          "head": "Stations",
+          "body": "A region's X means what a wire's X means under DEO's Measure along. 'At point' stations land exactly on the part only when measuring along World X."
+        },
+        {
+          "head": "Not built yet",
+          "body": "Per-break None / Line join in DEO / DOS. Today every break splits the output (D3: two offset bodies at the step)."
+        }
+      ]
+    },
+    {
+      "type": "outputs",
+      "keys": [
+        [
+          "output",
+          "All piece wires (T1: 3)."
+        ],
+        [
+          "piece1 .. pieceN",
+          "Each piece, in station order."
+        ],
+        [
+          "startVertex / endVertex",
+          "Where the profile starts (lowest station) / ends (highest)."
+        ],
+        [
+          "breakVertices",
+          "The piece ends on both sides of every break (T1: 4)."
+        ],
+        [
+          "pieceCount, breakCount",
+          "Numbers (T1: 3 and 2)."
+        ],
+        [
+          "breakStations",
+          "Station of each break: a jump, or the middle of a gap (T1: 0, 1000 mm)."
+        ],
+        [
+          "startStation, endStation",
+          "First and last station (T1: -100, 1100 mm)."
+        ]
+      ],
+      "messages": [
+        [
+          "Error",
+          "Add at least one region. / Add at least two points at different stations.",
+          ""
+        ],
+        [
+          "Error",
+          "Regions 'A' and 'B' overlap.",
+          "Regions may touch, not overlap."
+        ],
+        [
+          "Error",
+          "Region 'x': the buffers are as long as the region or longer.",
+          ""
+        ],
+        [
+          "Error",
+          "Two regions are named 'x' ...",
+          "Intersections are kept by name."
+        ],
+        [
+          "Error",
+          "The blend between 'A' and 'B' has no length but the offset jumps ...",
+          "Give a distance, or leave a gap in X."
+        ],
+        [
+          "Error",
+          "Start point: pick a point (vertex or mate connector) for the station.",
+          "At point with nothing picked."
+        ]
+      ]
+    },
+    {
+      "type": "tips",
+      "items": [
+        {
+          "kind": "tip",
+          "head": "Name regions by role",
+          "body": "Tip, RSL, Tail ... Intersection settings follow the names when regions are reordered."
+        },
+        {
+          "kind": "tip",
+          "head": "Smooth for joins that must not kink",
+          "body": "A buffer into a Smooth ramp is curvature-continuous (C2); a Linear corner is only G0."
+        },
+        {
+          "kind": "tip",
+          "head": "Print segments",
+          "body": "Debug group: every piece and sub-segment with its stations, degree and end values."
+        },
+        {
+          "kind": "limit",
+          "head": "Breaks split the output",
+          "body": "DEO / DOS have no per-break None / Line choice yet: a step in the profile is a step (a gap) in the offset."
+        },
+        {
+          "kind": "limit",
+          "head": "One shape per region",
+          "body": "Width and height share the region's shape."
+        },
+        {
+          "kind": "limit",
+          "head": "Stations are world X",
+          "body": "Picked points give their world X; on a part measured along its reference, place stations accordingly."
+        }
+      ]
+    },
+    {
+      "type": "reference",
+      "rows": [
+        [
+          "Document",
+          "driven_offset / BeamBuilder Testbed (f61d2c000ab2d1240776342e)"
+        ],
+        [
+          "Tabs",
+          "create_offset_profile (the feature), offset_profile_core (regions / points -> exact pieces; shared with Driven edge offset)"
+        ],
+        [
+          "Tests",
+          "Offset profile tests studio: T1-T12 (+ 3 error cases) -- devtools/onshape/build_offset_profile_tests.py, check_offset_profile.py; DEO regions tests: D1-D5 (5/5 pass 2026-09-29)"
+        ],
+        [
+          "Design",
+          "driven_offset/research_create_offset_profile.md; driven_offset/DOCUMENT_MAP.md"
+        ],
+        [
+          "Related",
+          "Driven edge offset, Driven offset surface (consumers); Evaluate offset (a profile measured from existing edges)"
+        ]
+      ]
+    }
+  ]
+}

@@ -93,20 +93,21 @@ export function primitiveBaselineHeights(context is Context, baseline is map, xs
 }
 
 /**
- * Table 5 rows: { key, name, value (mm or text), x, s (mm or ""), note }. Only rows with data: Tip / Tail block when
- * named; the rocker / camber rows when the baseline was analysed and is not flat; a value that could not be found
- * on this geometry is left out.
+ * Table 5 rows: { key, name, value (mm or text), x, s (mm or ""), note }, name and note from PRIMITIVE_TERMS in
+ * `language` ("en" / "de"). Only rows with data: Tip / Tail block when named; the rocker / camber rows when the
+ * baseline was analysed and is not flat; a value that could not be found on this geometry is left out.
  */
-export function primitiveBaselineRows(context is Context, frame is map, baseline is map, tipBlock is string, tailBlock is string) returns array
+export function primitiveBaselineRows(context is Context, frame is map, baseline is map, tipBlock is string, tailBlock is string,
+    language is string) returns array
 {
     var rows = [];
     if (tipBlock != "")
     {
-        rows = append(rows, textRow("tipBlock", "Tip block", tipBlock));
+        rows = append(rows, textRow("tipBlock", tipBlock, language));
     }
     if (tailBlock != "")
     {
-        rows = append(rows, textRow("tailBlock", "Tail block", tailBlock));
+        rows = append(rows, textRow("tailBlock", tailBlock, language));
     }
     const result = baseline.result;
     if (result == undefined || baseline.flat)
@@ -114,16 +115,16 @@ export function primitiveBaselineRows(context is Context, frame is map, baseline
         return rows;
     }
     const candidates = [
-        valueRow("FCPh", "FCPh", result.fcph, "FCP height above the FRCP rocker tangent"),
-        pointRow(context, frame, "FRCP", "FRCP", result.frcp_pt, undefined, "Forebody rocker contact: inflection nearest the forebody minimum, towards MRS"),
-        valueRow("FRCPl", "FRCPl", result.frcpl, "|dx| FCP -> FRCP"),
-        valueRow("FB_Roll", "FB_Roll", result.fb_roll, "|dx| forebody minimum -> FRCP"),
-        valueRow("MCh", "MCh", result.camber_height, "Camber height"),
-        pointRow(context, frame, "MCl", "MCl", result.mcl_pt, undefined, "Max camber position"),
-        valueRow("AB_Roll", "AB_Roll", result.ab_roll, "|dx| aftbody minimum -> ARCP"),
-        valueRow("ARCPl", "ARCPl", result.arcpl, "|dx| ACP -> ARCP"),
-        pointRow(context, frame, "ARCP", "ARCP", result.arcp_pt, undefined, "Aftbody rocker contact: inflection nearest the aftbody minimum, towards MRS"),
-        valueRow("ACPh", "ACPh", result.acph, "ACP height above the ARCP rocker tangent")
+        valueRow("FCPh", result.fcph, language),
+        pointRow(context, frame, "FRCP", result.frcp_pt, undefined, language),
+        valueRow("FRCPl", result.frcpl, language),
+        valueRow("FB_Roll", result.fb_roll, language),
+        valueRow("MCh", result.camber_height, language),
+        pointRow(context, frame, "MCl", result.mcl_pt, undefined, language),
+        valueRow("AB_Roll", result.ab_roll, language),
+        valueRow("ARCPl", result.arcpl, language),
+        pointRow(context, frame, "ARCP", result.arcp_pt, undefined, language),
+        valueRow("ACPh", result.acph, language)
     ];
     for (var row in candidates)
     {
@@ -135,23 +136,23 @@ export function primitiveBaselineRows(context is Context, frame is map, baseline
     return rows;
 }
 
-function textRow(key is string, name is string, text is string) returns map
+function textRow(key is string, text is string, language is string) returns map
 {
-    return { "key" : key, "name" : name, "value" : text, "x" : "", "s" : "", "note" : "" };
+    return primitiveRow("baseline", key, language, { "value" : text, "x" : "", "s" : "" });
 }
 
 /** A length row; undefined when the value was not found. */
-function valueRow(key is string, name is string, value, note is string)
+function valueRow(key is string, value, language is string)
 {
     if (!(value is ValueWithUnits))
     {
         return undefined;
     }
-    return { "key" : key, "name" : name, "value" : primitiveMM(value), "x" : "", "s" : "", "note" : note };
+    return primitiveRow("baseline", key, language, { "value" : primitiveMM(value), "x" : "", "s" : "" });
 }
 
 /** A baseline point: x, and s along the bottom wire at that x (primitiveS; `s` overrides when given); undefined when not found. */
-function pointRow(context is Context, frame is map, key is string, name is string, point, s, note is string)
+function pointRow(context is Context, frame is map, key is string, point, s, language is string)
 {
     if (!(point is Vector))
     {
@@ -163,5 +164,5 @@ function pointRow(context is Context, frame is map, key is string, name is strin
         const at = primitiveChainAtX(context, frame.chain, frame.lookup, [point[0]])[0];
         sValue = primitiveS(frame, at.a);
     }
-    return { "key" : key, "name" : name, "value" : "", "x" : primitiveMM(point[0]), "s" : primitiveMM(sValue), "note" : note };
+    return primitiveRow("baseline", key, language, { "value" : "", "x" : primitiveMM(point[0]), "s" : primitiveMM(sValue) });
 }

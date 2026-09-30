@@ -448,36 +448,21 @@
           "date": "2026-09-29",
           "state": "draft",
           "note": "written by Claude"
-        }
-      ],
-      "written_hash": "a64618431008",
-      "sources_hash": "cc7d27ec125f"
-    },
-    {
-      "id": "d_case_template",
-      "kind": "deck",
-      "family": "case_pattern",
-      "title": "Case template",
-      "path": "docs/decks/case_template/case_template.pptx",
-      "sources": [
-        "case_pattern/case_pattern.fs"
-      ],
-      "state": "draft",
-      "history": [
+        },
         {
-          "date": "2026-09-25",
+          "date": "2026-09-29",
           "state": "draft",
           "note": "written by Claude"
         }
       ],
-      "written_hash": "6de11e47ff1b",
-      "sources_hash": "b6e6870b23ae"
+      "written_hash": "b79d99ed2c8f",
+      "sources_hash": "e8f6a7545ff5"
     },
     {
       "id": "d_case_pattern",
       "kind": "deck",
       "family": "case_pattern",
-      "title": "Case pattern",
+      "title": "Case pattern (Define case, Case, Close case)",
       "path": "docs/decks/case_pattern/case_pattern.pptx",
       "sources": [
         "case_pattern/case_pattern.fs"
@@ -488,10 +473,20 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-09-29",
+          "state": "draft",
+          "note": "rewritten for v3 as the family deck; d_case_template retired into it"
+        },
+        {
+          "date": "2026-09-29",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "0c66c87099da",
-      "sources_hash": "b6e6870b23ae"
+      "written_hash": "46af79d85b6d",
+      "sources_hash": "e8f6a7545ff5"
     },
     {
       "id": "x_driven_offset",
@@ -553,10 +548,19 @@
       "title": "Create offset profile",
       "path": "docs/decks/create_offset_profile/create_offset_profile.pptx",
       "sources": [
-        "driven_offset/create_offset_profile.fs"
+        "driven_offset/create_offset_profile.fs",
+        "driven_offset/offset_profile_core.fs"
       ],
-      "state": "planned",
-      "history": []
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-09-29",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "b849b5075f81",
+      "sources_hash": "40dfcc1a1595"
     },
     {
       "id": "d_unwrap",

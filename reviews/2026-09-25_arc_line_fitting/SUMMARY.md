@@ -24,7 +24,7 @@ records what was built. Checked against the code on 2026-09-29.
   (`build_arc_tangency_deo_tests.py` / `check_arc_tangency_deo_tests.py`).
 
 **Loose ends (2026-09-29):**
-- Driven offset surface `curveThrough` (the seed curve) and Evaluate offset's line fit: being fixed now
+- Driven offset surface `curveThrough` (the seed curve) and Evaluate offset's line fit: FIXED 2026-09-29 (shapeRuns pinned to source tangents / shared joint tangents; connected-offset mode still fails at the loft on Cavity_Depth's inputs, mode unused)
   (both already call shapeRuns in the working copy; not yet re-verified).
 - Clean wire: README items #16 (joints touching an exact line / arc always break, `forceTangency` never repairs
   them) and #17 (curved plan-view sliver -> chord) are open.

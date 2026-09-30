@@ -22,6 +22,9 @@ IconNamespace::import(path : "eb32ed1a7e9ecf0a7ef61a7c", version : "a0113143f1b8
  * a key location shows the key's name (e.g. "MRS", several joined with "/") instead of its number.
  * Only rows with data are stored, and a table without rows is not returned.
  * A drawing inserts every table this returns: filter by primitive name and pick one table per insertion.
+ * Language (2026-09-30): titles, headings and the deg unit follow the primitive's stored "language" ("en" / "de", set
+ * on Export primitive; none = "en"); row names and definitions come stored in that language. All from PRIMITIVE_TERMS.
+ * No table parameter for it: a new parameter breaks every placed table (correction 64).
  */
 annotation { "Table Type Name" : "Primitive tables", "Icon" : IconNamespace::BLOB_DATA }
 export const primitiveTables = defineTable(function(context is Context, definition is map) returns TableArray
@@ -98,6 +101,30 @@ function column(key is string, heading is string) returns TableColumnDefinition
     return tableColumnDefinition(key, heading, TableTextAlignment.CENTER);
 }
 
+/** The primitive's display language: "de" when its data says so, else "en" (data saved before 2026-09-30 has none). */
+function languageOf(data is map) returns string
+{
+    return data.language == "de" ? "de" : "en";
+}
+
+/** A column headed by the PRIMITIVE_TERMS heading `heading` in `language`. */
+function termColumn(key is string, heading is string, language is string) returns TableColumnDefinition
+{
+    return column(key, primitiveWord("headings", heading, language, heading));
+}
+
+/** "<prefix> PRIMITIVE - <table title>" in `language`. */
+function tableTitle(data is map, kind is string, language is string) returns string
+{
+    return data.title ~ " - " ~ primitiveWord("tables", kind, language, kind);
+}
+
+/** A stored unit code as shown ("deg" -> the degree sign in German), other units unchanged. */
+function unitText(unit, language is string)
+{
+    return unit is string ? primitiveWord("units", unit, language, unit) : unit;
+}
+
 /** A number to 2 decimals (mm), text unchanged. */
 function cell2(value)
 {
@@ -117,30 +144,33 @@ function cellN(value, digits is number)
 
 function scaleTable(data is map, body is Query) returns Table
 {
+    const language = languageOf(data);
     var rows = [];
     for (var r in data.scaleFactors)
     {
         rows = append(rows, tableRow({ "region" : r.name, "bottom" : cell2(r.bottom), "top" : cell2(r.top), "ratio" : cell2(r.ratio) }));
     }
-    return table(data.title ~ " - 1 Theoretical scale factors", [
-                    column("region", "Region"), column("bottom", "Bottom (mm)"), column("top", "Top (mm)"), column("ratio", "Top / Bottom (%)")
+    return table(tableTitle(data, "scaleFactors", language), [
+                    termColumn("region", "region", language), termColumn("bottom", "bottom", language), termColumn("top", "top", language),
+                    termColumn("ratio", "ratio", language)
                 ], rows, body);
 }
 
 function metadataTable(data is map, body is Query, showDefinitions is boolean) returns Table
 {
+    const language = languageOf(data);
     var rows = [];
     for (var r in data.metadata)
     {
         const digits = r.unit == "mm" ? 2 : 3;
-        rows = append(rows, tableRow({ "item" : r.name, "value" : cellN(r.value, digits), "unit" : r.unit, "note" : r.note }));
+        rows = append(rows, tableRow({ "item" : r.name, "value" : cellN(r.value, digits), "unit" : unitText(r.unit, language), "note" : r.note }));
     }
-    var columns = [column("item", "Item"), column("value", "Value"), column("unit", "Unit")];
+    var columns = [termColumn("item", "item", language), termColumn("value", "value", language), termColumn("unit", "unit", language)];
     if (showDefinitions)
     {
-        columns = append(columns, column("note", "Definition"));
+        columns = append(columns, termColumn("note", "note", language));
     }
-    return table(data.title ~ " - 2 Metadata", columns, rows, body);
+    return table(tableTitle(data, "metadata", language), columns, rows, body);
 }
 
 /** True when the primitive asks for the # column (RSL data only) and its rows carry numbers. */
@@ -150,21 +180,23 @@ function showStations(data is map, rows is array) returns boolean
 }
 
 /** `columns` with the station # column in front when `show`. */
-function withStation(columns is array, show is boolean) returns array
+function withStation(columns is array, show is boolean, language is string) returns array
 {
-    return show ? concatenateArrays([[column("station", "#")], columns]) : columns;
+    return show ? concatenateArrays([[termColumn("station", "station", language)], columns]) : columns;
 }
 
 /** Key locations (2026-09-29, user): Location | x | s | Dist. from tail; y z w h stay in the attribute rows only. */
 function keyTable(data is map, body is Query) returns Table
 {
+    const language = languageOf(data);
     var rows = [];
     for (var r in data.keyLocations)
     {
         rows = append(rows, tableRow({ "name" : r.name, "x" : cell2(r.x), "s" : cell2(r.s), "distFromTail" : cell2(r.distFromTail) }));
     }
-    return table(data.title ~ " - 3 Key locations", [
-                    column("name", "Location"), column("x", "x (mm)"), column("s", "s (mm)"), column("distFromTail", "Dist. from tail (mm)")
+    return table(tableTitle(data, "keyLocations", language), [
+                    termColumn("name", "location", language), termColumn("x", "xMm", language), termColumn("s", "sMm", language),
+                    termColumn("distFromTail", "distFromTail", language)
                 ], rows, body);
 }
 
@@ -185,30 +217,33 @@ function fixed1(value)
  */
 function swRoutTable(data is map, body is Query) returns Table
 {
+    const language = languageOf(data);
     var rows = [];
     if (data.swRout is array)
     {
         for (var r in data.swRout)
         {
-            rows = append(rows, tableRow({ "name" : r.name, "value" : r.unit == "deg" ? fixed1(r.value) : cellN(r.value, 2), "unit" : r.unit,
+            rows = append(rows, tableRow({ "name" : r.name, "value" : r.unit == "deg" ? fixed1(r.value) : cellN(r.value, 2), "unit" : unitText(r.unit, language),
                             "x" : cell2(r.x), "s" : cell2(r.s), "distFromTail" : cell2(r.distFromTail) }));
         }
     }
-    return table(data.title ~ " - 4 SW rout", [
-                    column("name", "Measure"), column("value", "Value"), column("unit", "Unit"), column("x", "x (mm)"),
-                    column("s", "s (mm)"), column("distFromTail", "Dist. from tail (mm)")
+    return table(tableTitle(data, "swRout", language), [
+                    termColumn("name", "measure", language), termColumn("value", "value", language), termColumn("unit", "unit", language),
+                    termColumn("x", "xMm", language), termColumn("s", "sMm", language), termColumn("distFromTail", "distFromTail", language)
                 ], rows, body);
 }
 
 function baselineTable(data is map, body is Query) returns Table
 {
+    const language = languageOf(data);
     var rows = [];
     for (var r in data.baseline)
     {
         rows = append(rows, tableRow({ "name" : r.name, "value" : cell2(r.value), "x" : cell2(r.x), "s" : cell2(r.s) }));
     }
-    return table(data.title ~ " - 5 Baseline", [
-                    column("name", "Measure"), column("value", "Value (mm)"), column("x", "x (mm)"), column("s", "s (mm)")
+    return table(tableTitle(data, "baseline", language), [
+                    termColumn("name", "measure", language), termColumn("value", "valueMm", language), termColumn("x", "xMm", language),
+                    termColumn("s", "sMm", language)
                 ], rows, body);
 }
 
@@ -224,6 +259,7 @@ function dataRowLabel(r is map)
 
 function dataTable(data is map, body is Query) returns Table
 {
+    const language = languageOf(data);
     var rows = [];
     for (var r in data.data)
     {
@@ -232,9 +268,10 @@ function dataTable(data is map, body is Query) returns Table
                         "radius" : cellN(r.radius, 3) }));
     }
     // Short headings keep the columns narrow (a custom table can't set column widths): lengths in mm, radius in m.
-    return table(data.title ~ " - 6 RSL data (mm)", withStation([
-                    column("x", "x"), column("s", "s"), column("y", "y"), column("skiWidth", "w"),
-                    column("z", "z"), column("skiThck", "thck"), column("baselineHeight", "baseline"),
-                    column("radius", "radius (m)")
-                ], showStations(data, data.data)), rows, body);
+    var columns = [];
+    for (var key in ["x", "s", "y", "skiWidth", "z", "skiThck", "baselineHeight", "radius"])
+    {
+        columns = append(columns, termColumn(key, key, language));
+    }
+    return table(tableTitle(data, "data", language), withStation(columns, showStations(data, data.data), language), rows, body);
 }

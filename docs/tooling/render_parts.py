@@ -258,6 +258,12 @@ def render(c, spec, rs, base_parts):
         os.makedirs(os.path.dirname(rs["out"]), exist_ok=True)
         fig.savefig(rs["out"], dpi=150)
         plt.close(fig)
+        # trim the empty margin the square 3D box leaves (keep 12 px)
+        from PIL import Image, ImageChops
+        im = Image.open(rs["out"]).convert("RGB")
+        bb = ImageChops.difference(im, Image.new("RGB", im.size, (255, 255, 255))).getbbox()
+        if bb:
+            im.crop((max(bb[0] - 12, 0), max(bb[1] - 12, 0), min(bb[2] + 12, im.width), min(bb[3] + 12, im.height))).save(rs["out"])
         print("wrote", rs["out"])
     else:
         save(fig, rs["out"])

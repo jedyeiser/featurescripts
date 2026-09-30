@@ -323,6 +323,11 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
 
         annotation { "Group Name" : "Output", "Collapsed By Default" : true }
         {
+            // New 2026-09-30: default English, so saved features stay English (correction 25).
+            annotation { "Name" : "Language", "Default" : PrimitiveLanguage.ENGLISH, "UIHint" : [UIHint.SHOW_LABEL],
+                        "Description" : "Language of the tables (titles, headings, row names, definitions) and the band titles: English or Deutsch. Stored with the data; the Primitive tables follow it. Row keys and body names stay English." }
+            definition.language is PrimitiveLanguage;
+
             annotation { "Name" : "Publish as query variable", "Default" : "primitive", "MaxLength" : 64,
                         "Description" : "Empty = don't publish. Apps expect 'primitive'." }
             definition.queryVariable is string;
@@ -344,6 +349,8 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         const autoScale = definition.autoScale;
         const plotBand = curvatureMode ? "curvature" : "radius";
         const plotLabel = PRIMITIVE_BAND_LABELS[plotBand];
+        // Display language of the tables and band titles ("en" / "de"); keys and body names stay English.
+        const language = primitiveLanguageCode(definition.language);
         var notes = [];
 
         // ---- Frames and points (LOCAL frame: the datum on the world origin) ----
@@ -406,7 +413,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         {
             const loc = primitiveLocate(context, frame, kp.point);
             keys[kp.key] = loc;
-            keyRows = append(keyRows, { "key" : kp.key, "name" : kp.name,
+            keyRows = append(keyRows, { "key" : kp.key, "name" : primitiveWord("keyLocations", kp.key, language, kp.name),
                         "x" : primitiveMM(loc.x), "y" : primitiveMM(loc.y), "z" : primitiveMM(loc.z),
                         "s" : primitiveMM(loc.s), "w" : primitiveMM(loc.w), "h" : primitiveMM(loc.h), "extra" : kp.extra == true });
         }
@@ -421,14 +428,14 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         }
 
         // ---- Table 4: SW rout (optional) ----
-        const rout = swRout(context, id + "swRout", definition, datum, toLocal, frame, definition.volume, xTail);
+        const rout = swRout(context, id + "swRout", definition, datum, toLocal, frame, definition.volume, xTail, language);
         if (rout != undefined && rout.note != undefined)
         {
             notes = append(notes, rout.note);
         }
 
         // ---- Table 1: theoretical scale factors ----
-        const scale = primitiveScaleFactors(context, frame, profile.topChain, keys.FCP.a, keys.ACP.a);
+        const scale = primitiveScaleFactors(context, frame, profile.topChain, keys.FCP.a, keys.ACP.a, language);
 
         // ---- Table 5: baseline ----
         const baseline = primitiveBaseline(context, id + "baseline", fromVolumeBaseline, profile.bottom,
@@ -442,7 +449,8 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             notes = append(notes, "the baseline is flat within the RSL (within " ~ primitiveRound(baseline.deviation / millimeter, 4) ~
                 " mm of the FCP - ACP chord): no rocker contacts, minima or camber");
         }
-        const baselineRows = primitiveBaselineRows(context, frame, baseline, blockName(context, definition, "tip"), blockName(context, definition, "tail"));
+        const baselineRows = primitiveBaselineRows(context, frame, baseline, blockName(context, definition, "tip"), blockName(context, definition, "tail"),
+            language);
 
         // ---- Table 2: theoretical deflection / stiffness from the target EI (xSection convention: world X, 1 mm = 1 N*m^2) ----
         var beam = undefined;
@@ -548,7 +556,8 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             {
                 if (kp.key != "TIP" && kp.key != "TAIL" && abs(keys[kp.key].x - dataX[j]) < 0.01 * millimeter)
                 {
-                    rowName = rowName == "" ? kp.name : rowName ~ "/" ~ kp.name;
+                    const shown = primitiveWord("keyLocations", kp.key, language, kp.name);
+                    rowName = rowName == "" ? shown : rowName ~ "/" ~ shown;
                 }
             }
             const b = dataBottom[j];
@@ -572,7 +581,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         }
 
         // ---- Table 2: metadata ----
-        const metaRows = metadataRows(fpt, fcp, acp, volumeBox, beam);
+        const metaRows = metadataRows(fpt, fcp, acp, volumeBox, beam, language);
 
         // ---- Plot band: fixed axes (2026-09-29), region, runs ----
         // The frame (axes, reference line, grid, numbers) always spans the full footprint in u and a fixed value range
@@ -906,7 +915,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             const left = evBox3d(context, { "topology" : qUnion(members), "tight" : true }).minCorner[0] - definition.textHeight;
             for (var band in bandKeys)
             {
-                const titleText = primitiveLabel(context, id + ("title" ~ PRIMITIVE_BAND_LABELS[band]), PRIMITIVE_BAND_TITLES[band],
+                const titleText = primitiveLabel(context, id + ("title" ~ PRIMITIVE_BAND_LABELS[band]), primitiveWord("bands", band, language, band),
                     vector(left, zero, bandZ[band]), definition.textHeight, "RIGHT", title ~ " " ~ PRIMITIVE_BAND_LABELS[band] ~ " TITLE");
                 primitiveColour(context, titleText, PRIMITIVE_COLOURS[band]);
                 members = append(members, titleText);
@@ -926,6 +935,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                 "schema" : PRIMITIVE_SCHEMA,
                 "title" : title,
                 "prefix" : definition.prefix,
+                "language" : language,
                 "units" : { "length" : "mm", "radius" : "m", "angle" : "deg", "curvature" : "1/m" },
                 "settings" : {
                     "datumUses" : definition.datumUses == PrimitiveDatumUse.ORIGIN ? "ORIGIN" : "COORDINATE_SYSTEM",
@@ -1013,7 +1023,8 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         "eiAxisMax" : 450,
         "routSurface" : qNothing(),
         "routStart" : qNothing(),
-        "routStop" : qNothing()
+        "routStop" : qNothing(),
+        "language" : PrimitiveLanguage.ENGLISH
     });
 
 /** The section plane's size at MRS (SW rout). */
@@ -1045,7 +1056,7 @@ const ROUT_TIE = 1e-6 * meter;
  * distFromTail } mm }, note (a message for the feature's info, or undefined) }.
  */
 function swRout(context is Context, id is Id, definition is map, datum is CoordSystem, toLocal is Transform, frame is map,
-    volume is Query, xTail is ValueWithUnits)
+    volume is Query, xTail is ValueWithUnits, language is string)
 {
     if (isQueryEmpty(context, definition.routSurface))
     {
@@ -1059,14 +1070,15 @@ function swRout(context is Context, id is Id, definition is map, datum is CoordS
     }
     const extent = evBox3d(context, { "topology" : faces, "cSys" : datum, "tight" : true });
     var xs = { "start" : extent.minCorner[0], "stop" : extent.maxCorner[0] };
-    var origins = { "start" : "surface extent (lowest x)", "stop" : "surface extent (highest x)" };
+    // The definition (note) term of each end: the surface extent ("start" / "stop"), or "startPicked" / "stopPicked".
+    var origins = { "start" : "start", "stop" : "stop" };
     for (var which in ["start", "stop"])
     {
         const pick = which == "start" ? definition.routStart : definition.routStop;
         if (!isQueryEmpty(context, pick))
         {
             xs[which] = (toLocal * primitivePoint(context, pick, "Rout " ~ which, which == "start" ? "routStart" : "routStop"))[0];
-            origins[which] = "picked";
+            origins[which] = which ~ "Picked";
         }
     }
     const ends = primitiveChainAtX(context, frame.chain, frame.lookup, [xs.start, xs.stop, frame.xMrs]);
@@ -1105,12 +1117,9 @@ function swRout(context is Context, id is Id, definition is map, datum is CoordS
         values = { "angle" : primitiveRound(measured.angle / degree, 4), "stepIn" : primitiveMM(measured.stepIn),
                 "distAboveBase" : primitiveMM(measured.distAboveBase) };
         rows = [
-            mergeMaps({ "key" : "angle", "name" : "SW rout angle", "value" : values.angle, "unit" : "deg",
-                    "note" : "Rout section tangent at the start edge to Z, at MRS" }, mrsPos),
-            mergeMaps({ "key" : "stepIn", "name" : "Step-in", "value" : values.stepIn, "unit" : "mm",
-                    "note" : "Ski outside (largest |y| of the volume at MRS) to the start edge, along y; + = inside" }, mrsPos),
-            mergeMaps({ "key" : "distAboveBase", "name" : "Dist. above base", "value" : values.distAboveBase, "unit" : "mm",
-                    "note" : "Start edge height (z) above the base (bottom wire at MRS) -- assumed definition" }, mrsPos)
+            primitiveRow("swRout", "angle", language, mergeMaps({ "value" : values.angle, "unit" : "deg" }, mrsPos)),
+            primitiveRow("swRout", "stepIn", language, mergeMaps({ "value" : values.stepIn, "unit" : "mm" }, mrsPos)),
+            primitiveRow("swRout", "distAboveBase", language, mergeMaps({ "value" : values.distAboveBase, "unit" : "mm" }, mrsPos))
         ];
         section = { "x" : primitiveMM(frame.xMrs), "side" : measured.side > 0 ? "+Y" : "-Y",
                 "startY" : primitiveMM(measured.start[1]), "startZ" : primitiveMM(measured.start[2]),
@@ -1118,11 +1127,19 @@ function swRout(context is Context, id is Id, definition is map, datum is CoordS
                 "baseZ" : primitiveMM(measured.baseZ), "edges" : measured.edges, "startRule" : measured.rule };
     }
     rows = concatenateArrays([rows, [
-                mergeMaps({ "key" : "start", "name" : "Start", "value" : "", "unit" : "", "note" : origins.start }, positions.start),
-                mergeMaps({ "key" : "stop", "name" : "Stop", "value" : "", "unit" : "", "note" : origins.stop }, positions.stop)
+                routEndRow("start", origins.start, positions.start, language),
+                routEndRow("stop", origins.stop, positions.stop, language)
             ]]);
     return { "rows" : rows, "section" : section, "start" : measured == undefined ? undefined : measured.start,
             "values" : values, "positions" : positions, "note" : note };
+}
+
+/** A Table 4 start / stop row (position only): name from the `key` term, definition from the `origin` term ("start" or "startPicked", ...). */
+function routEndRow(key is string, origin is string, position is map, language is string) returns map
+{
+    var row = primitiveRow("swRout", key, language, mergeMaps({ "value" : "", "unit" : "" }, position));
+    row.note = primitiveTerm("swRout", origin, language)[1];
+    return row;
 }
 
 /**
@@ -1500,48 +1517,41 @@ function dataStations(definition is map, xFcp is ValueWithUnits, xAcp is ValueWi
     return sort(xs, function(a, b) { return (a - b) / meter; });
 }
 
-/** Table 2 rows: { key, name, value (number or text), unit, note }; only rows with data. */
-function metadataRows(fpt is map, fcp is Vector, acp is Vector, volumeBox is Box3d, beam) returns array
+/** Table 2 rows: { key, name, value (number or text), unit, note }, name and note from PRIMITIVE_TERMS in `language`; only rows with data. */
+function metadataRows(fpt is map, fcp is Vector, acp is Vector, volumeBox is Box3d, beam, language is string) returns array
 {
     const r = fpt.result;
     const dims = volumeBox.maxCorner - volumeBox.minCorner;
     var rows = [
-        { "key" : "rsl", "name" : "RSL", "value" : primitiveMM(abs(acp[0] - fcp[0])), "unit" : "mm", "note" : "FCP to ACP along the datum X" },
-        { "key" : "dimensions", "name" : "Dimensions (L x W x H)",
-            "value" : primitiveRound(dims[0] / millimeter, 2) ~ " x " ~ primitiveRound(dims[1] / millimeter, 2) ~ " x " ~ primitiveRound(dims[2] / millimeter, 2),
-            "unit" : "mm", "note" : "Volume bounding box in the datum frame" },
-        { "key" : "sidecutWidths", "name" : "Widths (FB widest - waist - AB widest)",
-            "value" : primitiveRound(r.fbWidestData.width * 2 / millimeter, 2) ~ " - " ~ primitiveRound(r.waist.width * 2 / millimeter, 2) ~ " - " ~ primitiveRound(r.abWidestData.width * 2 / millimeter, 2),
-            "unit" : "mm", "note" : "Unwrapped footprint, full widths" }
+        primitiveRow("metadata", "rsl", language, { "value" : primitiveMM(abs(acp[0] - fcp[0])), "unit" : "mm" }),
+        primitiveRow("metadata", "dimensions", language, {
+                    "value" : primitiveRound(dims[0] / millimeter, 2) ~ " x " ~ primitiveRound(dims[1] / millimeter, 2) ~ " x " ~ primitiveRound(dims[2] / millimeter, 2),
+                    "unit" : "mm" }),
+        primitiveRow("metadata", "sidecutWidths", language, {
+                    "value" : primitiveRound(r.fbWidestData.width * 2 / millimeter, 2) ~ " - " ~ primitiveRound(r.waist.width * 2 / millimeter, 2) ~ " - " ~ primitiveRound(r.abWidestData.width * 2 / millimeter, 2),
+                    "unit" : "mm" })
     ];
     if (fpt.average.valid)
     {
-        rows = append(rows, { "key" : "averageRadius", "name" : "Average radius", "value" : primitiveRound(fpt.average.avgRadius / meter, 4),
-                    "unit" : "m", "note" : "Arc-length weighted mean |R| " ~ AVERAGE_BETWEEN ~ " (flatter than 100 m left out)" });
+        rows = append(rows, primitiveRow("metadata", "averageRadius", language, { "value" : primitiveRound(fpt.average.avgRadius / meter, 4), "unit" : "m" }));
     }
     if (r.naturalRadiusWidest.valid)
     {
-        rows = append(rows, { "key" : "naturalRadiusWidest", "name" : "Natural radius widest", "value" : primitiveRound(r.naturalRadiusWidest.R / meter, 4),
-                    "unit" : "m", "note" : "Arc through the widest points, tangent to the waist line" });
+        rows = append(rows, primitiveRow("metadata", "naturalRadiusWidest", language, { "value" : primitiveRound(r.naturalRadiusWidest.R / meter, 4), "unit" : "m" }));
     }
     if (r.naturalRadiusInflection.valid)
     {
-        rows = append(rows, { "key" : "naturalRadiusInflection", "name" : "Natural radius inflection", "value" : primitiveRound(r.naturalRadiusInflection.R / meter, 4),
-                    "unit" : "m", "note" : "Arc through the inflection points, tangent to the waist line" });
+        rows = append(rows, primitiveRow("metadata", "naturalRadiusInflection", language, { "value" : primitiveRound(r.naturalRadiusInflection.R / meter, 4), "unit" : "m" }));
     }
     rows = concatenateArrays([rows, [
-                { "key" : "taperAngleWidest", "name" : "Taper angle widest", "value" : primitiveRound(r.foundTaperAngle / degree, 4),
-                    "unit" : "deg", "note" : "Centreline to the line through the widest points (+ = forebody wider)" },
-                { "key" : "taperAngleInflection", "name" : "Taper angle inflection", "value" : primitiveRound(r.taperAngleInflection / degree, 4),
-                    "unit" : "deg", "note" : "Centreline to the line through the inflection points" }
+                primitiveRow("metadata", "taperAngleWidest", language, { "value" : primitiveRound(r.foundTaperAngle / degree, 4), "unit" : "deg" }),
+                primitiveRow("metadata", "taperAngleInflection", language, { "value" : primitiveRound(r.taperAngleInflection / degree, 4), "unit" : "deg" })
             ]]);
     if (beam != undefined)
     {
         rows = concatenateArrays([rows, [
-                    { "key" : "deflection", "name" : "Theoretical deflection", "value" : primitiveRound(beam.estimatedStiffness_mm, 4), "unit" : "mm/30kg",
-                        "note" : "Target EI; 3-point bending, rollers at FCP / ACP, 30 kg at MRS" },
-                    { "key" : "stiffness", "name" : "Theoretical stiffness", "value" : primitiveRound(beam.estimatedStiffness_lbin, 4), "unit" : "lb/in",
-                        "note" : "Target EI; load for 1 in deflection at MRS, same supports" }
+                    primitiveRow("metadata", "deflection", language, { "value" : primitiveRound(beam.estimatedStiffness_mm, 4), "unit" : "mm/30kg" }),
+                    primitiveRow("metadata", "stiffness", language, { "value" : primitiveRound(beam.estimatedStiffness_lbin, 4), "unit" : "lb/in" })
                 ]]);
     }
     return rows;

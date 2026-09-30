@@ -1,0 +1,28 @@
+{
+ "doc": "f61d2c000ab2d1240776342e", "ws": "5b11f323ab31b04cba8b36ef",
+ "shots": [
+  {"elem": "e18678532ec07b057b372dbd", "featurePrefix": "T6 Regions constant", "wait": 30, "dialogWait": 60, "filter": "T6 Regions",
+   "expand": ["Ramp"],
+   "dialog": "docs/decks/create_offset_profile/shots/dialog_regions.png",
+   "labels": [{"name": "Mode", "find": "Regions"}, {"name": "Region name", "find": "Name"},
+              {"name": "Start station", "find": "Start station"}, {"name": "Start point", "find": "Start point"},
+              {"name": "Start offset along X", "find": "Start offset along X"}, {"name": "End station", "find": "End station"},
+              {"name": "Shape", "find": "Shape"}, {"name": "Start / end width, height", "find": "Start width"},
+              {"name": "Start / end buffer", "find": "Start buffer"}, {"name": "Intersections", "find": "Intersections"}]},
+  {"elem": "e18678532ec07b057b372dbd", "featurePrefix": "T8 Regions QUADRATIC", "dialogWait": 60, "filter": "T8 Regions",
+   "expand": ["Quad"],
+   "dialog": "docs/decks/create_offset_profile/shots/dialog_quadratic.png",
+   "labels": [{"name": "Shape", "find": "Shape"}, {"name": "Flat at", "find": "Flat at"}]},
+  {"elem": "e18678532ec07b057b372dbd", "featurePrefix": "T3 Regions G2", "dialogWait": 60, "filter": "T3 Regions",
+   "expand": ["A / B"],
+   "dialog": "docs/decks/create_offset_profile/shots/dialog_blend.png",
+   "labels": [{"name": "Intersections", "find": "Intersections"}, {"name": "Blend", "find": "Blend"},
+              {"name": "Continuity with first region", "find": "Continuity with first region"},
+              {"name": "Distance into first region", "find": "Distance into first region"},
+              {"name": "Continuity with second region", "find": "Continuity with second region"},
+              {"name": "Distance into second region", "find": "Distance into second region"}]},
+  {"elem": "e18678532ec07b057b372dbd", "featurePrefix": "T4 Points smooth", "dialogWait": 60, "filter": "T4 Points",
+   "dialog": "docs/decks/create_offset_profile/shots/dialog_points.png",
+   "labels": [{"name": "Mode", "find": "Points"}]}
+ ]
+}

@@ -311,7 +311,8 @@ function extractRun(context is Context, id is Id, run is array) returns Query
  * Bottom lengths run along the bottom wire between FCP / ACP (their feet) and its ends; top lengths along the top
  * wire between the normal projections of those bottom stations and the top wire's ends.
  */
-export function primitiveScaleFactors(context is Context, frame is map, topChain is map, aFcp is ValueWithUnits, aAcp is ValueWithUnits) returns map
+export function primitiveScaleFactors(context is Context, frame is map, topChain is map, aFcp is ValueWithUnits, aAcp is ValueWithUnits,
+    language is string) returns map
 {
     const bottom = frame.chain;
     const atStations = primitiveChainEvaluate(context, bottom, [aFcp, aAcp]);
@@ -339,21 +340,22 @@ export function primitiveScaleFactors(context is Context, frame is map, topChain
     }
     return {
         "rows" : [
-            scaleRow("tip", "Tip length", tipBottom, tipTop),
-            scaleRow("runningSurface", "Running surface length", rsBottom, rsTop),
-            scaleRow("tail", "Tail length", tailBottom, tailTop)
+            scaleRow("tip", tipBottom, tipTop, language),
+            scaleRow("runningSurface", rsBottom, rsTop, language),
+            scaleRow("tail", tailBottom, tailTop, language)
         ],
         "topFcp" : topFcp == undefined ? undefined : topFcp.point,
         "topAcp" : topAcp == undefined ? undefined : topAcp.point
     };
 }
 
-function scaleRow(key is string, name is string, bottom is ValueWithUnits, top) returns map
+/** A Table 1 row; its name from PRIMITIVE_TERMS in `language`. */
+function scaleRow(key is string, bottom is ValueWithUnits, top, language is string) returns map
 {
     if (top == undefined)
     {
-        return { "key" : key, "name" : name, "bottom" : primitiveMM(bottom), "top" : PRIMITIVE_NOT_FOUND, "ratio" : PRIMITIVE_NOT_FOUND };
+        return primitiveRow("scaleFactors", key, language, { "bottom" : primitiveMM(bottom), "top" : PRIMITIVE_NOT_FOUND, "ratio" : PRIMITIVE_NOT_FOUND });
     }
-    return { "key" : key, "name" : name, "bottom" : primitiveMM(bottom), "top" : primitiveMM(top),
-            "ratio" : bottom > 1e-9 * meter ? primitiveRound(top / bottom * 100, 4) : PRIMITIVE_NOT_FOUND };
+    return primitiveRow("scaleFactors", key, language, { "bottom" : primitiveMM(bottom), "top" : primitiveMM(top),
+                "ratio" : bottom > 1e-9 * meter ? primitiveRound(top / bottom * 100, 4) : PRIMITIVE_NOT_FOUND });
 }

@@ -17,6 +17,7 @@
 //   outputs   { title, keys: [[key, meaning]], messages: [[kind, text, meaning]] }
 //   tips      { title, items: [{kind: "tip"|"limit", head, body}] }
 //   reference { title, rows: [[label, value]] }
+// Any slide may set "icon" (an svg path) to use instead of the deck's icon in its header.
 // A missing image or screenshot draws a labelled placeholder so gaps are visible, never silent.
 const fs = require("fs");
 const path = require("path");
@@ -121,7 +122,7 @@ async function dialogSlide(pres, spec, iconSmall, sl) {
           const c0 = sl._page.index === 0 || !mine.length ? 0 : Math.max(0, Math.min(...mine) - 0.012);
           const c1 = next.length ? Math.min(1, Math.min(...next) - 0.01) : 1;
           const top = Math.round(c0 * sz.h), h = Math.max(1, Math.round((c1 - c0) * sz.h));
-          const out = path.join(ROOT, "docs", "tooling", "_render", "_crops", spec.slug + "_" + sl._page.index + ".png");
+          const out = path.join(ROOT, "docs", "tooling", "_render", "_crops", spec.slug + "_" + path.basename(img, ".png") + "_" + sl._page.index + ".png");
           fs.mkdirSync(path.dirname(out), { recursive: true });
           await sharp(abs(img)).extract({ left: 0, top, width: sz.w, height: Math.min(h, sz.h - top) }).toFile(out);
           const moved = {};
@@ -191,9 +192,12 @@ async function build(specPath, force) {
   }
 
   for (const sl of spec.slides) {
+    // a slide may carry its own icon (a family deck: each feature's dialog under its own icon)
+    const iconSmallAll = iconSmall;
+    const iconS = sl.icon ? await iconPng(sl.icon, 128) : iconSmallAll;
     if (sl.type === "why") {
       const s = pres.addSlide();
-      header(s, spec, iconSmall, sl.title || "What it does");
+      header(s, spec, iconS, sl.title || "What it does");
       s.addText(sl.problem, { x: M, y: 1.1, w: 4.1, h: 1.5, fontFace: FONT, fontSize: 14, color: C.ink, margin: 0, valign: "top", isTextBox: true });
       s.addText("Use it when", { x: M, y: 2.7, w: 4.1, h: 0.3, fontFace: FONT, fontSize: 13, bold: true, color: C.blue, margin: 0, isTextBox: true });
       s.addText(bullets(sl.useWhen), { x: M, y: 3.02, w: 4.1, h: 1.9, fontFace: FONT, fontSize: 12.5, color: C.ink, margin: 0, valign: "top", isTextBox: true });
@@ -201,7 +205,7 @@ async function build(specPath, force) {
       if (sl.caption) s.addText(sl.caption, { x: 4.9, y: 4.62, w: W - 4.9 - M, h: 0.4, fontFace: FONT, fontSize: 10, italic: true, color: C.ink2, margin: 0, isTextBox: true });
     } else if (sl.type === "concept") {
       const s = pres.addSlide();
-      header(s, spec, iconSmall, sl.title);
+      header(s, spec, iconS, sl.title);
       const n = (sl.points || []).length;
       const imgH = n ? 2.75 : 3.9;
       await addFitted(s, sl.image, M, 1.0, W - 2 * M, imgH);
@@ -219,7 +223,7 @@ async function build(specPath, force) {
       const per = sl.screenshot !== undefined ? 8 : 11;
       for (let k = 0; k < rows.length; k += per) {
         const s = pres.addSlide();
-        header(s, spec, iconSmall, (sl.title || "The dialog") + (rows.length > per ? "  (" + (k / per + 1) + "/" + Math.ceil(rows.length / per) + ")" : ""));
+        header(s, spec, iconS, (sl.title || "The dialog") + (rows.length > per ? "  (" + (k / per + 1) + "/" + Math.ceil(rows.length / per) + ")" : ""));
         let x = M, w = W - 2 * M;
         if (sl.screenshot !== undefined) {
           await addFitted(s, sl.screenshot, M, 1.0, 2.9, 3.95);
@@ -236,20 +240,20 @@ async function build(specPath, force) {
       for (let k = 0; k < pages; k++) {
         spec._pending = Object.assign({}, sl, { _page: { first: k * per, last: Math.min(sl.params.length, (k + 1) * per), index: k, count: pages },
           title: sl.title + "  (" + (k + 1) + "/" + pages + ")" });
-        await dialogSlide(pres, spec, iconSmall, spec._pending);
+        await dialogSlide(pres, spec, iconS, spec._pending);
       }
     } else if (sl.type === "dialogshot") {
-      await dialogSlide(pres, spec, iconSmall, sl);
+      await dialogSlide(pres, spec, iconS, sl);
     } else if (sl.type === "example") {
       // One example per slide: a wide image, then the explanation.
       const s = pres.addSlide();
-      header(s, spec, iconSmall, sl.title);
+      header(s, spec, iconS, sl.title);
       await addFitted(s, sl.image, M, 1.0, W - 2 * M, 2.75);
       s.addText([{ text: sl.head, options: { bold: true, color: C.ink, breakLine: true } }, { text: sl.body, options: { color: C.ink2 } }],
         { x: M, y: 3.85, w: W - 2 * M, h: 1.2, fontFace: FONT, fontSize: 12.5, margin: 0, valign: "top", isTextBox: true });
     } else if (sl.type === "examples") {
       const s = pres.addSlide();
-      header(s, spec, iconSmall, sl.title || "Examples");
+      header(s, spec, iconS, sl.title || "Examples");
       const n = sl.cards.length, gap = 0.25, cw = (W - 2 * M - gap * (n - 1)) / n;
       for (let i = 0; i < n; i++) {
         const c = sl.cards[i], x = M + i * (cw + gap);
@@ -261,7 +265,7 @@ async function build(specPath, force) {
     } else if (sl.type === "outputs") {
       // Keys and messages side by side, or either one alone across the full width.
       const s = pres.addSlide();
-      header(s, spec, iconSmall, sl.title || "Outputs and messages");
+      header(s, spec, iconS, sl.title || "Outputs and messages");
       const both = sl.keys && sl.messages;
       const lw = both ? 4.25 : W - 2 * M;
       if (sl.keys) {
@@ -277,7 +281,7 @@ async function build(specPath, force) {
       }
     } else if (sl.type === "tips") {
       const s = pres.addSlide();
-      header(s, spec, iconSmall, sl.title || "Tips and limits");
+      header(s, spec, iconS, sl.title || "Tips and limits");
       const n = sl.items.length, cols = n > 3 ? 2 : 1, rowsN = Math.ceil(n / cols);
       const cw = (W - 2 * M - 0.3 * (cols - 1)) / cols, rh = Math.min(1.15, 3.9 / rowsN);
       sl.items.forEach((it, i) => {
@@ -291,7 +295,7 @@ async function build(specPath, force) {
       });
     } else if (sl.type === "reference") {
       const s = pres.addSlide();
-      header(s, spec, iconSmall, sl.title || "Where it lives");
+      header(s, spec, iconS, sl.title || "Where it lives");
       table(s, sl.rows, M, 1.05, W - 2 * M, [2.2, W - 2 * M - 2.2], { head: ["", ""], fontSize: 11 });
     } else {
       throw new Error("unknown slide type " + sl.type);

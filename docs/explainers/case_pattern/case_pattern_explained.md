@@ -29,6 +29,8 @@ Close case                <- runs it: the body once more per Case; publishes the
 | a call | a **Case** feature, run by a Close case | binds the inputs, runs the body |
 | globals | plain variables defined anywhere earlier (`#SW_Width`) | same in every case, usable freely |
 
+![The tree of one template (test T1)](img/fig03_tree_v3.png)
+
 It is not Onshape's Pattern: nothing is moved by a transform. Each case re-runs the features with the names bound to
 that case. Case 1 is the chain in the tree itself; the Close case adds the others.
 
@@ -42,6 +44,8 @@ another body feature made must get it through a native Query Variable, e.g. "cre
 to, a plane: click it in the repeated feature as you would anywhere else; every case uses the same one (tests T9a,
 T13, T14). Put it in Define case only if it **changes per case** (an input), or if several body features share it and
 you want one place to change it (a shared reference).
+
+![What the body may point at](img/fig04_references_v3.png)
 
 *Values are different:* numbers, lengths, angles, booleans are not geometry, so plain variables from anywhere earlier
 work inside the body. Put a value in Define case only if it **changes per case**.

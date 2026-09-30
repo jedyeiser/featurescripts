@@ -70,6 +70,17 @@ export const UNWRAP_PART_BOX_MARGIN = 0.002;
 /** A curved chain within this of a circle is emitted as an exact arc. */
 export const UNWRAP_PART_ARC_TOL = 1e-7 * meter;
 
+/**
+ * How far (radians) a line or arc's own end direction may differ from the face's end tangent and still be emitted
+ * exactly in keep mode (shapeRuns' tangentSlack; the same slack unwrap.fs gives its flat edges): the tangents come
+ * through the chart and the best-fit shift, so they are estimates. Its neighbours then adopt the exact piece's own
+ * tangent (no kink), or keep theirs next to a line (a kink of at most this).
+ */
+export const UNWRAP_PART_TANGENT_SLACK = 1e-3;
+
+/** Share of the arc tolerance a merged chain's joints may move the curve by when they are made G1 (g1Runs). */
+export const UNWRAP_PART_G1_SHARE = 0.1;
+
 /** Spline tools are fitted (approximateSpline, degree 3, chord parameters, exact end tangents) to this. */
 export const UNWRAP_PART_FIT_TOL = 1e-7 * meter;
 
@@ -1428,6 +1439,153 @@ export function endTangent(n, from is array, to is array)
     return (planarDot(t, [to[0] - from[0], to[1] - from[1]]) < 0) ? [-t[0], -t[1]] : t;
 }
 
+// ============================================================================
+// Fit points (shared with unwrap.fs): samples plus points of the cubic they were refined against
+// ============================================================================
+
+/**
+ * Interior points added per sample span to the points a freeform flat edge is fitted through (fitPoints), and the
+ * spans too short for them: shorter than UNWRAP_FIT_MIN_SPAN metres or UNWRAP_FIT_MIN_FRACTION of the run's chord
+ * (approximateSpline refuses parameters closer than 1e-6).
+ */
+export const UNWRAP_FIT_DENSIFY = 3;
+export const UNWRAP_FIT_MIN_SPAN = 2e-5;
+export const UNWRAP_FIT_MIN_FRACTION = 8e-6;
+
+/**
+ * The points a freeform flat edge is fitted through: its samples, plus UNWRAP_FIT_DENSIFY points inside every span on
+ * the cubic Hermite the sampling was refined against (chord length; at each sample the slope of the quadratic through
+ * it and its neighbours, the unit end tangents at the ends -- undrapeMiss checks the outline samples against this
+ * curve to a quarter of the fit tolerance, spanMidMiss the edge samples against its parameter-space twin). At samples
+ * flagged in `monotone` the slope is shape-preserving (Fritsch-Carlson, per coordinate), so a sparse, spiky stretch
+ * (a U-turn under the literal rule) gets no overshoot. Fitted through the samples alone, approximateSpline adds knots
+ * until it passes every sample and then interpolates them: between samples it rang by up to 325 um (2026-09-29).
+ */
+export function fitPoints(points is array, startTangent, endTangent, monotone) returns array
+{
+    const n = size(points);
+    if (n < 2)
+    {
+        return points;
+    }
+    var P = makeArray(n);
+    var ts = makeArray(n, 0);
+    for (var i = 0; i < n; i += 1)
+    {
+        P[i] = points[i] / meter;
+        if (i > 0)
+        {
+            ts[i] = ts[i - 1] + norm(P[i] - P[i - 1]);
+        }
+    }
+    const total = ts[n - 1];
+    if (total < 1e-12)
+    {
+        return points;
+    }
+    var S = makeArray(n);
+    for (var i = 0; i < n; i += 1)
+    {
+        if (i == 0)
+        {
+            S[i] = (startTangent != undefined) ? startTangent : quadraticSlope(P, ts, i);
+        }
+        else if (i == n - 1)
+        {
+            S[i] = (endTangent != undefined) ? endTangent : quadraticSlope(P, ts, i);
+        }
+        else if (monotone != undefined && monotone[i] == true)
+        {
+            S[i] = monotoneSlope(P, ts, i);
+        }
+        else
+        {
+            S[i] = quadraticSlope(P, ts, i);
+        }
+    }
+    const minSpan = max(UNWRAP_FIT_MIN_SPAN, UNWRAP_FIT_MIN_FRACTION * total);
+    var out = [points[0]];
+    for (var i = 0; i + 1 < n; i += 1)
+    {
+        const h = ts[i + 1] - ts[i];
+        if (h > minSpan)
+        {
+            for (var k = 1; k <= UNWRAP_FIT_DENSIFY; k += 1)
+            {
+                const f = k / (UNWRAP_FIT_DENSIFY + 1);
+                const f2 = f * f;
+                const f3 = f2 * f;
+                const q = (2 * f3 - 3 * f2 + 1) * P[i] + ((f3 - 2 * f2 + f) * h) * S[i] + (-2 * f3 + 3 * f2) * P[i + 1]
+                    + ((f3 - f2) * h) * S[i + 1];
+                out = append(out, q * meter);
+            }
+        }
+        out = append(out, points[i + 1]);
+    }
+    return out;
+}
+
+/**
+ * Slope d(point)/d(chord length) at sample i of plain points P (chord positions ts): the derivative of the quadratic
+ * through it and its two neighbours; one-sided at the ends (the next two samples); the chord when only two samples exist
+ * or samples coincide.
+ */
+export function quadraticSlope(P is array, ts is array, i is number) returns Vector
+{
+    const n = size(P);
+    var j = i - 1;
+    var k = i + 1;
+    if (i == 0)
+    {
+        j = 1;
+        k = 2;
+    }
+    else if (i == n - 1)
+    {
+        j = n - 2;
+        k = n - 3;
+    }
+    if (k < 0 || k >= n || j < 0 || j >= n || abs(ts[i] - ts[j]) < 1e-12 || abs(ts[i] - ts[k]) < 1e-12 || abs(ts[j] - ts[k]) < 1e-12)
+    {
+        const a = (i == n - 1) ? n - 2 : i;
+        const b = a + 1;
+        const dt = ts[b] - ts[a];
+        return (dt < 1e-15) ? normalize(P[n - 1] - P[0]) : (P[b] - P[a]) / dt;
+    }
+    const t0 = ts[i];
+    const t1 = ts[j];
+    const t2 = ts[k];
+    const w0 = (2 * t0 - t1 - t2) / ((t0 - t1) * (t0 - t2));
+    const w1 = (t0 - t2) / ((t1 - t0) * (t1 - t2));
+    const w2 = (t0 - t1) / ((t2 - t0) * (t2 - t1));
+    return w0 * P[i] + w1 * P[j] + w2 * P[k];
+}
+
+/**
+ * Shape-preserving slope at interior sample i (Fritsch-Carlson weighted harmonic mean of the two secants, per
+ * coordinate, 0 where a coordinate turns): the cubic between samples then stays within their range.
+ */
+export function monotoneSlope(P is array, ts is array, i is number) returns Vector
+{
+    const h0 = ts[i] - ts[i - 1];
+    const h1 = ts[i + 1] - ts[i];
+    if (h0 < 1e-12 || h1 < 1e-12)
+    {
+        return quadraticSlope(P, ts, i);
+    }
+    var m = [0, 0, 0];
+    for (var c = 0; c < 3; c += 1)
+    {
+        const d0 = (P[i][c] - P[i - 1][c]) / h0;
+        const d1 = (P[i + 1][c] - P[i][c]) / h1;
+        if (d0 * d1 > 0)
+        {
+            m[c] = 3 * (h0 + h1) / ((2 * h1 + h0) / d0 + (h1 + 2 * h0) / d1);
+        }
+    }
+    return vector(m[0], m[1], m[2]);
+}
+
 /** The fitter settings of a spline tool (curve_core's approximation map). */
 export function fitApproximation() returns map
 {
@@ -2307,58 +2465,99 @@ export function reversedChain(chain is map) returns map
  */
 export function mergeOverlappingChains(chains is array, tol is number) returns array
 {
+    // Pairs are tried in the order (i, j, flips) and the first overlapping one is joined, then the search starts
+    // again. A pair of unchanged chains that failed once fails again, so it is not re-tested (keys of the chains'
+    // serial numbers); the ends are read without building reversed chains. Same joins, in the same order, as the
+    // plain restart-everything loop -- which cost ~1 s of FS work on the CORE (26 plan chains, 4 flips per pair,
+    // each flip copying both chains and their per-face parts).
     var pool = chains;
-    var merged = true;
-    while (merged)
+    var serials = [];
+    var boxes = [];
+    for (var k = 0; k < size(pool); k += 1)
     {
-        merged = false;
-        var boxes = [];
-        for (var ch in pool)
+        serials = append(serials, k);
+        boxes = append(boxes, chainBox(pool[k].pts));
+    }
+    var nextSerial = size(pool);
+    var failed = {};
+    const flipSets = [[false, false], [false, true], [true, false], [true, true]];
+    while (true)
+    {
+        var found = undefined;
+        for (var i = 0; i < size(pool) && found == undefined; i += 1)
         {
-            boxes = append(boxes, chainBox(ch.pts));
-        }
-        for (var i = 0; i < size(pool) && !merged; i += 1)
-        {
-            for (var j = 0; j < size(pool) && !merged; j += 1)
+            for (var j = 0; j < size(pool) && found == undefined; j += 1)
             {
-                if (i == j || !boxesOverlap(boxes[i], boxes[j], tol))
+                if (i == j)
                 {
                     continue;
                 }
-                for (var flips in [[false, false], [false, true], [true, false], [true, true]])
+                const key = serials[i] ~ "," ~ serials[j];
+                if (failed[key] == true)
                 {
-                    const a = flips[0] ? reversedChain(pool[i]) : pool[i];
-                    const b = flips[1] ? reversedChain(pool[j]) : pool[j];
-                    const aFirst = a.pts[0];
-                    const aLast = a.pts[size(a.pts) - 1];
-                    const bFirst = b.pts[0];
-                    const bLast = b.pts[size(b.pts) - 1];
-                    if (planarDistance(aLast, bFirst) > tol && nearBoxedPolyline(b.pts, boxes[j], aLast, tol)
-                        && nearBoxedPolyline(a.pts, boxes[i], bFirst, tol) && !nearBoxedPolyline(b.pts, boxes[j], aFirst, tol)
-                        && !nearBoxedPolyline(a.pts, boxes[i], bLast, tol))
+                    continue;
+                }
+                if (!boxesOverlap(boxes[i], boxes[j], tol))
+                {
+                    failed[key] = true;
+                    continue;
+                }
+                const pa = pool[i].pts;
+                const pb = pool[j].pts;
+                const na = size(pa);
+                const nb = size(pb);
+                for (var flips in flipSets)
+                {
+                    const aFirst = flips[0] ? pa[na - 1] : pa[0];
+                    const aLast = flips[0] ? pa[0] : pa[na - 1];
+                    const bFirst = flips[1] ? pb[nb - 1] : pb[0];
+                    const bLast = flips[1] ? pb[0] : pb[nb - 1];
+                    if (planarDistance(aLast, bFirst) > tol && nearBoxedPolyline(pb, boxes[j], aLast, tol)
+                        && nearBoxedPolyline(pa, boxes[i], bFirst, tol) && !nearBoxedPolyline(pb, boxes[j], aFirst, tol)
+                        && !nearBoxedPolyline(pa, boxes[i], bLast, tol))
                     {
-                        const joined = overlapJoin(a, b);
-                        var next = [];
-                        for (var k = 0; k < size(pool); k += 1)
-                        {
-                            if (k == i)
-                            {
-                                next = append(next, joined);
-                            }
-                            else if (k != j)
-                            {
-                                next = append(next, pool[k]);
-                            }
-                        }
-                        pool = next;
-                        merged = true;
+                        found = [i, j, flips];
                         break;
                     }
                 }
+                if (found == undefined)
+                {
+                    failed[key] = true;
+                }
             }
         }
+        if (found == undefined)
+        {
+            return pool;
+        }
+        const i = found[0];
+        const j = found[1];
+        const a = found[2][0] ? reversedChain(pool[i]) : pool[i];
+        const b = found[2][1] ? reversedChain(pool[j]) : pool[j];
+        const joined = overlapJoin(a, b);
+        var next = [];
+        var nextSerials = [];
+        var nextBoxes = [];
+        for (var k = 0; k < size(pool); k += 1)
+        {
+            if (k == i)
+            {
+                next = append(next, joined);
+                nextSerials = append(nextSerials, nextSerial);
+                nextBoxes = append(nextBoxes, chainBox(joined.pts));
+            }
+            else if (k != j)
+            {
+                next = append(next, pool[k]);
+                nextSerials = append(nextSerials, serials[k]);
+                nextBoxes = append(nextBoxes, boxes[k]);
+            }
+        }
+        nextSerial += 1;
+        pool = next;
+        serials = nextSerials;
+        boxes = nextBoxes;
     }
-    return pool;
 }
 
 /** Whether two [xmin, xmax, cmin, cmax] boxes overlap within tol. */
@@ -2367,14 +2566,33 @@ export function boxesOverlap(a is array, b is array, tol is number) returns bool
     return a[0] <= b[1] + tol && b[0] <= a[1] + tol && a[2] <= b[3] + tol && b[2] <= a[3] + tol;
 }
 
-/** Whether p lies within tol of a polyline whose box is given. */
+/**
+ * Whether p lies within tol of a polyline whose box is given: the first segment within tol answers (segments whose
+ * own box, grown by tol, misses p are skipped), so the answer is the same as polylineDistance(pts, p) < tol.
+ */
 export function nearBoxedPolyline(pts is array, bx is array, p is array, tol is number) returns boolean
 {
     if (p[0] < bx[0] - tol || p[0] > bx[1] + tol || p[1] < bx[2] - tol || p[1] > bx[3] + tol)
     {
         return false;
     }
-    return polylineDistance(pts, p) < tol;
+    const px = p[0];
+    const py = p[1];
+    for (var k = 0; k + 1 < size(pts); k += 1)
+    {
+        const a = pts[k];
+        const b = pts[k + 1];
+        if ((px < a[0] - tol && px < b[0] - tol) || (px > a[0] + tol && px > b[0] + tol)
+            || (py < a[1] - tol && py < b[1] - tol) || (py > a[1] + tol && py > b[1] + tol))
+        {
+            continue;
+        }
+        if (polylineDistance([a, b], p) < tol)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 /**
@@ -2437,15 +2655,16 @@ export function overlapJoin(a is map, b is map) returns map
 }
 
 /**
- * The curves of one chain in "keep" mode: one edge per source face, meeting at the averaged joints; a line or an arc
- * where the face's row is one within arcTolerance (so planar and cylindrical faces come out planar and cylindrical),
- * else a spline with exact end tangents.
- * @returns {map} : counts { "lines", "arcs", "splines" } updated
+ * What each part of a chain becomes (keep and merge modes alike): one run per source face, meeting at the averaged
+ * joints, shaped as a set by curve_core's shapeRuns -- a line or an arc where the face's row is one within arcTolerance
+ * AND its ends run along the face's own end tangents (to UNWRAP_PART_TANGENT_SLACK), so planar and cylindrical faces
+ * come out planar and cylindrical; where two parts meet smoothly both are built to one tangent (an exact line / arc's
+ * own). Before 2026-09-29 each part was classified alone (classifyPoints, no tangent check), so a line or arc could
+ * kink against its spline neighbour.
+ * @returns {map} : { "items" (shapeRuns items: points as tool Vectors, true end tangents), "shapes" }
  */
-export function emitChainParts(context is Context, id is Id, ch is map, profile is boolean, lo is array, arcTolerance is ValueWithUnits,
-    counts is map) returns map
+export function chainShapes(ch is map, profile is boolean, lo is array, arcTolerance is ValueWithUnits) returns map
 {
-    var result = counts;
     const parts = ch.parts;
     const np = size(parts);
     var joints = [parts[0].pts[0]];
@@ -2456,6 +2675,7 @@ export function emitChainParts(context is Context, id is Id, ch is map, profile 
         joints = append(joints, [0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1])]);
     }
     joints = append(joints, parts[np - 1].pts[size(parts[np - 1].pts) - 1]);
+    var items = [];
     for (var q = 0; q < np; q += 1)
     {
         var pts = parts[q].pts;
@@ -2467,79 +2687,377 @@ export function emitChainParts(context is Context, id is Id, ch is map, profile 
         {
             points = append(points, toolPoint(p, profile, lo));
         }
-        const pid = id + ("p" ~ q);
-        const shape = classifyPoints(points, arcTolerance, true, true);
+        items = append(items, { "points" : points, "startTangent" : viewVector(endTangent(parts[q].n0, pts[0], pts[1]), profile),
+                    "endTangent" : viewVector(endTangent(parts[q].n1, pts[n - 2], pts[n - 1]), profile), "joinsPrevious" : q > 0,
+                    "tangentSlack" : UNWRAP_PART_TANGENT_SLACK });
+    }
+    return { "items" : items, "shapes" : shapeRuns(items, { "tolerance" : arcTolerance }) };
+}
+
+/**
+ * The points a freeform part is fitted through: its row AND points of the cubic the row was refined against
+ * (fitPoints), thinned to strictly increasing chord fractions. Fitted through the adaptive row alone, approximateSpline
+ * interpolated it and rang between the samples (4103 over FULL_BASELINE: 45 um at the ledge taper and ~1 mm3 of
+ * material lost; correction 63).
+ */
+export function freeformFitPoints(item is map, shape is map) returns array
+{
+    const points = fitPoints(item.points, shape.startTangent, shape.endTangent, undefined);
+    return pickIndices(points, separatedIndices([points]));
+}
+
+/**
+ * The curves of one chain in "keep" mode: one edge per source face as chainShapes decided (lines, arcs, splines
+ * pinned to the shared tangents).
+ * @returns {map} : counts { "lines", "arcs", "splines" } updated
+ */
+export function emitChainParts(context is Context, id is Id, ch is map, profile is boolean, lo is array, arcTolerance is ValueWithUnits,
+    counts is map) returns map
+{
+    var result = counts;
+    const shaped = chainShapes(ch, profile, lo, arcTolerance);
+    for (var q = 0; q < size(shaped.shapes); q += 1)
+    {
+        const shape = shaped.shapes[q];
+        var points = shaped.items[q].points;
         if (shape.kind == "line")
         {
-            emitLineCurve(context, pid, points[0], points[n - 1]);
             result.lines += 1;
         }
         else if (shape.kind == "arc")
         {
-            emitArcCurve(context, pid, shape);
             result.arcs += 1;
         }
         else
         {
-            const t0 = endTangent(parts[q].n0, pts[0], pts[1]);
-            const t1 = endTangent(parts[q].n1, pts[n - 2], pts[n - 1]);
-            const start = (t0 == undefined) ? undefined : (profile ? vector(t0[0], 0, t0[1]) : vector(t0[0], t0[1], 0));
-            const end = (t1 == undefined) ? undefined : (profile ? vector(t1[0], 0, t1[1]) : vector(t1[0], t1[1], 0));
-            emitSplineCurve(context, pid, pickIndices(points, separatedIndices([points])), start, end, fitApproximation());
+            points = freeformFitPoints(shaped.items[q], shape);
             result.splines += 1;
         }
+        emitRunShape(context, id + ("p" ~ q), shape, points, fitApproximation());
     }
     return result;
 }
 
-/**
- * The curve of one chain in "merge" mode: ONE spline through the whole chain. Fitting it straight through the rows
- * rings where the faces meet with a curvature jump (a line into a tight arc): 12 um on 4803's corner between adaptive
- * samples, 16 um at the CORE's tip with uniform 4 mm ones. So the exact per-face curves are built first
- * (emitChainParts), sampled uniformly by arc length (at least UNWRAP_PART_MERGE_SPACING apart, at most
- * UNWRAP_PART_PRISM_ROW_MAX points), fitted with the chain's end tangents, and deleted.
- */
-export function emitMergedChain(context is Context, id is Id, ch is map, profile is boolean, lo is array, arcTolerance is ValueWithUnits,
-    start, end)
+/** A 2D view direction [x, c] as a unit 3D Vector in the view's plane (profile: (x, 0, c), wall: (x, c, 0)); undefined stays. */
+export function viewVector(t, profile is boolean)
 {
-    const exactId = id + "exact";
-    emitChainParts(context, exactId, ch, profile, lo, arcTolerance, { "lines" : 0, "arcs" : 0, "splines" : 0 });
-    var edges = [];
-    var lengths = [];
-    var total = 0;
-    for (var q = 0; q < size(ch.parts); q += 1)
+    if (t == undefined)
     {
-        const edge = qCreatedBy(exactId + ("p" ~ q), EntityType.EDGE);
-        const length = evLength(context, { "entities" : edge }) / meter;
-        edges = append(edges, edge);
-        lengths = append(lengths, length);
-        total += length;
+        return undefined;
     }
-    const spacing = max(total / (UNWRAP_PART_PRISM_ROW_MAX - 1), UNWRAP_PART_MERGE_SPACING);
-    var points = [];
-    for (var q = 0; q < size(edges); q += 1)
+    return profile ? vector(t[0], 0, t[1]) : vector(t[0], t[1], 0);
+}
+
+/**
+ * The curve of one chain in "merge" mode: ONE edge through the whole chain, built EXACTLY from the keep-mode parts
+ * (chainShapes): every part as cubic pieces -- a line as one Bezier, an arc as rational quadratic Beziers of at most
+ * 90 degrees raised to cubic, a spline as its own fit (fitPoints) -- joined end to end into one rational cubic B-spline
+ * with a triple knot at each joint (position-continuous in the parameter, tangent-continuous in shape where the parts
+ * are). The kernel takes such a curve as one edge and its extrusion as one face. Where two parts are not tangent
+ * within what g1Runs may bend, the chain is cut into several such curves.
+ * @returns {number} : the number of curves emitted
+ * Until 2026-09-29 the merged curve was a spline fitted through dense samples of the parts at 1e-7 m: it interpolated
+ * them and rang across every curvature jump between parts (CORE over FULL_BASELINE: 69 curvature sign changes on the
+ * merged curves against 38 on the parts, 1.4 um off them, 3086 control points).
+ */
+export function emitMergedChain(context is Context, id is Id, ch is map, profile is boolean, lo is array, arcTolerance is ValueWithUnits) returns number
+{
+    const shaped = chainShapes(ch, profile, lo, arcTolerance);
+    var pieces = [];
+    for (var q = 0; q < size(shaped.shapes); q += 1)
     {
-        const count = max(3, ceil(lengths[q] / spacing) + 1);
-        var parameters = [];
-        for (var k = 0; k < count; k += 1)
+        const shape = shaped.shapes[q];
+        const item = shaped.items[q];
+        const first = item.points[0] / meter;
+        const last = item.points[size(item.points) - 1] / meter;
+        if (shape.kind == "line")
         {
-            parameters = append(parameters, k / (count - 1));
+            pieces = append(pieces, cubicLinePiece(first, last));
         }
-        var run = [];
-        for (var tl in evEdgeTangentLines(context, { "edge" : edges[q], "parameters" : parameters }))
+        else if (shape.kind == "arc")
         {
-            run = append(run, tl.origin);
+            pieces = concatenateArrays([pieces, cubicArcPieces(shape, first, last)]);
         }
-        // Each edge in chain order: its start is the part's first point.
-        const first = toolPoint(ch.parts[q].pts[0], profile, lo);
-        if (norm(run[count - 1] - first) < norm(run[0] - first))
+        else
         {
-            run = reverse(run);
+            const fitted = approximateFamily(context, [{ "points" : freeformFitPoints(item, shape), "startDerivative" : shape.startTangent,
+                            "endDerivative" : shape.endTangent }], fitApproximation())[0];
+            pieces = append(pieces, cubicSplinePiece(fitted, first, last));
         }
-        points = concatenateArrays([points, (q == 0) ? run : subArray(run, 1, count)]);
     }
-    opDeleteBodies(context, id + "deleteExact", { "entities" : qCreatedBy(exactId, EntityType.BODY) });
-    emitSplineCurve(context, id + "fit", pickIndices(points, separatedIndices([points])), start, end, fitApproximation());
+    const runs = g1Runs(pieces, arcTolerance / meter * UNWRAP_PART_G1_SHARE);
+    for (var k = 0; k < size(runs); k += 1)
+    {
+        opCreateBSplineCurve(context, id + ("fit" ~ k), { "bSplineCurve" : joinedCubicPieces(runs[k]) });
+    }
+    return size(runs);
+}
+
+/**
+ * Merged-chain pieces made tangent-continuous, and split into runs where they are not nearly so. The kernel refuses a
+ * B-spline that is not G1 (BSPLINECURVE_NOT_G1), and the parts of a chain meet with kinks of up to ~0.2 deg: chains
+ * are built from rows tangent to 0.99999, and exact lines and arcs keep their own ends (1e-5 .. 0.04 deg on the CORE's
+ * plan outline). A joint within G1_JUNCTION_ANGLE is closed on a Bezier side (a line or arc piece; a spline piece's
+ * end tangent is already the shared one where it meets another spline or an arc): the piece is cut (de Casteljau) so
+ * the stretch next to the joint has a control arm short enough that turning it onto the other side's direction moves
+ * the curve by at most `tolerance` (plain metres; bound 4/9 x arm x angle), and that arm is turned. Turning the whole
+ * arm of a long arc instead moved the CORE's walls by 0.76 um over their length (-5.8 mm3). Anything else starts a new
+ * run (its own curve and face).
+ */
+export function g1Runs(pieces is array, tolerance is number) returns array
+{
+    var runs = [];
+    var run = [pieces[0]];
+    for (var q = 1; q < size(pieces); q += 1)
+    {
+        var a = run[size(run) - 1];
+        var b = pieces[q];
+        const na = size(a.cps);
+        const joint = b.cps[0];
+        const armA = norm(joint - a.cps[na - 2]);
+        const armB = norm(b.cps[1] - joint);
+        if (armA < 1e-12 || armB < 1e-12)
+        {
+            runs = append(runs, run);
+            run = [b];
+            continue;
+        }
+        const dirA = (joint - a.cps[na - 2]) / armA;
+        const dirB = (b.cps[1] - joint) / armB;
+        const cosine = dot(dirA, dirB);
+        const angle = (cosine >= 1) ? 0 : acos(cosine) / radian;
+        if (angle > G1_JUNCTION_ANGLE)
+        {
+            runs = append(runs, run);
+            run = [b];
+            continue;
+        }
+        if (angle > 0)
+        {
+            // The arm that may be turned: at most this long.
+            const reach = tolerance / (4 / 9 * angle);
+            const bezierA = na == 4;
+            const bezierB = size(b.cps) == 4;
+            if (bezierB && (!bezierA || armB <= armA))
+            {
+                if (armB > reach)
+                {
+                    const halves = splitCubicPiece(b, reach / armB);
+                    b = halves[0];
+                    pieces = insertAfter(pieces, q, halves[1]);
+                }
+                b.cps[1] = joint + norm(b.cps[1] - joint) * dirA;
+            }
+            else if (bezierA)
+            {
+                if (armA > reach)
+                {
+                    const halves = splitCubicPiece(a, 1 - reach / armA);
+                    a = halves[1];
+                    run[size(run) - 1] = halves[0];
+                    run = append(run, a);
+                }
+                a.cps[na - 2] = joint - norm(joint - a.cps[na - 2]) * dirB;
+                run[size(run) - 1] = a;
+            }
+            else
+            {
+                runs = append(runs, run);
+                run = [b];
+                continue;
+            }
+        }
+        run = append(run, b);
+    }
+    return append(runs, run);
+}
+
+/** The array with `value` inserted after index i. */
+export function insertAfter(values is array, i is number, value) returns array
+{
+    return concatenateArrays([subArray(values, 0, i + 1), [value], subArray(values, i + 1, size(values))]);
+}
+
+/**
+ * A cubic Bezier piece (4 control points, rational or not) cut at parameter t by de Casteljau in homogeneous
+ * coordinates: [left, right], sharing the cut point with one weight, lengths shared t : 1 - t.
+ */
+export function splitCubicPiece(piece is map, t is number) returns array
+{
+    var h = [];
+    for (var i = 0; i < 4; i += 1)
+    {
+        h = append(h, [piece.cps[i] * piece.weights[i], piece.weights[i]]);
+    }
+    var left = [h[0]];
+    var right = [h[3]];
+    var level = h;
+    for (var r = 1; r < 4; r += 1)
+    {
+        var next = [];
+        for (var i = 0; i + 1 < size(level); i += 1)
+        {
+            next = append(next, [(1 - t) * level[i][0] + t * level[i + 1][0], (1 - t) * level[i][1] + t * level[i + 1][1]]);
+        }
+        level = next;
+        left = append(left, level[0]);
+        right = append(right, level[size(level) - 1]);
+    }
+    right = reverse(right);
+    var lc = [];
+    var lw = [];
+    var rc = [];
+    var rw = [];
+    for (var i = 0; i < 4; i += 1)
+    {
+        lc = append(lc, left[i][0] / left[i][1]);
+        lw = append(lw, left[i][1]);
+        rc = append(rc, right[i][0] / right[i][1]);
+        rw = append(rw, right[i][1]);
+    }
+    return [{ "cps" : lc, "weights" : lw, "knots" : [0, 0, 0, 0, 1, 1, 1, 1], "length" : t * piece.length },
+            { "cps" : rc, "weights" : rw, "knots" : [0, 0, 0, 0, 1, 1, 1, 1], "length" : (1 - t) * piece.length }];
+}
+
+/**
+ * One cubic piece of a merged chain: control points (plain metres, Vectors), weights, knots over [0, 1] (clamped,
+ * multiplicity 4 at the ends) and a length that sets its share of the joined curve's parameter range.
+ */
+export function cubicLinePiece(p0 is Vector, p1 is Vector) returns map
+{
+    return { "cps" : [p0, p0 + (p1 - p0) / 3, p0 + 2 * (p1 - p0) / 3, p1], "weights" : [1, 1, 1, 1],
+            "knots" : [0, 0, 0, 0, 1, 1, 1, 1], "length" : norm(p1 - p0) };
+}
+
+/**
+ * An arc (a classifyPoints arc map: center, radius, normal, mid) as cubic pieces from `first` to `last` (its exact end
+ * points, plain metres): rational quadratic Beziers of at most 90 degrees (middle weight cos(half the sweep)), raised
+ * to cubic in homogeneous coordinates.
+ */
+export function cubicArcPieces(arc is map, first is Vector, last is Vector) returns array
+{
+    const c = arc.center / meter;
+    const r = arc.radius / meter;
+    const u = normalize(first - c);
+    var v = cross(arc.normal, u);
+    var sweep = arcAngle(u, v, normalize(last - c));
+    if (arcAngle(u, v, normalize(arc.mid / meter - c)) > sweep)
+    {
+        // The mid point lies the other way round.
+        v = -v;
+        sweep = arcAngle(u, v, normalize(last - c));
+    }
+    const k = max(1, ceil(sweep / (PI / 2) - 1e-9));
+    const phi = sweep / k;
+    const w = cos(phi / 2 * radian);
+    const w1 = (1 + 2 * w) / 3;
+    var pieces = [];
+    for (var j = 0; j < k; j += 1)
+    {
+        const a0 = j * phi;
+        const a1 = (j + 1) * phi;
+        const am = 0.5 * (a0 + a1);
+        const P0 = (j == 0) ? first : c + r * (cos(a0 * radian) * u + sin(a0 * radian) * v);
+        const P2 = (j == k - 1) ? last : c + r * (cos(a1 * radian) * u + sin(a1 * radian) * v);
+        const P1 = c + r / w * (cos(am * radian) * u + sin(am * radian) * v);
+        // homogeneous (w P, w): H0 = (P0, 1), H1 = (w P1, w), H2 = (P2, 1); raised: G1 = (H0 + 2 H1) / 3, G2 = (2 H1 + H2) / 3
+        pieces = append(pieces, { "cps" : [P0, (P0 + 2 * w * P1) / 3 / w1, (2 * w * P1 + P2) / 3 / w1, P2], "weights" : [1, w1, w1, 1],
+                    "knots" : [0, 0, 0, 0, 1, 1, 1, 1], "length" : r * phi });
+    }
+    return pieces;
+}
+
+/** The angle (radians, [0, 2 pi)) of unit direction d from u towards v. */
+export function arcAngle(u is Vector, v is Vector, d is Vector) returns number
+{
+    var a = atan2(dot(d, v), dot(d, u)) / radian;
+    if (a < 0)
+    {
+        a += 2 * PI;
+    }
+    return a;
+}
+
+/**
+ * A fitted spline (degree 3, non-rational, clamped) as a merged-chain piece, its end control points set to the exact
+ * joints `first` / `last` (plain metres; the fit meets them only within tolerance).
+ */
+export function cubicSplinePiece(curve is BSplineCurve, first is Vector, last is Vector) returns map
+{
+    if (curve.degree != 3 || curve.isRational)
+    {
+        throw regenError("Unwrap part: a merged chain's spline part came back degree " ~ curve.degree ~ (curve.isRational ? " rational" : "")
+                ~ " (a cubic was expected).");
+    }
+    var cps = [];
+    var length = 0;
+    for (var i = 0; i < size(curve.controlPoints); i += 1)
+    {
+        cps = append(cps, curve.controlPoints[i] / meter);
+        if (i > 0)
+        {
+            length += norm(cps[i] - cps[i - 1]);
+        }
+    }
+    cps[0] = first;
+    cps[size(cps) - 1] = last;
+    const k0 = curve.knots[0];
+    const k1 = curve.knots[size(curve.knots) - 1];
+    var knots = [];
+    for (var t in curve.knots)
+    {
+        knots = append(knots, (t - k0) / (k1 - k0));
+    }
+    return { "cps" : cps, "weights" : makeArray(size(cps), 1), "knots" : knots, "length" : length };
+}
+
+/**
+ * Cubic pieces (cubicLinePiece / cubicArcPieces / cubicSplinePiece, each piece's last control point the next one's
+ * first, end weights 1) joined into one clamped cubic B-spline: each piece takes a share of the parameter range equal
+ * to its length, with a triple knot at every joint. Rational only when a piece has weights other than 1.
+ */
+export function joinedCubicPieces(pieces is array) returns BSplineCurve
+{
+    var cps = [];
+    var weights = [];
+    var knots = [0, 0, 0, 0];
+    var t0 = 0;
+    var rational = false;
+    for (var q = 0; q < size(pieces); q += 1)
+    {
+        const piece = pieces[q];
+        const span = max(piece.length, 1e-9);
+        for (var i = (q == 0) ? 0 : 1; i < size(piece.cps); i += 1)
+        {
+            cps = append(cps, piece.cps[i] * meter);
+            weights = append(weights, piece.weights[i]);
+            if (abs(piece.weights[i] - 1) > 1e-15)
+            {
+                rational = true;
+            }
+        }
+        // The piece's interior knots, then the joint (triple) or the end (quadruple).
+        for (var i = 4; i < size(piece.knots) - 4; i += 1)
+        {
+            knots = append(knots, t0 + piece.knots[i] * span);
+        }
+        t0 += span;
+        for (var m = 0; m < ((q == size(pieces) - 1) ? 4 : 3); m += 1)
+        {
+            knots = append(knots, t0);
+        }
+    }
+    var scaled = [];
+    for (var t in knots)
+    {
+        scaled = append(scaled, t / t0);
+    }
+    var definition = { "degree" : 3, "isPeriodic" : false, "controlPoints" : cps, "knots" : knotArray(scaled) };
+    if (rational)
+    {
+        definition.weights = weights;
+    }
+    return bSplineCurve(definition);
 }
 
 /**
@@ -2683,10 +3201,7 @@ export function prismArrangement(context is Context, id is Id, viewChains is arr
             }
             else
             {
-                const start = (t0 == undefined) ? undefined : (profile ? vector(t0[0], 0, t0[1]) : vector(t0[0], t0[1], 0));
-                const end = (t1 == undefined) ? undefined : (profile ? vector(t1[0], 0, t1[1]) : vector(t1[0], t1[1], 0));
-                emitMergedChain(context, cid + "merged", ch, profile, lo, settings.arcTolerance, start, end);
-                counts.splines += 1;
+                counts.splines += emitMergedChain(context, cid + "merged", ch, profile, lo, settings.arcTolerance);
             }
             if (t0 == undefined)
             {
@@ -2757,6 +3272,90 @@ export function chainCrossings(ch is map, xp is number) returns array
         }
     }
     return cs;
+}
+
+/**
+ * chainCrossings of every chain at every probe x in one sweep: per probe, the crossings of all chains (same values as
+ * concatenating chainCrossings(ch, xp) over the chains; the order within a probe may differ, callers sort them).
+ * Each segment / extension finds its probes by binary search over the sorted probes instead of every probe walking
+ * every segment of every chain (~1.5 s of FS work on the CORE: 97 probes x ~3000 segments).
+ */
+export function probeCrossings(chains is array, probes is array) returns array
+{
+    const n = size(probes);
+    var order = [];
+    for (var k = 0; k < n; k += 1)
+    {
+        order = append(order, k);
+    }
+    order = sort(order, function(a, b) { return probes[a] - probes[b]; });
+    var xs = [];
+    for (var k in order)
+    {
+        xs = append(xs, probes[k]);
+    }
+    var out = makeArray(n, []);
+    for (var ch in chains)
+    {
+        const pts = ch.straight ? [ch.lineStart, ch.lineEnd] : ch.pts;
+        for (var k = 0; k + 1 < size(pts); k += 1)
+        {
+            const a = pts[k];
+            const b = pts[k + 1];
+            if (abs(b[0] - a[0]) <= 1e-12)
+            {
+                continue;
+            }
+            const hi = max(a[0], b[0]) + 1e-9;
+            for (var q = firstAtLeast(xs, min(a[0], b[0]) - 1e-9); q < n && xs[q] <= hi; q += 1)
+            {
+                const xp = xs[q];
+                if ((a[0] - xp) * (b[0] - xp) <= 0)
+                {
+                    out[order[q]] = append(out[order[q]], a[1] + (xp - a[0]) / (b[0] - a[0]) * (b[1] - a[1]));
+                }
+            }
+        }
+        for (var e in ch.ext)
+        {
+            if (abs(e.t[0]) <= 1e-12)
+            {
+                continue;
+            }
+            const x1 = e.p[0] + e.len * e.t[0];
+            const hi = max(e.p[0], x1) + 1e-9;
+            for (var q = firstAtLeast(xs, min(e.p[0], x1) - 1e-9); q < n && xs[q] <= hi; q += 1)
+            {
+                const xp = xs[q];
+                const f = (xp - e.p[0]) / e.t[0];
+                if (f > 0 && f <= e.len)
+                {
+                    out[order[q]] = append(out[order[q]], e.p[1] + f * e.t[1]);
+                }
+            }
+        }
+    }
+    return out;
+}
+
+/** Index of the first entry of an ascending array that is >= v (size when none is). */
+export function firstAtLeast(xs is array, v is number) returns number
+{
+    var lo = 0;
+    var hi = size(xs);
+    while (lo < hi)
+    {
+        const mid = floor((lo + hi) / 2);
+        if (xs[mid] < v)
+        {
+            lo = mid + 1;
+        }
+        else
+        {
+            hi = mid;
+        }
+    }
+    return lo;
 }
 
 /** [xmin, xmax, cmin, cmax] (plain metres) of each cell, c = coordinate ib. */
@@ -2843,13 +3442,12 @@ export function prismMembership(context is Context, chart is map, piece is Query
     }
     var memb = makeArray(size(plan.faces), {});
     var tests = 0;
-    for (var xp in probes)
+    const sideCrossings = probeCrossings(side.chains, probes);
+    const planCrossings = probeCrossings(plan.chains, probes);
+    for (var pi = 0; pi < size(probes); pi += 1)
     {
-        var zs = [lo[2] - 0.0005, hi[2] + 0.0005];
-        for (var ch in side.chains)
-        {
-            zs = concatenateArrays([zs, chainCrossings(ch, xp)]);
-        }
+        const xp = probes[pi];
+        var zs = concatenateArrays([[lo[2] - 0.0005, hi[2] + 0.0005], sideCrossings[pi]]);
         zs = sort(zs, function(a, b) { return a - b; });
         var zm = [];
         var zc = [];
@@ -2871,11 +3469,7 @@ export function prismMembership(context is Context, chart is map, piece is Query
                 zc = append(zc, si);
             }
         }
-        var ys = [lo[1] - 0.0005, hi[1] + 0.0005];
-        for (var ch in plan.chains)
-        {
-            ys = concatenateArrays([ys, chainCrossings(ch, xp)]);
-        }
+        var ys = concatenateArrays([[lo[1] - 0.0005, hi[1] + 0.0005], planCrossings[pi]]);
         ys = sort(ys, function(a, b) { return a - b; });
         for (var k = 0; k + 1 < size(ys); k += 1)
         {

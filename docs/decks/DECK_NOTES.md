@@ -28,3 +28,14 @@ Decisions from the user's reviews that apply beyond the deck they came from. Che
 - A `dialogshot` whose screenshot is taller than 2.4 x its width (and has 6+ fields) is split over two slides; each slide
   shows only the band of the screenshot holding its fields (crops in docs/tooling/_render/_crops/), so badges stay apart.
 - Features without an installed icon get a deck-only draft in docs/decks/_icons/ (never installed to Onshape).
+
+## Family decks and builder additions (2026-09-29)
+- **Case pattern is ONE family deck** (Define case, Case, Close case: one construct, one tab, never used apart);
+  each feature's dialog slide carries its own icon (`"icon"` on any slide). The v2 Case template deck is retired
+  (docs/decks/_retired/case_template/). Specs: docs/decks/_specs_case_pattern.py; driven_offset family:
+  docs/decks/_specs_driven_offset.py.
+- `onshape_shot.py` cancels every dialog with its red X in a finally block (closing the browser with a dialog open
+  SAVES it); `"expand": [item header text]` opens collapsed array items before the capture (view state only). Long
+  test trees: use `"filter"` or the double-click may miss.
+- `render_parts.py` iso view: `"zoom"`, 3D `"labelAt": [x, y, z]`, fills the figure width and trims the margin.
+- `build_deck.js`: split-dialog crops are named per screenshot (two tall dialogs in one deck overwrote each other).

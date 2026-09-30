@@ -25,6 +25,8 @@ shots.json:
      "zoom": [x, y, steps] (optional: mouse-wheel zoom toward window pixel x, y; negative = out; view only),
      "dialog": "docs/decks/<slug>/shots/dialog.png"   (optional: crop of the feature dialog),
      "labels": [{"name": "...", "find": "..."}]         (optional, with "dialog"),
+     "expand": ["Region 1", ...]                         (optional: click these item headers in the dialog first,
+                                                        to expand collapsed array items -- view state only),
      "graphics": "docs/decks/<slug>/shots/x.png"      (optional: crop of the graphics area; right of the dialog
                                                         when one is open; "clip": [x, y, w, h] overrides),
      "full": "..."                                     (optional: the whole window, for debugging)}
@@ -155,6 +157,13 @@ def main(listing):
                     p.mouse.move(1500, 900)   # off the tree, so its tooltip closes
                     p.wait_for_timeout(shot.get("settle", 5) * 1000)
                     opened = True
+                    for txt in shot.get("expand", []):
+                        # expand a collapsed array item by clicking its header text (view state only, not a value)
+                        p.locator(".feature-dialog").first.get_by_text(txt, exact=True).first.click()
+                        p.wait_for_timeout(1500)
+                    if shot.get("expand"):
+                        p.mouse.move(1500, 900)   # away, so the item's tooltip closes
+                        p.wait_for_timeout(1500)
                 if shot.get("dialog"):
                     save(p, shot["dialog"], locator=p.locator(".feature-dialog").first)
                     if shot.get("labels"):
