@@ -854,6 +854,35 @@ function closePieceInto(pieces is array, piece is array) returns array
 // Output
 // ============================================================================
 
+/** Largest turn between the two sides of a run joint still read as a smooth joint (one shared tangent). */
+const PROFILE_SMOOTH_JOINT = 2 * degree;
+
+/**
+ * Unit travel direction at points[0], from the quadratic through the first three points (chord
+ * parameters), or the first chord for two points; undefined for a degenerate run.
+ */
+function endTangentEstimate(points is array)
+{
+    if (size(points) < 2)
+    {
+        return undefined;
+    }
+    const d1 = points[1] - points[0];
+    const t1 = norm(d1);
+    if (t1 < EVAL_STEP_TOL)
+    {
+        return undefined;
+    }
+    if (size(points) < 3)
+    {
+        return normalize(d1);
+    }
+    const d2 = points[2] - points[0];
+    const t2 = t1 + norm(points[2] - points[1]);
+    const slope = (d1 * (t2 * t2) - d2 * (t1 * t1)) / (t1 * t2 * (t2 - t1));
+    return (norm(slope) < 1e-12) ? normalize(d1) : normalize(slope);
+}
+
 /**
  * One curve per run -- a line where the run is straight within tolerance, a fit otherwise --
  * and one wire per piece.
@@ -876,21 +905,49 @@ function emitPieces(context is Context, id is Id, definition is map, pieces is a
     for (var p = 0; p < size(pieces); p += 1)
     {
         const pieceId = id + ("piece" ~ p);
-        var curves = [];
-        for (var r = 0; r < size(pieces[p]); r += 1)
+        const runs = pieces[p];
+
+        // Smooth joints share one tangent, estimated from the samples either side; a line is then only
+        // accepted where it meets it and a spline is pinned to it (reviews/2026-09-25_arc_line_fitting: a
+        // position-only line beside a free spline kinked at the joint). Corners keep free ends.
+        var items = [];
+        for (var r = 0; r < size(runs); r += 1)
         {
-            const points = pieces[p][r];
+            items = append(items, { "points" : runs[r], "allowArc" : false, "allowLine" : true });
+        }
+        for (var r = 0; r + 1 < size(runs); r += 1)
+        {
+            const before = runs[r];
+            const after = runs[r + 1];
+            if (norm(before[size(before) - 1] - after[0]) >= EVAL_STEP_TOL)
+            {
+                continue;
+            }
+            const back = endTangentEstimate(reverse(before));
+            const leaving = endTangentEstimate(after);
+            if (back == undefined || leaving == undefined || angleBetween(-1 * back, leaving) > PROFILE_SMOOTH_JOINT)
+            {
+                continue;
+            }
+            const arriving = -1 * back;
+            const shared = normalize(arriving + leaving);
+            items[r].endTangent = shared;
+            items[r + 1].startTangent = shared;
+        }
+        const shapes = shapeRuns(items, { "tolerance" : approximation.approximationTolerance });
+
+        var curves = [];
+        for (var r = 0; r < size(runs); r += 1)
+        {
+            const points = runs[r];
             const runId = pieceId + ("run" ~ r);
-            const shape = (size(points) < 3)
-                ? { "kind" : "line", "start" : points[0], "end" : points[size(points) - 1] }
-                : classifyPoints(points, approximation.approximationTolerance, false);
-            if (shape.kind == "line")
+            if (size(points) < 3 || shapes[r].kind == "line")
             {
                 emitLineCurve(context, runId, points[0], points[size(points) - 1]);
             }
             else
             {
-                emitSplineCurve(context, runId, points, undefined, undefined, approximation);
+                emitSplineCurve(context, runId, points, items[r].startTangent, items[r].endTangent, approximation);
             }
             curves = append(curves, qCreatedBy(runId, EntityType.BODY));
         }

@@ -1268,12 +1268,16 @@ function connectSourceToOffset(context is Context, id is Id, definition is map, 
     const span = longestSpan(context, id, driven);
 
     var points = [];
+    var first = undefined;
+    var last = undefined;
 
     for (var i = span.start; i <= span.end; i += 1)
     {
         if (driven.points[i] != undefined)
         {
             points = append(points, driven.stations[i].origin);
+            first = (first == undefined) ? i : first;
+            last = i;
         }
     }
 
@@ -1285,9 +1289,10 @@ function connectSourceToOffset(context is Context, id is Id, definition is map, 
     // The seed is rebuilt over the same run the offset side uses rather than selected
     // wholesale, which is what keeps an uncovered edge out of the loft.
     // The seed runs along the source edges, not the offset, so the offset's end slopes do
-    // not describe it. Unconstrained, as it was.
+    // not describe it: its own are the source's tangents at the first and last station.
     const seed = curveThrough(context, id + "seed", definition, points,
-        sourceShapeGates(driven.stations, span.start, span.end), undefined, undefined);
+        sourceShapeGates(driven.stations, span.start, span.end),
+        normalize(driven.stations[first].tangent), normalize(driven.stations[last].tangent));
     const offsetSide = ruledSection(context, id + "offset", definition, driven, span, 0 * meter).wire;
 
     loftSections(context, id + "loft", [seed, offsetSide]);
@@ -2508,14 +2513,22 @@ function dirText(direction is Vector) returns string
 }
 
 /**
- * One curve through a point list, as a body a loft can take.
+ * One curve through a point list, as a body a loft can take. A line or an arc only where it also meets the
+ * given end tangents (shapeRuns, reviews/2026-09-25_arc_line_fitting); anything else a spline pinned to them.
+ * @param startTangent / endTangent : unit travel directions at the first / last point, or undefined.
  */
 function curveThrough(context is Context, id is Id, definition is map, points is array,
-    gates is map, startDerivative, endDerivative) returns Query
+    gates is map, startTangent, endTangent) returns Query
 {
-    return emitShape(context, id, definition,
-        classifyPoints(points, definition.approximationTolerance, gates.allowArc, gates.allowLine),
-        points, startDerivative, endDerivative, undefined, definition.debugPrintSurface);
+    const shape = shapeRuns([{
+                    "points" : points,
+                    "startTangent" : startTangent,
+                    "endTangent" : endTangent,
+                    "allowArc" : gates.allowArc,
+                    "allowLine" : gates.allowLine
+                }], { "tolerance" : definition.approximationTolerance })[0];
+    return emitShape(context, id, definition, shape, points, shape.startTangent, shape.endTangent, undefined,
+        definition.debugPrintSurface);
 }
 
 /**
