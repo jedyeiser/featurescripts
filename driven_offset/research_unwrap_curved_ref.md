@@ -365,3 +365,12 @@ single view (intersecting the two mid rows is worse).
 - CORE keep mode is ~2 s slower since `mergeOverlappingChains` (7.4 -> 9.5 s over CAMBER): the pair test is
   box-prefiltered but still FS-side polyline work.
 - unwrap.fs (lead engineer): wire `faceMode` / `shapeTolerance`, remove the "no straight edge" guard.
+
+### 10.5 Round 2 (2026-09-29)
+
+As-built changes and measurements are in docs/unwrap_explained.md 2.6 "Round 2" and corrections 66-71: part curves
+fitted through row + span midpoints to 0.5 um (the 4103 FULL_BASELINE ringing and its ~1 mm3), trim faces read on
+13 x 13 (4103 at 0.005 mm now refused, 10.4 um tip walls; 4803 stays on cells), merged chains joined exactly (G1 by
+short-arm turning), junction overshoot inside the curve (no slivers; 4401 over FULL_BASELINE builds at 0.005 mm),
+chain merge and membership crossings rewritten (CORE keep 10.0 -> 8.8 s, merge 12.9 -> 8.6 s). Section 10.4's
+first two open items are closed.

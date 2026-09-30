@@ -104,7 +104,7 @@ export const UNWRAP_PART_RULING_RISE = 0.5;
 
 /** The counted keys of a report (pieces add them up; maxLean is a maximum). */
 export const UNWRAP_PART_COUNT_KEYS = ["cells", "keptCells", "tools", "planeTools", "arcTools", "splineTools", "ruledTools",
-        "snappedTools", "squaredWalls", "approximatedFaces", "fallbackFaces", "bands"];
+        "snappedTools", "squaredWalls", "approximatedFaces", "fallbackFaces", "bands", "holes"];
 
 // ---- PRISM (band rebuild) ----
 
@@ -165,6 +165,12 @@ export const UNWRAP_PART_REVERSE_PARAMS = [vector(0.125, 0.125), vector(0.125, 0
         vector(0.625, 0.125), vector(0.625, 0.375), vector(0.625, 0.625), vector(0.625, 0.875),
         vector(0.875, 0.125), vector(0.875, 0.375), vector(0.875, 0.625), vector(0.875, 0.875)];
 export const UNWRAP_PART_REVERSE_FLOOR = 0.01 * millimeter;
+
+/**
+ * Forward check: source-face parameters mapped forward (5 per face, on the trim). It is there to catch faces with no
+ * image at all (one point does); 3 x 3 cost 0.75 s on the CORE over FULL_BASELINE (9.05 -> 9.8 s).
+ */
+export const UNWRAP_PART_FORWARD_PARAMS = [vector(0.5, 0.5), vector(0.25, 0.25), vector(0.25, 0.75), vector(0.75, 0.25), vector(0.75, 0.75)];
 
 /** A face departing from its profile / wall by more than this (m) counts as approximated. */
 export const UNWRAP_PART_APPROX_EPS = 1e-7;
@@ -326,9 +332,10 @@ export function unwrapSolid(context is Context, id is Id, chart is map, cs is Co
         ~ report.prismPieces ~ " band-rebuilt (" ~ report.bands ~ " bands), " ~ report.cellPieces ~ " cell-rebuilt";
     if (report.rebuiltPieces > 0)
     {
-        summary = summary ~ "; reverse check max " ~ roundToPrecision(report.reverseCheckMax / millimeter, 5) ~ " mm; "
+        summary = summary ~ "; checked against the source both ways, max " ~ roundToPrecision(report.reverseCheckMax / millimeter, 5) ~ " mm; "
             ~ report.approximatedFaces ~ " face(s) approximated (max " ~ roundToPrecision(report.approximationMax / millimeter, 5)
-            ~ " mm), " ~ report.fallbackFaces ~ " beyond the shape tolerance; " ~ report.squaredWalls ~ " walls squared";
+            ~ " mm), " ~ report.fallbackFaces ~ " beyond the shape tolerance; " ~ report.squaredWalls ~ " walls squared; "
+            ~ report.holes ~ " hole(s) cut";
     }
     lines = concatenateArrays([[summary], lines]);
     return { "bodies" : bodies, "report" : report, "lines" : lines };
@@ -340,15 +347,116 @@ export function unwrapSolid(context is Context, id is Id, chart is map, cs is Co
 
 /**
  * Rebuild one piece lying over a curved span, in the chart frame. PRISM when every face is a profile or wall within
- * the shape tolerance (or a wall to square, with squareWalls) and its result passes the reverse check; otherwise the
- * exact cell rebuild, which must pass the reverse check too. A PRISM attempt runs as a sub-feature and is rolled
- * back when it fails.
+ * the shape tolerance (or a wall to square, with squareWalls) and its result passes the check; otherwise the exact
+ * cell rebuild, which must pass the check too. A PRISM attempt runs as a sub-feature and is rolled back when it fails.
+ *
+ * Holes (2026-09-29): a closed tangent chain of walls around a void (a round hole, a pocket, a slot with round ends)
+ * is found from the analysis (holeRings). The piece is then rebuilt with its holes filled (the hole faces deleted
+ * and healed on a copy), and the holes are cut afterwards by exact tools (holeVoids: a ruled tube along each wall's
+ * own rulings, floors as side-view tools). Without that, PRISM fails on the closed chain and the cell rebuild either
+ * fails or -- worse -- fills the hole and still passes the reverse check (measured: 8 mm hole over FULL_BASELINE).
+ * If the hole path fails, the piece goes the old way (and is refused rather than built wrong).
+ *
+ * The check is the reverse check (result faces mapped back onto the source) AND a forward check (source faces mapped
+ * onto the result): the reverse check alone cannot see missing features, a filled hole leaves no face to sample.
  * @returns {map} : { "body" : Query, "method" : "prism" | "cells", "report" (counts, maxLean, approximationMax and
- *      reverseCheck in plain metres), "text", "notes" : array of strings }
+ *      reverseCheck in plain metres, holes), "text", "notes" : array of strings }
  */
 export function rebuildCurvedPiece(context is Context, id is Id, chart is map, piece is Query, settings is map) returns map
 {
-    const analysis = prismAnalysis(context, chart, piece, settings);
+    const fits = prismFits(context, chart, piece, settings);
+    const holes = holeRings(context, chart, piece, fits, settings);
+    if (size(holes.rings) == 0)
+    {
+        return withHoleNotes(rebuildCurvedSolid(context, id, chart, piece, prismAnalysisOfFits(context, chart, fits, settings), settings),
+            holes.notes);
+    }
+
+    const hid = id + "holes";
+    var built = undefined;
+    var failure = undefined;
+    startFeature(context, hid, {});
+    try silent
+    {
+        built = rebuildWithHoles(context, hid, chart, piece, holes, settings);
+    }
+    catch (e)
+    {
+        failure = errorText(e);
+    }
+    if (built != undefined)
+    {
+        endFeature(context, hid);
+        return withHoleNotes(built, holes.notes);
+    }
+    abortFeature(context, hid);
+    // The old way: PRISM / cells on the piece as it is. It is checked both ways, so a hole it cannot build is refused.
+    var fallback = rebuildCurvedSolid(context, id, chart, piece, prismAnalysisOfFits(context, chart, fits, settings), settings);
+    return withHoleNotes(fallback, concatenateArrays([holes.notes, ["    " ~ size(holes.rings) ~ " hole(s) found but not cut exactly ("
+                        ~ failure ~ "); the piece was rebuilt as it is"]]));
+}
+
+/** A rebuild result with the hole search's notes added after its own. */
+export function withHoleNotes(result is map, notes is array) returns map
+{
+    var out = result;
+    out.notes = concatenateArrays([result.notes, notes]);
+    if (out.report.holes == undefined)
+    {
+        out.report.holes = 0;
+    }
+    return out;
+}
+
+/**
+ * The piece rebuilt with its holes: fill them (delete the hole faces on a copy; the kernel heals the surrounding faces
+ * across), rebuild the filled copy (rebuildCurvedSolid, checked against the copy), subtract the exact hole voids,
+ * then check the result against the real piece both ways. Throws on any failure (the caller rolls back).
+ */
+export function rebuildWithHoles(context is Context, id is Id, chart is map, piece is Query, holes is map, settings is map) returns map
+{
+    const voids = holeVoids(context, id + "voids", chart, piece, holes, settings);
+
+    opPattern(context, id + "fill", { "entities" : piece, "transforms" : [identityTransform()], "instanceNames" : ["filled"] });
+    const filled = qCreatedBy(id + "fill", EntityType.BODY);
+    var copyFaces = [];
+    for (var p in holes.facePoints)
+    {
+        copyFaces = append(copyFaces, qContainsPoint(qOwnedByBody(filled, EntityType.FACE), vector(p[0], p[1], p[2]) * meter));
+    }
+    if (size(evaluateQuery(context, qUnion(copyFaces))) != size(holes.facePoints))
+    {
+        throw regenError("the hole faces were not found on the copy");
+    }
+    opDeleteFace(context, id + "heal", { "deleteFaces" : qUnion(copyFaces), "includeFillet" : false, "capVoid" : false, "leaveOpen" : false });
+
+    const filledAnalysis = prismAnalysis(context, chart, filled, settings);
+    const inner = rebuildCurvedSolid(context, id + "solid", chart, filled, filledAnalysis, settings);
+    opBoolean(context, id + "cut", { "targets" : inner.body, "tools" : voids.body, "operationType" : BooleanOperationType.SUBTRACTION });
+    opDeleteBodies(context, id + "deleteFilled", { "entities" : filled });
+
+    const limit = max(settings.shapeTolerance, UNWRAP_PART_REVERSE_FLOOR).value + filledAnalysis.squaredMax;
+    const check = pieceCheck(context, chart, inner.body, piece);
+    if (check.distance > limit)
+    {
+        throw regenError("with its holes cut, the piece misses the source by " ~ roundToPrecision(check.distance * 1000, 4) ~ " mm ("
+                ~ check.kind ~ " check) at flat " ~ flatText(check.where) ~ " (limit " ~ roundToPrecision(limit * 1000, 4) ~ " mm)");
+    }
+    var report = inner.report;
+    report.reverseCheck = check.distance;
+    report.holes = size(holes.rings);
+    return { "body" : inner.body, "method" : inner.method, "report" : report,
+            "notes" : concatenateArrays([inner.notes, voids.notes]),
+            "text" : inner.text ~ "; " ~ size(holes.rings) ~ " hole(s) filled and cut by exact tools ("
+                ~ voids.cells ~ " void cell(s)); checked both ways " ~ roundToPrecision(check.distance * 1000, 5) ~ " mm" };
+}
+
+/**
+ * The rebuild of a piece without holes (or with them filled): see rebuildCurvedPiece. `analysis` is prismAnalysis of
+ * the piece.
+ */
+export function rebuildCurvedSolid(context is Context, id is Id, chart is map, piece is Query, analysis is map, settings is map) returns map
+{
     const limit = max(settings.shapeTolerance, UNWRAP_PART_REVERSE_FLOOR).value + analysis.squaredMax;
     var notes = [];
     var reason = undefined;
@@ -366,7 +474,7 @@ export function rebuildCurvedPiece(context is Context, id is Id, chart is map, p
         }
         if (first != undefined)
         {
-            const check = reverseCheck(context, chart, first.body, piece);
+            const check = pieceCheck(context, chart, first.body, piece);
             if (check.distance <= limit)
             {
                 endFeature(context, cid);
@@ -378,7 +486,7 @@ export function rebuildCurvedPiece(context is Context, id is Id, chart is map, p
                 report.reverseCheck = check.distance;
                 return { "body" : first.body, "method" : "cells", "report" : report,
                         "notes" : ["    " ~ size(analysis.caps) ~ " planar cap(s): the exact cell rebuild took the piece"],
-                        "text" : "cell rebuild: " ~ first.text ~ "; reverse check " ~ roundToPrecision(check.distance * 1000, 5)
+                        "text" : "cell rebuild: " ~ first.text ~ "; checked both ways " ~ roundToPrecision(check.distance * 1000, 5)
                             ~ " mm on " ~ check.samples ~ " samples" };
             }
         }
@@ -400,7 +508,7 @@ export function rebuildCurvedPiece(context is Context, id is Id, chart is map, p
         }
         if (built != undefined)
         {
-            const check = reverseCheck(context, chart, built.body, piece);
+            const check = pieceCheck(context, chart, built.body, piece);
             if (check.distance <= limit)
             {
                 endFeature(context, pid);
@@ -414,10 +522,10 @@ export function rebuildCurvedPiece(context is Context, id is Id, chart is map, p
                 report.approximationMax = analysis.approximationMax;
                 report.reverseCheck = check.distance;
                 return { "body" : built.body, "method" : "prism", "report" : report, "notes" : built.notes,
-                        "text" : "band rebuild: " ~ built.text ~ "; " ~ analysis.text ~ "; reverse check "
+                        "text" : "band rebuild: " ~ built.text ~ "; " ~ analysis.text ~ "; checked both ways "
                             ~ roundToPrecision(check.distance * 1000, 5) ~ " mm on " ~ check.samples ~ " samples" };
             }
-            reason = "the band rebuild missed the source by " ~ roundToPrecision(check.distance * 1000, 4) ~ " mm at flat "
+            reason = "the band rebuild missed the source by " ~ roundToPrecision(check.distance * 1000, 4) ~ " mm (" ~ check.kind ~ " check) at flat "
                 ~ flatText(check.where) ~ " (limit " ~ roundToPrecision(limit * 1000, 4) ~ " mm)";
         }
         abortFeature(context, pid);
@@ -447,12 +555,12 @@ export function rebuildCurvedPiece(context is Context, id is Id, chart is map, p
         throw regenError("Unwrap part: a curved piece of " ~ partName(context, settings.part) ~ " cannot be unwrapped: " ~ reason
                 ~ ", and the exact cell rebuild failed too (" ~ failure ~ ").", highlight);
     }
-    const check = reverseCheck(context, chart, cells.body, piece);
+    const check = pieceCheck(context, chart, cells.body, piece);
     if (check.distance > limit)
     {
         throw regenError("Unwrap part: the rebuilt " ~ partName(context, settings.part) ~ " misses the source by "
                 ~ roundToPrecision(check.distance * 1000, 4) ~ " mm (limit " ~ roundToPrecision(limit * 1000, 4) ~ " mm) at flat "
-                ~ flatText(check.where) ~ " (reverse check of the cell rebuild, after: " ~ reason ~ ").", highlight);
+                ~ flatText(check.where) ~ " (" ~ check.kind ~ " check of the cell rebuild, after: " ~ reason ~ ").", highlight);
     }
     var report = cells.report;
     report.fallbackFaces = size(analysis.fallback);
@@ -461,13 +569,16 @@ export function rebuildCurvedPiece(context is Context, id is Id, chart is map, p
     report.approximationMax = 0;
     report.reverseCheck = check.distance;
     return { "body" : cells.body, "method" : "cells", "report" : report, "notes" : notes,
-            "text" : "cell rebuild: " ~ cells.text ~ "; reverse check " ~ roundToPrecision(check.distance * 1000, 5) ~ " mm on "
+            "text" : "cell rebuild: " ~ cells.text ~ "; checked both ways " ~ roundToPrecision(check.distance * 1000, 5) ~ " mm on "
                 ~ check.samples ~ " samples" };
 }
 
 /**
  * Reverse check: points of every face of `body` (flat, chart frame) mapped back with unwrapInverse, and their
- * distance to the source's faces. Catches extra material and holes (a hole adds faces where the source has none).
+ * distance to the source's faces. Catches extra material, and a hole the source does not have (it adds faces). It
+ * cannot catch MISSING features: a hole the rebuild filled leaves no face to sample, and a face spanning it is sampled
+ * at 16 points that rarely land over the hole (2026-09-29: an 8 mm hole filled, reverse check 0.02 um). pieceCheck adds
+ * the forward check for that.
  * @returns {map} : { "distance" (plain metres, worst), "where" (flat point of the worst, plain metres), "samples" }
  */
 export function reverseCheck(context is Context, chart is map, body is Query, source is Query) returns map
@@ -497,6 +608,59 @@ export function reverseCheck(context is Context, chart is map, body is Query, so
         }
     }
     return { "distance" : worst, "where" : where, "samples" : samples };
+}
+
+/**
+ * Forward check: points of every face of the SOURCE (UNWRAP_PART_FORWARD_PARAMS, on its trim) mapped forward with unwrapFast, and their
+ * distance to the faces of `body` (flat, chart frame). Catches what the reverse check cannot: a source face with no
+ * image in the result (a filled hole, a lost groove).
+ * @returns {map} : { "distance" (plain metres, worst), "where" (flat point of the worst, plain metres), "samples" }
+ */
+export function forwardCheck(context is Context, chart is map, body is Query, source is Query) returns map
+{
+    const resultFaces = qOwnedByBody(body, EntityType.FACE);
+    var worst = 0;
+    var where = undefined;
+    var samples = 0;
+    for (var face in evaluateQuery(context, qOwnedByBody(source, EntityType.FACE)))
+    {
+        var previous = undefined;
+        for (var tp in evFaceTangentPlanes(context, { "face" : face, "parameters" : UNWRAP_PART_FORWARD_PARAMS,
+                        "returnUndefinedOutsideFace" : true }))
+        {
+            if (tp == undefined)
+            {
+                continue;
+            }
+            const u = chartFootAt(chart, tp.origin, previous);
+            if (!chartFootConverged(u))
+            {
+                continue;
+            }
+            previous = u;
+            const d = evDistance(context, { "side0" : vector(u[0], u[1], u[2]) * meter, "side1" : resultFaces }).distance / meter;
+            samples += 1;
+            if (d > worst)
+            {
+                worst = d;
+                where = [u[0], u[1], u[2]];
+            }
+        }
+    }
+    return { "distance" : worst, "where" : where, "samples" : samples };
+}
+
+/**
+ * A rebuilt piece against its source, both ways (reverseCheck and forwardCheck): the worse of the two.
+ * @returns {map} : { "distance", "where", "samples" (both checks), "kind" ("reverse" or "forward": the worse one) }
+ */
+export function pieceCheck(context is Context, chart is map, body is Query, source is Query) returns map
+{
+    const back = reverseCheck(context, chart, body, source);
+    const forth = forwardCheck(context, chart, body, source);
+    const worse = (forth.distance > back.distance) ? forth : back;
+    return { "distance" : worse.distance, "where" : worse.where, "samples" : back.samples + forth.samples,
+            "kind" : (forth.distance > back.distance) ? "forward" : "reverse" };
 }
 
 /** "x, y, z mm" of a flat point in plain metres ("-" when undefined). */
@@ -1242,14 +1406,17 @@ export function joinRows(ch is map, row is map)
     return joined;
 }
 
-/** Per-face parts of a row or chain run backwards: order reversed, each part's points reversed, its end normals swapped. */
+/**
+ * Per-face parts of a row or chain run backwards: order reversed, each part's points reversed, its end normals swapped,
+ * "reversed" toggled (the hole search reads it); any other field is carried.
+ */
 export function reversedParts(parts is array) returns array
 {
     var out = [];
     for (var k = size(parts) - 1; k >= 0; k -= 1)
     {
         const part = parts[k];
-        out = append(out, { "pts" : reverse(part.pts), "n0" : part.n1, "n1" : part.n0, "face" : part.face });
+        out = append(out, mergeMaps(part, { "pts" : reverse(part.pts), "n0" : part.n1, "n1" : part.n0, "reversed" : part.reversed != true }));
     }
     return out;
 }
@@ -2124,9 +2291,43 @@ export function normalShareMax(normals is array, ib is number) returns number
  * shape tolerance. A steep (x-facing) profile face also gets a plan row at its outward envelope. With squareWalls a
  * wall beyond the tolerance but leaning less than UNWRAP_PART_RULED_TOL is squared. Any other face is a fallback face.
  * @returns {map} : { "rows", "fallback" (faces), "fallbackMax", "squaredMax", "approximationMax" (plain metres),
- *      "report" : { "approximatedFaces", "squaredWalls", "maxLean" }, "text" }
+ *      "report" : { "approximatedFaces", "squaredWalls", "maxLean" }, "text", "fits" (per face { "face", "samples", "P",
+ *      "W", "cMax", "profileOK", "wallOK" }: what the hole search reads) }
  */
 export function prismAnalysis(context is Context, chart is map, piece is Query, settings is map) returns map
+{
+    return prismAnalysisOfFits(context, chart, prismFits(context, chart, piece, settings), settings);
+}
+
+/**
+ * The first, cheap stage of prismAnalysis: every face of the piece sampled on the PRISM grid (re-read on its trim only
+ * when the whole grid does not pass) and fitted in both views. The hole search reads these; the rows (the costly
+ * stage) come after it (prismAnalysisOfFits).
+ * @returns {array} : per face { "face", "samples", "P", "W", "cMax", "profileOK", "wallOK" }
+ */
+export function prismFits(context is Context, chart is map, piece is Query, settings is map) returns array
+{
+    const tol = settings.shapeTolerance / meter;
+    var fits = [];
+    for (var face in evaluateQuery(context, qOwnedByBody(piece, EntityType.FACE)))
+    {
+        var samples = prismFaceSamples(context, chart, face, false, settings.part);
+        var P = viewFit(samples, 2);
+        var W = viewFit(samples, 1);
+        if (samples.misses > 0 || min(P.dev, W.dev) > tol)
+        {
+            samples = prismFaceSamples(context, chart, face, true, settings.part);
+            P = viewFit(samples, 2);
+            W = viewFit(samples, 1);
+        }
+        fits = append(fits, { "face" : face, "samples" : samples, "P" : P, "W" : W, "cMax" : normalShareMax(samples.normals, 2),
+                    "profileOK" : P.dev <= tol, "wallOK" : W.dev <= tol });
+    }
+    return fits;
+}
+
+/** prismAnalysis from its first stage (prismFits). */
+export function prismAnalysisOfFits(context is Context, chart is map, fits is array, settings is map) returns map
 {
     const tol = settings.shapeTolerance / meter;
     const refine = tol * UNWRAP_PART_ROW_REFINE;
@@ -2143,21 +2344,15 @@ export function prismAnalysis(context is Context, chart is map, piece is Query, 
     var both = 0;
     var envelopes = 0;
     var caps = [];
-    const faces = evaluateQuery(context, qOwnedByBody(piece, EntityType.FACE));
-    for (var face in faces)
+    for (var fit in fits)
     {
-        var samples = prismFaceSamples(context, chart, face, false, settings.part);
-        var P = viewFit(samples, 2);
-        var W = viewFit(samples, 1);
-        if (samples.misses > 0 || min(P.dev, W.dev) > tol)
-        {
-            samples = prismFaceSamples(context, chart, face, true, settings.part);
-            P = viewFit(samples, 2);
-            W = viewFit(samples, 1);
-        }
-        const cMax = normalShareMax(samples.normals, 2);
-        const profileOK = P.dev <= tol;
-        var wallOK = W.dev <= tol;
+        const face = fit.face;
+        const samples = fit.samples;
+        const P = fit.P;
+        const W = fit.W;
+        const cMax = fit.cMax;
+        const profileOK = fit.profileOK;
+        var wallOK = fit.wallOK;
         var squaredHere = false;
         if (!profileOK && !wallOK && settings.squareWalls && W.dev < UNWRAP_PART_NO_FIT && cMax < UNWRAP_PART_RULED_TOL)
         {
@@ -2234,11 +2429,11 @@ export function prismAnalysis(context is Context, chart is map, piece is Query, 
             approximationMax = max(approximationMax, dev);
         }
     }
-    const text = size(faces) ~ " faces: " ~ profiles ~ " profile, " ~ walls ~ " wall (" ~ both ~ " both), " ~ envelopes
+    const text = size(fits) ~ " faces: " ~ profiles ~ " profile, " ~ walls ~ " wall (" ~ both ~ " both), " ~ envelopes
         ~ " envelope (" ~ size(caps) ~ " planar cap), " ~ approximated ~ " approximated (max " ~ roundToPrecision(approximationMax * 1000, 5) ~ " mm), "
         ~ squared ~ " squared, " ~ size(fallback) ~ " beyond tolerance";
     return { "rows" : rows, "fallback" : fallback, "fallbackMax" : fallbackMax, "squaredMax" : squaredMax,
-            "approximationMax" : approximationMax, "text" : text, "caps" : caps,
+            "approximationMax" : approximationMax, "text" : text, "caps" : caps, "fits" : fits,
             "report" : { "approximatedFaces" : approximated, "squaredWalls" : squared, "maxLean" : maxLean } };
 }
 
@@ -3755,4 +3950,857 @@ export function prismPiece(context is Context, id is Id, chart is map, piece is 
         ~ counts.splines ~ " spline; " ~ membership.probes ~ " probes, " ~ membership.tests ~ " point tests";
     return { "body" : body, "bands" : size(groups), "tools" : size(pch) + size(wch), "counts" : counts, "snapped" : snapped,
             "text" : text, "notes" : notes };
+}
+
+// ============================================================================
+// Holes in a curved piece (2026-09-29)
+// ============================================================================
+
+/** Share of the shape tolerance a hole wall's middle row may leave the straight ruling between its end rows. */
+export const UNWRAP_PART_RING_RULED = 0.25;
+
+/** Margin (m) of the void box around the holes. */
+export const UNWRAP_PART_RING_MARGIN = 0.001;
+
+/** Probe grid (G x G on the trim) that decides whether a face next to a hole wall lies inside it (a floor). */
+export const UNWRAP_PART_RING_INNER_GRID = 5;
+
+/** A probe this far (m) outside a hole's sampled outline still counts as inside it. */
+export const UNWRAP_PART_RING_INSIDE_TOL = 5e-5;
+
+/**
+ * The holes of a piece: closed tangent chains of wall-like faces (vertical in the flat within the shape tolerance, or
+ * leaning less than UNWRAP_PART_RULED_TOL: a world-vertical hole over a curved reference leans by the reference's slope)
+ * whose outward normals point INTO the loop (material outside it). Read from the pieces fits: a coarse plan row per
+ * wall-like face on its PRISM grid (prismFits), chained like PRISM chains its rows. Each ring then gets its exact rows
+ * (holeRing).
+ * @returns {map} : { "rings" (holeRing results), "facePoints" (a point on every face to delete for the fill, plain
+ *      metres, world), "notes" }
+ */
+export function holeRings(context is Context, chart is map, piece is Query, fits is array, settings is map) returns map
+{
+    var rows = [];
+    for (var k = 0; k < size(fits); k += 1)
+    {
+        const f = fits[k];
+        if (f.profileOK || f.W.dev >= UNWRAP_PART_NO_FIT || f.cMax >= UNWRAP_PART_RULED_TOL)
+        {
+            continue;
+        }
+        const row = coarseWallRow(context, chart, f, k);
+        if (row != undefined)
+        {
+            rows = append(rows, row);
+        }
+    }
+    var rings = [];
+    var facePoints = [];
+    var notes = [];
+    if (size(rows) == 0)
+    {
+        return { "rings" : rings, "facePoints" : facePoints, "notes" : notes };
+    }
+    var byId = {};
+    for (var k = 0; k < size(fits); k += 1)
+    {
+        byId[fits[k].face.transientId] = k;
+    }
+    // Every hole wall first: a hole inside another's floor (a counterbore's through hole) is that other hole's business.
+    var loops = [];
+    var wallIds = {};
+    for (var ch in chainRows(rows, "WALL"))
+    {
+        if (closedChain(ch) && enclosesVoid(ch))
+        {
+            loops = append(loops, ch);
+            for (var face in ch.faces)
+            {
+                wallIds[face.transientId] = true;
+            }
+        }
+    }
+    for (var ch in loops)
+    {
+        const ring = holeRing(context, chart, piece, ch, fits, byId, wallIds, settings);
+        if (ring.problem != undefined)
+        {
+            notes = append(notes, "    a hole was found but cannot be cut exactly: " ~ ring.problem);
+            continue;
+        }
+        rings = append(rings, ring);
+        facePoints = concatenateArrays([facePoints, ring.facePoints]);
+    }
+    return { "rings" : rings, "facePoints" : facePoints, "notes" : notes };
+}
+
+/**
+ * A wall-like face's coarse plan row: its PRISM grid's middle line along the curve direction ((x, y) and the flat
+ * normals at its ends), as a chainRows row with one part ("fit" = its index in the analysis fits). Read straight from
+ * the face when the grid was read on the trim and the line has gaps. undefined when the chart cannot map it.
+ */
+export function coarseWallRow(context is Context, chart is map, fit is map, k is number)
+{
+    const flat = fit.samples.flat;
+    const normals = fit.samples.normals;
+    const G = round(sqrt(size(flat)));
+    const m = (G - 1) / 2;
+    const alongU = fit.W.alongU;
+    var pts = [];
+    var ns = [];
+    for (var s = 0; s < G; s += 1)
+    {
+        const i = gridIndex(s, m, alongU, G);
+        if (flat[i] == undefined)
+        {
+            pts = [];
+            break;
+        }
+        pts = append(pts, [flat[i][0], flat[i][1]]);
+        ns = append(ns, [normals[i][0], normals[i][1]]);
+    }
+    if (size(pts) == 0)
+    {
+        ns = [];
+        var fs = [];
+        for (var s = 0; s < UNWRAP_PART_PRISM_GRID; s += 1)
+        {
+            fs = append(fs, s / (UNWRAP_PART_PRISM_GRID - 1));
+        }
+        var previous = undefined;
+        for (var tp in evFaceTangentPlanes(context, { "face" : fit.face, "parameters" : rowParameters(fs, alongU) }))
+        {
+            const u = chartFootAt(chart, tp.origin, previous);
+            if (!chartFootConverged(u))
+            {
+                return undefined;
+            }
+            previous = u;
+            const n = flatNormal(chart, u, tp.normal);
+            pts = append(pts, [u[0], u[1]]);
+            ns = append(ns, [n[0], n[1]]);
+        }
+    }
+    const last = size(pts) - 1;
+    return { "kind" : "WALL", "pts" : pts, "e0" : { "n" : ns[0] }, "e1" : { "n" : ns[last] }, "faces" : [fit.face],
+            "parts" : [{ "pts" : pts, "n0" : ns[0], "n1" : ns[last], "face" : fit.face, "fit" : k }] };
+}
+
+/** Whether a chain closes on itself: its last end meets its first within UNWRAP_PART_JOIN, running on tangentially. */
+export function closedChain(ch is map) returns boolean
+{
+    const pts = ch.pts;
+    const n = size(pts);
+    if (n < 3 || planarDistance(pts[0], pts[n - 1]) >= UNWRAP_PART_JOIN)
+    {
+        return false;
+    }
+    return endsTangent(ch.e1, ch.e0, planarDirection(pts[n - 2], pts[n - 1]), planarDirection(pts[0], pts[1]));
+}
+
+/**
+ * Whether a closed chain bounds a void: its faces' outward normals point into the loop (the loop's interior lies to
+ * the left of its travel when it runs anticlockwise).
+ */
+export function enclosesVoid(ch is map) returns boolean
+{
+    const area = polygonArea(ch.pts);
+    if (abs(area) < 1e-12)
+    {
+        return false;
+    }
+    const d = planarDirection(ch.pts[0], ch.pts[1]);
+    const left = [-d[1], d[0]];
+    const n = ch.e0.n;
+    return (area > 0) == (planarDot(n, left) > 0);
+}
+
+/** Signed area (shoelace) of a closed planar polygon; a repeated last point is harmless. */
+export function polygonArea(pts is array) returns number
+{
+    var area = 0;
+    const n = size(pts);
+    for (var k = 0; k < n; k += 1)
+    {
+        const a = pts[k];
+        const b = pts[(k + 1) % n];
+        area += a[0] * b[1] - b[0] * a[1];
+    }
+    return 0.5 * area;
+}
+
+/** Whether a planar point lies inside a closed polygon (even-odd rule), or within tol of its outline. */
+export function insidePolygon(poly is array, p is array, tol is number) returns boolean
+{
+    var inside = false;
+    const n = size(poly);
+    for (var k = 0; k < n; k += 1)
+    {
+        const a = poly[k];
+        const b = poly[(k + 1) % n];
+        if ((a[1] > p[1]) != (b[1] > p[1]))
+        {
+            const x = a[0] + (p[1] - a[1]) / (b[1] - a[1]) * (b[0] - a[0]);
+            if (p[0] < x)
+            {
+                inside = !inside;
+            }
+        }
+    }
+    if (inside || tol <= 0)
+    {
+        return inside;
+    }
+    return polylineDistance(append(poly, poly[0]), p) <= tol;
+}
+
+/**
+ * One hole, exactly: each wall face's rows at the two ends of its rulings (the face parameter box's edges across the
+ * curve direction) and in the middle, in chain order, refined until each row is within a quarter of the shape
+ * tolerance of the cubic through its neighbours; the rulings checked straight (the middle row on the line between the
+ * end rows); the faces inside the loop (floors: profile faces only) and their side-view rows. A wall of another hole
+ * inside it (`wallIds`: a counterbore's through hole in its floor) is left to that hole.
+ * @returns {map} : { "faces", "inner", "B", "T", "M" (the closed rows, [x, y, z] plain metres, the last point not
+ *      repeated), "segments" (per wall face in chain order: its own rows { "B", "T", "M", "NB", "NT" }, ends shared with
+ *      its neighbours), "polygon" (the middle row in plan), "floors" ([{ "row", "up" }]), "facePoints", "problem" (text,
+ *      when the hole cannot be cut exactly) }
+ */
+export function holeRing(context is Context, chart is map, piece is Query, ch is map, fits is array, byId is map, wallIds is map,
+    settings is map) returns map
+{
+    const tol = settings.shapeTolerance / meter;
+    const refine = tol * UNWRAP_PART_ROW_REFINE;
+    var B = [];
+    var T = [];
+    var M = [];
+    var faces = [];
+    var segments = [];
+    for (var part in ch.parts)
+    {
+        const fit = fits[part.fit];
+        faces = append(faces, part.face);
+        var rows = ringFaceRows(context, chart, part.face, fit.W, refine, settings.part);
+        if (part.reversed == true)
+        {
+            rows = { "B" : reverse(rows.B), "T" : reverse(rows.T), "M" : reverse(rows.M), "NB" : reverse(rows.NB), "NT" : reverse(rows.NT) };
+        }
+        segments = append(segments, rows);
+        var from = 0;
+        if (size(M) > 0)
+        {
+            if (planarDistance(M[size(M) - 1], rows.M[0]) >= UNWRAP_PART_JOIN)
+            {
+                return { "problem" : "its wall faces do not meet end to end" };
+            }
+            from = 1;
+        }
+        B = concatenateArrays([B, subArray(rows.B, from, size(rows.B))]);
+        T = concatenateArrays([T, subArray(rows.T, from, size(rows.T))]);
+        M = concatenateArrays([M, subArray(rows.M, from, size(rows.M))]);
+    }
+    const n = size(M) - 1;
+    if (n < 3 || planarDistance(M[n], M[0]) >= UNWRAP_PART_JOIN)
+    {
+        return { "problem" : "its wall does not close" };
+    }
+    B = subArray(B, 0, n);
+    T = subArray(T, 0, n);
+    M = subArray(M, 0, n);
+
+    // The rulings: straight (the middle row on the line between the end rows) and rising.
+    var bent = 0;
+    for (var k = 0; k < n; k += 1)
+    {
+        const d = [T[k][0] - B[k][0], T[k][1] - B[k][1], T[k][2] - B[k][2]];
+        const len = sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        if (len < 1e-9 || abs(d[2]) < UNWRAP_PART_RULING_RISE * len)
+        {
+            return { "problem" : "its wall does not rise across the part" };
+        }
+        bent = max(bent, sqrt((M[k][0] - 0.5 * (B[k][0] + T[k][0])) ^ 2 + (M[k][1] - 0.5 * (B[k][1] + T[k][1])) ^ 2
+                        + (M[k][2] - 0.5 * (B[k][2] + T[k][2])) ^ 2));
+    }
+    if (bent > UNWRAP_PART_RING_RULED * tol)
+    {
+        return { "problem" : "its wall is not a ruled surface (" ~ roundToPrecision(bent * 1000, 4) ~ " mm off its rulings)" };
+    }
+    var polygon = [];
+    for (var p in M)
+    {
+        polygon = append(polygon, [p[0], p[1]]);
+    }
+
+    // Faces inside the loop (floors), grown from the faces next to the wall; any other neighbour is a mouth.
+    var inner = [];
+    var floors = [];
+    var visited = qUnion(faces);
+    var frontier = qUnion(faces);
+    while (true)
+    {
+        const next = evaluateQuery(context, qSubtraction(qAdjacent(frontier, AdjacencyType.EDGE, EntityType.FACE), visited));
+        if (size(next) == 0)
+        {
+            break;
+        }
+        visited = qUnion([visited, qUnion(next)]);
+        var grown = [];
+        for (var face in next)
+        {
+            const where = faceInsidePolygon(context, chart, face, polygon);
+            if (where == "outside")
+            {
+                if (size(inner) > 0 && !isQueryEmpty(context, qIntersection([qAdjacent(face, AdjacencyType.EDGE, EntityType.FACE), qUnion(inner)])))
+                {
+                    return { "problem" : "a face inside it also reaches outside it" };
+                }
+                continue;
+            }
+            if (wallIds[face.transientId] == true)
+            {
+                continue;
+            }
+            const k = byId[face.transientId];
+            if (k == undefined || !fits[k].profileOK)
+            {
+                return { "problem" : "a face inside it (a floor fillet, a sloped or stepped floor) is not a side-view shape" };
+            }
+            const row = prismRow(context, chart, face, "PROFILE", fits[k].P, false, refine, settings.part);
+            const up = row.e0.n[1];
+            if (abs(up) < 0.5)
+            {
+                return { "problem" : "its floor is too steep" };
+            }
+            floors = append(floors, { "row" : row, "up" : (up > 0) ? 1 : -1 });
+            inner = append(inner, face);
+            grown = append(grown, face);
+        }
+        if (size(grown) == 0)
+        {
+            break;
+        }
+        frontier = qUnion(grown);
+    }
+
+    var facePoints = [];
+    for (var face in concatenateArrays([faces, inner]))
+    {
+        const p = pointOnFace(context, face);
+        if (p == undefined)
+        {
+            return { "problem" : "a point on one of its faces was not found" };
+        }
+        facePoints = append(facePoints, p);
+    }
+    return { "faces" : faces, "inner" : inner, "B" : B, "T" : T, "M" : M, "segments" : segments, "polygon" : polygon,
+            "floors" : floors, "facePoints" : facePoints };
+}
+
+/**
+ * Where a face lies against a hole's plan outline: "inside" (every probe on its trim within it, or within
+ * UNWRAP_PART_RING_INSIDE_TOL of it: a floor's edge lies on the outline) or "outside" (a probe clearly outside it: a
+ * mouth face, whose own edge on the rim is within the tolerance too -- a narrow groove floor the hole cuts through).
+ */
+export function faceInsidePolygon(context is Context, chart is map, face is Query, polygon is array) returns string
+{
+    var inside = 0;
+    var outside = 0;
+    var previous = undefined;
+    for (var tp in evFaceTangentPlanes(context, { "face" : face, "parameters" : prismGrid(UNWRAP_PART_RING_INNER_GRID),
+                    "returnUndefinedOutsideFace" : true }))
+    {
+        if (tp == undefined)
+        {
+            continue;
+        }
+        const u = chartFootAt(chart, tp.origin, previous);
+        if (!chartFootConverged(u))
+        {
+            continue;
+        }
+        previous = u;
+        if (insidePolygon(polygon, [u[0], u[1]], UNWRAP_PART_RING_INSIDE_TOL))
+        {
+            inside += 1;
+        }
+        else
+        {
+            outside += 1;
+        }
+    }
+    return (outside == 0 && inside > 0) ? "inside" : "outside";
+}
+
+/** A world point (plain metres) inside a face's trim (off its boundary, so it names that face alone), or undefined. */
+export function pointOnFace(context is Context, face is Query)
+{
+    const inside = [vector(0.5, 0.5), vector(0.25, 0.25), vector(0.75, 0.75), vector(0.25, 0.75), vector(0.75, 0.25),
+            vector(0.5, 0.25), vector(0.5, 0.75), vector(0.25, 0.5), vector(0.75, 0.5), vector(0.1, 0.5), vector(0.9, 0.5),
+            vector(0.5, 0.1), vector(0.5, 0.9)];
+    for (var tp in evFaceTangentPlanes(context, { "face" : face, "parameters" : inside, "returnUndefinedOutsideFace" : true }))
+    {
+        if (tp != undefined)
+        {
+            const p = tp.origin / meter;
+            return [p[0], p[1], p[2]];
+        }
+    }
+    return undefined;
+}
+
+/**
+ * A hole wall face's three rows along its curve direction (fit.alongU): at the two ends of its rulings (the parameter
+ * box's edges across it, t = 0 and 1) and in the middle, flat [x, y, z] (plain metres), refined together until each
+ * span's midpoint of the end rows is within `tolerance` of the cubic through its neighbours; with the flat normals of
+ * the end rows.
+ * @returns {map} : { "B", "T", "M", "NB", "NT" }
+ */
+export function ringFaceRows(context is Context, chart is map, face is Query, fit is map, tolerance is number, part is Query) returns map
+{
+    const n = min(max(ceil(fit.spread / UNWRAP_PART_ROW_SEED_SPACING) + 1, UNWRAP_PART_ROW_SEED_MIN), UNWRAP_PART_PRISM_ROW_MAX);
+    var fs = [];
+    for (var k = 0; k < n; k += 1)
+    {
+        fs = append(fs, k / (n - 1));
+    }
+    var rows = [];
+    var normals = [];
+    for (var t in [0, 1, 0.5])
+    {
+        const row = ringRow(context, chart, face, fs, fit.alongU, t, part);
+        rows = append(rows, row.pts);
+        normals = append(normals, row.normals);
+    }
+    var open = makeArray(n - 1, true);
+    for (var pass = 0; pass < UNWRAP_PART_ROW_PASSES; pass += 1)
+    {
+        var spans = [];
+        for (var j = 0; j + 1 < size(fs); j += 1)
+        {
+            if (open[j])
+            {
+                spans = append(spans, j);
+            }
+        }
+        if (size(spans) == 0 || size(fs) + size(spans) > UNWRAP_PART_PRISM_ROW_MAX)
+        {
+            break;
+        }
+        var mids = [];
+        for (var j in spans)
+        {
+            mids = append(mids, 0.5 * (fs[j] + fs[j + 1]));
+        }
+        var midRows = [];
+        var midNormals = [];
+        for (var t in [0, 1, 0.5])
+        {
+            const row = ringRow(context, chart, face, mids, fit.alongU, t, part);
+            midRows = append(midRows, row.pts);
+            midNormals = append(midNormals, row.normals);
+        }
+        var newFs = [];
+        var newRows = [[], [], []];
+        var newNormals = [[], [], []];
+        var newOpen = [];
+        var k = 0;
+        for (var j = 0; j < size(fs); j += 1)
+        {
+            newFs = append(newFs, fs[j]);
+            for (var r in [0, 1, 2])
+            {
+                newRows[r] = append(newRows[r], rows[r][j]);
+                newNormals[r] = append(newNormals[r], normals[r][j]);
+            }
+            if (j + 1 == size(fs))
+            {
+                break;
+            }
+            if (k < size(spans) && spans[k] == j)
+            {
+                const miss = max(rowMidMiss3(fs, rows[0], j, midRows[0][k]), rowMidMiss3(fs, rows[1], j, midRows[1][k]));
+                k += 1;
+                if (miss > tolerance)
+                {
+                    newOpen = append(newOpen, true);
+                    newFs = append(newFs, mids[k - 1]);
+                    for (var r in [0, 1, 2])
+                    {
+                        newRows[r] = append(newRows[r], midRows[r][k - 1]);
+                        newNormals[r] = append(newNormals[r], midNormals[r][k - 1]);
+                    }
+                    newOpen = append(newOpen, true);
+                    continue;
+                }
+            }
+            newOpen = append(newOpen, false);
+        }
+        fs = newFs;
+        rows = newRows;
+        normals = newNormals;
+        open = newOpen;
+    }
+    return { "B" : rows[0], "T" : rows[1], "M" : rows[2], "NB" : normals[0], "NT" : normals[1] };
+}
+
+/**
+ * Chart points [x, y, z] of a face along its curve direction at fractions fs, at fraction t across (warm-started), and
+ * the flat normals [a, b, c] there.
+ * @returns {map} : { "pts", "normals" }
+ */
+export function ringRow(context is Context, chart is map, face is Query, fs is array, alongU is boolean, t is number, part is Query) returns map
+{
+    var parameters = [];
+    for (var f in fs)
+    {
+        parameters = append(parameters, alongU ? vector(f, t) : vector(t, f));
+    }
+    var pts = [];
+    var normals = [];
+    var previous = undefined;
+    for (var tp in evFaceTangentPlanes(context, { "face" : face, "parameters" : parameters }))
+    {
+        previous = checkedFaceFoot(context, chart, tp.origin, previous, face, part);
+        pts = append(pts, [previous[0], previous[1], previous[2]]);
+        normals = append(normals, flatNormal(chart, previous, tp.normal));
+    }
+    return { "pts" : pts, "normals" : normals };
+}
+
+/** rowMidMiss in all three chart coordinates. */
+export function rowMidMiss3(fs is array, feet is array, j is number, mid is array) returns number
+{
+    const n = size(fs);
+    const h = fs[j + 1] - fs[j];
+    var miss = 0;
+    for (var c in [0, 1, 2])
+    {
+        const p0 = feet[j][c];
+        const p1 = feet[j + 1][c];
+        const m0 = (j > 0) ? (feet[j + 1][c] - feet[j - 1][c]) / (fs[j + 1] - fs[j - 1]) : (p1 - p0) / h;
+        const m1 = (j + 2 < n) ? (feet[j + 2][c] - feet[j][c]) / (fs[j + 2] - fs[j]) : (p1 - p0) / h;
+        miss = max(miss, abs(mid[c] - (0.5 * (p0 + p1) + h / 8 * (m0 - m1))));
+    }
+    return miss;
+}
+
+/**
+ * The flat voids of a piece's holes, as solids (chart frame): a box around the holes split by each hole's ruled tube
+ * (holeTube), the columns inside a tube split by that hole's floors (side-view tools, as the cell rebuild builds
+ * them), and the cells kept that lie inside a hole's outline on the open side of all its floors. Such a cell may reach
+ * past the part (above a through hole's mouth): subtracting it from the flat part removes nothing there. A kept cell
+ * whose interior maps back INTO the piece is an error (the hole is not what the rings say).
+ * @returns {map} : { "body" : Query (the void solids), "cells", "notes" }
+ */
+export function holeVoids(context is Context, id is Id, chart is map, piece is Query, holes is map, settings is map) returns map
+{
+    var lo = [1e9, 1e9, 1e9];
+    var hi = [-1e9, -1e9, -1e9];
+    for (var ring in holes.rings)
+    {
+        for (var p in concatenateArrays([ring.B, ring.T]))
+        {
+            for (var ax in [0, 1, 2])
+            {
+                lo[ax] = min(lo[ax], p[ax]);
+                hi[ax] = max(hi[ax], p[ax]);
+            }
+        }
+    }
+    for (var ax in [0, 1, 2])
+    {
+        lo[ax] -= UNWRAP_PART_RING_MARGIN;
+        hi[ax] += UNWRAP_PART_RING_MARGIN;
+    }
+    const reach = sqrt((hi[0] - lo[0]) ^ 2 + (hi[1] - lo[1]) ^ 2 + (hi[2] - lo[2]) ^ 2) + 0.01;
+    fCuboid(context, id + "box", { "corner1" : vector(lo[0], lo[1], lo[2]) * meter, "corner2" : vector(hi[0], hi[1], hi[2]) * meter });
+    // Every solid made under id is a cell (the tubes and floor tools are sheets). Each tool and its split share a parent
+    // id: interleaved "tube" / "cut" parents fail ("Parent Id used at two non-contiguous points").
+    const cellsQ = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SOLID);
+    for (var i = 0; i < size(holes.rings); i += 1)
+    {
+        const hid = id + ("hole" ~ i);
+        const tube = holeTube(context, hid + "tube", holes.rings[i], lo, hi);
+        opSplitPart(context, hid + "cut", { "targets" : cellsQ, "tool" : tube, "keepTools" : true });
+    }
+    for (var i = 0; i < size(holes.rings); i += 1)
+    {
+        const ring = holes.rings[i];
+        for (var j = 0; j < size(ring.floors); j += 1)
+        {
+            var targets = [];
+            for (var cell in evaluateQuery(context, cellsQ))
+            {
+                const p = interiorPoint(context, cell) / meter;
+                if (insidePolygon(ring.polygon, [p[0], p[1]], 0))
+                {
+                    targets = append(targets, cell);
+                }
+            }
+            if (size(targets) == 0)
+            {
+                throw regenError("a hole's column was not found");
+            }
+            const fid = id + ("floor" ~ i ~ "_" ~ j);
+            const chains = markGrazingEnds(distinctChains(chainRows([ring.floors[j].row], "PROFILE"), settings.flatTolerance.value));
+            const tool = chainTool(context, fid + "tool", chains[0], lo, hi, reach);
+            opSplitPart(context, fid + "cut", { "targets" : qUnion(targets),
+                        "tool" : (tool.plane != undefined) ? tool.plane : tool.body, "keepTools" : true });
+        }
+    }
+    var drop = [];
+    var kept = 0;
+    for (var cell in evaluateQuery(context, cellsQ))
+    {
+        const p = interiorPoint(context, cell) / meter;
+        var isVoid = false;
+        for (var ring in holes.rings)
+        {
+            if (!insidePolygon(ring.polygon, [p[0], p[1]], 0))
+            {
+                continue;
+            }
+            var open = true;
+            for (var floor in ring.floors)
+            {
+                if ((p[2] - rowHeightAt(floor.row.pts, p[0])) * floor.up <= 0)
+                {
+                    open = false;
+                }
+            }
+            if (open)
+            {
+                isVoid = true;
+            }
+        }
+        if (!isVoid)
+        {
+            drop = append(drop, cell);
+            continue;
+        }
+        const w = unwrapInverse(chart, p[0], p[1], p[2]);
+        if (!isQueryEmpty(context, qContainsPoint(piece, vector(w[0], w[1], w[2]) * meter)))
+        {
+            throw regenError("a hole's void maps back into the material at flat " ~ flatText(p));
+        }
+        kept += 1;
+    }
+    if (kept == 0)
+    {
+        throw regenError("no hole void was found");
+    }
+    if (size(drop) > 0)
+    {
+        opDeleteBodies(context, id + "drop", { "entities" : qUnion(drop) });
+    }
+    const scrap = qBodyType(qCreatedBy(id, EntityType.BODY), [BodyType.SHEET, BodyType.WIRE, BodyType.POINT]);
+    if (!isQueryEmpty(context, scrap))
+    {
+        opDeleteBodies(context, id + "clean", { "entities" : scrap });
+    }
+    return { "body" : qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SOLID), "cells" : kept,
+            "notes" : ["    " ~ size(holes.rings) ~ " hole(s): ruled tube(s), " ~ kept ~ " void cell(s)"] };
+}
+
+/** The height (second coordinate) of a side-view row at x: on the polyline, or its end segment's extension past it. */
+export function rowHeightAt(pts is array, x is number) returns number
+{
+    const n = size(pts);
+    for (var k = 0; k + 1 < n; k += 1)
+    {
+        const a = pts[k];
+        const b = pts[k + 1];
+        if ((a[0] - x) * (b[0] - x) <= 0 && abs(b[0] - a[0]) > 1e-12)
+        {
+            return a[1] + (x - a[0]) / (b[0] - a[0]) * (b[1] - a[1]);
+        }
+    }
+    const first = abs(x - pts[0][0]) < abs(x - pts[n - 1][0]);
+    const a = first ? pts[0] : pts[n - 2];
+    const b = first ? pts[1] : pts[n - 1];
+    return (abs(b[0] - a[0]) > 1e-12) ? a[1] + (x - a[0]) / (b[0] - a[0]) * (b[1] - a[1]) : a[1];
+}
+
+/**
+ * A hole's wall as a closed ruled sheet reaching past the box below and above: every ruling (the line through B[k] and
+ * T[k]) cut at two flat heights just outside the box, the two rows of cut points fitted with the same parameters (so
+ * the same knots), and the surface between them written down as a ruled B-spline surface (degree 1 across). Exact at
+ * the rulings sampled; between them within the row refinement. Cutting at fixed heights (not extending by a length)
+ * keeps the rows smooth where wall faces of different height meet (a slot's half-cylinder and plane).
+ *
+ * One wall face (a round hole): one closed periodic interpolation. Several (a slot: two half-cylinders and two planes):
+ * one ruled patch per face, its rows interpolated on their own with the end rulings shared with its neighbours and one
+ * shared tangent per joint (horizontal, normal to the wall there), the patches sewn into one sheet by a union. Measured
+ * on a slot: one closed interpolation across all four faces rang where the curvature jumps from the arc to the line
+ * (8.6 um); the faces joined into one curve with triple knots is refused when it closes (BAD_GEOMETRY: a clamped curve
+ * may not close on itself).
+ * @returns {Query} : the sheet body
+ */
+export function holeTube(context is Context, id is Id, ring is map, lo is array, hi is array) returns Query
+{
+    const zLow = lo[2] - UNWRAP_PART_RING_MARGIN;
+    const zHigh = hi[2] + UNWRAP_PART_RING_MARGIN;
+    if (size(ring.segments) == 1)
+    {
+        const cut = cutRulings(ring.B, ring.T, zLow, zHigh);
+        const parameters = chordParameters(append(ring.M, ring.M[0]));
+        ruledPatch(context, id + "sheet", append(cut.below, cut.below[0]), append(cut.above, cut.above[0]), parameters, undefined);
+    }
+    else
+    {
+        const nseg = size(ring.segments);
+        // Joint j (the start of segment j, the end of segment j - 1): its two cut points, shared exactly, and its tangents.
+        var joints = [];
+        for (var j = 0; j < nseg; j += 1)
+        {
+            const prev = ring.segments[(j + nseg - 1) % nseg];
+            const cur = ring.segments[j];
+            const a = cutRulings([prev.B[size(prev.B) - 1]], [prev.T[size(prev.T) - 1]], zLow, zHigh);
+            const b = cutRulings([cur.B[0]], [cur.T[0]], zLow, zHigh);
+            const travel = [cur.M[1][0] - cur.M[0][0], cur.M[1][1] - cur.M[0][1]];
+            joints = append(joints, { "below" : 0.5 * (a.below[0] + b.below[0]), "above" : 0.5 * (a.above[0] + b.above[0]),
+                        "tBelow" : horizontalTangent(prev.NB[size(prev.NB) - 1], cur.NB[0], travel),
+                        "tAbove" : horizontalTangent(prev.NT[size(prev.NT) - 1], cur.NT[0], travel) });
+        }
+        var patches = [];
+        for (var i = 0; i < nseg; i += 1)
+        {
+            const seg = ring.segments[i];
+            const next = (i + 1) % nseg;
+            var cut = cutRulings(seg.B, seg.T, zLow, zHigh);
+            const m = size(cut.below);
+            cut.below[0] = joints[i].below;
+            cut.above[0] = joints[i].above;
+            cut.below[m - 1] = joints[next].below;
+            cut.above[m - 1] = joints[next].above;
+            ruledPatch(context, id + ("patch" ~ i), cut.below, cut.above, chordParameters(seg.M),
+                [joints[i].tBelow, joints[next].tBelow, joints[i].tAbove, joints[next].tAbove]);
+            patches = append(patches, qBodyType(qCreatedBy(id + ("patch" ~ i), EntityType.BODY), BodyType.SHEET));
+        }
+        opBoolean(context, id + "sheet", { "tools" : qUnion(patches), "operationType" : BooleanOperationType.UNION });
+    }
+    const rows = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.WIRE);
+    if (!isQueryEmpty(context, rows))
+    {
+        opDeleteBodies(context, id + "deleteRows", { "entities" : rows });
+    }
+    const sheet = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET);
+    if (size(evaluateQuery(context, sheet)) != 1)
+    {
+        throw regenError("a hole wall did not sew into one sheet");
+    }
+    return sheet;
+}
+
+/**
+ * A ruled B-spline patch between two rows (unitless Vectors, metres) fitted with the same parameters (so the same
+ * knots), degree 1 across; closed and periodic when the rows close. `tangents`: undefined, or unit end directions
+ * [below start, below end, above start, above end] (scaled by each row's length).
+ */
+export function ruledPatch(context is Context, id is Id, below is array, above is array, parameters is array, tangents)
+{
+    var curves = [];
+    for (var r in [0, 1])
+    {
+        const pts = (r == 0) ? below : above;
+        var definition = { "points" : inMetres(pts), "parameters" : parameters };
+        if (tangents != undefined)
+        {
+            const length = polylineLength3(pts);
+            definition.startDerivative = tangents[2 * r] * length * meter;
+            definition.endDerivative = tangents[2 * r + 1] * length * meter;
+        }
+        opFitSpline(context, id + ("row" ~ r), definition);
+        curves = append(curves, evCurveDefinition(context, { "edge" : qCreatedBy(id + ("row" ~ r), EntityType.EDGE) }));
+    }
+    const cb = curves[0];
+    const ct = curves[1];
+    if (!(cb is BSplineCurve) || !(ct is BSplineCurve) || size(cb.controlPoints) != size(ct.controlPoints) || cb.knots != ct.knots
+        || cb.isPeriodic != ct.isPeriodic || cb.degree != ct.degree)
+    {
+        throw regenError("a hole wall's two rows did not fit alike");
+    }
+    var grid = [];
+    for (var i = 0; i < size(cb.controlPoints); i += 1)
+    {
+        grid = append(grid, [cb.controlPoints[i], ct.controlPoints[i]]);
+    }
+    opCreateBSplineSurface(context, id, { "bSplineSurface" : bSplineSurface({
+                        "uDegree" : cb.degree,
+                        "vDegree" : 1,
+                        "isUPeriodic" : cb.isPeriodic,
+                        "isVPeriodic" : false,
+                        "controlPoints" : controlPointMatrix(grid),
+                        "uKnots" : cb.knots,
+                        "vKnots" : knotArray([0, 0, 1, 1])
+                    }) });
+}
+
+/**
+ * Rulings (B[k] -> T[k], [x, y, z] plain metres) cut at two flat heights: { "below", "above" } as unitless Vectors.
+ */
+export function cutRulings(B is array, T is array, zLow is number, zHigh is number) returns map
+{
+    var below = [];
+    var above = [];
+    for (var k = 0; k < size(B); k += 1)
+    {
+        const b = vector(B[k][0], B[k][1], B[k][2]);
+        const d = vector(T[k][0], T[k][1], T[k][2]) - b;
+        below = append(below, b + (zLow - b[2]) / d[2] * d);
+        above = append(above, b + (zHigh - b[2]) / d[2] * d);
+    }
+    return { "below" : below, "above" : above };
+}
+
+/** Unitless Vectors as lengths in metres. */
+export function inMetres(pts is array) returns array
+{
+    var out = [];
+    for (var p in pts)
+    {
+        out = append(out, p * meter);
+    }
+    return out;
+}
+
+/** Chord-length parameters in [0, 1] of a polyline of [x, y, z] (or Vector) points. */
+export function chordParameters(pts is array) returns array
+{
+    var chords = [0];
+    for (var k = 1; k < size(pts); k += 1)
+    {
+        chords = append(chords, chords[k - 1] + sqrt((pts[k][0] - pts[k - 1][0]) ^ 2 + (pts[k][1] - pts[k - 1][1]) ^ 2
+                        + (pts[k][2] - pts[k - 1][2]) ^ 2));
+    }
+    const total = chords[size(chords) - 1];
+    var out = [];
+    for (var c in chords)
+    {
+        out = append(out, c / total);
+    }
+    return out;
+}
+
+/** Length of a polyline of [x, y, z] (or Vector) points. */
+export function polylineLength3(pts is array) returns number
+{
+    var total = 0;
+    for (var k = 1; k < size(pts); k += 1)
+    {
+        total += sqrt((pts[k][0] - pts[k - 1][0]) ^ 2 + (pts[k][1] - pts[k - 1][1]) ^ 2 + (pts[k][2] - pts[k - 1][2]) ^ 2);
+    }
+    return total;
+}
+
+/**
+ * The unit horizontal tangent of a wall at a joint: normal to the average of the two faces' flat normals there (and to
+ * flat Z), pointing along the travel direction (plan).
+ */
+export function horizontalTangent(n0 is array, n1 is array, travel is array) returns Vector
+{
+    var t = vector(n0[1] + n1[1], -(n0[0] + n1[0]), 0);
+    if (t[0] * travel[0] + t[1] * travel[1] < 0)
+    {
+        t = -t;
+    }
+    return normalize(t);
 }

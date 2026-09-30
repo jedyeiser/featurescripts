@@ -298,7 +298,7 @@ The requirement is **0.01 mm** on the final geometry, and speed matters. The bud
 | Undrape section model (circle per piece + correction) | 1.5 um at edge stations, <= 8.8 um at the worst kernel fallback | research_undrape_map.md 12 |
 | Curve fit (Unwrap's own default) | **0.005 mm**, max 60 control points | `UNWRAP_FIT_TOLERANCE_BOUNDS` |
 | Line/arc recognition | same tolerance as the fit | 1.8 |
-| Part rebuild tool fits | 0.1 um (arcs to 0.1 um, "snap flat" 0.001 mm) | unwrap_part.fs |
+| Part rebuild tool fits | cell tools 0.1 um; PRISM parts 0.5 um through row + span midpoints (2026-09-29); arcs to 0.1 x shape tolerance, "snap flat" 0.001 mm | unwrap_part.fs |
 | Kernel tolerances seen in real parts | 0.5 um section overlaps, 0.6 um vertex gaps, one 8 um tolerant vertex | notes |
 
 The fit takes half the budget on purpose: 0.005 mm leaves the other half for everything else.
@@ -449,6 +449,15 @@ average of (1 - kappa*d)/(1 - kappa*h) over the part: how far the part sits from
 curves. It is 1.000059 on the CORE (over the line almost everywhere), **1.0125 on 4802** (1.8 to 5.8 mm above
 REF_WIRE on the R406 arc and the tip spline, with d = 0), and 1.0001 on 4802 with d = 3.8 mm. For a plate, a
 ratio off 1 by more than a few 1e-4 means the undrape's area changed (the stretch report tells you where).
+
+**What to expect, exactly (2026-09-29).** A normal plane of the reference maps rigidly onto the flat plane x = s, so the
+flat volume is the source volume weighted by 1 / (1 - kappa h) (d = 0). Cutting the source into slabs between normal
+planes and summing V_slab / (1 - kappa h_centroid) predicts the flat volume; on 4103 L over REF_WIRE the prediction and
+the result agree to 2e-7. Over FULL_BASELINE the sidewall sits up to kappa h = 0.04 off the baseline and the
+prediction is **x0.998739**: the "0.15 % lost" was 0.126 % geometry and 0.01 % a real miss (ringing, fixed, see 2.6
+"Round 2"). The ratio is now read with `VolumeAccuracy.HIGH`: the default estimate moved by up to 2e-4 between
+regenerations of bit-identical geometry (x0.998538, x0.998559, x0.998942 for the same body), which is where the
+"non-deterministic" ratio came from.
 
 ## 2.4 The test studios and what each case shows
 
@@ -620,9 +629,62 @@ by only 2.2 um. The blockers are its two tiny end caps (3 x 3-4 mm), which lean 
 single-view fit 17 / 25 um); the cell fallback then refuses the spline tops. So "essentially a perfect rectangle"
 holds for the tops; the caps set the tolerance.
 
-Tests in the tree (Unwrap_Testing Copy 2): "Unwrap ... (part, along FULL_BASELINE, keep/merge faces) - expect ...".
-Open: 4401 on FULL_BASELINE below 0.03 mm; the ~2 s the chain-merge fix costs on the core; walls-normal vs world-vertical modelling
-convention.
+### Round 2 (2026-09-29): volume, determinism, speed, merged faces, joints
+
+Measured with the eval-API harness (unwrapSolid called directly; forward check = 11 x 11 points per source face plus
+10 per edge mapped forward, distance to the result) and the regression script; details in the corrections log 66-70.
+
+- **4103 over FULL_BASELINE lost ~1 mm3 to ringing, not to the cap cut.** The spline tools were fitted through the
+  adaptive rows at 1e-7 m, so approximateSpline interpolated the rows and rang between them: 45 um at the ledge taper
+  (flat x 700-731), both inside and outside the source (correction 63's failure, now in Part mode). Fix: each freeform
+  part is fitted through its row plus the midpoint of every span on the cubic the row was refined against (fitPoints,
+  now shared from unwrap_part.fs), to 0.5 um (`UNWRAP_PART_ROW_FIT_TOL`; the rows are only known to a quarter of the
+  shape tolerance). Volume x0.998639 -> x0.998739 = the predicted x0.998739; forward worst 45 -> 13.5 um (what is
+  left is the tip walls, next item).
+- **Faces sampled on their trim were measured at half their departure.** A face whose parameter box reaches past its
+  trim is re-read on the trim only; on the 5 x 5 grid that left a few points. It is now read on 13 x 13: 4803's tail
+  walls 6.3 -> 10.5 um, 4103's tip walls 4.4 -> 10.4 um. So 4103 over FULL_BASELINE at 0.005 mm is now **refused**
+  (worst 0.0104 mm) instead of built 13.5 um off; the tree test runs it at 0.015 mm (renamed). 4803 over FULL_BASELINE
+  stays on the exact cell rebuild (0.24 um); without this fix the ringing fix let its band rebuild through at 12.6 um.
+- **Determinism.** Two full regressions with a full regeneration between them are identical (29 features). The
+  geometry was always identical (4103: 80 vertices and 82 face points equal to 0.1 nm across regenerations); only the
+  default-accuracy volume moved.
+- **Speed** (harness request times, median of 3-5 interleaved runs, true original vs final): CORE over FULL_BASELINE
+  keep 10.0 -> 8.8 s, merge 12.9 -> 8.6 s; 4803 3.9 -> 3.9 s; 4103 (0.015 mm) 7.6 -> 7.9 s (the 13 x 13 trim reads).
+  Where it came from: `mergeOverlappingChains` stopped re-testing pairs that already failed and stopped copying
+  reversed chains (~1 s of FS work), membership finds each probe's crossings by one sweep with binary search instead
+  of every probe walking every segment (~1.3 s), and the merged chain is built, not fitted (below). Fitting through
+  the samples alone at 0.5 um measured another 0.85 s faster with the same accuracy on all nine test cases; the
+  midpoints were kept as the guard against ringing (a decision for the owner).
+- **Merged faces are curvature-clean.** A merged chain is now the keep-mode parts joined EXACTLY into one rational
+  cubic B-spline (lines as Beziers, arcs as rational quadratics raised to cubic, the spline parts as fitted), with a
+  triple knot at each joint. The kernel needs G1 (BSPLINECURVE_NOT_G1 otherwise); where two parts meet at a small
+  kink (0.001-0.04 deg on the CORE's outline, genuine creases in the source) the Bezier side is cut close to the joint
+  and its short arm turned, moving the curve <= 0.1 um. CORE merge: curvature sign changes on the merged curves 69 -> 38
+  (the parts themselves: 34; the 4 extra are those smoothed creases), off the exact parts 1.4 -> 0.1 um, control
+  points 3086 -> 822. Faces 41 as before.
+- **Joints.** Keep-mode parts are shaped as a set by curve_core's `shapeRuns` (as unwrap.fs's flat edges are): a line or
+  arc is exact only where its ends run along the face's own end tangents (1e-3 rad slack), and its neighbours adopt its
+  tangent. Kink = |result dihedral angle - source dihedral angle| at every near-tangent result edge (< 3 deg), worst,
+  original -> now: 4803 over REF_WIRE 0.039 -> 0.005 deg (a line kinking against its arc neighbour), CORE over
+  FULL_BASELINE 0.020 -> 0.020 (band boundaries, no source edge), 4103 over FULL_BASELINE 0.005 -> 0.005, 4103 over
+  REF_WIRE 0.0006 -> 0.0006; base over REF_WIRE 0.003 -> 0.011, because a genuine 0.011 deg source crease between two
+  spline parts is now one shared tangent (shapeRuns joins anything within G1_JUNCTION_ANGLE, 0.57 deg). Larger kinks
+  (0.5-1.2 deg on 4401 at its cap cuts) are unchanged and not joint-related. The cell rebuild's tools (`chainTool`) are
+  one curve per chain with no neighbours, so there is nothing for shapeRuns to settle there.
+- **Slivers.** A chain end lying on another chain now continues IN ITS OWN CURVE past the junction (a line longer, an
+  arc further round, a spline by a tangent line in the same B-spline) instead of a separate overshoot line: with 0.5 um
+  fits a 0.53 deg crossing on the CORE's top landed 8 um past the end and the overshoot line became 8 sliver faces.
+  The overshoot is also at least 4 x the end's distance from the chain it lies on: **4401 over FULL_BASELINE at
+  0.005 mm now builds** (its plan outline had stayed open by 9 um, "no plan cell holds material"): forward worst
+  3.6 um, volume x1.000051 against a predicted x1.000050. Tree test added.
+
+Tests in the tree (Unwrap_Testing Copy 2): "Unwrap ... (part, along FULL_BASELINE, keep/merge faces) - expect ...",
+"Unwrap 4103 L sidewall (part, along FULL_BASELINE, keep faces, 0.015 mm) - expect OK, band rebuild + planar tip cap",
+"Unwrap 4401 L (part, along FULL_BASELINE, keep faces) - expect OK, band rebuild + 2 planar caps".
+Open: 4103's tip walls (10.4 um lean: squareWalls or a looser tolerance), 4401's 3 sliver faces (0.6-5 um wide) at
+its planar cap cuts and 0.5-1.2 deg kinks there, 4803 over FULL_BASELINE band-rebuild kinks (moot while cells take it);
+walls-normal vs world-vertical modelling convention.
 
 ## 2.7 Your two questions
 
@@ -759,7 +821,10 @@ Key entry points (line numbers as of 2026-09-25; they drift):
   `undrapeSectionMid` :1407, `undrapeSectionByFaces` :1494, `undrapeRefusedSection` :2320 (THE U-TURN RULE),
   `undrapeRefine` :3191, `undrapeAssemble` :3588, `undrapeDeformation` :3684.
 - unwrap_part.fs: `unwrapSolid` :116, `referenceSpans` :231, `rigidTransform` :274, `flatNormal` :361,
-  `rebuildPiece` :384, `faceKind` :646, `chainRows` :783, `chainTool` :1149.
+  `rebuildPiece` :384, `faceKind` :646, `chainRows` :783, `chainTool` :1149. Added 2026-09-29 (search by name):
+  `fitPoints` / `quadraticSlope` / `monotoneSlope` (moved here from unwrap.fs, which imports them), `chainShapes`,
+  `emitChainParts`, `emitMergedChain` + `g1Runs` / `splitCubicPiece` / `joinedCubicPieces` (exact merged chains),
+  `extendedPieces` / `extendedArc` (junction overshoot in the curve), `probeCrossings` (membership sweep).
 
 ## 3.2 Key data structures
 

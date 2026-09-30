@@ -118,7 +118,9 @@ export enum UnwrapType
     annotation { "Name" : "Constant-thickness part" }
     THICKENED,
     annotation { "Name" : "Part (solid)" }
-    PART
+    PART,
+    annotation { "Name" : "Faces / surfaces" }
+    FACES
 }
 
 /** Which curve's length an edge unwrap preserves. */
@@ -219,7 +221,7 @@ const UNWRAP_SIDE_AREA_FRACTION = 0.6;
 const UNWRAP_NUMBER_PATTERN = "^[-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?$";
 
 annotation { "Feature Type Name" : "Unwrap",
-        "Feature Type Description" : "Unwrap edges or a constant-thickness part from along a planar reference chain onto a plane, preserving length.",
+        "Feature Type Description" : "Unwrap edges, faces, a constant-thickness part or a solid from along a planar reference chain onto a plane, preserving length.",
         "Editing Logic Function" : "unwrapEditLogic" }
 export const unwrap = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -231,6 +233,12 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
         {
             annotation { "Name" : "Edges to unwrap", "Filter" : (EntityType.EDGE || BodyType.WIRE) && ConstructionObject.NO }
             definition.edges is Query;
+        }
+        else if (definition.unwrapType == UnwrapType.FACES)
+        {
+            annotation { "Name" : "Faces to unwrap", "Filter" : (EntityType.FACE || BodyType.SHEET) && ConstructionObject.NO,
+                        "Description" : "Faces (of sheets or solids) or whole sheets. Every edge is unwrapped once and each face rebuilt on its own edges, so faces that share an edge share it in the flat; one sheet per source body." }
+            definition.faces is Query;
         }
         else
         {
@@ -291,7 +299,7 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
                     "Description" : "Frame of the flat result: X along the reference, Z along its surface normal. A mate connector (implicit ones included) or a plane / planar face (its own axes)." }
         definition.origin is Query;
 
-        if (definition.unwrapType != UnwrapType.EDGES)
+        if (definition.unwrapType == UnwrapType.THICKENED || definition.unwrapType == UnwrapType.PART)
         {
             annotation { "Name" : "Lay the part on the origin plane", "Default" : true,
                         "Description" : "The flat part's lowest face on the origin's XY plane. Off, it keeps its height relative to the alignment point." }
@@ -396,6 +404,10 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
         const sources = sourceBodies(context, definition);
         if (size(sources) == 0)
         {
+            if (definition.unwrapType == UnwrapType.FACES)
+            {
+                throw regenError("Select the faces to unwrap.", ["faces"]);
+            }
             throw regenError(definition.unwrapType == UnwrapType.EDGES ? "Select the edges to unwrap." : "Select the parts to unwrap.",
                 [definition.unwrapType == UnwrapType.EDGES ? "edges" : "parts"]);
         }
@@ -451,6 +463,12 @@ export const unwrap = defineFeature(function(context is Context, id is Id, defin
             {
                 result = unwrapPart(context, bodyId, definition, edgeChart, cs, sources[i], settings);
                 extent = qOwnedByBody(sources[i], EntityType.EDGE);
+            }
+            else if (definition.unwrapType == UnwrapType.FACES)
+            {
+                const faces = evaluateQuery(context, qIntersection([qOwnedByBody(sources[i], EntityType.FACE), selectedFaces(definition.faces)]));
+                result = unwrapFacesToSheet(context, bodyId, edgeChart, cs, faces, settings);
+                extent = qAdjacent(qUnion(faces), AdjacencyType.EDGE, EntityType.EDGE);
             }
             else
             {
@@ -533,11 +551,26 @@ function sourceBodies(context is Context, definition is map) returns array
         }
         return evaluateQuery(context, qOwnerBody(expandEdgeQuery(definition.edges)));
     }
+    if (definition.unwrapType == UnwrapType.FACES)
+    {
+        if (definition.faces == undefined)
+        {
+            return [];
+        }
+        return evaluateQuery(context, qOwnerBody(selectedFaces(definition.faces)));
+    }
     if (definition.parts == undefined)
     {
         return [];
     }
     return evaluateQuery(context, qBodyType(definition.parts, BodyType.SOLID));
+}
+
+/** The faces a Faces-mode selection names: picked faces, and every face of a picked sheet. */
+function selectedFaces(selection is Query) returns Query
+{
+    return qUnion([qEntityFilter(selection, EntityType.FACE), qOwnedByBody(qBodyType(qEntityFilter(selection, EntityType.BODY), BodyType.SHEET),
+                    EntityType.FACE)]);
 }
 
 /**
@@ -698,6 +731,7 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
     var ids = [];
     var entries = [];
     var facts = [];
+    var closed = [];
     for (var e = 0; e < size(edges); e += 1)
     {
         const edgeId = id + ("edge" ~ e);
@@ -718,11 +752,34 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
         const endTangent = unwrapDirection(chart, cs, feet[count - 1], tangentLines[1].direction);
 
         ids = append(ids, edgeId);
-        entries = append(entries, flatCurveItem(points, startTangent, endTangent, settings));
         facts = append(facts, { "length" : length, "chord" : norm(points[count - 1] - points[0]), "count" : count, "seed" : sampled.seed });
+        // A closed edge (a hole's circle) has no ends to join: emitted on its own (emitClosedFlatCurve). As a clamped
+        // spline whose ends meet it was refused (BAD_GEOMETRY).
+        if (norm(tangentLines[1].origin - tangentLines[0].origin) < UNWRAP_CLOSED_EDGE_GAP)
+        {
+            closed = append(closed, { "index" : e, "points" : points });
+            continue;
+        }
+        entries = append(entries, { "index" : e, "entry" : flatCurveItem(points, startTangent, endTangent, settings) });
     }
 
-    const emittedAll = emitFlatCurves(context, ids, entries, settings);
+    var openIds = [];
+    var openEntries = [];
+    for (var item in entries)
+    {
+        openIds = append(openIds, ids[item.index]);
+        openEntries = append(openEntries, item.entry);
+    }
+    var emittedAll = makeArray(size(ids));
+    const emittedOpen = emitFlatCurves(context, openIds, openEntries, settings);
+    for (var k = 0; k < size(entries); k += 1)
+    {
+        emittedAll[entries[k].index] = emittedOpen[k];
+    }
+    for (var item in closed)
+    {
+        emittedAll[item.index] = { "shape" : emitClosedFlatCurve(context, ids[item.index], item.points, settings), "gate" : " (closed)" };
+    }
     for (var e = 0; e < size(ids); e += 1)
     {
         const shape = emittedAll[e].shape;
@@ -749,6 +806,39 @@ function unwrapEdges(context is Context, id is Id, chart is map, cs is CoordSyst
         "tally" : tally,
         "record" : { "edges" : size(edges) }
     };
+}
+
+/** An edge whose two ends lie closer than this is closed (a circle, a closed spline). */
+const UNWRAP_CLOSED_EDGE_GAP = 1e-8 * meter;
+
+/**
+ * A closed edge's flat curve: an exact circle when its points are one (within the fit tolerance, in a plane) and
+ * shapes are recognised, else a closed interpolation through the samples (opFitSpline makes it periodic). The samples
+ * are refined until each span is within a quarter of the fit tolerance of the cubic through its neighbours, which is
+ * what the interpolation passes through.
+ * @returns {map} : the shape { "kind" ("arc" / "freeform"), "radius" }
+ */
+function emitClosedFlatCurve(context is Context, id is Id, points is array, settings is map) returns map
+{
+    const open = subArray(points, 0, size(points) - 1);
+    if (settings.recognise && size(open) >= 3)
+    {
+        const shape = classifyPoints(open, settings.approximation.approximationTolerance, true, false);
+        if (shape.kind == "arc")
+        {
+            const pl = plane(shape.center, shape.normal, normalize(points[0] - shape.center));
+            const sketch = newSketchOnPlane(context, id + "circleSketch", { "sketchPlane" : pl });
+            skCircle(sketch, "circle", { "center" : vector(0, 0) * meter, "radius" : shape.radius });
+            skSolve(sketch);
+            // A closed sketch curve also bounds a region face: its edges overlap the wire's (EXTRACT_WIRES_OVERLAPPING_EDGES).
+            opExtractWires(context, id + "wire", { "edges" : qOwnedByBody(qBodyType(qCreatedBy(id + "circleSketch", EntityType.BODY), BodyType.WIRE),
+                                EntityType.EDGE) });
+            opDeleteBodies(context, id + "deleteSketch", { "entities" : qCreatedBy(id + "circleSketch", EntityType.BODY) });
+            return { "kind" : "arc", "radius" : shape.radius };
+        }
+    }
+    opFitSpline(context, id, { "points" : append(open, points[0]) });
+    return { "kind" : "freeform" };
 }
 
 /**
@@ -1333,6 +1423,732 @@ function kernelZonePieces(points is array, kernel) returns array
 function addTally(a is map, b is map) returns map
 {
     return { "line" : a.line + b.line, "arc" : a.arc + b.arc, "freeform" : a.freeform + b.freeform };
+}
+
+// ============================================================================
+// Faces / surfaces (2026-09-30)
+// ============================================================================
+
+/**
+ * Faces mode. Every edge of the selected faces is unwrapped ONCE (the Edges-mode pipeline: adaptive samples, lines and
+ * arcs where exact, fitted splines otherwise), so two faces that share an edge share its flat curve exactly. Each face
+ * is then rebuilt on its own flat curves: a support surface for its flat image, split by the curves, the region holding
+ * the face's mapped interior point kept. Supports, by what the flat image is (sampled on the face's trim, 13 x 13):
+ *   - a plane (within the fit tolerance): a plane sheet;
+ *   - an extrusion along flat Y (a "profile" face: every face extruded across the reference plane, e.g. a ski's top
+ *     surface) or along flat Z (a wall): the side / plan view curve extruded (unwrap_part's PRISM rows and tools);
+ *   - anything else: a B-spline surface fitted through the face's parameter grid mapped flat (rows, then the rows'
+ *     control points across), extended past its edges.
+ * Every rebuilt face is checked both ways against its source face (source points mapped forward to the flat face, flat
+ * points mapped back to the source face) and refused beyond max(fit tolerance, 0.01 mm): a support that does not follow
+ * the face (a fitted surface through a parameter box the face's trim does not fill) is an error, never a quiet miss.
+ * The faces of one source body are then united into one sheet (faces sharing an edge sew along it).
+ *
+ * Sewing decides how exact a support must be. A shared curve is imprinted on each neighbour's support (projected onto
+ * it), so the two faces' edges are as far apart as their supports are there; the sheet union sews gaps up to 1 um and
+ * fails outright (BOOLEAN_INVALID, the whole union) from 2 um (measured 2026-09-30). A plane or extrusion within the fit
+ * tolerance of the image (up to 4.2 um on the CORE's walls) left 0.3-7.8 um gaps and nothing sewed. So a plane or an
+ * extrusion is used only when the image is one within UNWRAP_FACE_EXACT; everything else gets the fitted surface, fitted
+ * to UNWRAP_FACE_FIT_TOL. If the union still fails, faces are joined one at a time and the rest stay separate sheets
+ * (a warning says how many).
+ */
+
+/** How far (m) a face's support reaches past its image, and the margin of the plane / extrusion supports. */
+const UNWRAP_FACE_MARGIN = 0.002;
+
+/** The fitted support's grid on the face's parameter box: one row / column per this spacing (m), within limits. */
+const UNWRAP_FACE_FIT_SPACING = 0.01;
+const UNWRAP_FACE_FIT_MIN = 5;
+const UNWRAP_FACE_FIT_MAX = 61;
+
+/**
+ * A face's image within this (m) of a plane / a pure extrusion is built on one: two neighbours then part by at most twice
+ * this, inside the 1 um the union sews (see above).
+ */
+const UNWRAP_FACE_EXACT = 5e-7;
+
+/** Faces mode fits the flat edges to this at most (see unwrapFacesToSheet). */
+const UNWRAP_FACE_EDGE_TOL = 2.5e-7 * meter;
+const UNWRAP_FACE_EDGE_MAX_CPS = 300;
+
+/** faceTrimBox: points per edge, and how far the box grows past the sampled trim (share of its range). */
+const UNWRAP_FACE_TRIM_SAMPLES = 17;
+const UNWRAP_FACE_TRIM_GROW = 0.02;
+
+/** The fitted support's rows and columns are approximated to this. */
+const UNWRAP_FACE_FIT_TOL = 1e-7 * meter;
+
+/** The per-face check: source parameters mapped forward (on its trim), flat-face parameters mapped back. */
+const UNWRAP_FACE_FORWARD_GRID = 5;
+const UNWRAP_FACE_REVERSE_GRID = 4;
+
+/** Fewer points than this on a face's trim and the check reads it on UNWRAP_FACE_DENSE_GRID instead. */
+const UNWRAP_FACE_CHECK_MIN_SAMPLES = 6;
+const UNWRAP_FACE_DENSE_GRID = 13;
+
+/** The floor of the per-face check's limit (the limit is max(fit tolerance, this)). */
+const UNWRAP_FACE_CHECK_FLOOR = 0.01 * millimeter;
+
+/**
+ * Unwrap faces of one source body into one flat sheet (see above).
+ * @returns {map} : { "bodies", "tally", "record" : { "faces" : { "faces", "planes", "extruded", "fitted", "edges", "sheets",
+ *      "groups" (edge-connected groups of the source faces: the sheets expected), "checkMax" (plain metres) } }, "chart",
+ *      "lengthZ" }
+ */
+function unwrapFacesToSheet(context is Context, id is Id, chart is map, cs is CoordSystem, faces is array, settings is map) returns map
+{
+    // Everything is built in the chart frame (identity) and placed in cs at the end, as unwrap_part does.
+    const frame = coordSystem(vector(0, 0, 0) * meter, vector(1, 0, 0), vector(0, 0, 1));
+    const edges = evaluateQuery(context, qAdjacent(qUnion(faces), AdjacencyType.EDGE, EntityType.EDGE));
+    // Each face projects a shared curve onto its own surface, so where two faces meet at an angle their edges part by
+    // about the curve's own error; the union sews 1 um. The edges are therefore fitted to UNWRAP_FACE_EDGE_TOL here
+    // (5 um curves left 2-3 um gaps on the CORE and 7 of 64 faces unsewn).
+    var edgeSettings = settings;
+    edgeSettings.approximation.approximationTolerance = min(settings.approximation.approximationTolerance, UNWRAP_FACE_EDGE_TOL);
+    edgeSettings.approximation.approximationMaxCPs = max(settings.approximation.approximationMaxCPs, UNWRAP_FACE_EDGE_MAX_CPS);
+    const emitted = unwrapEdges(context, id + "edges", chart, frame, edges, edgeSettings);
+    var edgeIndex = {};
+    for (var k = 0; k < size(edges); k += 1)
+    {
+        edgeIndex[edges[k].transientId] = k;
+    }
+    const part = qOwnerBody(qUnion(faces));
+    const tolerance = settings.approximation.approximationTolerance;
+    var counts = { "plane" : 0, "extruded" : 0, "fitted" : 0 };
+    var checkMax = 0;
+    var sheets = [];
+    for (var i = 0; i < size(faces); i += 1)
+    {
+        var curves = [];
+        for (var e in evaluateQuery(context, qAdjacent(faces[i], AdjacencyType.EDGE, EntityType.EDGE)))
+        {
+            curves = append(curves, qOwnedByBody(emitted.curves[edgeIndex[e.transientId]], EntityType.EDGE));
+        }
+        const built = flatFace(context, id + ("face" ~ i), chart, faces[i], qUnion(curves), tolerance, part);
+        counts[built.kind] += 1;
+        checkMax = max(checkMax, built.check);
+        sheets = append(sheets, built.body);
+        if (settings.print)
+        {
+            println("    face " ~ i ~ ": " ~ built.kind ~ " support, " ~ size(curves) ~ " edges, checked both ways "
+                ~ roundToPrecision(built.check * 1000, 5) ~ " mm on " ~ built.samples[0] ~ " + " ~ built.samples[1] ~ " points");
+        }
+    }
+    opDeleteBodies(context, id + "deleteCurves", { "entities" : qUnion(emitted.curves) });
+    if (size(sheets) > 1)
+    {
+        joinFaceSheets(context, id + "join", faces, sheets);
+    }
+    const bodies = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET);
+    opTransform(context, id + "place", { "bodies" : bodies, "transform" : toWorld(cs) });
+    return {
+        "bodies" : bodies,
+        "tally" : emitted.tally,
+        "record" : { "faces" : { "faces" : size(faces), "planes" : counts.plane, "extruded" : counts.extruded, "fitted" : counts.fitted,
+                    "edges" : size(edges), "sheets" : size(evaluateQuery(context, bodies)), "groups" : edgeConnectedGroups(context, faces),
+                    "checkMax" : checkMax } },
+        "chart" : chart,
+        "lengthZ" : -chart.alignHeight * meter
+    };
+}
+
+/**
+ * Unite the faces' sheets into one (faces sharing an edge sew along it). The union is all or nothing: one pair it cannot
+ * sew (edges more than ~1 um apart) fails it. Then the faces are joined one at a time, each to a neighbour already
+ * joined, and a face that will not sew stays a sheet of its own (the summary warns; the kernel refusal is expected, hence
+ * the try).
+ */
+function joinFaceSheets(context is Context, id is Id, faces is array, sheets is array)
+{
+    var joined = false;
+    try silent
+    {
+        opBoolean(context, id + "all", { "tools" : qUnion(sheets), "operationType" : BooleanOperationType.UNION });
+        joined = true;
+    }
+    if (joined)
+    {
+        return;
+    }
+    var done = makeArray(size(faces), false);
+    var k = 0;
+    for (var start = 0; start < size(faces); start += 1)
+    {
+        if (done[start])
+        {
+            continue;
+        }
+        done[start] = true;
+        var group = [start];
+        var grew = true;
+        while (grew)
+        {
+            grew = false;
+            for (var j = 0; j < size(faces); j += 1)
+            {
+                if (done[j])
+                {
+                    continue;
+                }
+                var member = undefined;
+                for (var g in group)
+                {
+                    if (!isQueryEmpty(context, qIntersection([qAdjacent(faces[j], AdjacencyType.EDGE, EntityType.FACE), faces[g]])))
+                    {
+                        member = g;
+                        break;
+                    }
+                }
+                if (member == undefined)
+                {
+                    continue;
+                }
+                done[j] = true;
+                grew = true;
+                try silent
+                {
+                    // The sheet a face was united into answers for its query no more: unite with every sheet of the group.
+                    var tools = [sheets[j]];
+                    for (var g in group)
+                    {
+                        tools = append(tools, sheets[g]);
+                    }
+                    opBoolean(context, id + ("one" ~ k), { "tools" : qUnion(tools), "operationType" : BooleanOperationType.UNION });
+                    group = append(group, j);
+                }
+                k += 1;
+            }
+        }
+    }
+}
+
+/** How many groups the faces make, two faces in one group when they share an edge (so many sheets are expected). */
+function edgeConnectedGroups(context is Context, faces is array) returns number
+{
+    const all = qUnion(faces);
+    var seen = qNothing();
+    var groups = 0;
+    for (var face in faces)
+    {
+        if (!isQueryEmpty(context, qIntersection([face, seen])))
+        {
+            continue;
+        }
+        groups += 1;
+        var group = face;
+        while (true)
+        {
+            const grown = qUnion(evaluateQuery(context, qUnion([group, qIntersection([qAdjacent(group, AdjacencyType.EDGE, EntityType.FACE), all])])));
+            if (size(evaluateQuery(context, grown)) == size(evaluateQuery(context, group)))
+            {
+                break;
+            }
+            group = grown;
+        }
+        seen = qUnion(evaluateQuery(context, qUnion([seen, group])));
+    }
+    return groups;
+}
+
+/**
+ * One face rebuilt flat (chart frame) on its flat curves: its support (plane, extrusion or fitted surface), split by
+ * the curves, the region holding the face's mapped interior point kept, checked both ways. Each support is tried as a
+ * sub-feature, rolled back when it fails or misses: an exact plane / extrusion when there is one, else the fitted
+ * surface, else the nearest plane / extrusion within the fit tolerance (it may not sew). Refused when none passes.
+ * @returns {map} : { "body" (a one-face sheet), "kind" ("plane", "extruded", "fitted"), "check" (plain metres), "samples" }
+ */
+function flatFace(context is Context, id is Id, chart is map, face is Query, curves is Query, tolerance is ValueWithUnits, part is Query) returns map
+{
+    const tol = tolerance / meter;
+    const samples = prismFaceSamples(context, chart, face, true, part);
+    var lo = [1e9, 1e9, 1e9];
+    var hi = [-1e9, -1e9, -1e9];
+    for (var p in samples.flat)
+    {
+        if (p != undefined)
+        {
+            for (var ax in [0, 1, 2])
+            {
+                lo[ax] = min(lo[ax], p[ax]);
+                hi[ax] = max(hi[ax], p[ax]);
+            }
+        }
+    }
+    const cb = evBox3d(context, { "topology" : curves, "tight" : true });
+    for (var ax in [0, 1, 2])
+    {
+        lo[ax] = min(lo[ax], cb.minCorner[ax] / meter) - UNWRAP_FACE_MARGIN;
+        hi[ax] = max(hi[ax], cb.maxCorner[ax] / meter) + UNWRAP_FACE_MARGIN;
+    }
+    const pl = flatPlaneOf(samples);
+    const P = viewFit(samples, 2);
+    const W = viewFit(samples, 1);
+    const planeDev = (pl == undefined) ? UNWRAP_PART_NO_FIT : pl.dev;
+    const extrusionDev = min(P.dev, W.dev);
+
+    // Supports to try, best first: an exact plane or extrusion (sews); else the fitted surface; else the nearest plane or
+    // extrusion within the fit tolerance (accurate, but it may not sew to its neighbours).
+    var kinds = [];
+    if (planeDev <= UNWRAP_FACE_EXACT)
+    {
+        kinds = ["plane"];
+    }
+    else if (extrusionDev <= UNWRAP_FACE_EXACT)
+    {
+        kinds = ["extruded"];
+    }
+    else
+    {
+        kinds = ["fitted"];
+        if (planeDev <= tol)
+        {
+            kinds = append(kinds, "plane");
+        }
+        else if (extrusionDev <= tol)
+        {
+            kinds = append(kinds, "extruded");
+        }
+    }
+    const data = { "samples" : samples, "lo" : lo, "hi" : hi, "plane" : pl, "P" : P, "W" : W, "tol" : tol };
+    const limit = max(tolerance, UNWRAP_FACE_CHECK_FLOOR) / meter;
+    var reasons = "";
+    for (var k = 0; k < size(kinds); k += 1)
+    {
+        const kid = id + ("try" ~ k);
+        startFeature(context, kid, {});
+        var built = undefined;
+        try silent
+        {
+            built = flatFaceOn(context, kid, chart, face, curves, kinds[k], data, part);
+        }
+        catch (e)
+        {
+            reasons = reasons ~ " " ~ kinds[k] ~ ": " ~ errorText(e) ~ ";";
+        }
+        if (built != undefined && built.check.distance <= limit && built.check.samples[0] > 0 && built.check.samples[1] > 0)
+        {
+            endFeature(context, kid);
+            return { "body" : built.body, "kind" : kinds[k], "check" : built.check.distance, "samples" : built.check.samples };
+        }
+        if (built != undefined)
+        {
+            reasons = reasons ~ " " ~ kinds[k] ~ ": misses its source by " ~ roundToPrecision(built.check.distance * 1000, 4) ~ " mm ("
+                ~ built.check.kind ~ " check) at flat " ~ flatText(built.check.where) ~ ";";
+        }
+        abortFeature(context, kid);
+    }
+    throw regenError("Unwrap faces: the face (highlighted) cannot be rebuilt flat within " ~ roundToPrecision(limit * 1000, 4) ~ " mm (its flat image is "
+            ~ roundToPrecision(planeDev * 1000, 4) ~ " mm from a plane, " ~ roundToPrecision(min(extrusionDev, UNWRAP_PART_NO_FIT) * 1000, 4)
+            ~ " mm from an extrusion;" ~ reasons ~ ").", ["faces"], face);
+}
+
+/**
+ * One face on one kind of support: build it (data: flatFace's samples, box, fits), split it by the face's flat curves,
+ * keep the region holding the face's mapped interior point, check it both ways.
+ * @returns {map} : { "body", "check" (flatFaceCheck) }
+ */
+function flatFaceOn(context is Context, id is Id, chart is map, face is Query, curves is Query, kind is string, data is map, part is Query) returns map
+{
+    const lo = data.lo;
+    const hi = data.hi;
+    const reach = sqrt((hi[0] - lo[0]) ^ 2 + (hi[1] - lo[1]) ^ 2 + (hi[2] - lo[2]) ^ 2) + 0.01;
+    var support = undefined;
+    if (kind == "plane")
+    {
+        const pl = data.plane;
+        support = planeSheet(context, id + "support", plane(vector(pl.origin[0], pl.origin[1], pl.origin[2]) * meter,
+                    vector(pl.normal[0], pl.normal[1], pl.normal[2])), lo, hi);
+    }
+    else if (kind == "extruded")
+    {
+        const view = (data.P.dev <= data.W.dev) ? "PROFILE" : "WALL";
+        const row = prismRow(context, chart, face, view, (view == "PROFILE") ? data.P : data.W, false, data.tol * UNWRAP_PART_ROW_REFINE, part);
+        const chains = markGrazingEnds(distinctChains(chainRows([row], view), UNWRAP_PART_STRAIGHT));
+        const tool = chainTool(context, id + "tool", chains[0], lo, hi, reach);
+        support = (tool.plane != undefined) ? planeSheet(context, id + "support", tool.plane, lo, hi) : tool.body;
+    }
+    else
+    {
+        support = fittedSupport(context, id + "support", chart, face, data.samples, UNWRAP_FACE_FIT_TOL, part);
+    }
+
+    opSplitFace(context, id + "trim", { "faceTargets" : qOwnedByBody(support, EntityType.FACE), "edgeTools" : curves });
+    const inside = pointOnFace(context, face);
+    if (inside == undefined)
+    {
+        throw regenError("no point inside the face was found");
+    }
+    const u = chartFootAt(chart, vector(inside[0], inside[1], inside[2]) * meter, undefined);
+    const target = vector(u[0], u[1], u[2]) * meter;
+    var kept = undefined;
+    var best = 1e9;
+    var drop = [];
+    for (var f in evaluateQuery(context, qOwnedByBody(support, EntityType.FACE)))
+    {
+        const d = evDistance(context, { "side0" : target, "side1" : f }).distance / meter;
+        if (d < best)
+        {
+            if (kept != undefined)
+            {
+                drop = append(drop, kept);
+            }
+            kept = f;
+            best = d;
+        }
+        else
+        {
+            drop = append(drop, f);
+        }
+    }
+    if (size(drop) > 0)
+    {
+        opDeleteFace(context, id + "outside", { "deleteFaces" : qUnion(drop), "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
+    }
+    const body = qBodyType(support, BodyType.SHEET);
+    const scrap = qSubtraction(qCreatedBy(id, EntityType.BODY), body);
+    if (!isQueryEmpty(context, scrap))
+    {
+        opDeleteBodies(context, id + "scrap", { "entities" : scrap });
+    }
+    return { "body" : body, "check" : flatFaceCheck(context, chart, qOwnedByBody(body, EntityType.FACE), face) };
+}
+
+/**
+ * The plane through a face's flat samples: origin their mean, normal their mean flat normal, dev the largest distance
+ * of a sample from it (plain metres). undefined without samples.
+ */
+function flatPlaneOf(samples is map)
+{
+    var o = [0, 0, 0];
+    var n = [0, 0, 0];
+    var count = 0;
+    for (var k = 0; k < size(samples.flat); k += 1)
+    {
+        const p = samples.flat[k];
+        const q = samples.normals[k];
+        if (p == undefined || q == undefined)
+        {
+            continue;
+        }
+        count += 1;
+        o = [o[0] + p[0], o[1] + p[1], o[2] + p[2]];
+        n = [n[0] + q[0], n[1] + q[1], n[2] + q[2]];
+    }
+    const len = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    if (count < 3 || len < 1e-9)
+    {
+        return undefined;
+    }
+    o = [o[0] / count, o[1] / count, o[2] / count];
+    n = [n[0] / len, n[1] / len, n[2] / len];
+    var dev = 0;
+    for (var p in samples.flat)
+    {
+        if (p != undefined)
+        {
+            dev = max(dev, abs((p[0] - o[0]) * n[0] + (p[1] - o[1]) * n[1] + (p[2] - o[2]) * n[2]));
+        }
+    }
+    return { "origin" : o, "normal" : n, "dev" : dev };
+}
+
+/**
+ * A plane sheet covering the box [lo, hi] (plain metres) where the plane crosses it: a line extruded across (not
+ * opPlane, whose body is construction; see plateFromOutline).
+ */
+function planeSheet(context is Context, id is Id, pl is Plane, lo is array, hi is array) returns Query
+{
+    const n = pl.normal;
+    const ref = (abs(n[0]) < 0.9) ? vector(1, 0, 0) : vector(0, 1, 0);
+    const ua = normalize(ref - dot(ref, n) * n);
+    const va = cross(n, ua);
+    const o = pl.origin;
+    var u0 = 1e9;
+    var u1 = -1e9;
+    var v0 = 1e9;
+    var v1 = -1e9;
+    for (var cx in [lo[0], hi[0]])
+    {
+        for (var cy in [lo[1], hi[1]])
+        {
+            for (var cz in [lo[2], hi[2]])
+            {
+                const d = vector(cx, cy, cz) * meter - o;
+                u0 = min(u0, dot(d, ua) / meter);
+                u1 = max(u1, dot(d, ua) / meter);
+                v0 = min(v0, dot(d, va) / meter);
+                v1 = max(v1, dot(d, va) / meter);
+            }
+        }
+    }
+    emitLineCurve(context, id + "edge", o + u0 * meter * ua + v0 * meter * va, o + u1 * meter * ua + v0 * meter * va);
+    opExtrude(context, id + "sheet", { "entities" : qCreatedBy(id + "edge", EntityType.EDGE), "direction" : va,
+                "endBound" : BoundingType.BLIND, "endDepth" : (v1 - v0) * meter });
+    opDeleteBodies(context, id + "deleteEdge", { "entities" : qCreatedBy(id + "edge", EntityType.BODY) });
+    return qCreatedBy(id + "sheet", EntityType.BODY);
+}
+
+/**
+ * A B-spline surface through a face's parameter grid mapped flat: the rows along u fitted as one family (common
+ * knots), then the rows' control points fitted across as a family, extended past its edges by UNWRAP_FACE_MARGIN.
+ * The grid covers the TRIM's parameter range (faceTrimBox), not the face's parameter box: a CORE wall 0.6 mm tall sat
+ * in a box 250 mm tall, and a fit over the box was a 250 mm surface nowhere near the face. The grid spacing follows the
+ * face's flat extent (UNWRAP_FACE_FIT_SPACING).
+ */
+function fittedSupport(context is Context, id is Id, chart is map, face is Query, samples is map, tolerance is ValueWithUnits,
+    part is Query) returns Query
+{
+    const nu = min(max(ceil(gridLength3(samples.flat, true) / UNWRAP_FACE_FIT_SPACING) + 1, UNWRAP_FACE_FIT_MIN), UNWRAP_FACE_FIT_MAX);
+    const nv = min(max(ceil(gridLength3(samples.flat, false) / UNWRAP_FACE_FIT_SPACING) + 1, UNWRAP_FACE_FIT_MIN), UNWRAP_FACE_FIT_MAX);
+    const tb = faceTrimBox(context, face);
+    var parameters = [];
+    for (var j = 0; j < nv; j += 1)
+    {
+        for (var i = 0; i < nu; i += 1)
+        {
+            parameters = append(parameters, vector(tb[0] + (tb[1] - tb[0]) * i / (nu - 1), tb[2] + (tb[3] - tb[2]) * j / (nv - 1)));
+        }
+    }
+    const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : parameters });
+    var rows = [];
+    for (var j = 0; j < nv; j += 1)
+    {
+        // Warm-started along the row only: from the previous row's far end a foot can converge on the wrong span
+        // (a CORE ledge wall's fit came out 250 mm tall).
+        var previous = undefined;
+        var row = [];
+        for (var i = 0; i < nu; i += 1)
+        {
+            const u = chartFootAt(chart, planes[j * nu + i].origin, previous);
+            if (!chartFootConverged(u))
+            {
+                throw regenError("Unwrap faces: a face (highlighted) reaches past the reference's centre of curvature.", ["faces"], face);
+            }
+            previous = u;
+            row = append(row, vector(u[0], u[1], u[2]) * meter);
+        }
+        rows = append(rows, row);
+    }
+    var targets = [];
+    for (var row in rows)
+    {
+        targets = append(targets, approximationTarget({ "positions" : row }));
+    }
+    const across = approximateSpline(context, { "degree" : 3, "tolerance" : tolerance, "targets" : targets,
+                "parameters" : averageChordParameters(rows), "maxControlPoints" : 4 * nu });
+    const m = size(across[0].controlPoints);
+    var columns = [];
+    for (var k = 0; k < m; k += 1)
+    {
+        var column = [];
+        for (var j = 0; j < nv; j += 1)
+        {
+            column = append(column, across[j].controlPoints[k]);
+        }
+        columns = append(columns, column);
+    }
+    var ctargets = [];
+    for (var column in columns)
+    {
+        ctargets = append(ctargets, approximationTarget({ "positions" : column }));
+    }
+    var transposed = [];
+    for (var i = 0; i < nu; i += 1)
+    {
+        var line = [];
+        for (var j = 0; j < nv; j += 1)
+        {
+            line = append(line, rows[j][i]);
+        }
+        transposed = append(transposed, line);
+    }
+    const down = approximateSpline(context, { "degree" : 3, "tolerance" : tolerance, "targets" : ctargets,
+                "parameters" : averageChordParameters(transposed), "maxControlPoints" : 4 * nv });
+    var net = [];
+    for (var k = 0; k < m; k += 1)
+    {
+        net = append(net, down[k].controlPoints);
+    }
+    opCreateBSplineSurface(context, id + "surface", { "bSplineSurface" : bSplineSurface({ "uDegree" : across[0].degree,
+                        "vDegree" : down[0].degree, "isUPeriodic" : false, "isVPeriodic" : false, "controlPoints" : controlPointMatrix(net),
+                        "uKnots" : across[0].knots, "vKnots" : down[0].knots }) });
+    const body = qCreatedBy(id + "surface", EntityType.BODY);
+    opExtendSheetBody(context, id + "extend", { "entities" : qEdgeTopologyFilter(qOwnedByBody(body, EntityType.EDGE), EdgeTopology.LAMINAR),
+                "tangentPropagation" : false, "endCondition" : ExtendEndType.EXTEND_BLIND, "extendDistance" : UNWRAP_FACE_MARGIN * meter,
+                "extensionShape" : ExtendSheetShapeType.LINEAR });
+    return body;
+}
+
+/**
+ * The parameter range [u0, u1, v0, v1] of a face's trim: its edges sampled (UNWRAP_FACE_TRIM_SAMPLES each), each point's
+ * face parameter, grown by UNWRAP_FACE_TRIM_GROW of the range each way and kept within the face's box [0, 1].
+ */
+function faceTrimBox(context is Context, face is Query) returns array
+{
+    var tb = [1e9, -1e9, 1e9, -1e9];
+    var parameters = [];
+    for (var k = 0; k < UNWRAP_FACE_TRIM_SAMPLES; k += 1)
+    {
+        parameters = append(parameters, k / (UNWRAP_FACE_TRIM_SAMPLES - 1));
+    }
+    for (var edge in evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE)))
+    {
+        for (var tl in evEdgeTangentLines(context, { "edge" : edge, "parameters" : parameters }))
+        {
+            const uv = evDistance(context, { "side0" : tl.origin, "side1" : face }).sides[1].parameter;
+            tb = [min(tb[0], uv[0]), max(tb[1], uv[0]), min(tb[2], uv[1]), max(tb[3], uv[1])];
+        }
+    }
+    const du = UNWRAP_FACE_TRIM_GROW * (tb[1] - tb[0]);
+    const dv = UNWRAP_FACE_TRIM_GROW * (tb[3] - tb[2]);
+    return [max(0, tb[0] - du), min(1, tb[1] + du), max(0, tb[2] - dv), min(1, tb[3] + dv)];
+}
+
+/** The longest grid line (3D polyline through the defined points) of a G x G grid, along u (alongU) or v. */
+function gridLength3(flat is array, alongU is boolean) returns number
+{
+    const G = round(sqrt(size(flat)));
+    var best = 0;
+    for (var t = 0; t < G; t += 1)
+    {
+        var length = 0;
+        var last = undefined;
+        for (var s = 0; s < G; s += 1)
+        {
+            const p = flat[gridIndex(s, t, alongU, G)];
+            if (p == undefined)
+            {
+                continue;
+            }
+            if (last != undefined)
+            {
+                length += sqrt((p[0] - last[0]) ^ 2 + (p[1] - last[1]) ^ 2 + (p[2] - last[2]) ^ 2);
+            }
+            last = p;
+        }
+        best = max(best, length);
+    }
+    return best;
+}
+
+/** Chord-length parameters in [0, 1] averaged over several equally long point lists (Vectors with units). */
+function averageChordParameters(lists is array) returns array
+{
+    const n = size(lists[0]);
+    var out = makeArray(n, 0);
+    for (var pts in lists)
+    {
+        var chords = [0];
+        for (var i = 1; i < n; i += 1)
+        {
+            chords = append(chords, chords[i - 1] + norm(pts[i] - pts[i - 1]) / meter);
+        }
+        for (var i = 0; i < n; i += 1)
+        {
+            out[i] += ((chords[n - 1] > 0) ? chords[i] / chords[n - 1] : i / (n - 1)) / size(lists);
+        }
+    }
+    out[0] = 0;
+    out[n - 1] = 1;
+    return out;
+}
+
+/**
+ * A flat face against its source face, both ways: source points (G x G on its trim) mapped forward and measured to the
+ * flat face; flat-face points mapped back (unwrapInverse) and measured to the source face.
+ * @returns {map} : { "distance" (plain metres), "where" (flat, plain metres), "kind" ("forward" / "reverse"), "samples"
+ *      ([forward, reverse] counts) }
+ */
+function flatFaceCheck(context is Context, chart is map, flatFace is Query, source is Query) returns map
+{
+    var worst = 0;
+    var where = undefined;
+    var kind = "forward";
+    var previous = undefined;
+    var forward = 0;
+    var reverse = 0;
+    // A face whose trim fills little of its parameter box (a long strip laid diagonally in it) gets few points on the
+    // coarse grid: then a denser one.
+    var sourcePlanes = evFaceTangentPlanes(context, { "face" : source, "parameters" : interiorGrid(UNWRAP_FACE_FORWARD_GRID),
+                "returnUndefinedOutsideFace" : true });
+    if (definedCount(sourcePlanes) < UNWRAP_FACE_CHECK_MIN_SAMPLES)
+    {
+        sourcePlanes = evFaceTangentPlanes(context, { "face" : source, "parameters" : interiorGrid(UNWRAP_FACE_DENSE_GRID),
+                    "returnUndefinedOutsideFace" : true });
+    }
+    for (var tp in sourcePlanes)
+    {
+        if (tp == undefined)
+        {
+            continue;
+        }
+        const u = chartFootAt(chart, tp.origin, previous);
+        if (!chartFootConverged(u))
+        {
+            continue;
+        }
+        previous = u;
+        forward += 1;
+        const d = evDistance(context, { "side0" : vector(u[0], u[1], u[2]) * meter, "side1" : flatFace }).distance / meter;
+        if (d > worst)
+        {
+            worst = d;
+            where = [u[0], u[1], u[2]];
+        }
+    }
+    var flatPlanes = evFaceTangentPlanes(context, { "face" : flatFace, "parameters" : interiorGrid(UNWRAP_FACE_REVERSE_GRID),
+                "returnUndefinedOutsideFace" : true });
+    if (definedCount(flatPlanes) < UNWRAP_FACE_CHECK_MIN_SAMPLES)
+    {
+        flatPlanes = evFaceTangentPlanes(context, { "face" : flatFace, "parameters" : interiorGrid(UNWRAP_FACE_DENSE_GRID),
+                    "returnUndefinedOutsideFace" : true });
+    }
+    for (var tp in flatPlanes)
+    {
+        if (tp == undefined)
+        {
+            continue;
+        }
+        const q = tp.origin / meter;
+        const w = unwrapInverse(chart, q[0], q[1], q[2]);
+        reverse += 1;
+        const d = evDistance(context, { "side0" : vector(w[0], w[1], w[2]) * meter, "side1" : source }).distance / meter;
+        if (d > worst)
+        {
+            worst = d;
+            where = q;
+            kind = "reverse";
+        }
+    }
+    return { "distance" : worst, "where" : where, "kind" : kind, "samples" : [forward, reverse] };
+}
+
+/** How many entries of an array are defined. */
+function definedCount(values is array) returns number
+{
+    var n = 0;
+    for (var v in values)
+    {
+        if (v != undefined)
+        {
+            n += 1;
+        }
+    }
+    return n;
+}
+
+/** A G x G grid of face parameters at the cell centres ((i + 0.5) / G). */
+function interiorGrid(G is number) returns array
+{
+    var out = [];
+    for (var i = 0; i < G; i += 1)
+    {
+        for (var j = 0; j < G; j += 1)
+        {
+            out = append(out, vector((i + 0.5) / G, (j + 0.5) / G));
+        }
+    }
+    return out;
 }
 
 // ============================================================================
@@ -2064,8 +2880,24 @@ function reportSummary(context is Context, id is Id, definition is map, tally is
                 ~ (r.part.approximatedFaces != undefined && r.part.approximatedFaces > 0
                     ? "; " ~ r.part.approximatedFaces ~ " face(s) built as the nearest pure shape, max "
                         ~ fmtMM(r.part.approximationMax, 4, 0) ~ " mm" : "")
+                ~ (r.part.holes != undefined && r.part.holes > 0 ? "; " ~ r.part.holes ~ " hole(s) cut" : "")
                 ~ (r.part.reverseCheckMax != undefined ? "; checked against the source: max " ~ fmtMM(r.part.reverseCheckMax, 4, 0) ~ " mm" : "")
                 ~ ".";
+        }
+    }
+    for (var r in records)
+    {
+        if (r.faces != undefined)
+        {
+            const fr = r.faces;
+            text = text ~ " Faces: " ~ fr.faces ~ " rebuilt (" ~ fr.planes ~ " planar, " ~ fr.extruded ~ " extruded, " ~ fr.fitted
+                ~ " fitted) on " ~ fr.edges ~ " unwrapped edges, " ~ fr.sheets ~ " sheet(s); checked against the source both ways: max "
+                ~ fmtMM(fr.checkMax * meter, 4, 0) ~ " mm.";
+            if (fr.sheets > fr.groups)
+            {
+                warnings = append(warnings, "Faces: the rebuilt faces did not all join: " ~ fr.sheets ~ " sheets where the source's faces make "
+                        ~ fr.groups ~ " connected group(s).");
+            }
         }
     }
     for (var r in records)

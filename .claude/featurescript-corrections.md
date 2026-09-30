@@ -1937,3 +1937,75 @@ using it came up empty.
 **Fix / rule**: put new declarations after the LAST import line (look for `Namespace::import` too). When `--check`
 can't run, verify by counting bodies in a studio that uses the tab (eval `size(evaluateQuery(context,
 qEverything(EntityType.BODY)))`) -- a sudden 0 means a compile failure.
+
+---
+
+## Correction 66: evVolume's default accuracy moves between regenerations of identical geometry (2026-09-29)
+
+**Symptom** (Unwrap regression): 4103 over FULL_BASELINE reported volume x0.998559 in one run and x0.998538 in the
+next with no code change ("non-deterministic"); later x0.998942.
+**Measured**: all 80 vertices and 82 face points of the body identical to 0.1 nm across regenerations, face areas
+identical to 1e-6 mm2. Only `evVolume` moved: default (= MEDIUM) 10186.62 / 10186.83 / 10190.73 mm3, HIGH 10187.8097 /
+10187.8106 / 10188.8298 (the last after a real code change). The default estimate is ~1e-4 off and depends on the
+server's state (a freshly built body vs a cached one); LOW is 0.4 % off.
+**Fix / rule**: any volume that is reported or compared uses `"accuracy" : VolumeAccuracy.HIGH` (~20 ms per call).
+HIGH still moves by ~1e-7 relative between cached and fresh states: compare to 6 digits at most.
+
+## Correction 67: the eval API ignores rollbackBarIndex in the JSON body -- pass it as a QUERY parameter (2026-09-29)
+
+**Symptom**: `POST .../featurescript` with `{"script": ..., "rollbackBarIndex": 7}` evaluated at the studio's own
+rollback bar (6), so the last feature had "no embedded output". As a query parameter (`?rollbackBarIndex=7`) it
+evaluates the whole tree. Same as `configuration` (fseval.py docstring). devtools scripts using
+`c._request("POST", path, {"rollbackBarIndex": n}, body)` were right; check_unwrap_regression.py now does the same.
+Also check `rollbackIndex` in `GET .../features`: a UI session had left "Unwrap_Testing Copy 1" rolled back before U3
+(its feature state then reads OK, not INFO).
+
+## Correction 68: Part-mode spline tools rang between adaptive rows; 1e-7 m fits are slow and buy nothing (2026-09-29)
+
+**Symptom** (Unwrap Part mode, 4103 over FULL_BASELINE): flat part 45 um off its source at the ledge taper (both
+inside and outside), 0.01 % of its volume missing; the 16-point-per-face reverse check passed (5.5 um).
+**Cause**: correction 63 in unwrap_part.fs: every PRISM tool curve was fitted to 1e-7 m through the adaptive row
+samples, so approximateSpline interpolated them and rang between them.
+**Fix**: fit through the row plus the midpoint of each span on the cubic the row was refined against (fitPoints,
+densify 1) to 0.5 um (`UNWRAP_PART_ROW_FIT_TOL`; the rows are only known to shape tolerance / 4). Three points per span
+at 1e-7 cost the CORE ~3 s; the samples alone at 0.5 um were as accurate on every test case and 0.85 s faster.
+**Measure a curve between its samples** (forward check: source face points mapped and measured to the result), not at
+them, and not with 16 points per face.
+**Also**: an auto-backup commit made by ANOTHER agent's push (`[AUTO-BACKUP] Before pushing publish_tools`) commits
+your uncommitted working files too: `git show HEAD:` is then not your "before" state. Pin the before-state commit
+hash when you start (here 6440d32).
+
+## Correction 69: opCreateBSplineCurve wants G1; triple interior knots are fine (2026-09-29)
+
+**Symptom**: joining line, arc and spline pieces into one cubic B-spline (triple knot at each joint) failed with
+`BSPLINECURVE_NOT_G1` wherever two pieces met with a kink of even 1e-5 deg.
+**Measured**: a rational cubic with a triple (C0) interior knot and geometrically tangent pieces is accepted as ONE
+edge; its extrusion is ONE face (EXTRUDED); curvature jumps cleanly (0 -> 1/r) at the knot. An arc goes in exactly as
+rational quadratic Beziers of <= 90 deg (middle weight cos(half sweep)) raised to cubic in homogeneous coordinates
+(G1 = (H0 + 2 H1) / 3, G2 = (2 H1 + H2) / 3). A piece's weights may be scaled freely; shared control points must
+carry one weight.
+**Fix** (unwrap_part `g1Runs`): make every joint G1 by turning the SHORTER control arm of a Bezier side onto the other
+direction, after cutting that Bezier close to the joint (de Casteljau) so the arm is short enough that the move stays
+under a set tolerance (4/9 x arm x angle). Turning a whole long arm instead moved a 1.5 m wall by 0.76 um (-5.8 mm3).
+
+## Correction 70: face departure sampled on a face's trim needs more than a 5 x 5 grid (2026-09-29)
+
+**Symptom** (PRISM): 4803's tail walls over FULL_BASELINE measured 6.3 um from a plan-view extrusion, were accepted
+at a 0.01 mm shape tolerance, and the result missed the source by 12.6 um (the reverse check, 16 points per face,
+passed at 9.75 um). 4103's tip walls: 4.4 um measured, 13.5 um real miss at 0.005 mm tolerance.
+**Cause**: a face whose parameter box reaches past its trim is re-read with `returnUndefinedOutsideFace`; on a 5 x 5
+grid only a handful of points survive, and the departure (half the spread across the face) came out at half the truth.
+**Fix**: the trim re-read uses 13 x 13 (`UNWRAP_PART_PRISM_TRIM_GRID`): 10.5 / 10.4 um. 4803 then goes to the exact cell
+rebuild (0.24 um); 4103 at 0.005 mm is refused. Grid code takes G from the sample count; `capEnvelope` interpolates
+between grids of different sizes.
+
+## Correction 71: an overshoot line at a shallow junction becomes a sliver face; overshoot < junction distance leaves a gap (2026-09-29)
+
+**Symptom** (PRISM arrangement): (a) 8 PLANE faces 8 um wide on the CORE's top where a profile chain met another at
+0.53 deg; (b) 4401 over FULL_BASELINE at 0.005 mm: "no plan cell holds material".
+**Cause**: a chain end on another chain got a separate straight overshoot edge. (a) The other curve, fitted to 0.5 um,
+crossed that overshoot 8 um past the end (a 0.07 um miss at 0.53 deg), so the overshoot bounded a cell. (b) The end sat
+29 um from the other chain (the junction test allows 3 x tolerance, min 50 um) but the overshoot was 20 um: no crossing,
+the outline stayed open.
+**Fix**: the overshoot is part of the chain's own curve (a line longer, an arc further round, a spline by a tangent
+line inside the same B-spline), and at least 4 x the end's distance from the chain it lies on.
