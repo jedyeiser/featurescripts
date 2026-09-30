@@ -17,7 +17,8 @@ export enum StationTableLanguage
 }
 
 /**
- * Station table: one table per Station geometry view ("4101 PLAN", "4501 PROFILE", ...), for the Part Studio's
+ * Station table: one table per PART (Station geometry prefix; a part with plan and profile gets ONE table with Width
+ * and Thickness columns -- 2026-09-30), for the Part Studio's
  * table panel and for drawings (Insert > Custom table > this Part Studio > pick the table).
  *
  * Each view composite carries the attribute STATION_TABLE_ATTRIBUTE (station_utils.fs) with its rows, written
@@ -52,11 +53,24 @@ export const stationTable = defineTable(function(context is Context, definition 
                 views = append(views, { "data" : data, "body" : body });
             }
         }
-        // Model order (the feature tree's); strings cannot be ordered with < in FeatureScript.
-        var tables = [];
+        // One table per PART (prefix): a part with plan and profile gets one table with Width and Thickness columns
+        // (user, 2026-09-30). Parts in model order (the feature tree's); strings cannot be ordered with <.
+        var order = [];
+        var groups = {};
         for (var v in views)
         {
-            tables = append(tables, viewTable(v.data, v.body, definition.showEdges, tableLanguage(definition.language, v.data)));
+            const key = v.data.prefix is string ? v.data.prefix : v.data.title;
+            if (groups[key] == undefined)
+            {
+                order = append(order, key);
+                groups[key] = [];
+            }
+            groups[key] = append(groups[key], v);
+        }
+        var tables = [];
+        for (var key in order)
+        {
+            tables = append(tables, partTable(key, groups[key], definition.showEdges, tableLanguage(definition.language, groups[key][0].data)));
         }
         return tableArray(tables);
     });
@@ -112,42 +126,89 @@ function spanHeading(view is string, words is map) returns string
     return words.span;
 }
 
-function viewTable(data is map, body is Query, showEdges is boolean, language is string) returns Table
+/**
+ * One part's table: Station | x | one size column per view (Width for PLAN, Thickness for PROFILE, "<VIEW> span" for
+ * others) [+ lower / upper edge per view]. Rows are merged by station id across the views (the stations are shared;
+ * x is the first view's), sorted along x. Extent rows (the part's ends) show x only.
+ */
+function partTable(key is string, views is array, showEdges is boolean, language is string) returns Table
 {
     const words = WORDS[language];
     var columns = [
             tableColumnDefinition("station", words.station, TableTextAlignment.CENTER),
-            tableColumnDefinition("x", "x (mm)", TableTextAlignment.CENTER),
-            tableColumnDefinition("span", spanHeading(data.view, words), TableTextAlignment.CENTER)
+            tableColumnDefinition("x", "x (mm)", TableTextAlignment.CENTER)
         ];
-    if (showEdges)
+    var bodies = [];
+    var ids = [];
+    var merged = {};
+    for (var k = 0; k < size(views); k += 1)
     {
-        columns = concatenateArrays([columns, [
-                        tableColumnDefinition("lo", words.lower, TableTextAlignment.CENTER),
-                        tableColumnDefinition("hi", words.upper, TableTextAlignment.CENTER)
-                    ]]);
+        const data = views[k].data;
+        bodies = append(bodies, views[k].body);
+        const heading = size(views) > 1 && data.view != "PLAN" && data.view != "PROFILE" ? data.view ~ " " ~ words.span : spanHeading(data.view, words);
+        columns = append(columns, tableColumnDefinition("span" ~ k, heading, TableTextAlignment.CENTER));
+        if (showEdges)
+        {
+            const tag = size(views) > 1 ? data.view ~ " " : "";
+            columns = concatenateArrays([columns, [
+                            tableColumnDefinition("lo" ~ k, tag ~ words.lower, TableTextAlignment.CENTER),
+                            tableColumnDefinition("hi" ~ k, tag ~ words.upper, TableTextAlignment.CENTER)
+                        ]]);
+        }
+        for (var r in data.rows)
+        {
+            if (merged[r.id] == undefined)
+            {
+                ids = append(ids, r.id);
+                const name = (r.extent != undefined && words[r.extent] != undefined) ? words[r.extent] : r.id;
+                merged[r.id] = { "x" : r.x, "cells" : { "station" : name, "x" : round2(r.x) } };
+            }
+            var cells = merged[r.id].cells;
+            if (r.extent != undefined)
+            {
+                cells["span" ~ k] = "";
+                cells["lo" ~ k] = "";
+                cells["hi" ~ k] = "";
+            }
+            else if (r.hit)
+            {
+                cells["span" ~ k] = round2(r.span);
+                cells["lo" ~ k] = round2(r.lo);
+                cells["hi" ~ k] = round2(r.hi);
+            }
+            else
+            {
+                cells["span" ~ k] = words.miss;
+                cells["lo" ~ k] = "";
+                cells["hi" ~ k] = "";
+            }
+            merged[r.id].cells = cells;
+        }
     }
-    const ordered = sort(data.rows, function(a, b) { return a.x - b.x; });
+    var entries = [];
+    for (var id in ids)
+    {
+        entries = append(entries, merged[id]);
+    }
+    entries = sort(entries, function(a, b) { return a.x - b.x; });
     var rows = [];
-    for (var r in ordered)
+    for (var e in entries)
     {
-        if (r.extent != undefined)
+        var cells = e.cells;
+        // A station missing from one view (e.g. extra stations on one view only) gets empty cells there.
+        for (var k = 0; k < size(views); k += 1)
         {
-            // The part's end (Station geometry, 2026-09-30): position only, named in the table's language.
-            const name = words[r.extent] == undefined ? r.id : words[r.extent];
-            rows = append(rows, tableRow({ "station" : name, "x" : round2(r.x), "span" : "", "lo" : "", "hi" : "" }));
+            if (cells["span" ~ k] == undefined)
+            {
+                cells["span" ~ k] = "";
+                cells["lo" ~ k] = "";
+                cells["hi" ~ k] = "";
+            }
         }
-        else if (r.hit)
-        {
-            rows = append(rows, tableRow({ "station" : r.id, "x" : round2(r.x), "span" : round2(r.span),
-                            "lo" : round2(r.lo), "hi" : round2(r.hi) }));
-        }
-        else
-        {
-            rows = append(rows, tableRow({ "station" : r.id, "x" : round2(r.x), "span" : words.miss, "lo" : "", "hi" : "" }));
-        }
+        rows = append(rows, tableRow(cells));
     }
-    return table(data.title ~ " " ~ words.stations, columns, rows, body);
+    const title = size(views) == 1 ? views[0].data.title : key;
+    return table(title ~ " " ~ words.stations, columns, rows, qUnion(bodies));
 }
 
 function round2(value is number) returns number

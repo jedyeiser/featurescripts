@@ -11,6 +11,7 @@ renders.json:
   "renders": [
     {"out": "docs/decks/<slug>/shots/regions.png",
      "view": "plan" | "iso" | "side" | "section",  plan = XY, side = XZ, section = YZ (use "xfilter"), iso = 3D
+                                                 (iso: "elev", "azim", "zoom" optional)
      "at": x,                                    (section only: cut every triangle with the plane X = x, draw the segments)
      "notes": [{"text", "at": [fx, fy] axes fractions, "color", "ha"}]   (optional labels anywhere),
      "xfilter": [lo, hi],                       (plan / side / section: only facets and edges centred in this X range)
@@ -18,7 +19,7 @@ renders.json:
      "xrange": [-50, 1850],                     (mm, optional crop)
      "title": "...",
      "layers": [ {"parts": ["RPSD", ...] | "name": "exact part name" | "createdBy": "feature name" | "bodyKey": ["feature name", "top"], "color": "#1baf7a", "label": "start",
-                  "alpha": 0.9, "edges": true, "labelAt": [x, y] (mm, optional),
+                  "alpha": 0.9, "edges": true, "labelAt": [x, y] (mm, optional; iso: [x, y, z]),
                   "key": ["feature name", "keptFaces1"]  (optional: only the faces that feature publishes under the key),
                   "edgeKey": ["feature name", "trimEdges"] (optional: draw those edges bold, "edgeColor"),
                   "cycle": ["#hex", ...] (optional: alternate edge colours along X, ticks at the joints)} , ...],
@@ -143,7 +144,10 @@ def render(c, spec, rs, base_parts):
     fig = plt.figure(figsize=size)
     xr = rs.get("xrange")
     if view == "iso":
-        ax = fig.add_subplot(111, projection="3d")
+        # a 3D axes is always square: make the square as wide as the figure (centred, overflowing top and bottom)
+        # so a long, flat scene fills the width; saved without a tight crop (see the end of render)
+        tall = size[0] / size[1]
+        ax = fig.add_axes([0, 0.5 - tall / 2, 1, tall], projection="3d")
         allpts = []
         for layer in rs["layers"]:
             rgb = hex_rgb(layer.get("color", "#bbbbbb"))
@@ -161,9 +165,15 @@ def render(c, spec, rs, base_parts):
         P = np.vstack(allpts)
         lo, hi = P.min(axis=0), P.max(axis=0)
         ax.set_xlim(lo[0], hi[0]); ax.set_ylim(lo[1], hi[1]); ax.set_zlim(lo[2], hi[2])
-        ax.set_box_aspect(np.maximum(hi - lo, 1e-3) * np.array([1, rs.get("yscale", 1), rs.get("zscale", 1)]))
+        ax.set_box_aspect(np.maximum(hi - lo, 1e-3) * np.array([1, rs.get("yscale", 1), rs.get("zscale", 1)]), zoom=rs.get("zoom", 1))
         ax.view_init(rs.get("elev", 25), rs.get("azim", -60))
         ax.set_axis_off()
+        for layer in rs["layers"]:
+            # iso labels: "labelAt" is [x, y, z] in mm
+            if layer.get("label") and layer.get("labelAt"):
+                x, y, z = layer["labelAt"]
+                ax.text(x, y, z, layer["label"], ha="center", va="bottom", fontsize=layer.get("labelSize", 10), fontweight="bold",
+                        color=layer.get("labelColor", layer.get("color", "#0b0b0b")), zorder=10)
     else:
         ax = bare(fig.add_subplot(111), equal=False)
         i, j = {"plan": (0, 1), "side": (0, 2), "section": (1, 2)}[view]
@@ -244,7 +254,13 @@ def render(c, spec, rs, base_parts):
                 fontweight=n.get("weight", "bold"), ha=n.get("ha", "left"), va="center")
     if rs.get("title"):
         ax.set_title(rs["title"], fontsize=11, color=INK2)
-    save(fig, rs["out"])
+    if view == "iso":
+        os.makedirs(os.path.dirname(rs["out"]), exist_ok=True)
+        fig.savefig(rs["out"], dpi=150)
+        plt.close(fig)
+        print("wrote", rs["out"])
+    else:
+        save(fig, rs["out"])
 
 
 def main(path):

@@ -1,0 +1,18 @@
+{
+ "doc": "2099413dd91f34578b385892", "ws": "a875a90e6a8ebf49cc0eff73",
+ "shots": [
+  {"elem": "91e77cd12f94794037de7c8b", "featurePrefix": "T1 Define case A", "wait": 25,
+   "dialog": "docs/decks/case_pattern/shots/dialog_define.png",
+   "labels": [{"name": "Case 1 name", "find": "Case 1 name"}, {"name": "Inputs", "find": "Inputs"},
+              {"name": "Shared references", "find": "Shared references"}, {"name": "Values", "find": "Values"}]},
+  {"elem": "91e77cd12f94794037de7c8b", "feature": "T1 Case B (25 mm, 3)",
+   "dialog": "docs/decks/case_pattern/shots/dialog_case.png",
+   "labels": [{"name": "Define case", "find": "Define case"}, {"name": "Update from Define case", "find": "Update from Define case"},
+              {"name": "Case name", "find": "Case name"}, {"name": "Input slots", "find": "Input 1"}, {"name": "Value slots", "find": "Value 1"}]},
+  {"elem": "91e77cd12f94794037de7c8b", "featurePrefix": "T1 Close case B, C",
+   "dialog": "docs/decks/case_pattern/shots/dialog_close.png",
+   "labels": [{"name": "Define case", "find": "Define case"}, {"name": "Features to repeat", "find": "Features to repeat"},
+              {"name": "Cases", "find": "Cases"}, {"name": "Outputs", "find": "Outputs"}, {"name": "Keep", "find": "Parts"},
+              {"name": "Name parts after outputs", "find": "Name parts after outputs"}, {"name": "Print bindings", "find": "Print bindings"}]}
+ ]
+}
