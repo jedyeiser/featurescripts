@@ -112,7 +112,7 @@
  [
   "Unwrap 4103 L sidewall (part, along FULL_BASELINE, keep faces, 0.015 mm) - expect OK, band rebuild + planar tip cap",
   "INFO",
-  "bodies: 1 | edgeLength: 10291.4645 | box: 1697.004x26.5314x13.0235 | volumeRatio: 0.998737"
+  "bodies: 1 | edgeLength: 10291.4645 | box: 1697.004x26.5314x13.0235 | volumeRatio: 0.998736"
  ],
  [
   "Unwrap 4401 L (part, along FULL_BASELINE, keep faces) - expect OK, band rebuild + 2 planar caps",
@@ -133,5 +133,50 @@
   "U3 Topsheet undrape, target = Front-plane section of the mid-surface -> 1 flat plate 0.4 thick",
   "INFO",
   "bodies: 1 | edgeLength: 7928.8589 | box: 1827.693x158.6466x0.4 | volumeRatio: 1.000227"
+ ],
+ [
+  "Unwrap HA block, round hole + slot + pocket + counterbore (part, along FULL_BASELINE) - expect OK, 5 holes cut",
+  "INFO",
+  "bodies: 1 | edgeLength: 1939.1732 | box: 300.0186x50x15.5884 | volumeRatio: 0.999831"
+ ],
+ [
+  "Unwrap HA block with holes (part, along REF_WIRE, straight span) - expect OK, moved rigidly, holes kept",
+  "INFO",
+  "bodies: 1 | edgeLength: 1889.4286 | box: 300x50x16.8077 | volumeRatio: 1"
+ ],
+ [
+  "Unwrap HA CORE with 2 holes (part, along FULL_BASELINE, keep faces) - expect OK, 2 holes cut",
+  "INFO",
+  "bodies: 1 | edgeLength: 50505.4168 | box: 1500.1649x131.5622x12.9006 | volumeRatio: 1.000085"
+ ],
+ [
+  "Unwrap HA CORE with 2 holes (part, along REF_WIRE) - expect OK, tail hole cut, mid hole moved rigidly",
+  "INFO",
+  "bodies: 1 | edgeLength: 50517.868 | box: 1500x131.5622x12.2266 | volumeRatio: 1.000058"
+ ],
+ [
+  "Unwrap HB Ski_Top_Surf sheet (faces, along FULL_BASELINE) - expect OK, 1 sheet, 3 faces, 10 edges",
+  "INFO",
+  "bodies: 1 | edgeLength: 3960.3262 | box: 1830x75x10.1126 | volumeRatio: 0"
+ ],
+ [
+  "Unwrap HB Topsheet top face (faces, along FULL_BASELINE) - expect OK, 1 face, 16 edges",
+  "INFO",
+  "bodies: 1 | edgeLength: 3200.6706 | box: 1480x127.6023x10.1083 | volumeRatio: 0"
+ ],
+ [
+  "Unwrap HB Topsheet step face (faces, along FULL_BASELINE) - expect OK, fitted surface",
+  "INFO",
+  "bodies: 1 | edgeLength: 1541.0376 | box: 769.9089x9.9866x5.2998 | volumeRatio: 0"
+ ],
+ [
+  "Unwrap HB block top face with 4 hole loops (faces, along FULL_BASELINE) - expect OK, 1 face, 4 inner loops",
+  "INFO",
+  "bodies: 1 | edgeLength: 885.6586 | box: 299.9467x50x5.5844 | volumeRatio: 0"
+ ],
+ [
+  "Unwrap HB CORE bottom face with 2 hole loops (faces, along REF_WIRE) - expect OK, planar, 2 inner loops",
+  "INFO",
+  "bodies: 1 | edgeLength: 21802.6479 | box: 1480x121.8622x0 | volumeRatio: 0"
  ]
 ]

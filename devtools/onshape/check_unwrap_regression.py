@@ -1,5 +1,6 @@
-"""Unwrap regression: feature status + a geometry fingerprint of every Unwrap feature in the two test studios
-("Unwrap_Testing Copy 2" = all production parts, "Unwrap_Testing Copy 1" = U1-U3).
+"""Unwrap regression: feature status + a geometry fingerprint of every Unwrap feature in the three test studios
+("Unwrap_Testing Copy 2" = all production parts, "Unwrap_Testing Copy 1" = U1-U3, "Unwrap hole & face tests" = holes in
+Part mode and Faces mode, built by build_unwrap_hole_face_tests.py).
 
 The fingerprint reads only the STANDARD keys every producer publishes (`output`, `inputs`), so it works on Unwrap
 versions before and after the 2026-09-25 trim that stopped publishing lengthWrapped / lengthFlat / volumeRatio and
@@ -104,7 +105,8 @@ def report(E, label):
         print("  %-7s %-55s %s" % (st, x["name"][:55], vals))
         out.append((x["name"], st, vals))
     return out
-now = report("681a5825e353d376c88224eb", "Copy 2") + report("80c1e329f99a05e224058526", "Copy 1")
+now = (report("681a5825e353d376c88224eb", "Copy 2") + report("80c1e329f99a05e224058526", "Copy 1")
+       + report("56c29f15db6047862561aa7b", "Hole & face tests"))
 path = SP + "/unwrap_geometry_baseline.json"
 if SAVE:
     json.dump(now, open(path, "w"), indent=1)

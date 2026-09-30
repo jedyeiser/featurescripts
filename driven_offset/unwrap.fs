@@ -78,7 +78,7 @@ import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b982
  * z = height. The alignment point, which must lie within the reference's X span, lands on the origin. A point
  * past the reference's centre of curvature has no foot and cannot be unwrapped.
  *
- * Three modes, one output (set of bodies) per source body:
+ * Four modes, one output (set of bodies) per source body:
  *
  * EDGES / WIRES: every selected edge is sampled, unwrapped, and emitted as a line or a (sketch) arc where the
  * points are one within tolerance AND the exactly-unwrapped end tangents agree with it (continuity is kept), a
@@ -95,7 +95,18 @@ import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b982
  *
  * PART (SOLID) (unwrap_part.fs): any solid along the reference, e.g. a core. Split where the reference
  * changes between straight and curved; straight pieces move rigidly, curved pieces are rebuilt through the
- * map; optionally with square walls.
+ * map; optionally with square walls. Holes (2026-09-30): a closed tangent ring of walls around a void (round hole,
+ * slot, pocket, counterbore; world-vertical or normal to the reference) in a curved piece is filled on a copy
+ * (the hole faces deleted and healed), the filled piece rebuilt, and the hole cut from the flat result by an exact
+ * ruled tube along the wall's own rulings (floors as side-view tools). Every rebuilt piece is checked both ways
+ * (reverse AND forward: the reverse check alone passed a flat part whose hole had been filled).
+ *
+ * FACES / SURFACES (2026-09-30): faces of sheets or solids, or whole sheets. Every edge is unwrapped once (the
+ * Edges pipeline, fitted to 0.25 um here), each face rebuilt on its own flat curves: an exact plane or extrusion
+ * where its flat image is one (within 0.5 um), else a B-spline surface fitted through its trim's parameter grid;
+ * split by the curves, checked both ways against the source face. The faces of a source body are united into one
+ * sheet; faces the union cannot sew (edges more than ~1 um apart) stay separate sheets, with a warning.
+ * Closed edges (a hole's circle) are emitted on their own in every mode: an exact circle or a periodic spline.
  *
  * Every mode ends with a length check (the preserved curve's wrapped length over the source's extent vs the
  * flat result's X extent; flat / source volume for solids), optionally kept as two wires.
@@ -108,8 +119,12 @@ import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b982
  * count differs from the body count the table is not applied and a warning says so; a same-count reorder
  * cannot be detected.
  *
- * Not built: surfaces, composite parts, mate connectors as inputs, neutral axis, projection of a wire onto a
- * plane normal to the unwrap plane.
+ * Not built: SURFACE mode's projection / THICKEN branch of the spec (Faces mode unwraps faces as they are),
+ * composite parts, mate connectors as inputs, neutral axis, projection of a wire onto a plane normal to the unwrap
+ * plane. Holes: rings of faces that are not ruled walls, hole floors that are not side-view shapes (a fillet at the
+ * floor, a stepped floor), bosses (closed rings around material) and closed side-view rings (tunnels along Y) go the
+ * old way and are refused when they cannot be built. Faces: faces whose neighbours' surfaces differ by more than
+ * ~1 um along a shared edge do not sew (CORE, 64 faces: 2 sheets).
  */
 
 /** What is being unwrapped. */
