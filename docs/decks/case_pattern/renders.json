@@ -3,75 +3,38 @@
  "ws": "a875a90e6a8ebf49cc0eff73",
  "elem": "91e77cd12f94794037de7c8b",
  "renders": [
-  {
-   "out": "docs/decks/case_pattern/shots/t1_side.png",
-   "view": "side",
-   "size": [
-    10,
-    3.2
-   ],
-   "title": "T1: one chain (Boss, rim fillet, boss-edge fillet) built on case A, replayed for the other two blocks (side view)",
+  {"out": "docs/decks/case_pattern/shots/t1_iso.png", "view": "iso", "size": [10, 3.4], "elev": 28, "azim": -70,
    "layers": [
-    {
-     "parts": [
-      "JHD",
-      "JKD",
-      "JND"
-     ],
-     "color": "#d9d6cf",
-     "edges": false
-    },
-    {
-     "parts": [
-      "JOD"
-     ],
-     "color": "#2a78d6",
-     "edges": false
-    },
-    {
-     "parts": [
-      "JRD"
-     ],
-     "color": "#eb6834",
-     "edges": false
-    },
-    {
-     "parts": [
-      "JUD"
-     ],
-     "color": "#1baf7a",
-     "edges": false
-    }
-   ],
-   "notes": [
-    {
-     "text": "case A (template): #bossH 15",
-     "at": [
-      0.08,
-      -0.1
-     ],
-     "color": "#2a78d6",
-     "size": 9
-    },
-    {
-     "text": "case B: #bossH 25, R3",
-     "at": [
-      0.4,
-      -0.1
-     ],
-     "color": "#eb6834",
-     "size": 9
-    },
-    {
-     "text": "case C: #bossH 8, R2",
-     "at": [
-      0.74,
-      -0.1
-     ],
-     "color": "#1baf7a",
-     "size": 9
-    }
-   ]
-  }
+    {"createdBy": "T1 block A (60 x 40)", "color": "#d9d6cf"},
+    {"createdBy": "T1 block B (90 x 30)", "color": "#d9d6cf"},
+    {"createdBy": "T1 block C (pentagon r 35)", "color": "#d9d6cf"},
+    {"name": "A_bossFaces", "color": "#2a78d6"},
+    {"name": "B_bossFaces", "color": "#eb6834"},
+    {"name": "C_bossFaces", "color": "#1baf7a"}],
+   "notes": [{"text": "case A (Define case): #bossH 15 mm, #edgeR 3", "at": [0.02, 0.95], "color": "#2a78d6", "size": 10},
+             {"text": "case B (a Case): 25 mm, 3", "at": [0.02, 0.87], "color": "#eb6834", "size": 10},
+             {"text": "case C (a Case): 8 mm, 2", "at": [0.02, 0.79], "color": "#1baf7a", "size": 10}]},
+  {"out": "docs/decks/case_pattern/shots/t7_side.png", "view": "side", "size": [10, 2.8],
+   "layers": [
+    {"createdBy": "T7 block A (60 x 40)", "color": "#d9d6cf", "edges": false},
+    {"createdBy": "T7 block B (90 x 30)", "color": "#d9d6cf", "edges": false},
+    {"createdBy": "T7 block C (pentagon r 35)", "color": "#d9d6cf", "edges": false},
+    {"name": "A_stud", "color": "#2a78d6", "edges": false},
+    {"name": "B_stud", "color": "#eb6834", "edges": false},
+    {"name": "D_stud", "color": "#1baf7a", "edges": false}],
+   "notes": [{"text": "A_stud (case 1)", "at": [0.03, 0.9], "color": "#2a78d6"},
+             {"text": "B_stud (first Close case)", "at": [0.36, 0.9], "color": "#eb6834"},
+             {"text": "D_stud on B's stud (second Close case)", "at": [0.36, 0.78], "color": "#1baf7a"}]},
+  {"out": "docs/decks/case_pattern/shots/t14_side.png", "view": "side", "size": [10, 2.8],
+   "layers": [
+    {"createdBy": "T14 block A (60 x 40)", "color": "#d9d6cf", "edges": false},
+    {"createdBy": "T14 block B (90 x 30)", "color": "#d9d6cf", "edges": false},
+    {"createdBy": "T14 block C (pentagon r 35)", "color": "#d9d6cf", "edges": false},
+    {"createdBy": "T14 tower (outside, 60 mm)", "color": "#8a8883", "edges": false},
+    {"createdBy": "T14 Boss: extrude #top14 up to the CLICKED tower top", "color": "#2a78d6", "edges": false},
+    {"createdBy": "T14 Close case B -> boss up to tower, B's rim filleted, boss edges filleted", "color": "#eb6834", "edges": false}],
+   "notes": [{"text": "tower (before the body): its top is clicked in the extrude", "at": [0.55, 0.95], "color": "#52514e", "weight": "normal"},
+             {"text": "case A boss", "at": [0.03, 0.9], "color": "#2a78d6"},
+             {"text": "case B boss: same clicked face", "at": [0.25, 0.9], "color": "#eb6834"}]}
  ]
 }

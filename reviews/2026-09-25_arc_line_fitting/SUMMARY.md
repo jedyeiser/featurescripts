@@ -1,5 +1,37 @@
 # Arc / line tangency -- illustrated summary (2026-09-25)
 
+## Status 2026-09-29: IMPLEMENTED (2026-09-25/26)
+
+The text below is the pre-implementation walkthrough (it still says "nothing is implemented"); this section
+records what was built. Checked against the code on 2026-09-29.
+
+- **curve_core** (Curve_tools V9; `curve_tools/curve_core.fs`): `shapeRuns` decides all runs of a chain
+  together -- pass 1 exact line / arc / freeform per run, pass 2 one shared tangent at every joint under the
+  snap angle -- and emits each run as a line, an arc, a **tangent biarc chain** (`bestTangentBiarc`, ported
+  from offsetEdges.fs) or a spline pinned to the joint tangents. Option enum `ArcSourceFit` (Spline / Biarc fit).
+- **Callers on shapeRuns:** Driven edge offset (`driven_edge_offset.fs`, option "Varying offset on arcs",
+  default **Spline**, Biarc opt-in -- defined in `edge_offset_utils.fs`), Driven offset surface section plan
+  (`sectionPlan`: line / arc / pinned spline, never a biarc chain, one curve per run so the loft pairs
+  sections), Map curve (`map_curve.fs`), Unwrap (`unwrap.fs`, joints found by coinciding ends), Evaluate
+  offset (`evaluate_offset.fs`).
+- **Evaluate profiles** `smoothAcross` compares end tangents against the weld angle (the chord bug, section 3).
+- **Footprint / curveMapping:** arcFit (a neighbouring spline pinned to a preserved arc's tangent; line chord
+  checked against the source tangents, biarc first), scaleFootprint (splines turned to the G1 arc chain's
+  tangent at the seam), curveMappingCore (smooth frame near a line reference edge).
+- **Tests:** "Arc tangency tests" studio in Curve_tools, 9/9 (R1-R5 Recognize arcs, P12/P13 Evaluate
+  profiles Efficient, M1/M2 Map curve; `devtools/onshape/build_arc_tangency_tests.py` /
+  `check_arc_tangency_tests.py`); "Arc tangency DEO tests" in driven_offset, D1-D4
+  (`build_arc_tangency_deo_tests.py` / `check_arc_tangency_deo_tests.py`).
+
+**Loose ends (2026-09-29):**
+- Driven offset surface `curveThrough` (the seed curve) and Evaluate offset's line fit: being fixed now
+  (both already call shapeRuns in the working copy; not yet re-verified).
+- Clean wire: README items #16 (joints touching an exact line / arc always break, `forceTangency` never repairs
+  them) and #17 (curved plan-view sliver -> chord) are open.
+- Unwrap (solid) `unwrap_part.fs` still calls `classifyPoints` directly (two places), not shapeRuns.
+
+---
+
 A picture-first walkthrough of `README.md` in this folder (the full research handoff). Nothing here
 is implemented yet. Figures are generated SVGs in `figures/`; geometry in figures 1, 2, 5 and 6 is
 exaggerated so the effect is visible. Figure 3 is real measured data.

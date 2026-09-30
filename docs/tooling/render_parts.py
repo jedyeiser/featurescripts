@@ -240,7 +240,7 @@ def render(c, spec, rs, base_parts):
             ax.text(1.0, -0.04, ("width" if view == "plan" else "height") + " exaggerated x%g" % ys, transform=ax.transAxes, ha="right", va="top", fontsize=8, color=MUTED)
     for n in rs.get("notes", []):
         # {"text", "at": [fx, fy] in axes fractions, "color"}
-        ax.text(n["at"][0], n["at"][1], n["text"], transform=ax.transAxes, fontsize=n.get("size", 10), color=n.get("color", INK2),
+        (ax.text2D if view == "iso" else ax.text)(n["at"][0], n["at"][1], n["text"], transform=ax.transAxes, fontsize=n.get("size", 10), color=n.get("color", INK2),
                 fontweight=n.get("weight", "bold"), ha=n.get("ha", "left"), va="center")
     if rs.get("title"):
         ax.set_title(rs["title"], fontsize=11, color=INK2)

@@ -1290,6 +1290,8 @@ function connectSourceToOffset(context is Context, id is Id, definition is map, 
     // wholesale, which is what keeps an uncovered edge out of the loft.
     // The seed runs along the source edges, not the offset, so the offset's end slopes do
     // not describe it: its own are the source's tangents at the first and last station.
+    // Stations at a source corner share a point; the fit refuses repeated positions (as in the section plan).
+    points = withoutRepeats(points, fitRepeatTolerance(points));
     const seed = curveThrough(context, id + "seed", definition, points,
         sourceShapeGates(driven.stations, span.start, span.end),
         normalize(driven.stations[first].tangent), normalize(driven.stations[last].tangent));

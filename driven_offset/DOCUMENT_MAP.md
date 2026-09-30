@@ -1,6 +1,8 @@
 # driven_offset: document map and working rules (read first)
 
-Last updated 2026-09-25 (import pins re-read from the code, unwrap family added); split of generic
+Last updated 2026-09-25 (import pins re-read from the code, unwrap family added); 2026-09-29: import chain
+re-read from the code again (curve_core now Curve_tools V9, extract_outputs V6, offset_profile_core added),
+Create offset profile and arc-tangency entries brought up to date (docs agent). Split of generic
 features into their own Onshape documents 2026-09-23. Anyone (human or agent) working in `driven_offset/` should read this
 before editing or pushing.
 
@@ -8,7 +10,7 @@ before editing or pushing.
 
 | Onshape document | sync project / local dir | Owns | Doc id |
 |---|---|---|---|
-| driven_offset (Design_Master lives here) | `driven_offset` | Driven edge offset, Driven offset surface, offset run treatment, offset debug, `edge_offset_utils`, `bspline_compat`, Create offset profile, Evaluate offset, Unwrap (+ `undrape_utils`, `unwrap_part`) | `f61d2c000ab2d1240776342e` |
+| driven_offset (Design_Master lives here) | `driven_offset` | Driven edge offset, Driven offset surface, offset run treatment, offset debug, `edge_offset_utils`, `bspline_compat`, Create offset profile (+ `offset_profile_core`), Evaluate offset, Unwrap (+ `undrape_utils`, `unwrap_part`) | `f61d2c000ab2d1240776342e` |
 | Curve_tools | `curve_tools` | `curve_core` (shared curve machinery), Clean wire, Map curve, Merge curve, Evaluate profiles | `2143812a99089658c704f0bc` |
 | Variable_tools | `variable_tools` | `extract_outputs` (producer library), Extract variables feature + consumer library | `a47f90bfa6b17a59e20cebd0` |
 | Reference_Side_Features | `reference_side` | Mutual Trim+, Split+, Offset+ (keep side named by a reference) | `22764764a00a7f607dbc1c4d` |
@@ -40,35 +42,40 @@ Design_Master: element `643b702dc551feb3cc001826` in workspace `5b11f323ab31b04c
 
 ## Import chain (who pins whom) -- re-pin in this order after changing a callee
 
-Pins as they stand in the code on 2026-09-25 (the `version` of each `import`; `""` = same-workspace tab,
+Pins as they stand in the code on 2026-09-29 (the `version` of each `import`; `""` = same-workspace tab,
 always current). Two generations of `edge_offset_utils` are pinned at once: the unwrap family is on the
-newer one; DEO / DOS / ORT / debug are still on the older one (the later utils changes only ADD functions
-or remove unused ones) -- re-pin them together the next time the chain is walked.
+current one (3356bea0..., the tab's microversion on 2026-09-29); DEO / DOS / ORT / debug are on an older one
+(ff3d2909...) -- re-pin them together the next time the chain is walked.
 
 ```
-curve_core (Curve_tools V2, by VERSION: path 2143812a.../9e831639.../02d77844..., mv 9d6f0887be37c851829c40c3)
+curve_core (Curve_tools V9, by VERSION: path 2143812a.../75b53dea4a5f869da4b28caa/02d77844..., mv 186e92dbecd6f2c72288eef8)
   <- edge_offset_utils (a2665e22c07b7a6929ce4e80, export import curve_core)
-       <- offset_run_treatment (d009ddf4a8dd9534fc4dc4b5)   pins eou at 904e307030d69a3967e84103
-       <- offset_debug (6479d7fbd0ec7d11e0ae6c69)           pins eou at 904e307030d69a3967e84103
-       <- driven_edge_offset (786f62f4d67ed8d9c7d56d16)     export import eou at 904e3070...;
-                                                            ORT at ad1ed59d8c433738fa84f84b, debug at 930a52efd58501c3c7614c76
-       <- driven_offset_surface (c47cbd0497baf3011c60ecf8)  export import eou at 904e3070...; ORT ad1ed59d..., debug 930a52ef...,
-                                                            DEO "" and bspline_compat (6b635e74c92bd23387e850c1) ""
-            evaluate_offset (a2ebb5abc7ddda01f64ff8df)      export import DEO ""
-       <- undrape_utils (283b8f7562a16e9c9ccc01b7)          export import eou at 70dcbbcd66e91d6405084776
-       <- unwrap_part (fc976128871c5b4b2d33a91c)            export import eou at 70dcbbcd66e91d6405084776
-       <- unwrap (a84cdaa8963f2a55db1c016b)                 export import eou at 70dcbbcd66e91d6405084776;
-                                                            undrape_utils "" and unwrap_part ""
-create_offset_profile (3fccdcb24013c744bd0fd8a2)            no driven_offset imports
+       <- offset_run_treatment (d009ddf4a8dd9534fc4dc4b5)   pins eou at ff3d2909e89ded4e32a5c49b
+       <- offset_debug (6479d7fbd0ec7d11e0ae6c69)           pins eou at ff3d2909e89ded4e32a5c49b
+       <- driven_edge_offset (786f62f4d67ed8d9c7d56d16)     export import eou at ff3d2909...;
+                                                            ORT at 05e1f78ac7e7a8682dbc8e1a, debug at 4a442f1960c3ece8170129bc,
+                                                            export import offset_profile_core at 6d80d27932aecb1b7241739f
+       <- driven_offset_surface (c47cbd0497baf3011c60ecf8)  export import eou at ff3d2909...; ORT 05e1f78a..., debug 4a442f19...,
+                                                            DEO at 660678a63631fbafbc92e2dd, bspline_compat (6b635e74c92bd23387e850c1)
+                                                            at e91083bba71297456c5ca3d0
+            evaluate_offset (a2ebb5abc7ddda01f64ff8df)      export import DEO at 660678a63631fbafbc92e2dd
+       <- undrape_utils (283b8f7562a16e9c9ccc01b7)          export import eou at 3356bea0c847dcdb94230682
+       <- unwrap_part (fc976128871c5b4b2d33a91c)            export import eou at 3356bea0c847dcdb94230682
+       <- unwrap (a84cdaa8963f2a55db1c016b)                 export import eou at 3356bea0...;
+                                                            undrape_utils at 79fd4945..., unwrap_part at dfac1a47...
+offset_profile_core (9553c095d4d77c83c34a0a36)              std only: the profile machinery (regions / points -> exact pieces)
+  <- create_offset_profile (3fccdcb24013c744bd0fd8a2)       export import at 6d80d27932aecb1b7241739f
+  <- driven_edge_offset                                     (above: its "Profile source: Regions")
 ```
 
-Variable_tools `extract_outputs` (by VERSION, mv `b8c80ac05dcfd9f3cc172ffc`): DEO and DOS use version path
-`a47f90bf.../78504463aa9ea7fa3cce2789/3cac74f0...`; unwrap, evaluate_offset and create_offset_profile use
-`a47f90bf.../f4f872fe20d1498201fed64d/3cac74f0...` (same element microversion in both versions).
+Variable_tools `extract_outputs` (by VERSION): every tab here now pins **V6**
+(`a47f90bf.../eb9b32c556ff036c3dd19f73/3cac74f0...`, mv `cffacd73d80aa6dc1a2c4273`) -- DEO, DOS, unwrap,
+evaluate_offset and create_offset_profile alike.
 
 **Keep unwrap, undrape_utils and unwrap_part on the SAME edge_offset_utils microversion**, or two chart
 versions meet in one feature. undrape_utils / unwrap_part are imported at `""`, so their edits are live in
-unwrap at once; a change to edge_offset_utils reaches unwrap only after a re-pin. Never push a placeholder
+unwrap at once; a change to edge_offset_utils reaches unwrap only after a re-pin. (2026-09-29: undrape_utils
+and unwrap_part are now pinned by microversion too, see the chain above.) Never push a placeholder
 import path (the whole unwrap tab failed to compile).
 
 - Same-document imports pin an ELEMENT microversion (`GET documents/d/{did}/w/{wid}/elements`,
@@ -122,13 +129,27 @@ import path (the whole unwrap tab failed to compile).
 
 ## In design
 
-- **create_offset_profile** (tab 3fccdcb24013c744bd0fd8a2, BUILT 2026-09-24): builds DEO/DOS offset
+- **create_offset_profile** (tab 3fccdcb24013c744bd0fd8a2, BUILT 2026-09-24; the profile machinery moved to
+  tab `offset_profile_core` 9553c095d4d77c83c34a0a36, shared with Driven edge offset): builds DEO/DOS offset
   profiles from Regions or Points; profile BREAKS instead of zero-length connectors; exact Beziers.
-  Tests are REAL instances T1..T5 in Part Studio "Offset profile tests" (e18678532ec07b057b372dbd), named by
+  Region shapes CONSTANT / LINEAR / SMOOTH / QUADRATIC ("Flat at" Start / End); stations typed ("Enter X") or
+  "At point" (vertex / mate connector world X + signed offset along +X); a region may be entered toward -X
+  (start > end: mirrored onto itself). Driven edge offset takes the same regions directly ("Profile source:
+  Regions", no wire; test studio "DEO regions tests" 5efbe29c46094eba1499c4fb, D1-D5, built / checked by
+  `devtools/onshape/build_deo_regions_tests.py` / `check_deo_regions_tests.py`).
+  Tests are REAL instances T1..T12 in Part Studio "Offset profile tests" (e18678532ec07b057b372dbd), named by
   case and expected result; check them with `PYTHONPATH=. python devtools/onshape/check_offset_profile.py`
-  (9/9 pass incl. 2 error cases via temporary instances; T6/T7 fixtures built by
-  `devtools/onshape/build_offset_profile_tests.py`). 2026-09-25: stations from points / mate connectors, CONSTANT shape. No test tabs (user preference). Not yet done: consumer-side break handling in DEO / DOS (None / Line per break).
+  (T1-T12 plus 3 error cases via temporary instances; fixtures for T6-T12 built by
+  `devtools/onshape/build_offset_profile_tests.py`). No test tabs (user preference). Not yet done: consumer-side
+  break handling in DEO / DOS (None / Line per break) -- today a break always splits the output.
   Design: `research_create_offset_profile.md`.
+
+- **arc / line tangency** (review `reviews/2026-09-25_arc_line_fitting/`, implemented 2026-09-25/26):
+  `shapeRuns` + tangent biarc chains in curve_core (Curve_tools V9); DEO / DOS option "Varying offset on
+  arcs" (Spline default / Biarc fit, in `edge_offset_utils`); callers DEO, DOS, Map curve, Unwrap, Evaluate
+  offset. Test studios "Arc tangency tests" (Curve_tools) and "Arc tangency DEO tests" (380570afe5337a3782a8a662,
+  D1-D4, `devtools/onshape/build_arc_tangency_deo_tests.py` / `check_arc_tangency_deo_tests.py`). Status and
+  loose ends: top of `reviews/2026-09-25_arc_line_fitting/SUMMARY.md`.
 
 - **evaluate_offset** (tab a2ebb5abc7ddda01f64ff8df, BUILT 2026-09-24): DEO run backwards -- reference + target
   edges -> offset profile, on DEO's own stations (DEO exports `offsetStationBase` / `offsetStationFrames` /
@@ -146,12 +167,14 @@ import path (the whole unwrap tab failed to compile).
   | edge_offset_utils | a2665e22c07b7a6929ce4e80 | the chart (`unwrapChart` / `unwrapFast`, packed plain-number tables), shared with DEO / DOS |
   | evaluate_offset | a2ebb5abc7ddda01f64ff8df | DEO run backwards (above) |
   | create_offset_profile | 3fccdcb24013c744bd0fd8a2 | offset profiles (above) |
+  | offset_profile_core | 9553c095d4d77c83c34a0a36 | the profile machinery, shared by Create offset profile and DEO's Regions source |
 
   Test studios (tests are real instances in the feature tree, named by case and expected result):
   "Unwrap_Testing Copy 1" (80c1e329f99a05e224058526; U1-U3, built by `devtools/onshape/build_unwrap_tests.py`),
   "Unwrap_Testing Copy 2" (681a5825e353d376c88224eb; production plates and parts, built by
   `devtools/onshape/build_unwrap_parts.py`), "Evaluate offset tests" (0ce4ac09e693f8ecd18e8a7f),
-  "Offset profile tests" (e18678532ec07b057b372dbd).
+  "Offset profile tests" (e18678532ec07b057b372dbd), "DEO regions tests" (5efbe29c46094eba1499c4fb),
+  "Arc tangency DEO tests" (380570afe5337a3782a8a662).
 
   Regression (repo root, Git Bash):
   ```
