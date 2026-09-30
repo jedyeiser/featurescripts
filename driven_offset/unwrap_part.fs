@@ -3290,19 +3290,25 @@ export function prismArrangement(context is Context, id is Id, viewChains is arr
         // to the box). A separate overshoot line became a face of its own wherever the other curve crossed it
         // rather than the chain: the fits meet their rows only to the fit tolerance, and at a shallow crossing a
         // 0.07 um miss is an 8 um sliver face (the CORE top over FULL_BASELINE, 0.53 deg: 8 slivers).
+        // The overshoot reaches at least 4 x the end's distance from the chain it lies on (an approach down to ~15 deg
+        // still crosses): an end may sit up to the junction distance away, more than the overshoot at small shape
+        // tolerances (4401 over FULL_BASELINE at 0.005 mm: a plan chain ended 29 um short of the tail cap's envelope
+        // row, the 20 um overshoot stopped 9 um short of it, the outline stayed open: "no plan cell holds material").
         var onOther = [false, false];
+        var extend = [0, 0];
         for (var k in [0, 1])
         {
+            const p = (k == 0) ? p0 : p1;
             for (var j = 0; j < size(chains); j += 1)
             {
-                if (j != i && nearChain(chains[j], (k == 0) ? p0 : p1, junction))
+                if (j != i && nearChain(chains[j], p, junction))
                 {
                     onOther[k] = true;
-                    break;
+                    const other = chains[j].straight ? [chains[j].lineStart, chains[j].lineEnd] : chains[j].pts;
+                    extend[k] = max(extend[k], max(overshoot, 4 * polylineDistance(other, p)));
                 }
             }
         }
-        const extend = [onOther[0] ? overshoot : 0, onOther[1] ? overshoot : 0];
         if (ch.straight)
         {
             emitLineCurve(context, cid + "line", toolPoint([p0[0] - extend[0] * t0[0], p0[1] - extend[0] * t0[1]], profile, lo),
@@ -3321,7 +3327,7 @@ export function prismArrangement(context is Context, id is Id, viewChains is arr
         for (var k in [0, 1])
         {
             const e = ends[k];
-            const len = onOther[k] ? overshoot : reach;
+            const len = onOther[k] ? extend[k] : reach;
             if (!onOther[k])
             {
                 emitLineCurve(context, cid + ("ext" ~ k), toolPoint(e.p, profile, lo), toolPoint([e.p[0] + len * e.t[0], e.p[1] + len * e.t[1]], profile, lo));
