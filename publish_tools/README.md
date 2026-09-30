@@ -70,8 +70,28 @@ Derive_Parts_V1 (all of RD 20TAC 28 Parts @V1; `devtools/onshape/publish_tools_d
 - "Stations (test)": TAIL/EDA/SPA points, Q between EDA-SPA N=5 (145/515/885/1255/1625), CORE along a Part 7 edge N=4
 - "4101 stations (test)": plan + flat copy
 - "4501 stations (test)": plan + profile + region (4501 = open composite of core strips; outline gets members)
+- "4101E extents only (test)": no stations at all (extent rows only); "4101T tip tail (test)": FCP / ACP -> TIP / TAIL
 
 All regenerate INFO, no notices. Base widths at Q: 116.2/97.9/93.3/105.9/132.1; core thickness 3.16/8.63/12.07/7.70/4.16.
+
+### Extents (2026-09-30, always on)
+
+User: "We should always have extents, even if no other stations are provided." Every view of Station geometry now adds
+the outline's two ends along the measuring axis (no parameter; saved features gain the rows, intended):
+* rows `{ view, id, x, hit : true, extent : TIP | TAIL | MIN | MAX }` with NO lo / hi / span (position only: a width
+  exactly at an end is unstable, 4101's tail grazes at 0.94 mm); the Station table shows x only, other cells "".
+* names: TIP / TAIL when the stations include ids FCP and ACP at different x (TIP = FCP's side), else MIN X / MAX X;
+  German SPITZE / ENDE, X MIN / X MAX. The table renders the role in ITS language (station_table.fs WORDS), the
+  row id / body name uses the Station definition's.
+* a point body at each end ON the outline (evDistance of the outline edges to a far plane normal to x), named
+  `<prefix> <VIEW> <name>`, in the view's WIRES composite; query keys `<view>ExtentMin` / `<view>ExtentMax`.
+* no Station definition and no stations is valid: the view has only the two extent rows.
+* Fixture values (x from datum, mm): 4101 plan 0 / 1790; 4501 plan + profile 135.018 / 1634.959; 2D_PERIPHERY plan
+  0 / 1790; TOP_SURFACE plan + profile -18.029 / 1796.825. New cases "4101E extents only (test)" (no stations ->
+  INFO, table MIN X 0 / MAX X 1790 only) and "4101T tip tail (test)" (extra stations FCP @1625, ACP @145 -> TAIL 0,
+  TIP 1790). All station values unchanged; 9 features INFO, no notices.
+* Mixed versions: a Station table from a version BEFORE this change reads an extent row's missing span and fails;
+  update the table with Station geometry (same version).
 
 ## Next (not done)
 

@@ -446,7 +446,10 @@ function buildView(context is Context, vid is Id, definition is map, view is map
     // 0.94 mm), so the row has no lo / hi / span. A point at each end on the outline, for ordinate dimensions.
     for (var e in viewExtents(context, outlineEdges, cs, stations, definition.tableLanguage))
     {
-        rows = append(rows, { "view" : view.key, "id" : e.name, "x" : dot(e.point - cs.origin, u) / millimeter, "hit" : true, "extent" : e.role });
+        // lo / hi / span = 0 (numbers) so a Station table from an older version (which rounds them) still renders
+        // instead of failing; the current table shows extent rows as position only.
+        rows = append(rows, { "view" : view.key, "id" : e.name, "x" : dot(e.point - cs.origin, u) / millimeter, "hit" : true, "extent" : e.role,
+                    "lo" : 0, "hi" : 0, "span" : 0 });
         opPoint(context, vid + ("extent" ~ e.key), { "point" : e.point });
         const pt = qCreatedBy(vid + ("extent" ~ e.key), EntityType.BODY);
         nameBodies(context, pt, namePrefix ~ " " ~ e.name);

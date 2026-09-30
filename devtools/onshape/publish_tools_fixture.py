@@ -102,3 +102,23 @@ upsert(D, W, E, "stationGeometry", "4101N numbered DE (test)", [
     b("stationLines", True), b("outlineWires", False), b("outlineSurface", False),
     b("datumPoint", True), b("flatCopy", False), b("printTable", True),
 ], ns_geo)
+
+# Extents (2026-09-30, user: "always have extents, even if no other stations are provided"). Every view gets two
+# position-only rows at the part's ends. No Station definition and no stations at all -> INFO, a table with only
+# MIN X / MAX X (4101 plan: 0 / 1790).
+upsert(D, W, E, "stationGeometry", "4101E extents only (test)", [
+    qids("part", [P4101]), qids("datum", [MC0]), s("prefix", "4101E"),
+    b("planView", True), b("profileView", False), arr("otherViews", []),
+    flist("stationDefinitions", []), s("stationSet", ""), arr("stations", []),
+    b("stationLines", True), b("outlineWires", True), b("outlineSurface", False),
+    b("datumPoint", True), b("flatCopy", False), b("printTable", True),
+], ns_geo)
+# FCP + ACP among the stations -> the ends are named TIP (FCP's side, here x = 1790) and TAIL.
+upsert(D, W, E, "stationGeometry", "4101T tip tail (test)", [
+    qids("part", [P4101]), qids("datum", [MC0]), s("prefix", "4101T"),
+    b("planView", True), b("profileView", True), arr("otherViews", []),
+    flist("stationDefinitions", []), s("stationSet", ""),
+    arr("stations", [point("FCP", MC1625, ns_geo), point("ACP", MC145, ns_geo)]),
+    b("stationLines", True), b("outlineWires", False), b("outlineSurface", False),
+    b("datumPoint", False), b("flatCopy", False), b("printTable", True),
+], ns_geo)
