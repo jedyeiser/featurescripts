@@ -168,7 +168,7 @@ Tabs in tab folder `primitive` (local `publish_tools/primitive/`):
 
 | tab | element | what |
 |---|---|---|
-| primitive_types | ecde24520874030ab412c981 | enums (PrimitiveSource, PrimitiveDatumUse, PrimitivePlotRegion, PrimitivePlot, PrimitiveTableKind), flat-baseline tolerance 0.01 mm, attribute name `publishPrimitive`, schema `primitive/1`, bounds, reserved key names |
+| primitive_types | ecde24520874030ab412c981 | enums (PrimitiveSource, PrimitiveDatumUse, PrimitivePlotRegion, PrimitivePlot, PrimitiveTableKind, PrimitiveLanguage), PRIMITIVE_TERMS (every display string, en / de), flat-baseline tolerance 0.01 mm, attribute name `publishPrimitive`, schema `primitive/1`, bounds, reserved key names |
 | primitive_frame | 5808546b3b3d863d82796d24 | point / datum resolution, edge chains, chain-at-x (Newton), foot, normal crossing, [s, w, h] |
 | primitive_profiles | 5865b24d55ff270a56088adf | mid-plane section -> BOTTOM / TOP / TIP END / TAIL END; Table 1 scale factors |
 | primitive_footprint | fbc957543e769a649f00c5cc | base periphery, unwrap along s (centreline + one end section where cut back, 2026-09-29), radius + signed curvature (chain rule, exact), fpt_analyze (footprint V32), plot runs / region + axis clip / junctions |
@@ -266,6 +266,24 @@ extents) and glyph-loop counts (EI "150" = 4 loops, no "+"). 100/100 in the agen
 snapshot: tables identical except P6's average radius. Speed-ups (chain-at-x bisection + per-point Newton exit,
 baseline-from-volume reuses the bottom frame's chain / lookup, data-table footprint crossings batched): P1 alone
 7.7 s -> 3.0 s.
+
+### English / Deutsch (2026-09-30; primitives go to the factory)
+* Export primitive > Output > "Language" (PrimitiveLanguage ENGLISH default / GERMAN; saved features migrate to
+  English, correction 25). Stored as `"language" : "en" / "de"` at the top of the publishPrimitive data (data saved
+  before has none = "en"). NO parameter on Primitive tables (correction 64): the table reads the language from the data.
+* Single source: `PRIMITIVE_TERMS` in primitive_types.fs, by section (scaleFactors, metadata, keyLocations, swRout,
+  baseline, tables, headings, units, bands) and row / column key, `{ "en" : [name, note], "de" : [...] }`, ASCII with
+  \u escapes. Row builders take names and definitions from it (primitiveRow / primitiveWord); the table takes titles,
+  headings and the shown unit (`deg` -> degree sign in German) from it; the stored `unit` codes stay.
+* Stored rows carry name / note in the chosen language; row KEYS, field names, body names (incl. `... BASELINE TITLE`)
+  and the feature's INFO text stay English. Extra key point names are user text. German per
+  research/primitive_glossary_de.md DECISIONS: Buglinie, Laufsole ("6 Laufsolendaten (mm)", "Laufsolenlaenge (RSL)"
+  with the real umlaut in the output), Offset, SPA / EDA / SPITZE / ENDE (also in the RSL data # names), MRS MP XS1
+  XS2 and the baseline codes unchanged; band titles BUGLINIE, PROFIL, TAILLIERUNG, RADIUS (m), KRUEMMUNG (1/m) (umlaut
+  in the output), EI (Nm^2). OpenSans renders the umlaut (glyph probe: KR-U-umlaut-MMUNG = KRUMMUNG + 2 loops, same width).
+* Test P19 = P8 + R1's rout surface in German: values = P8 / R1, every fstable title / heading / row name / definition
+  German per PRIMITIVE_TERMS (the checker parses the map), band titles rendered in German (loops + width = the text
+  rendered fresh).
 
 ### Unwrap through base sections (2026-09-28, the user's tail bite)
 Bug: the footprint mapped each periphery point x -> s along the mid-plane BOTTOM wire at the same x and clamped at its

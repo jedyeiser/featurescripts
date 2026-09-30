@@ -29,6 +29,10 @@ statuses, and compares:
   * P14 (the user's tail bite on a copy of the volume): the unwrap is an isometry (periphery length, base area), the
     footprint reaches the bite's true depth on the centreline, only the bite adds corners, the radius band beyond the
     bite = P1's and has no spikes through it, and inside the RSL everything = P3.
+  * 2026-09-30 Language: P19 (= P8 + R1's rout surface, Language Deutsch) stores the same values with language "de";
+    every title / heading / row name / definition / degree unit of its six tables (REST fstable, all parameters,
+    definitions on) and its band titles (glyph loops + width vs the text rendered fresh) are the German strings of
+    PRIMITIVE_TERMS (read from primitive_types.fs); English cases store "en" and keep the English strings.
 With --before <json> (a --json snapshot of an earlier run): P1 .. P6 values unchanged, except the rows the
 2026-09-28 decisions removed (phase-2 placeholders; P1 / P5 / P6 rocker rows on a flat baseline).
 
@@ -527,6 +531,7 @@ def run_checks(prims, before=None):
     if "P14" in d:
         run_checks_unwrap(d, full)
     run_checks_rout(d, full)
+    run_checks_language(d, full)
 
     width = max(len(r[1]) for r in RESULTS)
     fails = 0
@@ -1091,6 +1096,232 @@ def run_checks_unwrap(d, full):
             bad.append(key)
     check("P14", "inside the RSL = P3: data rows (0.01 mm, s from MRS) and radius metadata", "equal, %d rows" % len(d["P3"]["data"]),
           "%d rows, %d differences %s" % (len(d["P14"]["data"]), len(bad), bad[:3]), not bad and len(d["P14"]["data"]) == len(d["P3"]["data"]))
+
+
+
+# ---- 2026-09-30: English / Deutsch (Export primitive "Language"; P19 = P8 + R1's rout surface in German) ----
+
+def primitive_terms():
+    """PRIMITIVE_TERMS from primitive_types.fs (the single source of the display strings): the FS map literal is
+    JSON once its // comments are gone (keys quoted, \\u escapes)."""
+    src = open(os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), "..", "..", "publish_tools", "primitive", "primitive_types.fs"), encoding="ascii").read()
+    body = src[src.index("export const PRIMITIVE_TERMS = ") + len("export const PRIMITIVE_TERMS = "):]
+    body = body[:body.index("};") + 1]
+    body = "\n".join(re.sub(r"^\s*//.*$", "", line) for line in body.split("\n"))
+    return json.loads(body)
+
+
+def fstable_all(kind, name_filter, show_definitions):
+    t = [e for e in c.list_elements(D, W) if e["name"] == "primitive_table"][0]
+    ns = "e%s::m%s" % (t["id"], t["microversionId"])
+    r = c.get(f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}/fstable",
+              {"tableType": "primitiveTables", "tableNamespace": ns,
+               "tableParameters": 'tableKind=PrimitiveTableKind.%s;nameFilter="%s";showDefinitions=%s'
+                                  % (kind, name_filter, "true" if show_definitions else "false")})
+    return r.get("tables", [])
+
+
+def fs_string(text):
+    """A FeatureScript string literal (ASCII, \\u escapes)."""
+    return '"' + "".join(ch if ord(ch) < 128 else "\\u%04x" % ord(ch) for ch in text).replace('"', '\\"') + '"'
+
+
+GLYPH_SCRIPT = r'''
+function(context is Context, queries)
+{
+    // Sketch text rendered as Export primitive renders a label (OpenSans, region edges -> one wire per glyph loop):
+    // "<loops> <width mm>". (The eval API takes ONE function: the helper is a local lambda.)
+    const probe = function(tag is string, text is string) returns string
+        {
+            const base = makeId("glyphProbe" ~ tag);
+            const sid = base + "sketch";
+            const sketch = newSketchOnPlane(context, sid, { "sketchPlane" : plane(vector(0, 0, 0) * meter, vector(0, -1, 0), vector(1, 0, 0)) });
+            skText(sketch, "text", { "text" : text, "fontName" : "OpenSans-Regular.ttf", "firstCorner" : vector(0, -10) * millimeter,
+                        "secondCorner" : vector(20, 10) * millimeter });
+            skSolve(sketch);
+            const edges = qOwnedByBody(qBodyType(qCreatedBy(sid, EntityType.BODY), BodyType.SHEET), EntityType.EDGE);
+            if (isQueryEmpty(context, edges))
+            {
+                return "0 0";
+            }
+            opExtractWires(context, base + "wires", { "edges" : edges });
+            const wires = qCreatedBy(base + "wires", EntityType.BODY);
+            const bb = evBox3d(context, { "topology" : wires, "tight" : true });
+            return size(evaluateQuery(context, wires)) ~ " " ~ round((bb.maxCorner[0] - bb.minCorner[0]) / millimeter * 100) / 100;
+        };
+    var out = [];
+    const titles = %s;
+    const probes = %s;
+    var byName = {};
+    for (var body in evaluateQuery(context, qHasAttribute(qEverything(EntityType.BODY), "publishPrimitive")))
+    {
+        const data = getAttribute(context, { "entity" : body, "name" : "publishPrimitive" });
+        if (data.prefix != %s)
+        {
+            continue;
+        }
+        for (var m in evaluateQuery(context, qContainedInCompositeParts(body)))
+        {
+            const name = getProperty(context, { "entity" : m, "propertyType" : PropertyType.NAME });
+            byName[name] = append(byName[name] == undefined ? [] : byName[name], m);
+        }
+    }
+    var k = 0;
+    for (var entry in titles)
+    {
+        k += 1;
+        const bodies = byName[entry[0]];
+        var got = "0 0";
+        if (bodies != undefined)
+        {
+            const bb = evBox3d(context, { "topology" : qUnion(bodies), "tight" : true });
+            got = size(bodies) ~ " " ~ round((bb.maxCorner[0] - bb.minCorner[0]) / millimeter * 100) / 100;
+        }
+        out = append(out, "GLYPH " ~ k ~ " " ~ got ~ " " ~ probe("t" ~ k, entry[1]));
+    }
+    for (var text in probes)
+    {
+        k += 1;
+        out = append(out, "GLYPH " ~ k ~ " " ~ probe("p" ~ k, text));
+    }
+    return out;
+}
+'''
+
+
+def glyphs(prefix, titles, probes):
+    """[(body loops, body width, reference loops, reference width)] for each (body name, expected text) of `titles`,
+    then [(loops, width)] for each probe text."""
+    script = GLYPH_SCRIPT % ("[" + ", ".join("[%s, %s]" % (fs_string(n), fs_string(t)) for n, t in titles) + "]",
+                             "[" + ", ".join(fs_string(t) for t in probes) + "]", fs_string(prefix))
+    r = c.post(f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}/featurescript", json_data={"script": script})
+    vals = [v for v in re.findall(r'"value":\s*"((?:[^"\\]|\\.)*)"', json.dumps(r.get("result"))) if v.startswith("GLYPH ")]
+    if not vals:
+        print("glyph script:", json.dumps(r)[:1500])
+    return [[float(x) for x in v.split()[2:]] for v in sorted(vals, key=lambda v: int(v.split()[1]))]
+
+
+def run_checks_language(d, full):
+    """P19 (Deutsch) against P8 (English, same inputs) and R1 (Table 4): values equal, every display string German
+    per PRIMITIVE_TERMS; English cases carry language "en" and keep their English strings."""
+    if "P19" not in d:
+        check("P19", "German case present", "P19", sorted(d), False)
+        return
+    terms = primitive_terms()
+    de = lambda sec, key: terms[sec][key]["de"]
+    en = lambda sec, key: terms[sec][key]["en"]
+    p8, p19 = d["P8"], d["P19"]
+    langs = {case: d[case].get("language") for case in d}
+    check("P1-R3", "language stored: 'en' on every English case (default), 'de' on P19", "en / de",
+          "%s / %s" % (sorted(set(v for k, v in langs.items() if k != "P19")), langs["P19"]),
+          all(v == "en" for k, v in langs.items() if k != "P19") and langs["P19"] == "de")
+
+    # Stored rows: every number = P8's (Table 4 = R1's), keys equal; names / notes = the German terms.
+    bad, names = [], []
+    for sec in ("scaleFactors", "metadata", "keyLocations", "baseline", "swRout"):
+        ref = rows(d["R1"] if sec == "swRout" else p8, sec)
+        got = rows(p19, sec)
+        if set(ref) != set(got):
+            bad.append("%s keys %s vs %s" % (sec, sorted(ref), sorted(got)))
+        for key, r in got.items():
+            for field, v in ref.get(key, {}).items():
+                if field in ("name", "note"):
+                    continue
+                if isinstance(v, float) and not near(v, r.get(field), 1e-6):
+                    bad.append("%s.%s.%s %s vs %s" % (sec, key, field, v, r.get(field)))
+                elif not isinstance(v, float) and v != r.get(field):
+                    bad.append("%s.%s.%s %r vs %r" % (sec, key, field, v, r.get(field)))
+            if sec == "keyLocations":
+                want = de(sec, key)[0] if key in terms[sec] else ref[key]["name"]
+                want_note = None
+            else:
+                term = de(sec, "%sPicked" % key if sec == "swRout" and ref[key].get("note") == "picked" else key)
+                want = term[0]
+                want_note = term[1] if len(term) > 1 else None
+            if r.get("name") != want or (want_note is not None and r.get("note") != want_note):
+                names.append("%s.%s %r / %r" % (sec, key, r.get("name"), r.get("note")))
+            # English stays English: P8 / R1 rows carry the English terms.
+            if sec != "keyLocations":
+                term_en = en(sec, key)
+                if ref[key]["name"] != term_en[0] or (len(term_en) > 1 and ref[key].get("note") not in (term_en[1], "picked")):
+                    names.append("EN %s.%s %r" % (sec, key, ref[key]["name"]))
+    data_bad = [i for i, (a, b) in enumerate(zip(p8["data"], p19["data"]))
+                if any((near(v, b.get(f), 1e-6) if isinstance(v, float) else v == b.get(f)) is False for f, v in a.items() if f != "name")]
+    check("P19", "every stored value = P8 (Table 4 = R1), same row keys; RSL data rows equal but for the # names",
+          "0 differences, %d data rows" % len(p8["data"]), "%d / %d differences %s" % (len(bad), len(data_bad), bad[:3]),
+          not bad and not data_bad and len(p8["data"]) == len(p19["data"]))
+    check("P19", "row names + definitions = PRIMITIVE_TERMS de (FCP/ACP/TIP/TAIL -> SPA/EDA/SPITZE/ENDE; MRS MP XS1 XS2 kept)",
+          "all German", names[:4] or "all", not names)
+    named = sorted({r["name"] for r in p19["data"] if r.get("name")})
+    check("P19", "RSL data # names at key rows", "EDA MRS SPA XS1 XS2", named, named == sorted(["EDA", "XS2", "MRS", "XS1", "SPA"]))
+
+    # The custom table (REST fstable, every parameter; definitions on): titles, headings, row names, definitions, units.
+    tables = {
+        "SCALE_FACTORS": ("scaleFactors", ["region", "bottom", "top", "ratio"], "region", "scaleFactors", None),
+        "METADATA": ("metadata", ["item", "value", "unit", "note"], "item", "metadata", "note"),
+        "KEY_LOCATIONS": ("keyLocations", ["location", "xMm", "sMm", "distFromTail"], "name", "keyLocations", None),
+        "SW_ROUT": ("swRout", ["measure", "value", "unit", "xMm", "sMm", "distFromTail"], "name", "swRout", None),
+        "BASELINE": ("baseline", ["measure", "valueMm", "xMm", "sMm"], "name", "baseline", None),
+        "DATA": ("data", ["station", "x", "s", "y", "skiWidth", "z", "skiThck", "baselineHeight", "radius"], "station", "data", None),
+    }
+    title = "P19 TAC Deutsch PRIMITIVE"
+    for kind, (tkey, heads, first, sec, note_col) in tables.items():
+        got = fstable_all(kind, "P19 TAC", True)
+        problems = []
+        if len(got) != 1:
+            check("P19", "table %s returned" % kind, 1, len(got), False)
+            continue
+        t = got[0]
+        want_title = "%s - %s" % (title, de("tables", tkey)[0])
+        if t.get("title") != want_title:
+            problems.append("title %r" % t.get("title"))
+        want_heads = [de("headings", h)[0] for h in heads]
+        got_heads = [col["header"] for col in t["columns"]]
+        if got_heads != want_heads:
+            problems.append("headers %s" % got_heads)
+        cells = [row["columnIdToValue"] for row in t["rows"]]
+        stored = p19[sec]
+        want_first = [str(r["name"]) if sec != "data" else (r["name"] or str(int(r["station"]))) for r in stored]
+        if [str(cell.get(first)) for cell in cells] != want_first:
+            problems.append("row names %s" % [cell.get(first) for cell in cells][:4])
+        if note_col and [cell.get(note_col) for cell in cells] != [r["note"] for r in stored]:
+            problems.append("definitions differ")
+        units = [cell.get("unit") for cell in cells if "unit" in cell]
+        if "deg" in units:
+            problems.append("unit 'deg' shown")
+        deg_rows = [r for r in stored if r.get("unit") == "deg"]
+        if deg_rows and units.count(de("units", "deg")[0]) != len(deg_rows):
+            problems.append("degree units %s" % units)
+        check("P19", "table %s: title, headings, row names%s German (fstable)" % (kind, ", definitions" if note_col else ""),
+              want_title[len(title) + 3:], problems or "all", not problems)
+    # English table unchanged (P8 Table 2 with definitions: the English headings).
+    t8 = fstable_all("METADATA", "P8 TAC", True)
+    heads8 = [col["header"] for col in t8[0]["columns"]] if t8 else []
+    check("P8", "English table 2 (definitions on): title + headings unchanged", "2 Metadata | Item Value Unit Definition",
+          "%s | %s" % (t8[0].get("title", "")[len("P8 TAC EI PRIMITIVE - "):] if t8 else "-", " ".join(heads8)),
+          bool(t8) and t8[0].get("title") == "P8 TAC EI PRIMITIVE - 2 Metadata" and heads8 == ["Item", "Value", "Unit", "Definition"])
+
+    # Band titles: the P19 TITLE bodies (names stay English keys) render the German words: loops and width = the same
+    # text rendered fresh; the umlaut glyph exists (KRUEMMUNG with U-umlaut has 2 loops more than without, same width
+    # within 3 %).
+    bands = [("BASELINE", "baseline"), ("PROFILE", "profile"), ("FOOTPRINT", "footprint"), ("RADIUS", "radius")]
+    names_ = [("%s %s TITLE" % (title, label), de("bands", key)[0]) for label, key in bands]
+    kr_de, kr_plain = de("bands", "curvature")[0], "KRUMMUNG (1/m)"
+    res = glyphs("P19 TAC Deutsch", names_, [kr_de, kr_plain, en("bands", "baseline")[0]])
+    if len(res) != len(names_) + 3:
+        check("P19", "band title glyph probe", "results", res, False)
+        return
+    wrong = ["%s %s" % (n[1], r) for n, r in zip(names_, res) if r[0] != r[2] or abs(r[1] - r[3]) > 0.05 or r[0] == 0]
+    check("P19", "band titles rendered BUGLINIE / PROFIL / TAILLIERUNG / RADIUS (m) (loops + width = reference text)",
+          "all", wrong or ["%s %d/%.1f" % (n[1], r[0], r[1]) for n, r in zip(names_, res)], not wrong)
+    base_en = res[len(names_) + 2]
+    check("P19", "BUGLINIE title differs from BASELINE (loops / width)", "different",
+          "%s vs %s" % (res[0][:2], base_en), res[0][:2] != base_en)
+    kd, kp = res[len(names_)], res[len(names_) + 1]
+    check("P19", "OpenSans has the U-umlaut: KRUEMMUNG (U-umlaut) = KRUMMUNG + 2 dot loops, width within 3 %",
+          "+2 loops", "%s vs %s" % (kd, kp), kd[0] == kp[0] + 2 and abs(kd[1] - kp[1]) <= 0.03 * kp[1])
+    ei = full["P19"]["counts"].get(title + " EI TITLE")
+    check("P19", "EI title unchanged 'EI (Nm^2)': 7 glyph loops", 7, ei, ei == 7)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,10 @@
 # Export primitive -- German terms (PROPOSAL for review, 2026-09-30)
 
+> **IMPLEMENTED 2026-09-30** (pushed, no version): Export primitive > Output > Language (English default / Deutsch).
+> The strings live in `PRIMITIVE_TERMS` (publish_tools/primitive/primitive_types.fs) -- change a term THERE, this file
+> is the review record. Built per the DECISIONS below; unanswered rows as proposed (still open for review: SPA / EDA,
+> MRS, Taperwinkel, Schaufel- / Endenblock, Endenlänge, "b" / "d" column letters, the translated definitions).
+
 Primitives go to the factory, so tables and band labels get an English / Deutsch switch on the **Export primitive
 feature** (not the table -- correction 64). Please mark each row: OK / better term / keep English.
 Confidence: **H** = standard, **M** = likely, **L** = guess -- please check with a Völkl engineer.

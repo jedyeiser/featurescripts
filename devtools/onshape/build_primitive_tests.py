@@ -37,6 +37,9 @@ Cases (names carry the expectation):
         FR2_Wire (ported 2026-09-29 from the user's retired studio, where P2 used them via "Derived 1"; here they come
         from the same Design Master V1 derive). Editing logic does not run for REST inserts, so the builder also sets
         the hidden tip/tailBlockWireName strings the dialog would fill: block rows = "Aufbug_22" / "FR2_Wire"
+  P19 = P8 + the R1 SW rout surface + Language Deutsch (2026-09-30): every value = P8 (Table 4 = R1); titles, headings,
+        row names, definitions, the degree unit and the band titles German per primitive_types.fs PRIMITIVE_TERMS
+        (every other case runs with the default Language English)
   SD1 = a NEW Station definition (one Single point station at the MRS connector) inserted without "variableName":
         the 2026-09-29 default "" -> no # variable
   R1  = P1 + SW rout surface = the derived SW_ROUT_SURFACE sheet (all 26 faces, +Y side only; RD 20TAC design: 0.8 mm
@@ -283,7 +286,7 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
               grid=False, labels=True, plot="RADIUS", curvature_scale="50 mm", extras=(), key_lines=False, junctions=True,
               radius_axis_min="10", max_curvature="0.1", curvature_axis_min="0.02", ei_axis_max="450",
               auto_scale=True, radius_band_height="150 mm", ei_band_height="150 mm", rout=None, rout_start=None, rout_stop=None,
-              tip_wire=None, tail_wire=None):
+              tip_wire=None, tail_wire=None, language="ENGLISH"):
     # Block names FROM WIRE: the dialog's editing logic copies the picked wire's name into the hidden
     # tip/tailBlockWireName string, but editing logic does not run for REST inserts, so the builder sets it.
     params = [
@@ -336,6 +339,7 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
         b("junctionTicks", junctions),
         num("textHeight", "20 mm"),
         s("queryVariable", qv),
+        en("language", "PrimitiveLanguage", language, ns),
     ]
     if not NEW:
         params = [p for p in params if p["parameterId"] not in
@@ -343,7 +347,7 @@ def primitive(name, ns, volume, fcp, acp, mp=None, datum=None, prefix="", baseli
                    "dashedGrid", "labels", "textHeight", "stationNumbers", "eiScale", "tipBlockFrom", "tailBlockFrom",
                    "tipBlockWireName", "tailBlockWireName", "extraPoints", "plotMode", "plotRegion", "curvatureScale",
                    "keyLines", "junctionTicks", "maxCurvature", "curvatureAxisMin", "radiusAxisLow", "eiAxisMax",
-                   "autoScale", "radiusBandHeight", "eiBandHeight", "routSurface", "routStart", "routStop")]
+                   "autoScale", "radiusBandHeight", "eiBandHeight", "routSurface", "routStart", "routStop", "language")]
     return upsert(name, "exportPrimitive", params, ns)
 
 
@@ -417,6 +421,10 @@ def cases(dv, mi, dm, ei, bt=None, mr=None):
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P18 TAC wires",
               ei='qOwnedByBody(%s, EntityType.EDGE)' % wire_named(dv, *TARG_EI_AT),
               tip_wire=(wire_named(dv, *AUFBUG_22_AT), "Aufbug_22"), tail_wire=(wire_named(dv, *FR2_WIRE_AT), "FR2_Wire"))),
+        ("P19 TAC as P8 + SW rout (R1), Language Deutsch -> German tables / band titles, values = P8 (Table 4 = R1), INFO",
+         dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="P19 TAC Deutsch",
+              ei='qCreatedBy(makeId("%s"), EntityType.EDGE)' % ei, tip_block="TIP_BLOCK_T1", tail_block="TAIL_BLOCK_T1",
+              rout='qBodyType(qCreatedBy(makeId("%s"), EntityType.BODY), BodyType.SHEET)' % dv, language="GERMAN")),
     ] + ([] if mr is None else [
         ("R1 TAC SW_ROUT_SURFACE (RD, +Y) -> 7.0 deg, step-in 0.80, 4.00 above base, start / stop = sheet x extent, INFO",
          dict(volume=vol % dv, fcp=mc_at(dv, 1625), acp=mc_at(dv, 145), mp=mc_at(dv, MP_X), prefix="R1 TAC rout",
@@ -475,6 +483,6 @@ if __name__ == "__main__":
     for name, kw in cases(dv, mi, dm, ei, bt, mr):
         if only and name.split()[0] not in only:
             continue
-        if not NEW and name.split()[0] in ("P7", "P8", "P9", "P10", "P11", "P12", "P13"):
+        if not NEW and name.split()[0] in ("P7", "P8", "P9", "P10", "P11", "P12", "P13", "P19"):
             continue
         primitive(name, ns, **kw)
