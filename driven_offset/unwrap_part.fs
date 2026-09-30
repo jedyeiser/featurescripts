@@ -115,6 +115,14 @@ export const UNWRAP_PART_SHAPE_TOL = 0.005 * millimeter;
 export const UNWRAP_PART_PRISM_GRID = 5;
 
 /**
+ * The grid a face is re-read on when only its trim is sampled (its parameter box reaches past the trim): 5 x 5 left
+ * too few points on a trimmed face and measured its departure at half the truth (4803's tail walls over
+ * FULL_BASELINE 6.3 um -> 10.5 um on 13 x 13, 4103's tip walls 4.4 -> 10.4 um), so PRISM took faces beyond the shape
+ * tolerance and missed by 12-14 um where the exact cell rebuild is 0.24 um.
+ */
+export const UNWRAP_PART_PRISM_TRIM_GRID = 13;
+
+/**
  * viewFit: a face whose grid lines make less than this share of their travel along the extrusion direction in both
  * parameter directions (a face facing along it) keeps the old choice of station direction, by spread in the view.
  */
@@ -1765,7 +1773,12 @@ export function chainTool(context is Context, id is Id, chain is map, lo is arra
 /** The PRISM classification grid: G x G face parameters, index i * G + j for parameter (i, j) / (G - 1). */
 export function prismGrid() returns array
 {
-    const G = UNWRAP_PART_PRISM_GRID;
+    return prismGrid(UNWRAP_PART_PRISM_GRID);
+}
+
+/** A G x G grid of face parameters, index i * G + j for parameter (i, j) / (G - 1). */
+export function prismGrid(G is number) returns array
+{
     var grid = [];
     for (var i = 0; i < G; i += 1)
     {
@@ -1785,7 +1798,8 @@ export function prismGrid() returns array
  */
 export function prismFaceSamples(context is Context, chart is map, face is Query, onFace is boolean, part is Query) returns map
 {
-    const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : prismGrid(), "returnUndefinedOutsideFace" : onFace });
+    const G = onFace ? UNWRAP_PART_PRISM_TRIM_GRID : UNWRAP_PART_PRISM_GRID;
+    const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : prismGrid(G), "returnUndefinedOutsideFace" : onFace });
     var flat = makeArray(size(planes));
     var normals = makeArray(size(planes));
     var misses = 0;
@@ -1812,19 +1826,25 @@ export function prismFaceSamples(context is Context, chart is map, face is Query
         flat[k] = [u[0], u[1], u[2]];
         normals[k] = flatNormal(chart, u, tp.normal);
     }
-    return { "flat" : flat, "normals" : normals, "misses" : misses };
+    return { "flat" : flat, "normals" : normals, "misses" : misses, "G" : G };
 }
 
 /** Grid index of station s along the curve direction and t across it (alongU: the curve runs along parameter u). */
 export function gridIndex(s is number, t is number, alongU is boolean) returns number
 {
-    return alongU ? s * UNWRAP_PART_PRISM_GRID + t : t * UNWRAP_PART_PRISM_GRID + s;
+    return gridIndex(s, t, alongU, UNWRAP_PART_PRISM_GRID);
+}
+
+/** gridIndex on a G x G grid. */
+export function gridIndex(s is number, t is number, alongU is boolean, G is number) returns number
+{
+    return alongU ? s * G + t : t * G + s;
 }
 
 /** Longest polyline, in the view plane (x, coordinate ib), of the grid lines running along u (alongU) or v. */
 export function gridSpread(flat is array, alongU is boolean, ib is number) returns number
 {
-    const G = UNWRAP_PART_PRISM_GRID;
+    const G = round(sqrt(size(flat)));
     var best = 0;
     for (var t = 0; t < G; t += 1)
     {
@@ -1832,7 +1852,7 @@ export function gridSpread(flat is array, alongU is boolean, ib is number) retur
         var last = undefined;
         for (var s = 0; s < G; s += 1)
         {
-            const p = flat[gridIndex(s, t, alongU)];
+            const p = flat[gridIndex(s, t, alongU, G)];
             if (p == undefined)
             {
                 continue;
@@ -1854,7 +1874,7 @@ export function gridSpread(flat is array, alongU is boolean, ib is number) retur
  */
 export function gridExtrusionShare(flat is array, alongU is boolean, coordinate is number) returns number
 {
-    const G = UNWRAP_PART_PRISM_GRID;
+    const G = round(sqrt(size(flat)));
     var along = 0;
     var total = 0;
     for (var t = 0; t < G; t += 1)
@@ -1862,7 +1882,7 @@ export function gridExtrusionShare(flat is array, alongU is boolean, coordinate 
         var last = undefined;
         for (var s = 0; s < G; s += 1)
         {
-            const p = flat[gridIndex(s, t, alongU)];
+            const p = flat[gridIndex(s, t, alongU, G)];
             if (p == undefined)
             {
                 continue;
@@ -1890,8 +1910,8 @@ export function gridExtrusionShare(flat is array, alongU is boolean, coordinate 
  */
 export function viewFit(samples is map, ib is number) returns map
 {
-    const G = UNWRAP_PART_PRISM_GRID;
     const flat = samples.flat;
+    const G = round(sqrt(size(flat)));
     const normals = samples.normals;
     const spreadU = gridSpread(flat, true, ib);
     const spreadV = gridSpread(flat, false, ib);
@@ -1918,9 +1938,9 @@ export function viewFit(samples is map, ib is number) returns map
         {
             for (var t in [m - d, m + d])
             {
-                if (ref == undefined && flat[gridIndex(s, t, alongU)] != undefined)
+                if (ref == undefined && flat[gridIndex(s, t, alongU, G)] != undefined)
                 {
-                    ref = gridIndex(s, t, alongU);
+                    ref = gridIndex(s, t, alongU, G);
                 }
             }
         }
@@ -1940,7 +1960,7 @@ export function viewFit(samples is map, ib is number) returns map
         var high = 0;
         for (var t = 0; t < G; t += 1)
         {
-            const p = flat[gridIndex(s, t, alongU)];
+            const p = flat[gridIndex(s, t, alongU, G)];
             if (p == undefined)
             {
                 continue;
@@ -2034,7 +2054,8 @@ export function capEnvelope(fit is map, whole is map) returns map
     var outs = fit.outs;
     for (var i = 0; i < size(outs); i += 1)
     {
-        outs[i] = max(outs[i], whole.outs[i]);
+        // The whole-box fit may be on a coarser grid: its station value at this station's fraction.
+        outs[i] = max(outs[i], stationValue(whole.outs, i / (size(outs) - 1)));
     }
     return mergeMaps(fit, { "outs" : outs });
 }

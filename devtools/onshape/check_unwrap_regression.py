@@ -69,7 +69,8 @@ def evaluate(E, fids, rollback):
 }''' % arr
     for a in range(4):
         try:
-            r = c.post(f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}/featurescript", json_data={"script": script, "rollbackBarIndex": rollback})
+            r = c.post(f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}/featurescript", json_data={"script": script},
+                       query_params={"rollbackBarIndex": rollback})  # a QUERY parameter: in the body it is ignored
             for n in r.get("notices") or []:
                 if n.get("level") == "ERROR": print("   eval:", n.get("message"))
             found = []
@@ -111,9 +112,19 @@ if SAVE:
 else:
     try:
         base = json.load(open(path))
-        changed = [(a, b) for a, b in zip(base, now) if list(a) != list(b)]
-        print("vs baseline:", "IDENTICAL" if not changed and len(base) == len(now) else "%d changed" % len(changed))
+        # matched by feature name (a new test feature no longer shifts every row after it)
+        byname = {a[0]: a for a in base}
+        nowNames = set(b[0] for b in now)
+        changed = [(byname[b[0]], b) for b in now if b[0] in byname and list(byname[b[0]]) != list(b)]
+        added = [b for b in now if b[0] not in byname]
+        removed = [a for a in base if a[0] not in nowNames]
+        print("vs baseline:", "IDENTICAL" if not changed and not added and not removed else
+              "%d changed, %d new, %d gone" % (len(changed), len(added), len(removed)))
         for a, b in changed:
             print("  CHANGED", a[0][:50], "|", a[1], a[2], "->", b[1], b[2])
+        for b in added:
+            print("  NEW    ", b[0][:50], "|", b[1], b[2])
+        for a in removed:
+            print("  GONE   ", a[0][:50], "|", a[1], a[2])
     except FileNotFoundError:
         print("no baseline yet: run with --save")
