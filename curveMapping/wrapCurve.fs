@@ -5,19 +5,19 @@ import(path : "onshape/std/path.fs", version : "3083.0");
 
 
 //import tools/bspline_data
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
 //import Utils
 import(path : "ad98c7f43a25a4c0e8a428e7", version : "223c53d12a83984c4c62e354");
 // IMPORT: tools/arc_length.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
 // IMPORT: tools/frenet.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/a19a275a032ee47f4dbcc83c", version : "e11709063628c9ca70edfca2");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/a19a275a032ee47f4dbcc83c", version : "e11709063628c9ca70edfca2");
 // IMPORT: tools/point_projection.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/eb46317a27a44e391e11dfe6", version : "7b2ce264ee62cfbbb372ecdf");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/eb46317a27a44e391e11dfe6", version : "7b2ce264ee62cfbbb372ecdf");
 // IMPORT: tools/printing.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "56e375ddd20a07f695dfed04");
+export import(path : "683d867c35fdab9c98d47556", version : "f48cd8a0782e83964ecae099");
 
 
 

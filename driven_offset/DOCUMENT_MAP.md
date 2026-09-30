@@ -62,7 +62,8 @@ curve_core (Curve_tools V9, by VERSION: path 2143812a.../75b53dea4a5f869da4b28ca
        <- undrape_utils (283b8f7562a16e9c9ccc01b7)          export import eou at 3356bea0c847dcdb94230682
        <- unwrap_part (fc976128871c5b4b2d33a91c)            export import eou at 3356bea0c847dcdb94230682
        <- unwrap (a84cdaa8963f2a55db1c016b)                 export import eou at 3356bea0...;
-                                                            undrape_utils at 79fd4945..., unwrap_part at dfac1a47...
+                                                            undrape_utils at 79fd4945..., unwrap_part at 7edcda3e7b7892f5445aa11e
+                                                            (2026-09-30: holes + Faces mode)
 offset_profile_core (9553c095d4d77c83c34a0a36)              std only: the profile machinery (regions / points -> exact pieces)
   <- create_offset_profile (3fccdcb24013c744bd0fd8a2)       export import at 6d80d27932aecb1b7241739f
   <- driven_edge_offset                                     (above: its "Profile source: Regions")
@@ -161,7 +162,7 @@ import path (the whole unwrap tab failed to compile).
 
   | Tab | Element | Role |
   |---|---|---|
-  | unwrap | a84cdaa8963f2a55db1c016b | the feature: Edges / Constant-thickness part / Part (solid); the user's docstring heads the file, the AS BUILT block follows |
+  | unwrap | a84cdaa8963f2a55db1c016b | the feature: Edges / Constant-thickness part / Part (solid) / Faces (2026-09-30); the user's docstring heads the file, the AS BUILT block follows |
   | undrape_utils | 283b8f7562a16e9c9ccc01b7 | the undrape map (constant-thickness plates) |
   | unwrap_part | fc976128871c5b4b2d33a91c | solid unwrap (`unwrapSolid`) |
   | edge_offset_utils | a2665e22c07b7a6929ce4e80 | the chart (`unwrapChart` / `unwrapFast`, packed plain-number tables), shared with DEO / DOS |
@@ -172,13 +173,15 @@ import path (the whole unwrap tab failed to compile).
   Test studios (tests are real instances in the feature tree, named by case and expected result):
   "Unwrap_Testing Copy 1" (80c1e329f99a05e224058526; U1-U3, built by `devtools/onshape/build_unwrap_tests.py`),
   "Unwrap_Testing Copy 2" (681a5825e353d376c88224eb; production plates and parts, built by
-  `devtools/onshape/build_unwrap_parts.py`), "Evaluate offset tests" (0ce4ac09e693f8ecd18e8a7f),
+  `devtools/onshape/build_unwrap_parts.py`), "Unwrap hole & face tests" (56c29f15db6047862561aa7b, 2026-09-30: a copy of
+  Copy 2's derive with hole fixtures, Part-mode hole tests and Faces-mode tests, built by
+  `devtools/onshape/build_unwrap_hole_face_tests.py`), "Evaluate offset tests" (0ce4ac09e693f8ecd18e8a7f),
   "Offset profile tests" (e18678532ec07b057b372dbd), "DEO regions tests" (5efbe29c46094eba1499c4fb),
   "Arc tangency DEO tests" (380570afe5337a3782a8a662).
 
   Regression (repo root, Git Bash):
   ```
-  FS_SYNC_TIMEOUT=300 PYTHONPATH=. python devtools/onshape/check_unwrap_regression.py [--save]   # both Unwrap studios vs fingerprints/unwrap_baseline.json
+  FS_SYNC_TIMEOUT=300 PYTHONPATH=. python devtools/onshape/check_unwrap_regression.py [--save]   # the three Unwrap studios vs fingerprints/unwrap_geometry_baseline.json
   PYTHONPATH=. python devtools/onshape/check_evaluate_offset.py
   PYTHONPATH=. python devtools/onshape/check_offset_profile.py
   PYTHONPATH=. MSYS_NO_PATHCONV=1 python devtools/onshape/fingerprint.py compare design_master_default   # whenever edge_offset_utils changes

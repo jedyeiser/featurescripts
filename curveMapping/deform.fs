@@ -5,7 +5,7 @@ import(path : "onshape/std/approximationUtils.fs", version : "3083.0");
 // curveMappingCore, EXPORT-imported: the dialog's enums (SamplingMode, FrameNormalMode,
 // BinormalSource) come from it. wrapCurve is not imported: nothing here uses it, and its own
 // export-import of the core could bring a second version of the core into this scope.
-export import(path : "683d867c35fdab9c98d47556", version : "56e375ddd20a07f695dfed04");
+export import(path : "683d867c35fdab9c98d47556", version : "f48cd8a0782e83964ecae099");
 
 
 

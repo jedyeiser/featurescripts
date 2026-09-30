@@ -3,13 +3,13 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/approximationUtils.fs", version : "3083.0");
 
 // IMPORT: tools/arc_length.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
 // IMPORT: tools/frenet.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/a19a275a032ee47f4dbcc83c", version : "e11709063628c9ca70edfca2");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/a19a275a032ee47f4dbcc83c", version : "e11709063628c9ca70edfca2");
 // IMPORT: tools/printing.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "56e375ddd20a07f695dfed04");
+export import(path : "683d867c35fdab9c98d47556", version : "f48cd8a0782e83964ecae099");
 
 // wrapCurve is deliberately NOT imported: nothing here calls it, and its export-import of the
 // core could bring a second version of the core into this scope.
@@ -411,6 +411,23 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
             for (var tei = 0; tei < size(toEdgeArray); tei += 1)
             {
+                // A true line projects to a true line. Refitting it as a spline would leave the from-path
+                // with no exact line, so the linear fast path (arcs and lines kept exactly) could never fire.
+                if (evCurveDefinition(context, { "edge" : toEdgeArray[tei] }).curveType == CurveType.LINE)
+                {
+                    var lineEnds = evEdgeTangentLines(context, { "edge" : toEdgeArray[tei], "parameters" : [0, 1] });
+                    var lineProj = [];
+                    for (var le in lineEnds)
+                    {
+                        lineProj = append(lineProj, le.origin - dot(le.origin - planeOrigin, planeNormal) * planeNormal);
+                    }
+                    var lineId = id + "projectedFrom" + ("line" ~ toString(tei));
+                    opPolyline(context, lineId, { "points" : lineProj });
+                    projectedEdgeQueries = append(projectedEdgeQueries, qCreatedBy(lineId, EntityType.EDGE));
+                    projectedBodies      = append(projectedBodies,      qCreatedBy(lineId, EntityType.BODY));
+                    continue;
+                }
+
                 var refBSpline;
                 if (definition.referenceSamplingMode == SamplingMode.CP_BASED || definition.keepDegree)
                 {

@@ -35,6 +35,8 @@ geometry read from the test studio. See section 3.8 for how to regenerate them.
   - [2.5 Known limits (incl. U-turns)](#25-known-limits-and-open-decisions)
   - [2.6 Curved references, walls, PRISM](#26-curved-references-walls-and-prism-2026-09-25)
   - [2.7 Your two questions](#27-your-two-questions)
+  - [2.8 Holes in Part mode](#28-holes-in-part-mode-2026-09-30)
+  - [2.9 Faces / surfaces mode](#29-faces--surfaces-mode-2026-09-30)
 - [Part 3: The codebase](#part-3-the-codebase)
 - [Appendix: unclear or contradictory items](#appendix-unclear-or-contradictory-items-found-while-writing-this)
 
@@ -319,19 +321,21 @@ points, but it has not been built.
 
 # Part 2: Our feature
 
-## 2.1 The three modes
+## 2.1 The four modes
 
 | Mode (`UnwrapType`) | Input | What happens | Output |
 |---|---|---|---|
 | **Edges / wires** (`EDGES`) | edges or wire bodies | Each edge is sampled adaptively, mapped through the chart, and emitted as a line, arc or spline. | one wire body per source body |
 | **Constant-thickness part** (`THICKENED`) | plate-like solids (topsheet, laminates, base, mats) | Finds both sides and t. The mid-surface is mapped onto the TARGET (a wire's extrusion, offset). **Undrape** (1.6), then the plate is rebuilt t/2 each side. | one flat plate per source (several solids if the outline has several loops) |
-| **Part (solid)** (`PART`) | any solid along the reference (core, core extensions, sidewalls) | Split at line/curve changes of W. Straight pieces are moved rigidly, curved pieces rebuilt (1.7). | one flat solid per source |
+| **Part (solid)** (`PART`) | any solid along the reference (core, core extensions, sidewalls) | Split at line/curve changes of W. Straight pieces are moved rigidly, curved pieces rebuilt (1.7); holes in curved pieces cut by exact tools (2.8). | one flat solid per source |
+| **Faces / surfaces** (`FACES`, 2026-09-30) | faces of sheets or solids, or whole sheets | Every edge unwrapped once (as in Edges mode), each face rebuilt on its own flat edges, the faces of a body sewn into one sheet (2.9). | one flat sheet per source body |
 
 Every mode ends with the **length and volume check** (2.3), is named from the Outputs table (2.2), and
 publishes `lengthWrapped`, `lengthFlat` and `volumeRatio` (per body), plus line, arc and spline counts, through
 Variable_tools' `embedStandardOutputs`.
 
-Not built (compared with the docstring spec): surfaces as input, composite parts, mate connectors as input,
+Not built (compared with the docstring spec): the SURFACE branch's projection and THICKEN options (Faces mode unwraps
+faces as they are), composite parts, mate connectors as input,
 the "neutral axis" length curve, and projection of a wire onto a plane normal to the unwrap plane.
 
 ## 2.2 Parameters and what they mean physically
@@ -369,6 +373,12 @@ entry says what the parameter means physically.
     outline keeps the rule's spike, and that stretch is fitted as its own piece so it cannot bend the measured
     outline either side. *Blend across*: those stations are not measured; the outline crosses the zone as a smooth
     cubic between the measured stations either side (topsheet: 0 instead of 18 kernel sections, about 1.6 s less).
+- **Faces / surfaces** (2026-09-30)
+  - **Faces to unwrap** -- faces of sheets or of solids, or whole sheets. Grouped by owner body: one output sheet per
+    source body. Faces that share an edge share it in the flat and are sewn together.
+  - **Wrapped reference**, **Preserve length** (+ **Offset**, **Flip offset**) -- as in Edges mode.
+  - The **Tolerance** of *Lines, arcs & fitting* also bounds each rebuilt face's check against its source (max(Tolerance,
+    0.01 mm)); the flat edges themselves are fitted to 0.25 um in this mode (so neighbours sew, 2.9).
 - **Part (solid)**
   - **Parts to unwrap** -- any solid along the reference (a core, an extension, a sidewall).
   - **Wrapped reference** -- W, as in Edges mode.
@@ -391,7 +401,7 @@ entry says what the parameter means physically.
   within W's X span. A mate connector (or its vertex) or a vertex.
 - **Unwrapped origin** -- the flat frame: a mate connector (implicit ones included) or a plane / planar face (its own
   axes). Flat X runs along W, flat Z along W's surface normal.
-- **Lay the part on the origin plane** -- *Constant-thickness part and Part only*. On: the flat part's lowest face
+- **Lay the part on the origin plane** -- *Constant-thickness part and Part only* (not Edges, not Faces). On: the flat part's lowest face
   sits on the origin's XY plane. Off: it keeps its height relative to the alignment point.
 
 **Lines, arcs & fitting** (group; all modes, used for every flat curve except Part mode's rebuilt faces)
@@ -428,6 +438,7 @@ Rows pair with source bodies by position; if the count no longer matches, the ta
 | Constant-thickness part, target Wire | parts, wrapped reference, alignment point, origin | target offset = the plate's mid height above W |
 | Constant-thickness part, target Section | parts, section face, alignment point, origin | nothing (target offset 0) |
 | Part (solid) | parts, wrapped reference, alignment point, origin | preserve length offset = the part's height above W; square walls for blanks |
+| Faces / surfaces | faces or sheets, wrapped reference, alignment point, origin | preserve length (offset = the faces' height above W) |
 
 ## 2.3 The length and volume check: how to read it
 
@@ -493,6 +504,10 @@ the MC StjLB at (885, 0, 0). Latest measured, wrapped -> flat:
 | 4803 tail extension (Rtj3) | part, d = 0 | 160.120 -> 160.120 | 1.0037 | same effect, flatter tail |
 | 4103 L/R sidewalls, 4401 L/R | part, d = 0 | 1700.000 -> 1700.001, 1500.196 -> 1500.196 | 1.0003, 1.00004 | mostly over the line |
 
+**"Unwrap hole & face tests"** (56c29f15db6047862561aa7b, 2026-09-30), built by `devtools/onshape/build_unwrap_hole_face_tests.py`:
+hole fixtures (a block off Ski_Top_Surf with round hole, slot, pocket and counterbore; two holes through the CORE), four
+Part-mode hole tests and five Faces-mode tests (2.8, 2.9).
+
 The regression check (`devtools/onshape/check_unwrap_regression.py` + `devtools/onshape/fingerprints/unwrap_baseline.json`)
 compares exactly these three numbers per feature and the Copy 1 statuses. See 3.5.
 
@@ -548,7 +563,8 @@ Part mode limits (research_unwrap_part.md 7, 8b):
   face, or a draped top) are reported, not handled.
 - **Degenerate cell contact** (groove floors running out onto another face) makes the union fail. This is why
   the whole CORE cannot be rebuilt in one piece.
-- Chains turning more than 180 deg are not split. The grazing-extension hazard is guarded, not removed.
+- Chains turning more than 180 deg are not split. The grazing-extension hazard is guarded, not removed. A closed chain
+  around a HOLE is handled since 2026-09-30 (2.8); a closed chain around material (a boss, a round part) is not.
 - "Straight" is decided by the **edge type** (`CurveType.LINE`), not by geometry.
 
 Also open:
@@ -790,6 +806,122 @@ the U apex; figure in 2.5). "Blend across" gives a smooth transition, measures n
 the 18 kernel sections (about 1.6 s on the topsheet). Volume x0.999924 literal vs x0.999624 blend on the topsheet.
 Test in the tree: "Unwrap Topsheet (plate, own section, U-turns blended) - expect OK, smooth tip and tail".
 
+## 2.8 Holes in Part mode (2026-09-30)
+
+**Question:** does Unwrap support holes? Before this pass: Edges mode yes (each edge unwraps on its own; a closed edge
+now too, see below); constant-thickness plates yes (the loop-parity rebuild cuts every inner loop); Part mode over a
+STRAIGHT span yes (the piece moves rigidly and keeps every face). Part mode over a CURVED span: no, and in one case
+silently wrong. Measured with the eval harness on a 300 x 60 x 10 mm block thickened off FULL_BASELINE (x 450-750,
+camber) and on the CORE (d = 0, keep faces, shape tolerance 0.005 mm):
+
+| Case (curved span unless noted) | Before | After | Forward / reverse (um) | Volume ratio vs slab prediction |
+|---|---|---|---|---|
+| Block, round through hole, world-vertical | refused ("degenerate ruling") | built, 1 hole cut | 0.04 / 0.02 | 0.9998990 vs 0.9998986 |
+| Block, same hole, squareWalls on | **silently wrong: hole filled**, internal reverse check 0.02 um | built | 0.04 / 0.02 | as above |
+| Block, round hole normal to the reference | **silently wrong: hole filled** (fwd miss 5.0 mm) | built | 0.04 / 0.02 | 0.9998990 vs 0.9998986 |
+| Block, slot (stadium), world-vertical | built (cells), 4.1 / 1.9 um | built (band rebuild + tube) | 0.02 / 0.03 | 0.9998989 vs 0.9998985 |
+| Block, blind pocket, world-vertical | refused | built | 0.17 / 0.16 | 0.9998992 vs 0.9998988 |
+| Block, blind pocket normal to the reference | refused | built | 0.17 / 0.16 | 0.9998992 vs 0.9998988 |
+| Block, counterbore (pocket + through hole) | refused | built, 2 holes cut | 0.17 / 0.16 | 0.9998991 vs 0.9998987 |
+| Block, all five together (merge faces / squareWalls too) | refused | built | 0.17 / 0.17 | 0.9998993 vs 0.9998988 |
+| CORE, round hole at x 600 over FULL_BASELINE | refused | built, 1 hole cut | 3.78 / 3.22 (the CORE's own level) | 1.000085 |
+| CORE over REF_WIRE, holes at x 141 (tail arc piece) and x 600 (straight) + one on the x 145 junction | -- | tail hole cut, x 600 moved rigidly, junction half-holes as open chains | 5.2 / 4.4 | 1.000058 |
+| Block over REF_WIRE (straight span): control | exact (rigid) | unchanged | 0 / 0 | 1.0000000 |
+
+(The slab prediction cuts the source into 4 mm slabs normal to the reference and sums V (1 - kappa d) / (1 - kappa h);
+1.7).
+
+**Why it failed.** A round hole's wall is ONE periodic face (or a tangent ring of faces). Its plan row is a closed chain.
+PRISM extended the chain's "free" ends to the box (BAD_GEOMETRY) and fell back to the cell rebuild, which either
+refused the wall (a world-vertical hole over a camber leans by the slope, 17-20 um over its height, and its closed row
+gave a degenerate ruling) or built the tube with no inside cell and **kept the hole filled -- and the reverse check
+passed**, because a filled hole leaves no face to sample and the 16 samples of the top face rarely land over the hole.
+
+**What it does now** (unwrap_part.fs, `rebuildCurvedPiece` -> `holeRings` / `holeVoids` / `rebuildWithHoles`):
+
+1. **Find the holes** from the PRISM fits the piece is sampled for anyway (`prismFits`, no extra sampling when there
+   are none): wall-like faces (vertical in the flat or leaning less than 0.05) chained like PRISM's rows; a chain that
+   closes on itself with its outward normals pointing INTO the loop is a hole (material outside). The faces inside the
+   loop are its floors (side-view faces only); a wall of another hole inside it (a counterbore's bore) is that hole's.
+2. **Exact rows**: each wall face's rows at both ends of its rulings and in the middle, refined to a quarter of the
+   shape tolerance; the rulings are checked straight (the middle row on the line between the end rows, to a quarter of
+   the tolerance). World-vertical walls over a camber are straight lines in 3D and (to ~0.2 um) in the flat.
+3. **The tube**: every ruling cut at two flat heights just outside the part, the two rows fitted with the same
+   parameters (same knots) and written down as a ruled B-spline surface -- one closed periodic surface for a one-face
+   hole; for a ring of faces (a slot) one patch per face, ends on the shared rulings with shared tangents, sewn by a
+   union (one interpolation across the slot rang 8.6 um where the arc meets the line).
+4. **Voids**: a box split by the tubes; the columns split by the floors; a column cell inside a hole's outline and on
+   the open side of all its floors is a void (it may reach past the part: subtracting air is harmless). A void cell that
+   maps back into the material is an error.
+5. **Fill and rebuild**: the hole faces are deleted on a copy (the kernel heals the top and bottom across; measured
+   identical to the unholed block to 1e-4 mm3), the filled copy goes through PRISM / cells as before, the voids are
+   subtracted, and the result is checked against the real piece **both ways**.
+6. **Every rebuilt piece is now checked forward too** (`pieceCheck` = `reverseCheck` + `forwardCheck`: 5 points per
+   source face mapped forward, distance to the result). Cost on the CORE over FULL_BASELINE: 9.05 -> 9.8 s at 3 x 3 points,
+   so 5 points are used. A hole adds about 2.4 s there (12.2 s): the filled copy is analysed and rebuilt again.
+
+If anything in the hole path fails it is rolled back and the piece goes the old way, where the two-way check refuses
+what cannot be built. **Not handled** (refused, never built wrong): walls that are not ruled, floors with a fillet or a
+step, bosses (closed rings around material), closed side-view rings (a tunnel along Y), holes cut by a junction plane
+(each half is an open chain: PRISM or cells as before).
+
+**Closed edges in every mode.** An edge whose ends meet (a hole's circle) used to be emitted as a clamped spline closing
+on itself, which the kernel refuses (BAD_GEOMETRY): Edges mode could not unwrap a hole's rim. It is now emitted on its
+own (`emitClosedFlatCurve`): an exact circle when its flat points are one, else a periodic interpolation.
+
+Tests ("Unwrap hole & face tests", `devtools/onshape/build_unwrap_hole_face_tests.py`): "Unwrap HA block, round hole +
+slot + pocket + counterbore (part, along FULL_BASELINE) - expect OK, 5 holes cut", the same block along REF_WIRE
+(straight: rigid), "Unwrap HA CORE with 2 holes (part, along FULL_BASELINE, keep faces) - expect OK, 2 holes cut",
+"Unwrap HA CORE with 2 holes (part, along REF_WIRE) - expect OK, tail hole cut, mid hole moved rigidly".
+
+## 2.9 Faces / surfaces mode (2026-09-30)
+
+"Keep faces": unwrap the edges and rebuild the faces on them. `unwrapFacesToSheet` (unwrap.fs):
+
+1. **Edges once.** Every edge of the selected faces goes through the Edges pipeline once, so two faces sharing an edge
+   get the identical flat curve (shared vertices exact). Fitted to 0.25 um (not the 5 um Tolerance) and up to 300 control
+   points: see sewing below.
+2. **Each face on its own curves** (`flatFace`): the face's flat image sampled on its trim (13 x 13) decides the support:
+   - a **plane** when the image is one within 0.5 um (a face on the reference's offset: flat exactly);
+   - an **extrusion** along flat Y (a profile face: every face extruded across the reference plane, e.g. a ski's top
+     surface over any baseline) or flat Z (a wall), within 0.5 um -- PRISM's rows and tools;
+   - otherwise a **fitted B-spline surface** through the face's TRIM parameter range mapped flat (rows as one family,
+     then the rows' control points across), fitted to 0.1 um and extended 2 mm.
+   The support is split by the face's flat curves (the region holding its mapped interior point is kept) and the face is
+   **checked both ways against its source face** (forward 5 x 5, reverse 4 x 4, denser when the trim fills little of
+   the parameter box), limit max(Tolerance, 0.01 mm). Each support is a sub-feature attempt: if the fitted one misses, a
+   plane / extrusion within the Tolerance is tried (accurate but it may not sew); if none passes, the face is refused.
+3. **Sewing.** The faces of one source body are united into one sheet. Measured: the sheet union sews edges up to 1 um
+   apart and fails outright (BOOLEAN_INVALID, the whole union) from 2 um. Each face imprints the shared curve on its own
+   surface, so neighbours part by (a) their surfaces' differences -- why only exact planes / extrusions are used and the
+   fitted surfaces go to 0.1 um -- and (b) the curve's own error where they meet at an angle -- why the edges are fitted
+   to 0.25 um in this mode (5 um curves: 2-3 um gaps). If the union still fails, faces are joined one at a time; the
+   ones that will not sew stay separate sheets and the notice warns ("N sheets where the source's faces make M groups").
+4. The sheet is placed in the origin's frame; names, properties and the length check as in the other modes.
+
+Measured (eval harness, FULL_BASELINE unless noted; forward = 11 x 11 source points per face mapped forward, reverse =
+8 x 8 flat points mapped back):
+
+| Input | Supports | Result | Forward / reverse (um) | Time (request) |
+|---|---|---|---|---|
+| Ski_Top_Surf sheet, 3 faces, 10 edges | 1 plane, 2 extruded | 1 sheet, 3 faces, 10 edges (8 laminar) = source | 0.22 / 0.21 | ~5 s |
+| Topsheet top face (16 edges) | extruded | 1 face, 16 edges | 0.06 / 0.04 | 3.6 s |
+| Topsheet step face (8 edges, 1-3 um end edges) | fitted | 1 face, 8 edges | 0 / 0 (below kernel resolution) | 1.6 s |
+| Block top face, 4 inner loops (round, slot, pocket, counterbore) + pocket floor | planes | 2 sheets (the floor shares no edge: 2 groups) | 0.20 / 0.18 | ~1 s |
+| CORE bottom face, 2 hole loops, REF_WIRE (tree test) | plane | 1 face, 56 edges | per-face check only | -- |
+| CORE: 64 faces around its fillets and the hole (stress case) | 8 planes, 35 extruded, 21 fitted | **2 sheets** for 1 group (one face does not sew), 64 faces | 2.7 / 8.3 | 31 s |
+
+Found on the way: a chart foot warm-started from a point far away can converge on the wrong span (the fitted support of
+a CORE ledge wall came out 250 mm tall; it also produced a false 0.56 mm "notch" on the step face): the fit grid now
+restarts the warm start on every row. Tests: "Unwrap HB Ski_Top_Surf sheet (faces, along FULL_BASELINE) - expect OK, 1
+sheet, 3 faces, 10 edges", "Unwrap HB Topsheet top face ...", "Unwrap HB Topsheet step face ... fitted surface",
+"Unwrap HB block top face with 4 hole loops ...", "Unwrap HB CORE bottom face with 2 hole loops (faces, along REF_WIRE)
+- expect OK, planar, 2 inner loops".
+
+Open: sewing faces whose surfaces are only within the Tolerance of their image (the stress case above); a fitted
+surface for faces whose trim does not fill a rectangle in parameter space (it is fitted over the trim's bounding
+range, and the per-face check refuses it when that fails).
+
 ---
 
 # Part 3: The codebase
@@ -825,6 +957,11 @@ Key entry points (line numbers as of 2026-09-25; they drift):
   `fitPoints` / `quadraticSlope` / `monotoneSlope` (moved here from unwrap.fs, which imports them), `chainShapes`,
   `emitChainParts`, `emitMergedChain` + `g1Runs` / `splitCubicPiece` / `joinedCubicPieces` (exact merged chains),
   `extendedPieces` / `extendedArc` (junction overshoot in the curve), `probeCrossings` (membership sweep).
+  Added 2026-09-30: `prismFits` / `prismAnalysisOfFits` (prismAnalysis in two stages), `rebuildCurvedSolid` (the old
+  rebuildCurvedPiece body), `rebuildWithHoles`, `holeRings` / `holeRing` / `coarseWallRow` / `ringFaceRows`,
+  `holeVoids` / `holeTube` / `ruledPatch`, `forwardCheck` / `pieceCheck`.
+- unwrap.fs, added 2026-09-30: `emitClosedFlatCurve`; Faces mode `unwrapFacesToSheet`, `flatFace` / `flatFaceOn`,
+  `planeSheet`, `fittedSupport` / `faceTrimBox`, `flatFaceCheck`, `joinFaceSheets`, `edgeConnectedGroups`.
 
 ## 3.2 Key data structures
 
@@ -916,6 +1053,8 @@ Rules learned the hard way:
    - `devtools/onshape/build_unwrap_tests.py` (Copy 1: U1-U3)
    - `devtools/onshape/build_unwrap_parts.py` (Copy 2: 9 plates + 7 parts; `ONLY=<bodyId>` and
      `DEBUG=<bodyId>` env vars)
+   - `devtools/onshape/build_unwrap_hole_face_tests.py` ("Unwrap hole & face tests" 56c29f15db6047862561aa7b: hole
+     fixtures + 4 Part-mode hole tests + 5 Faces-mode tests; rebuilds everything after "Boolean 1")
    These upsert features by name.
 4. **Regression:** `FS_SYNC_TIMEOUT=300 PYTHONPATH=. python devtools/onshape/check_unwrap_regression.py [--save]`
    reads every Unwrap feature's status in Copy 1 and Copy 2 and its published `lengthWrapped` / `lengthFlat` /

@@ -2009,3 +2009,53 @@ crossed that overshoot 8 um past the end (a 0.07 um miss at 0.53 deg), so the ov
 the outline stayed open.
 **Fix**: the overshoot is part of the chain's own curve (a line longer, an arc further round, a spline by a tangent
 line inside the same B-spline), and at least 4 x the end's distance from the chain it lies on.
+
+
+## Correction 72: a reverse check cannot see a MISSING feature -- check forward too (2026-09-30)
+
+**Symptom** (Unwrap Part mode, a round hole in a curved span): the cell rebuild built the flat block with the hole
+FILLED, and its reverse check (16 points per result face mapped back, distance to the source) passed at 0.02 um.
+**Cause**: a filled hole leaves no result face to sample; the top face spans it, and 16 points on a 300 mm face never
+land over an 8 mm hole. **Fix**: `pieceCheck` = reverse + forward (5 points per SOURCE face mapped forward, distance to
+the result): the hole wall's points are 4-5 mm from any result face. Cost on the CORE over FULL_BASELINE: 3 x 3 points
++0.75 s (9.05 -> 9.8 s), so 5 points. Any rebuild-and-check scheme needs both directions.
+
+## Correction 73: the sheet union sews edges up to 1 um apart, and fails the WHOLE union from 2 um (2026-09-30)
+
+**Measured** (two sheets, shared edge moved by a gap, in-plane and normal): gaps 0 .. 1 um -> one sheet; 3-7 um in plane
+-> two sheets, no error; 2 um, any normal gap >= 2 um, overlaps >= 3 um -> BOOLEAN_INVALID thrown, nothing united.
+**Consequence** (Unwrap Faces mode): faces rebuilt on separate supports and split by a shared curve (opSplitFace
+projects it onto each) sew only if (a) both supports follow the true surface to well under a micron (a best-fit plane
+4.2 um off gave 7.8 um gaps) and (b) the shared curve itself is that close (neighbours at an angle project it apart by
+its own error: 5 um curves, 2-3 um gaps). Fix: exact supports only within 0.5 um, fitted ones to 0.1 um, shared edges
+fitted to 0.25 um; if the union still throws, unite one face at a time. Reusing a neighbour's IMPRINTED edges as the tool
+made it worse (imprints split at different vertices: 26 sheets).
+
+## Correction 74: a chart foot warm-started from far away converges on the WRONG span (2026-09-30)
+
+**Symptom**: a B-spline fitted through a CORE ledge wall's flat grid (17 x 5 points, 156 x 0.6 mm) came out 250 mm tall
+and nowhere near the face (curves 4 mm off, SPLIT_FAILED); on the topsheet's step face a 0.56 mm "notch" appeared.
+**Cause**: the grid was mapped row by row with `chartFootAt(chart, p, previous)` and `previous` carried from the end of
+one row (x 682) to the start of the next (x 527): the Newton from that seed converged -- residual below 1e-7 -- on a foot
+of another span. `chartFootConverged` checks the tangential residual only. **Fix**: warm-start along a row only (reset
+at each row). Any loop that jumps far between consecutive points must seed cold (`undefined`).
+
+## Correction 75: closed curves -- clamped closed splines are refused; opFitSpline closes periodic; closed sketch curves (2026-09-30)
+
+- A clamped B-spline whose first and last control points coincide (a closed edge fitted like an open one, or open pieces
+  joined with triple knots into a loop) is refused: `opCreateBSplineCurve` BAD_GEOMETRY. Unwrap's Edges pipeline had
+  never met a closed edge (a hole's circle) until Faces mode. `opFitSpline` through points whose last equals the first
+  makes a PERIODIC curve and is accepted; two such fits with the same `parameters` get identical knots (a ruled surface
+  between them is exact: control net side by side, degree 1 across, `isUPeriodic`).
+- A ring of faces with curvature jumps (a slot: arc -> line) interpolated as ONE closed spline rings at the jumps
+  (8.6 um); per-face patches sewn by a union do not.
+- A closed sketch curve also bounds a region face: `opExtractWires` on `qCreatedBy(sketch, EDGE)` fails with
+  EXTRACT_WIRES_OVERLAPPING_EDGES; take the edges of the sketch's WIRE body.
+- `opDeleteFace` (heal, leaveOpen false) on a hole's faces fills it: the healed block matched the unholed one to 0 mm3.
+
+## Correction 76: a face's parameter box can be far larger than its trim (2026-09-30)
+
+A CORE wall 0.6 mm tall sat in a parameter box whose v range spanned the whole extruded surface; a grid over [0, 1]^2
+sampled mostly the surface's extension. Take the trim's parameter range from its edges (edge points ->
+`evDistance(point, face).sides[1].parameter`) before gridding a face (Unwrap `faceTrimBox`). Also: `box` is a reserved
+word -- again (the variable in that function first).

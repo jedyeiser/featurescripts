@@ -3,15 +3,15 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/path.fs", version : "3083.0");
 import(path : "onshape/std/approximationUtils.fs", version : "3083.0");
 //import tools/bspline_data
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
 //import Utils
 import(path : "ad98c7f43a25a4c0e8a428e7", version : "223c53d12a83984c4c62e354");
 // IMPORT: tools/arc_length.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
 // IMPORT: tools/frenet.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/a19a275a032ee47f4dbcc83c", version : "e11709063628c9ca70edfca2");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/a19a275a032ee47f4dbcc83c", version : "e11709063628c9ca70edfca2");
 // IMPORT: tools/point_projection.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/eb46317a27a44e391e11dfe6", version : "7b2ce264ee62cfbbb372ecdf");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/eb46317a27a44e391e11dfe6", version : "7b2ce264ee62cfbbb372ecdf");
 
 export const samplingDensityBounds = {(millimeter) : [.1, 10, 200]} as LengthBoundSpec;
 
@@ -1483,6 +1483,9 @@ export function mapWorldPointChain(context is Context,
 // Master switch (flip to false to A/B against the sample-and-refit path).
 export const CM_LINEAR_FASTPATH = true;
 
+/** Arc-length slack for the fast path's seam checks: an edge ending exactly on a reference vertex still counts as inside it. */
+const CM_SEAM_TOL = 1e-6 * meter;
+
 /**
  * Index of the edge whose span contains `arcLength` (last edge with
  * startArcLength <= arcLength) - the same rule getFrameAtArcLength uses.
@@ -1548,7 +1551,9 @@ export function linearRegionMove(context is Context, fromMap is map, toMap is ma
         return { "eligible" : false };
     }
 
-    var proj0       = projectOntoFrenetPath(fromMap, samplePts[0], undefined);
+    // Anchor on the MIDDLE probe: an end probe sitting exactly on a reference vertex (an arc ending at
+    // FCP / ACP) can resolve to either neighbouring edge, the middle one is interior to the span.
+    var proj0       = projectOntoFrenetPath(fromMap, samplePts[floor(size(samplePts) / 2)], undefined);
     var fromEdgeIdx = proj0.hint.edgeIndex;
     if (!isExactLine(fromMap.edgeData[fromEdgeIdx]))
     {
@@ -1556,19 +1561,23 @@ export function linearRegionMove(context is Context, fromMap is map, toMap is ma
     }
     // Cheap reject on the to side too, before projecting the other probes.
     var toArc0 = proj0.arcLength + (toRefArc - fromRefArc);
-    if (toArc0 < 0 * meter || toArc0 > toMap.totalLength || !isExactLine(toMap.edgeData[edgeIndexAtArcLength(toMap, toArc0)]))
+    if (toArc0 < -CM_SEAM_TOL || toArc0 > toMap.totalLength + CM_SEAM_TOL || !isExactLine(toMap.edgeData[edgeIndexAtArcLength(toMap, toArc0)]))
     {
         return { "eligible" : false };
     }
 
+    // The from-edge's own arc-length span. A probe belongs to it when its foot lies inside the span,
+    // whichever edge the projection resolved to on a tie at a vertex.
+    var fromLo = fromMap.edgeData[fromEdgeIdx].startArcLength - CM_SEAM_TOL;
+    var fromHi = fromMap.edgeData[fromEdgeIdx].startArcLength + fromMap.edgeData[fromEdgeIdx].length + CM_SEAM_TOL;
     var sMin = proj0.arcLength;
     var sMax = proj0.arcLength;
     var probeHint = proj0.hint;
-    for (var k = 1; k < size(samplePts); k += 1)
+    for (var k = 0; k < size(samplePts); k += 1)
     {
         var proj = projectOntoFrenetPath(fromMap, samplePts[k], probeHint);
         probeHint = proj.hint;
-        if (proj.hint.edgeIndex != fromEdgeIdx)
+        if (proj.arcLength < fromLo || proj.arcLength > fromHi)
         {
             return { "eligible" : false };   // straddles two from-edges
         }
@@ -1576,16 +1585,16 @@ export function linearRegionMove(context is Context, fromMap is map, toMap is ma
         if (proj.arcLength > sMax) { sMax = proj.arcLength; }
     }
 
-    // The shifted span must land inside a single line to-edge, in-bounds.
+    // The shifted span must land inside a single line to-edge, in-bounds (within the seam tolerance).
     var delta  = toRefArc - fromRefArc;
     var sToMin = sMin + delta;
     var sToMax = sMax + delta;
-    if (sToMin < 0 * meter || sToMax > toMap.totalLength)
+    if (sToMin < -CM_SEAM_TOL || sToMax > toMap.totalLength + CM_SEAM_TOL)
     {
         return { "eligible" : false };
     }
-    var toIdx = edgeIndexAtArcLength(toMap, sToMin);
-    if (toIdx != edgeIndexAtArcLength(toMap, sToMax) || !isExactLine(toMap.edgeData[toIdx]))
+    var toIdx = edgeIndexAtArcLength(toMap, sToMin + CM_SEAM_TOL);
+    if (toIdx != edgeIndexAtArcLength(toMap, sToMax - CM_SEAM_TOL) || !isExactLine(toMap.edgeData[toIdx]))
     {
         return { "eligible" : false };
     }

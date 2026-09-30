@@ -416,6 +416,23 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
 
             for (var tei = 0; tei < size(toEdgeArray); tei += 1)
             {
+                // A true line projects to a true line. Refitting it as a spline would leave the from-path
+                // with no exact line, so the linear fast path (arcs and lines kept exactly) could never fire.
+                if (evCurveDefinition(context, { "edge" : toEdgeArray[tei] }).curveType == CurveType.LINE)
+                {
+                    var lineEnds = evEdgeTangentLines(context, { "edge" : toEdgeArray[tei], "parameters" : [0, 1] });
+                    var lineProj = [];
+                    for (var le in lineEnds)
+                    {
+                        lineProj = append(lineProj, le.origin - dot(le.origin - planeOrigin, planeNormal) * planeNormal);
+                    }
+                    var lineId = id + "projectedFrom" + ("line" ~ toString(tei));
+                    opPolyline(context, lineId, { "points" : lineProj });
+                    projectedEdgeQueries = append(projectedEdgeQueries, qCreatedBy(lineId, EntityType.EDGE));
+                    projectedBodies      = append(projectedBodies,      qCreatedBy(lineId, EntityType.BODY));
+                    continue;
+                }
+
                 // Sampled by the reference edge's own control points, as the engine does; at the
                 // source density (1 mm by default) a long reference took thousands of points.
                 var refBSpline = evApproximateBSplineCurve(context, { "edge": toEdgeArray[tei] });

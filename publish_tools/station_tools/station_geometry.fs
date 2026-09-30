@@ -18,13 +18,24 @@ export enum StationDatumUse
     COORDINATE_SYSTEM
 }
 
+/** Where the profile view's outline comes from. */
+export enum StationProfileOutline
+{
+    annotation { "Name" : "Section at datum XZ (centreline)" }
+    SECTION,
+    annotation { "Name" : "Silhouette (projected outline)" }
+    SILHOUETTE
+}
+
 /**
  * Station geometry: the drawing-aid geometry for one part, generated instead of hand-built
  * sketches.
  *
  * For each view (plan = datum XY, profile = datum XZ, or any mate connector's XY) it projects
  * the part onto the view plane and builds, in that plane:
- *     outline wires   the part's silhouette (outer loops)
+ *     outline wires   the part's silhouette (outer loops); in the profile view by default the SECTION of the
+ *                     part's solids by the datum XZ plane (the centreline profile, exact edges -- the silhouette
+ *                     of a curved top is hundreds of tiny re-fitted segments, 2026-09-30)
  *     outline surface the region inside them (optional)
  *     station lines   one wire per station, spanning the silhouette where the station crosses it
  *     extent points   the outline's two ends along the measuring axis, always (TIP / TAIL when the stations
@@ -86,6 +97,13 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
 
             annotation { "Name" : "Profile view (datum XZ)", "Default" : false }
             definition.profileView is boolean;
+
+            if (definition.profileView)
+            {
+                annotation { "Name" : "Profile outline", "Default" : StationProfileOutline.SECTION,
+                            "Description" : "Section: the solids cut by the datum XZ plane (the centreline profile, exact edges); thicknesses are measured on it. Silhouette: the projected outline (the thickest point across the part at each station). Falls back to the silhouette when the plane misses the part." }
+                definition.profileOutline is StationProfileOutline;
+            }
 
             annotation { "Name" : "Custom views", "Item name" : "view", "Item label template" : "#viewName",
                         "Description" : "More views, each on a mate connector's XY plane." }
@@ -176,9 +194,11 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
         var queries = {};
         var table = [];
         var missed = [];
+        var notes = [];
         for (var view in views)
         {
             const built = buildView(context, id + view.key, definition, view, stations, prefix);
+            notes = concatenateArrays([notes, built.notes]);
             outputs = append(outputs, built.output);
             queries = mergeMaps(queries, built.queries);
             table = concatenateArrays([table, built.rows]);
@@ -204,7 +224,11 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
                     "queries" : queries
                 });
 
-        const summary = size(stations) ~ " stations and the part's two ends in " ~ size(views) ~ " view(s).";
+        var summary = size(stations) ~ " stations and the part's two ends in " ~ size(views) ~ " view(s).";
+        if (size(notes) > 0)
+        {
+            summary = summary ~ " " ~ join(notes, " ");
+        }
         if (size(missed) > 0)
         {
             reportFeatureInfo(context, id, summary ~ " Missing the part -- " ~ join(missed, "; "));
@@ -213,7 +237,7 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
         {
             reportFeatureInfo(context, id, summary);
         }
-    }, { "datumUses" : StationDatumUse.ORIGIN });
+    }, { "datumUses" : StationDatumUse.ORIGIN, "profileOutline" : StationProfileOutline.SECTION });
 
 /**
  * Fills the name prefix with the part's name when the part is picked, and follows a part
@@ -276,7 +300,13 @@ function viewFrames(context is Context, definition is map) returns array
     {
         // Looking from datum -Y: X stays the measuring axis and datum Z reads as up.
         const yAxis = cross(datum.zAxis, datum.xAxis);
-        views = append(views, { "key" : "profile", "label" : "PROFILE", "cs" : coordSystem(datum.origin, datum.xAxis, -yAxis) });
+        var profile = { "key" : "profile", "label" : "PROFILE", "cs" : coordSystem(datum.origin, datum.xAxis, -yAxis) };
+        if (definition.profileOutline != StationProfileOutline.SILHOUETTE)
+        {
+            // The centreline profile: the solids cut by the datum XZ plane.
+            profile.sectionPlane = plane(datum.origin, yAxis, datum.xAxis);
+        }
+        views = append(views, profile);
     }
     for (var i = 0; i < size(definition.otherViews); i += 1)
     {
@@ -297,7 +327,9 @@ function viewFrames(context is Context, definition is map) returns array
 }
 
 /**
- * Builds one view's geometry and composite. Returns { output, queries, rows, missed }.
+ * Builds one view's geometry and composite. Returns { output, queries, rows, missed, notes }.
+ * A view with a `sectionPlane` (the profile, Profile outline = Section) takes its solids' region from their section by
+ * that plane instead of their silhouette.
  */
 function buildView(context is Context, vid is Id, definition is map, view is map, stations is array, prefix is string) returns map
 {
@@ -313,7 +345,7 @@ function buildView(context is Context, vid is Id, definition is map, view is map
     const namePrefix = prefix ~ " " ~ view.label;
 
     // Silhouette on the view plane. The outline refuses a composite, so give it the members.
-    //   solid                    -> opCreateOutline (a region)
+    //   solid                    -> opCreateOutline (a region); with a section plane: the section (a region)
     //   flat sheet seen face-on  -> the sheet IS its silhouette: copied onto the view plane (a region)
     //   any other sheet          -> its boundary (laminar) edges dropped onto the view plane (edges, no region)
     // opCreateOutline fails on sheets: face-on, edge-on (a wall in plan) and curved sheets close to the view plane
@@ -344,6 +376,20 @@ function buildView(context is Context, vid is Id, definition is map, view is map
         }
     }
     var regions = [];
+    var notes = [];
+    if (view.sectionPlane != undefined && size(outlineTools) > 0)
+    {
+        const section = sectionRegion(context, vid + "section", outlineTools, view.sectionPlane, cs.origin - view.cs.origin);
+        if (section == undefined)
+        {
+            notes = append(notes, view.label ~ ": the datum XZ plane misses the part, outline from its silhouette.");
+        }
+        else
+        {
+            regions = [section];
+            outlineTools = [];
+        }
+    }
     var dropped = qNothing();
     if (size(outlineTools) > 0 || size(dropTools) > 0)
     {
@@ -352,7 +398,7 @@ function buildView(context is Context, vid is Id, definition is map, view is map
         if (size(outlineTools) > 0)
         {
             opCreateOutline(context, vid + "outline", { "tools" : qUnion(outlineTools), "target" : target });
-            regions = [qCreatedBy(vid + "outline", EntityType.BODY)];
+            regions = append(regions, qCreatedBy(vid + "outline", EntityType.BODY));
         }
         if (size(dropTools) > 0)
         {
@@ -544,7 +590,51 @@ function buildView(context is Context, vid is Id, definition is map, view is map
     queries[view.key ~ "Composite"] = composite;
     output = append(output, composite);
 
-    return { "output" : qUnion(output), "queries" : queries, "rows" : rows, "missed" : missed };
+    return { "output" : qUnion(output), "queries" : queries, "rows" : rows, "missed" : missed, "notes" : notes };
+}
+
+/**
+ * The region where `sectionPlane` cuts the solids `solids`, moved by `offset` (onto the view plane): a large plane
+ * sheet with everything outside the solids removed (SUBTRACT_COMPLEMENT). Its edges are the exact plane / face
+ * intersections -- no re-fit (the silhouette of a curved top came back as 1100+ tiny lines, 2026-09-30).
+ * Undefined, with nothing left behind, when the plane misses every solid.
+ */
+function sectionRegion(context is Context, id is Id, solids is array, sectionPlane is Plane, offset is Vector)
+{
+    var cut = [];
+    for (var solid in solids)
+    {
+        if (!isQueryEmpty(context, qIntersectsPlane(qOwnedByBody(solid, EntityType.FACE), sectionPlane)))
+        {
+            cut = append(cut, solid);
+        }
+    }
+    if (size(cut) == 0)
+    {
+        return undefined;
+    }
+    opPlane(context, id + "plane", { "plane" : sectionPlane, "width" : VIEW_PLANE_SIZE, "height" : VIEW_PLANE_SIZE });
+    const region = qCreatedBy(id + "plane", EntityType.BODY);
+    opBoolean(context, id + "trim", {
+                "tools" : qUnion(cut),
+                "targets" : region,
+                "operationType" : BooleanOperationType.SUBTRACT_COMPLEMENT,
+                "keepTools" : true
+            });
+    if (isQueryEmpty(context, qOwnedByBody(region, EntityType.FACE)))
+    {
+        // The solids only touch the plane.
+        if (!isQueryEmpty(context, region))
+        {
+            opDeleteBodies(context, id + "deleteEmpty", { "entities" : region });
+        }
+        return undefined;
+    }
+    if (norm(offset) > TOLERANCE.zeroLength * meter)
+    {
+        opTransform(context, id + "toView", { "bodies" : region, "transform" : transform(offset) });
+    }
+    return region;
 }
 
 /**
