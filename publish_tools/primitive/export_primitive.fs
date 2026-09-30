@@ -2,13 +2,13 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 // IMPORT: primitive_profiles.fs
-export import(path : "5865b24d55ff270a56088adf", version : "a49d6c6f041f48486d3a38bd");
+export import(path : "5865b24d55ff270a56088adf", version : "46ac1b2a456540a2c6782ce4");
 // IMPORT: primitive_footprint.fs
-export import(path : "fbc957543e769a649f00c5cc", version : "0643b2c32fc6fa3f5a5aeb72");
+export import(path : "fbc957543e769a649f00c5cc", version : "3fd527e284e32df1995bc347");
 // IMPORT: primitive_baseline.fs
-export import(path : "b827b10bc0bdc678c2db28cd", version : "17196e5856e8bb263bcadb97");
+export import(path : "b827b10bc0bdc678c2db28cd", version : "3a3ecccb2d61257f22fdb276");
 // IMPORT: primitive_output.fs
-export import(path : "6f122edb2547a6a46991d9fd", version : "f5e360a9b5a73ca5e71e9980");
+export import(path : "6f122edb2547a6a46991d9fd", version : "fdc4d4666f84ddc58b88f990");
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs) -- same pin as station_geometry
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: xSection V58 xSectBeamAnalysis.fs (getEIFromEdges, computeBeamStiffness; direction-safe)
