@@ -32,7 +32,7 @@ def vis(text, exact=True, fr=None):
 
 def other_session():
     """True if Onshape shows 'open in another session' (then it is CANCELLED -- never force-open)."""
-    for t in ("another session", "another tab", "opened in another"):
+    for t in ("another session", "another tab", "opened in another", "has this tab open", "only one user may open"):
         loc = page.get_by_text(t, exact=False)
         if loc.count() and loc.first.is_visible():
             for b in ("Cancel", "Close"):
@@ -221,7 +221,9 @@ def logo_cell_mapper(size, X, Y, wheel=6):
     import io as _io
     L = _layout(size)
     tx, ty, _w, th = L["title_block"]
-    page.mouse.move(X(tx + 18.0), Y(ty + 30.0)); page.wait_for_timeout(300)
+    lw = L.get("logo_w", 36.0)                 # logo cell width: 36 (STANDARD) / 30 (A4 COMPACT)
+    cy_px = Y(ty + 0.75 * th)
+    page.mouse.move(X(tx + lw / 2.0), cy_px); page.wait_for_timeout(300)
     for _ in range(wheel):
         page.mouse.wheel(0, -120); page.wait_for_timeout(250)
     page.wait_for_timeout(1500)
@@ -231,7 +233,7 @@ def logo_cell_mapper(size, X, Y, wheel=6):
     cols = []
     for x in range(60, 1560):
         run = best = 0
-        for y in range(80, 972):
+        for y in range(80, min(972, int(cy_px) + 100)):   # above the block's bottom: skips the centring mark
             if px[x, y] < 110:
                 run += 1
                 best = max(best, run)
@@ -249,8 +251,69 @@ def logo_cell_mapper(size, X, Y, wheel=6):
     if len(cen) < 2:
         out("cell lines not found", cen); return None
     a, b = cen[0], cen[1]
-    k = (b - a) / 36.0
+    k = (b - a) / lw
     xm = int((a + b) / 2)
     top = next(y for y in range(80, 972) if px[xm, y] < 110)
     out("cell mapper k=%.3f left %.1f div %.1f top %d" % (k, a, b, top))
     return (lambda x: a + k * (x - tx)), (lambda y: top + k * (ty + th - y))
+
+
+# ---------------------------------------------------------------- table cells (revision table resize, A4 compact)
+def _resize_inputs(f):
+    ins = [f.locator("input").nth(i) for i in range(f.locator("input").count())]
+    return [i for i in ins if i.is_visible() and "mm" in (i.input_value() or "")]
+
+
+def resize_cell(px, py, width=None, height=None, tag="r", tries=3):
+    """Right-click a table cell > Resize... : width sets the cell's column, height its row (mm). Retries a few px
+    off (the first click sometimes selects the whole table, whose menu has no Resize)."""
+    f = dframe()
+    for t in range(tries):
+        y = py + (0, 2, -2)[t]
+        clear_sel(); page.mouse.click(1500, 600); page.wait_for_timeout(800)
+        page.mouse.click(px, y); page.wait_for_timeout(1200)
+        page.mouse.click(px, y, button="right"); page.wait_for_timeout(1200)
+        m = vis("Resize...")
+        if m is None:
+            page.keyboard.press("Escape"); continue
+        m.click(); page.wait_for_timeout(1200)
+        ins = _resize_inputs(f)
+        before = [i.input_value() for i in ins]
+        if width is not None:
+            ins[0].fill("%s mm" % width); ins[0].press("Tab"); page.wait_for_timeout(400)
+        if height is not None:
+            ins[1].fill("%s mm" % height); ins[1].press("Tab"); page.wait_for_timeout(400)
+        ok = ["invalid" not in i.evaluate("e => e.className") for i in ins]
+        lab = vis("Resize")
+        bb = lab.bounding_box()
+        page.mouse.click(bb["x"] + 146, bb["y"] + bb["height"] / 2); page.wait_for_timeout(1500)
+        page.mouse.click(1500, 600); page.wait_for_timeout(800)
+        out(tag, before, "->", width, height, "valid", ok)
+        return all(ok)
+    out(tag, "no Resize in menu"); shot("rsz_fail_" + tag)
+    return False
+
+
+def revision_text(h):
+    """Drawing properties > Revision tables: title / header / content row text := h (other tables untouched)."""
+    src = open(r"devtools/onshape/templates/ui_drawing_properties.py").read()
+    head, tail = src.split("if globals().get(\"LOCK_FORMATS\"):")
+    exec(head.split("RULES = [")[0] + "RULES = TABLE_RULES\n" + "if False:" + tail,
+         dict(globals(), TABLE_RULES=[(["Revision tables"], fld, "inp", str(h))
+                                      for fld in ("Title row text", "Header row text", "Content row text")]))
+    page.mouse.click(1215, 539); page.wait_for_timeout(1500)     # close the panel
+
+
+def compact_revision_table(size="A4", row_h=6.01):
+    """A3-sized revision table (180 wide: 18 / 110 / 24 / 28, rows 7.17, fixed corner top-right at the frame corner)
+    -> the COMPACT one (cols from sheet_layout, rows row_h = Onshape's minimum for 1.8 text on the content row;
+    title / header minimums are 5.41 / 5.52, all three set equal). Pixel spots assume Zoom to sheet on A4 (sheet
+    x 201-1438 px, 4.168 px/mm, top-right corner at (1397, 127)); the top-right corner stays put while cells shrink."""
+    rev, desc, state, date = _layout(size)["revision_table"]["cols"]
+    X = lambda x: 1397 - 4.168 * (287.0 - x)
+    ok = [resize_cell(1022, 141, None, row_h, "title row"),                      # title row 127-152 px after
+          resize_cell(X(287 - 28 - 12), 167, state, row_h, "header row + state"),  # state header cell
+          resize_cell(X(287 - 14), 190, date, row_h, "content row + date"),       # date content cell
+          resize_cell(X(287 - date - state - 55), 165, desc, None, "description"),
+          resize_cell(X(287 - date - state - desc - 9), 165, rev, None, "revision")]
+    return all(ok)

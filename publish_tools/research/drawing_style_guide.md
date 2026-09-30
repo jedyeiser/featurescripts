@@ -30,7 +30,7 @@ Tables > Font (left at Noto Sans). In notes created by API the font is written w
 ## 2. Text heights (ISO 3098 series 2.5 / 3.5 / 5 / 7)
 | Role | Height | Where set |
 |---|---|---|
-| Title-block field labels, the "NOTES" label | 2.5 regular (NOTES bold) | per note (API `textHeight`) |
+| Title-block field labels, the "NOTES" label | 2.5 regular (NOTES bold); **A4: 1.8** (section 5b) | per note (API `textHeight`) |
 | Title-block values, notes, dimensions | 3.5 | Drawing properties > Dimensions / Annotations > Notes (3.5 is the default) |
 | **All tables** (BOM, custom, cut list, hole, revision, general): title, header and content rows | **2.5** (header bold -- Onshape's default B toggle on header rows, kept) | Drawing properties > Tables > each table type > Header / Content (/ Title) row text |
 | Title-block part name (bold), units "mm" | 5 | per note |
@@ -115,7 +115,31 @@ duplicated logo. Labels are small uppercase black (no grey: grey prints unevenly
 Logo cell 36 x 40: logo 28 mm wide (aspect kept), "SKI ENGINEERING" 2.5 bold under it. Source: brand PNG from
 `icons/brands/<brand>_drawing.png`, uploaded as a blob tab; image placed with two corner clicks.
 
-## 6. Sheet layout (v2, user decision 2026-09-29): open sheet, no interior zones
+## 5b. A4 compact profile (user decision 2026-09-29; A3 / A2 unchanged)
+On A4 the 180 x 40 block and the 180 mm revision table took too much of a 267 x 190 mm frame. A4 uses the
+COMPACT profile of `sheet_layout.py` (`PROFILE_BY_SIZE = {"A4": COMPACT}`): the same cells and fields, scaled.
+| Item | A3 / A2 (STANDARD) | A4 (COMPACT) |
+|---|---|---|
+| Title block | 180 x 40 | **150 x 32** (x 137-287, y 10-42); rows 7.2 / 7.2 / 8 / 9.6; logo cell 30 wide |
+| Columns (from the block's left edge) | 36 / 92 / 120 / 144; 72 / 102 / 116 / 132 | 30 / 77 / 100 / 120; 60 / 85 / 97 / 110 |
+| Field labels | 2.5 | **1.8** (top 0.5 below the cell line) |
+| Values | 3.5 | **2.5** (top 3.1 below the line: baseline 1.6 above the 7.2 row's lower line) |
+| Part name | 5 bold | **3.5 bold** (top 3.6 below the title line) |
+| Units "mm" / projection symbol | 5 / 7 mm tall | 3.5 / 5.25 mm tall (symbol x 0.75) |
+| Department line | 2.5 bold, left at 2.6 | 1.8 bold, centred in the logo cell; two lines when wider than 28 mm (SNOWBOARD / ENGINEERING) |
+| Logo | 28 wide (32 for wide logos), centre (18, 26) | 23 wide (26 for wide logos: Ride, Volkl, LINE), centre (15, 20) |
+| Revision table | 180 wide, cols 18 / 110 / 24 / 28, 2.5 text | **150 wide**, cols 15 / 92 / 20 / 23, **1.8 text** (title / header / content), rows at Onshape's minimum for that text; top-right at the frame corner, right edge = title block's |
+| NOTES label | 2.5 bold | 1.8 bold, top 1 mm below the title block top |
+| Other table defaults (BOM, custom, cut list, hole, general) | 2.5 | 2.5 (unchanged -- data tables must stay readable) |
+
+Why 1.8 is allowed: ISO 3098-0 / ISO 7200 give the lettering series 1.8 / 2.5 / 3.5 / 5 / 7 and allow **1.8 mm as
+the minimum** height for secondary text on the small formats (A4, A3); 2.5 remains the minimum for A2 and larger.
+Here 1.8 is used only for what is read once and looked up, not measured: field labels, the department line, the
+NOTES heading and the revision-history rows. Everything a reader takes a value from (title-block values,
+dimensions, notes, data tables) stays 2.5 or larger. Noto Sans at 1.8 stays legible on 600 dpi laser prints and
+in PDF (vector glyphs), and a single A4 sheet is normally read at arm's length or on screen.
+
+
 Only four things are fixed; everything inside the frame is open space where users place views and tables:
 | Element | A3 position | Rule (all sizes, `devtools/onshape/templates/sheet_layout.py`) |
 |---|---|---|
@@ -131,6 +155,13 @@ cells, labels, values, symbol, logo -> Title block; **Formats > Lock = Locked** 
 property links still update). The revision table stays on the drawing layer (it must be editable).
 
 ## 7. How to reproduce / known Onshape limits
+A4 compact rework of an existing A4 tab, in place (2026-09-29, ~3 min per tab): `compact_a4.py <queue> <BRAND>`
+= `template_set.relayout(eid, "A4", brand, heights=True)` (API: positions + text heights, property links kept) +
+UI (Revision tables text 1.8, `compact_revision_table()` columns 15 / 92 / 20 / 23 and rows 6.01 -- Onshape's
+minimum for 1.8 text is 5.41 title / 5.52 header / 6.01 content, all set to 6.01 -- logo re-inserted, lock) +
+.dwt re-export + PNG. Onshape has no "switch template" on an existing drawing, so test drawings are rebuilt
+from the .dwt (`make_size_test_drawing.py A4 --safe`, check, then `--finish`).
+
 Scripts: `devtools/onshape/templates/` (README in the module docstrings). Geometry for every sheet size comes from
 `sheet_layout.py` (`sheet_layout("A4" | "A3" | "A1" ...)`); `build_part_a3_master.py --size A4` builds that size's
 tab (`K2 SKIS - PART A4 (template)`, layout json `part_a4_layout.json`). v2 rework of the existing A3 master:

@@ -8,9 +8,10 @@
    "name": "K2 SKIS - A4 (template)",
    "drawing": "f1d1ca1bc41b306b7dfdc6e3",
    "logo": "c5078f3c8cbc3a36b75cae1b",
-   "dwt": "2b40ec05a5f26c37bc5b9cfc",
+   "dwt": "60fe6ab462a2d550b6b9c2f3",
    "url": "https://k2-sports.onshape.com/documents/52b5bde03744944bff91bef9/w/81e38c962fe4d7c8250c4fc5/e/f1d1ca1bc41b306b7dfdc6e3",
-   "folder": "K2 SKIS"
+   "folder": "K2 SKIS",
+   "compact_s": 181
   },
   "K2SKIS A3": {
    "brand": "K2SKIS",
@@ -39,9 +40,10 @@
    "drawing": "7d500b28acad74b8f65d484c",
    "logo": "be36bda38c12fca2580e96af",
    "build_s": 95,
-   "dwt": "d4e37eef1e27e5d9d3b83f75",
+   "dwt": "1c2566f4a9b8cfc6484e14a6",
    "url": "https://k2-sports.onshape.com/documents/52b5bde03744944bff91bef9/w/81e38c962fe4d7c8250c4fc5/e/7d500b28acad74b8f65d484c",
-   "folder": "RIDE"
+   "folder": "RIDE",
+   "compact_s": 175
   },
   "K2SNOW A4": {
    "brand": "K2SNOW",
@@ -50,9 +52,10 @@
    "drawing": "13b497c2afbb8f47fc83fcab",
    "logo": "54bd5ed37896941a5d85b171",
    "build_s": 96,
-   "dwt": "e94971bcacf9f4e15bbbb6bd",
+   "dwt": "6784217e9257b2b7937e31ec",
    "url": "https://k2-sports.onshape.com/documents/52b5bde03744944bff91bef9/w/81e38c962fe4d7c8250c4fc5/e/13b497c2afbb8f47fc83fcab",
-   "folder": "K2 SNOWBOARDING"
+   "folder": "K2 SNOWBOARDING",
+   "compact_s": 174
   },
   "VOLKL A4": {
    "brand": "VOLKL",
@@ -61,9 +64,10 @@
    "drawing": "f3a036f18cf37f5660e53df5",
    "logo": "2076768bc50d95f51d89ebae",
    "build_s": 83,
-   "dwt": "697edb0ff54a731c74a4bf39",
+   "dwt": "0402c1647cbf617d4da14381",
    "url": "https://k2-sports.onshape.com/documents/52b5bde03744944bff91bef9/w/81e38c962fe4d7c8250c4fc5/e/f3a036f18cf37f5660e53df5",
-   "folder": "VOLKL"
+   "folder": "VOLKL",
+   "compact_s": 216
   },
   "LINE A4": {
    "brand": "LINE",
@@ -72,9 +76,10 @@
    "drawing": "772ad81c169bfd99546e3c41",
    "logo": "69a980bb27145de7d69d508a",
    "build_s": 83,
-   "dwt": "18e4bb6db57554778f79b5ec",
+   "dwt": "56d31a0a60a7d4e5507fd7f5",
    "url": "https://k2-sports.onshape.com/documents/52b5bde03744944bff91bef9/w/81e38c962fe4d7c8250c4fc5/e/772ad81c169bfd99546e3c41",
-   "folder": "LINE"
+   "folder": "LINE",
+   "compact_s": 174
   },
   "EOC A4": {
    "brand": "EOC",
@@ -83,9 +88,10 @@
    "drawing": "20a6db501c8aad58816d12d1",
    "logo": "610127ab0ce95a6d0d7889a3",
    "build_s": 92,
-   "dwt": "a41cf9010d0eb3b76b05764c",
+   "dwt": "2a1925c1d4b1e4c109d952c2",
    "url": "https://k2-sports.onshape.com/documents/52b5bde03744944bff91bef9/w/81e38c962fe4d7c8250c4fc5/e/20a6db501c8aad58816d12d1",
-   "folder": "EOC"
+   "folder": "EOC",
+   "compact_s": 179
   },
   "K2SNOW A3": {
    "brand": "K2SNOW",
@@ -202,7 +208,7 @@
  "tests": {
   "doc": "73271cfcd708b3f5e3fc315c",
   "A3": "3cc6b1be73b1b2b1776f8b3f",
-  "A4": "aa30715d6829bbad1b5ce1ba",
+  "A4": "1554004c0df43c9e1d2abfd0",
   "A2": "35a13838885e452cd1353225"
  },
  "timings_2026_09_29": {

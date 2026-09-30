@@ -62,10 +62,12 @@ def logo_rect(brand, size):
     from PIL import Image
     w_px, h_px = Image.open(REPO / "icons" / "brands" / BRANDS[brand]["png"]).size
     a = w_px / float(h_px)
-    w = 28.0 if a <= 2.0 else 32.0
+    lay = sheet_layout(size)
+    lg = lay["logo"]            # STANDARD: 28 / 32 wide at (18, 26); COMPACT (A4): 23 / 26 wide at (15, 20)
+    w = lg["w_square"] if a <= 2.0 else lg["w_wide"]
     h = w / a
-    tx, ty, _w, _h = sheet_layout(size)["title_block"]
-    cx, cy = tx + 18.0, ty + 26.0
+    tx, ty, _w, _h = lay["title_block"]
+    cx, cy = tx + lg["c"][0], ty + lg["c"][1]
     return (cx - w / 2, cy + h / 2, cx + w / 2, cy - h / 2)
 
 
@@ -96,10 +98,11 @@ def txt(s, bold=False):
     return "{\\f%s|b%d|i0|c0|p0;%s}" % (FONT, 1 if bold else 0, s)
 
 
-def relayout(eid, size):
+def relayout(eid, size, brand=None, heights=False):
     """Move every API-made annotation of a copied master to its sheet_layout(size) position (edits keep the
-    property links and layers; they work on locked format layers)."""
-    spec = sheet_layout(size)
+    property links and layers; they work on locked format layers). heights=True also sets every note's text
+    height (the A4 COMPACT profile); with a brand the department line is rewritten for that profile too."""
+    spec = sheet_layout(size, BRANDS[brand]["dept"] if brand else "SKI ENGINEERING")
     IDS = size_ids(size)
     anns = []
     for _layer, x1, y1, x2, y2, alias in spec["lines"]:
@@ -108,10 +111,18 @@ def relayout(eid, size):
     for _layer, x, y, r, alias in spec["circles"]:
         anns.append({"type": "Onshape::Circle", "circle": {"logicalId": IDS[alias][1], "center": pt(x, y),
                                                             "radius": r}})
-    for _layer, x, y, _s, _h, alias, _b in spec["notes"]:
-        anns.append({"type": "Onshape::Note", "note": {"logicalId": IDS[alias][1], "position": pt(x, y)}})
-    for alias, x, y, *_r in spec["values"]:
-        anns.append({"type": "Onshape::Note", "note": {"logicalId": IDS[alias][1], "position": pt(x, y)}})
+    for _layer, x, y, s_, h, alias, b in spec["notes"]:
+        n = {"logicalId": IDS[alias][1], "position": pt(x, y)}
+        if heights:
+            n["textHeight"] = h
+            if alias != "lb_dept" or brand:
+                n["contents"] = txt(s_, b)
+        anns.append({"type": "Onshape::Note", "note": n})
+    for alias, x, y, h, *_r in spec["values"]:
+        n = {"logicalId": IDS[alias][1], "position": pt(x, y)}
+        if heights:
+            n["textHeight"] = h
+        anns.append({"type": "Onshape::Note", "note": n})
     s = modify(TD, TW, eid, [{"messageName": "onshapeEditAnnotations", "formatVersion": "2021-01-01",
                               "annotations": anns}], "relayout " + size)
     res = json.loads(s["output"])["results"]
@@ -123,8 +134,8 @@ def set_dept(eid, brand, size):
     spec = sheet_layout(size, BRANDS[brand]["dept"])
     n = next(n for n in spec["notes"] if n[5] == "lb_dept")
     _layer, x, y, s, h, alias, bold = n
-    if len(s) > 16:      # wraps to two lines in the 36 mm logo cell -> raise it so both lines clear the frame
-        y += 2.0
+    if len(s) > 16 and size != "A4":   # STANDARD: wraps to two lines in the 36 mm logo cell -> raise it so both
+        y += 2.0                        # lines clear the frame (COMPACT: sheet_layout splits and places it)
     s2 = modify(TD, TW, eid, [{"messageName": "onshapeEditAnnotations", "formatVersion": "2021-01-01",
                                "annotations": [{"type": "Onshape::Note", "note": {
                                    "logicalId": IDS[alias][1], "position": pt(x, y), "contents": txt(s, bold),
@@ -155,23 +166,6 @@ def to_png(eid, png, dpi=150, did=TD, wid=TW):
     export(did, wid, eid, "PDF", pdf)
     pdfium.PdfDocument(pdf)[0].render(scale=dpi / 72).to_pil().save(png)
     return png
-
-
-if __name__ == "__main__":
-    cmd = sys.argv[1]
-    if cmd == "copy":
-        print(copy(sys.argv[2], sys.argv[3]))
-    elif cmd == "relayout":
-        print(relayout(sys.argv[2], sys.argv[3]))
-    elif cmd == "dept":
-        print(set_dept(sys.argv[2], sys.argv[3], sys.argv[4]))
-    elif cmd == "dwt":
-        name = next(e["name"] for e in elements(TD, TW) if e["id"] == sys.argv[2])
-        print(export_dwt(sys.argv[2], name))
-    elif cmd == "png":
-        print(to_png(sys.argv[2], sys.argv[3]))
-    elif cmd == "rename":
-        rename(sys.argv[2], sys.argv[3])
 
 
 # ---------------------------------------------------------------- size change repair
@@ -223,3 +217,21 @@ def rebuild_format_layers(eid, size):
     new = {a: [("frame" if a.startswith(("fr_", "cm_")) else "zones"), r.get("logicalId")] for a, r in zip(order, res)}
     (HERE / ("format_ids_%s.json" % size.lower())).write_text(json.dumps(new, indent=1))
     return extra, new
+
+
+if __name__ == "__main__":
+    cmd = sys.argv[1]
+    if cmd == "copy":
+        print(copy(sys.argv[2], sys.argv[3]))
+    elif cmd == "relayout":     # relayout <eid> <size> [<brand> heights]
+        print(relayout(sys.argv[2], sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else None,
+                       "heights" in sys.argv[5:]))
+    elif cmd == "dept":
+        print(set_dept(sys.argv[2], sys.argv[3], sys.argv[4]))
+    elif cmd == "dwt":
+        name = next(e["name"] for e in elements(TD, TW) if e["id"] == sys.argv[2])
+        print(export_dwt(sys.argv[2], name))
+    elif cmd == "png":
+        print(to_png(sys.argv[2], sys.argv[3]))
+    elif cmd == "rename":
+        rename(sys.argv[2], sys.argv[3])

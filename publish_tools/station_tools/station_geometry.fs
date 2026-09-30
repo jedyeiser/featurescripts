@@ -27,11 +27,14 @@ export enum StationDatumUse
  *     outline wires   the part's silhouette (outer loops)
  *     outline surface the region inside them (optional)
  *     station lines   one wire per station, spanning the silhouette where the station crosses it
+ *     extent points   the outline's two ends along the measuring axis, always (TIP / TAIL when the stations
+ *                     include FCP and ACP, else MIN X / MAX X); table rows with x only
  *     datum point     the view origin, for ordinate dimensions
  * and groups them WITH THE PART in an open composite "<prefix> <VIEW>", excluded from the
  * BOM. The part stays its own body; open composites may share it.
  *
- * Stations come from the picked Station definition feature(s) plus any listed here. Every station's
+ * Stations come from the picked Station definition feature(s) plus any listed here (none is valid: the view
+ * then has only its two extent rows). Every station's
  * operation id is its name, so adding or removing a station never re-binds another
  * station's drawing dimensions.
  *
@@ -195,13 +198,13 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
                     "outputDescription" : "The view composites and flat copies",
                     "inputs" : definition.part,
                     "variables" : {
-                        "stationTable" : extractableVariable(table, "One row per view and station: view, id, x, lo, hi, span in mm from the datum; hit false = the station misses the part."),
+                        "stationTable" : extractableVariable(table, "One row per view and station: view, id, x, lo, hi, span in mm from the datum; hit false = the station misses the part. Plus two rows per view at the part's ends (extent TIP / TAIL or MIN / MAX): x only."),
                         "stationCount" : extractableVariable(size(stations), "Stations measured in each view.")
                     },
                     "queries" : queries
                 });
 
-        const summary = size(stations) ~ " stations in " ~ size(views) ~ " view(s).";
+        const summary = size(stations) ~ " stations and the part's two ends in " ~ size(views) ~ " view(s).";
         if (size(missed) > 0)
         {
             reportFeatureInfo(context, id, summary ~ " Missing the part -- " ~ join(missed, "; "));
@@ -438,6 +441,19 @@ function buildView(context is Context, vid is Id, definition is map, view is map
         }
     }
 
+    // The part's ends along the measuring axis, always (2026-09-30, user: "always have extents, even if no other
+    // stations are provided"). Position only: a width measured exactly at an end is unstable (4101's tail grazes at
+    // 0.94 mm), so the row has no lo / hi / span. A point at each end on the outline, for ordinate dimensions.
+    for (var e in viewExtents(context, outlineEdges, cs, stations, definition.tableLanguage))
+    {
+        rows = append(rows, { "view" : view.key, "id" : e.name, "x" : dot(e.point - cs.origin, u) / millimeter, "hit" : true, "extent" : e.role });
+        opPoint(context, vid + ("extent" ~ e.key), { "point" : e.point });
+        const pt = qCreatedBy(vid + ("extent" ~ e.key), EntityType.BODY);
+        nameBodies(context, pt, namePrefix ~ " " ~ e.name);
+        members = append(members, pt);
+        queries[view.key ~ "Extent" ~ e.key] = pt;
+    }
+
     // Outline wires from the silhouette's outer loops (holes are not part of it), plus the dropped sheet boundaries
     // (already wires).
     queries[view.key ~ "Outline"] = qNothing();
@@ -576,6 +592,56 @@ function fromDatumAxis(crossing is Vector, p is Vector, w is Vector, origin is V
         return undefined;
     }
     return dot(crossing - onAxis, v) > 0 * meter ? [onAxis, crossing] : [crossing, onAxis];
+}
+
+/**
+ * The outline's two ends along the measuring axis (cs X): [{ key "Min" / "Max", role, name, point }], low x first.
+ * point = the outline point furthest along -X / +X (on the view plane). role TIP / TAIL when the stations include
+ * FCP and ACP at different x (TIP = the end on FCP's side), else MIN / MAX. name in the Station definition's
+ * language; the Station table renders the role in its own.
+ */
+function viewExtents(context is Context, outlineEdges is Query, cs is CoordSystem, stations is array, language is string) returns array
+{
+    const u = cs.xAxis;
+    var ends = [];
+    for (var sign in [-1, 1])
+    {
+        const far = plane(cs.origin + u * (sign * VIEW_PLANE_SIZE), u);
+        ends = append(ends, evDistance(context, { "side0" : outlineEdges, "side1" : far }).sides[0].point);
+    }
+
+    var xFcp = undefined;
+    var xAcp = undefined;
+    for (var s in stations)
+    {
+        if (s.id == "FCP")
+        {
+            xFcp = dot(s.origin - cs.origin, u);
+        }
+        else if (s.id == "ACP")
+        {
+            xAcp = dot(s.origin - cs.origin, u);
+        }
+    }
+    var roles = ["MIN", "MAX"];
+    if (xFcp != undefined && xAcp != undefined && abs(xFcp - xAcp) > TOLERANCE.zeroLength * meter)
+    {
+        roles = xFcp > xAcp ? ["TAIL", "TIP"] : ["TIP", "TAIL"];
+    }
+    return [
+            { "key" : "Min", "role" : roles[0], "name" : stationExtentName(roles[0], language), "point" : ends[0] },
+            { "key" : "Max", "role" : roles[1], "name" : stationExtentName(roles[1], language), "point" : ends[1] }
+        ];
+}
+
+/** Row / body name of an extent role (TIP, TAIL, MIN, MAX) in "en" or "de" (station_table.fs WORDS has the same names). */
+function stationExtentName(role is string, language is string) returns string
+{
+    const names = {
+            "en" : { "TIP" : "TIP", "TAIL" : "TAIL", "MIN" : "MIN X", "MAX" : "MAX X" },
+            "de" : { "TIP" : "SPITZE", "TAIL" : "ENDE", "MIN" : "X MIN", "MAX" : "X MAX" }
+        };
+    return names[language == "de" ? "de" : "en"][role];
 }
 
 function missRow(viewKey is string, stationId is string, x is ValueWithUnits) returns map
@@ -720,7 +786,11 @@ function printTable(table is array)
     println("[stations] view | id | x | lo | hi | span (mm from datum)");
     for (var r in table)
     {
-        if (r.hit)
+        if (r.extent != undefined)
+        {
+            println("[stations] " ~ r.view ~ " | " ~ r.id ~ " | " ~ roundTo(r.x) ~ " | extent (position only)");
+        }
+        else if (r.hit)
         {
             println("[stations] " ~ r.view ~ " | " ~ r.id ~ " | " ~ roundTo(r.x) ~ " | " ~ roundTo(r.lo) ~ " | " ~ roundTo(r.hi) ~ " | " ~ roundTo(r.span));
         }

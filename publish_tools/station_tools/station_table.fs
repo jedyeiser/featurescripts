@@ -23,7 +23,8 @@ export enum StationTableLanguage
  * Each view composite carries the attribute STATION_TABLE_ATTRIBUTE (station_utils.fs) with its rows, written
  * by Station geometry; the table finds every body with that attribute and a matching schema, so any number of
  * Station geometry features, parts and views are tabulated, each in its own table. Rows are sorted along the
- * measuring axis (x from the datum). Nothing is read from feature parameters, so the table follows every
+ * measuring axis (x from the datum). Every view also has two rows at the part's ends (TIP / TAIL, or MIN X / MAX X):
+ * x only, the other cells empty. Nothing is read from feature parameters, so the table follows every
  * regeneration.
  */
 annotation { "Table Type Name" : "Station table", "Icon" : IconNamespace::BLOB_DATA }
@@ -87,12 +88,14 @@ function tableLanguage(language is StationTableLanguage, data is map) returns st
     return "de";
 }
 
-/** Headings and notes by language (ASCII only). */
+/** Headings, notes and extent-row names (by role TIP / TAIL / MIN / MAX, as station_geometry.fs) by language (ASCII only). */
 const WORDS = {
         "en" : { "station" : "Station", "stations" : "stations", "width" : "Width (mm)", "thickness" : "Thickness (mm)",
-                "span" : "Span (mm)", "lower" : "Lower edge (mm)", "upper" : "Upper edge (mm)", "miss" : "misses the part" },
+                "span" : "Span (mm)", "lower" : "Lower edge (mm)", "upper" : "Upper edge (mm)", "miss" : "misses the part",
+                "TIP" : "TIP", "TAIL" : "TAIL", "MIN" : "MIN X", "MAX" : "MAX X" },
         "de" : { "station" : "Station", "stations" : "Stationen", "width" : "Breite (mm)", "thickness" : "Dicke (mm)",
-                "span" : "Abmessung (mm)", "lower" : "Untere Kante (mm)", "upper" : "Obere Kante (mm)", "miss" : "verfehlt das Teil" }
+                "span" : "Abmessung (mm)", "lower" : "Untere Kante (mm)", "upper" : "Obere Kante (mm)", "miss" : "verfehlt das Teil",
+                "TIP" : "SPITZE", "TAIL" : "ENDE", "MIN" : "X MIN", "MAX" : "X MAX" }
     };
 
 /** The size measured across each station: width in plan, thickness in profile, span in any other view. */
@@ -128,7 +131,13 @@ function viewTable(data is map, body is Query, showEdges is boolean, language is
     var rows = [];
     for (var r in ordered)
     {
-        if (r.hit)
+        if (r.extent != undefined)
+        {
+            // The part's end (Station geometry, 2026-09-30): position only, named in the table's language.
+            const name = words[r.extent] == undefined ? r.id : words[r.extent];
+            rows = append(rows, tableRow({ "station" : name, "x" : round2(r.x), "span" : "", "lo" : "", "hi" : "" }));
+        }
+        else if (r.hit)
         {
             rows = append(rows, tableRow({ "station" : r.id, "x" : round2(r.x), "span" : round2(r.span),
                             "lo" : round2(r.lo), "hi" : round2(r.hi) }));

@@ -1923,3 +1923,17 @@ custom table's parameters also can't be edited in a drawing afterwards.
 **Fix / rule**: avoid adding parameters to a published custom table; put new options on the producing FEATURE (its
 published data) or add a new table choice to an existing enum. If a parameter must be added, every placed table must
 be deleted and re-inserted. REST fstable callers must pass every parameter.
+
+## Correction 65: a declaration placed between import lines breaks the whole tab (2026-09-29)
+
+**Symptom**: after adding `export enum StationDatumUse` to station_geometry.fs, the "Station tests" Part Studio
+regenerated with ZERO bodies (even the upstream Derive produced nothing) and feature states read OK instead of INFO.
+fscheck was clean; `--check` could not run (browser signed out).
+
+**Cause**: the enum was inserted after the last plain `import(...)` but BEFORE `IconNamespace::import(...)`. All
+imports (including namespace imports) must precede every declaration; the tab failed to compile and every Part Studio
+using it came up empty.
+
+**Fix / rule**: put new declarations after the LAST import line (look for `Namespace::import` too). When `--check`
+can't run, verify by counting bodies in a studio that uses the tab (eval `size(evaluateQuery(context,
+qEverything(EntityType.BODY)))`) -- a sudden 0 means a compile failure.

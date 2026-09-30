@@ -4,7 +4,7 @@
 needs a part WITH a view; set it afterwards with ui_set_sheet_reference.py). A2 also gets the Export primitive
 composite "P1 TAC PRIMITIVE" from "Primitive tests" (was "Primitive tests (agent)") at 1:5 to check that it fits. Only the tab with exactly
 this name is touched. The A3 test stays "Template test 4101 (demo)" (make_test_drawing.py).
-usage: PYTHONPATH=. python devtools/onshape/templates/make_size_test_drawing.py A4|A2"""
+usage: PYTHONPATH=. python devtools/onshape/templates/make_size_test_drawing.py A4|A2 [--safe | --finish]"""
 import json
 import sys
 import time
@@ -18,11 +18,29 @@ NAME = "Template test %s (demo)" % SIZE
 PRIM_PS, PRIM = "5c3ac8fb8ec70b1f256c0e97", "P1 TAC PRIMITIVE"
 st = json.loads((Path(__file__).parent / "template_set.json").read_text())
 tmpl = st["templates"]["K2SKIS " + SIZE]["dwt"]
+# --safe: build next to the old drawing as "<NAME> (rebuild)" and delete nothing; after checking it (sheet
+# reference, PNG) finish with `--finish`: delete the old tab, rename the new one to NAME (the tab folder is set in
+# the UI -- sync TabBar). Without --safe the old tab is deleted first (previous behaviour).
+SAFE = "--safe" in sys.argv
+TMP = NAME + " (rebuild)"
+if "--finish" in sys.argv:
+    els = {e["name"]: e["id"] for e in elements(PD, PW)}
+    new_id = els[TMP]
+    if NAME in els:
+        c._request("DELETE", f"/api/v6/elements/d/{PD}/w/{PW}/e/{els[NAME]}")
+    c.post(f"/api/v6/metadata/d/{PD}/w/{PW}/e/{new_id}",
+           json_data={"properties": [{"propertyId": "57f3fb8efa3416c06701d60d", "value": NAME}]})
+    p = Path(__file__).parent / "test_drawing.json"
+    d = json.loads(p.read_text())
+    d[SIZE] = {"eid": new_id, "name": NAME}
+    p.write_text(json.dumps(d, indent=1))
+    print("finished", NAME, new_id, "(old", els.get(NAME), "deleted)")
+    raise SystemExit
 for e in elements(PD, PW):
-    if e["name"] == NAME:
+    if e["name"] == (TMP if SAFE else NAME):
         c._request("DELETE", f"/api/v6/elements/d/{PD}/w/{PW}/e/{e['id']}")
 eid = c.post(f"/api/v6/drawings/d/{PD}/w/{PW}/create", json_data={
-    "drawingName": NAME, "templateDocumentId": TD, "templateWorkspaceId": TW, "templateElementId": tmpl})["id"]
+    "drawingName": TMP if SAFE else NAME, "templateDocumentId": TD, "templateWorkspaceId": TW, "templateElementId": tmpl})["id"]
 print("drawing", eid)
 time.sleep(5)
 
@@ -52,5 +70,6 @@ for key, ps, part, orient, wires in views:
 p = Path(__file__).parent / "test_drawing.json"
 d = json.loads(p.read_text()) if p.read_text().strip() else {}
 d = d if "sizes" in d else {"A3": d, "sizes": True}
-d[SIZE] = {"eid": eid, "name": NAME}
-p.write_text(json.dumps(d, indent=1))
+if not SAFE:
+    d[SIZE] = {"eid": eid, "name": NAME}
+    p.write_text(json.dumps(d, indent=1))
