@@ -6,6 +6,8 @@ Studio (upsert by name). Checked by check_evaluate_profiles_tests.py.
   P2 the same sheet picked as a BODY, Periphery -> one closed loop, 2 x (1000 + 3) = 2006 long
   P3 a flat sheet (z 0) onto Front: edge-on -> ERROR with a message, not the kernel's REGEN_ERROR
   P4 the flat sheet onto Top: Periphery -> the 1000 x 100 rectangle, 2200 long
+  P12 the crowned sheet, Top and bottom -> top z 3 and bottom z 0, 1000 long each, NO middle body
+  P13 the crowned sheet, All profiles + Efficient -> OK (regression: an arc run that cannot be drawn falls back to a fit)
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_evaluate_profiles_tests.py
 """
@@ -193,3 +195,18 @@ def profiles_edges(name, grouping, output):
 profiles_edges("P9 chain, One curve -> 1 edge", "SINGLE", "chain single")
 profiles_edges("P10 chain, One per input curve -> 4 edges, exact lines + arc R100 cut at the reversal", "PER_CURVE", "chain per curve")
 profiles_edges("P11 chain, Efficient -> 3 edges: collinear lines merged (400 long), line, arc R100", "EFFICIENT", "chain efficient")
+
+
+# ---- Top and bottom (2026-09-30): the middle is never built; arc-run fallback in the middle ------------------------
+def profiles_grouped(name, part, onto, parts, output, grouping):
+    given = {p["parameterId"]: p for p in [
+        en("profileSource", "ProfileSource", "PART", NS), s("outputName", output), q("profilePart", part),
+        en("profileParts", "ProfilePart", parts, NS), q("projectionFace", 'qCreatedBy(makeId("%s"), EntityType.FACE)' % onto),
+        en("grouping", "ProfileGrouping", grouping, NS)]}
+    params = [given.get(p["parameterId"], dict(p["defaultValue"], parameterId=p["parameterId"]))
+              for p in SPEC["parameters"] if isinstance(p.get("defaultValue"), dict)]
+    return upsert({"btType": "BTMFeature-134", "featureType": "evaluateProfiles", "name": name, "namespace": NS, "parameters": params})
+
+
+profiles_grouped("P12 crowned sheet, Top and bottom -> top z 3 + bottom z 0, 1000 long, no middle", face, "Front", "TOP_BOTTOM", "tb", "EFFICIENT")
+profiles_grouped("P13 crowned sheet, All profiles + Efficient -> OK (middle falls back to a fit if its arc cannot be drawn)", face, "Front", "ALL", "all eff", "EFFICIENT")

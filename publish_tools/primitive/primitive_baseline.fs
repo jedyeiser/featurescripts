@@ -75,8 +75,8 @@ export function primitiveBaseline(context is Context, id is Id, fromVolume is bo
 }
 
 /**
- * baseline_height at each x: the baseline's height above the straight line through its points at FCP and ACP
- * (camber positive), in the local frame.
+ * Height above the straight line through the baseline's points at FCP and ACP (camber positive), in the local frame.
+ * Only the flatness test uses it; the data table's baseline_height is primitiveBaselineZ.
  */
 export function primitiveBaselineHeights(context is Context, baseline is map, xs is array, xFcp is ValueWithUnits, xAcp is ValueWithUnits) returns array
 {
@@ -88,6 +88,21 @@ export function primitiveBaselineHeights(context is Context, baseline is map, xs
         const f = (xs[j] - xFcp) / (xAcp - xFcp);
         const chordZ = ends[0].point[2] + (ends[1].point[2] - ends[0].point[2]) * f;
         out = append(out, at[j].point[2] - chordZ);
+    }
+    return out;
+}
+
+/**
+ * baseline_height at each x for the data table: the baseline's own height (z) in the local frame, i.e. above the
+ * datum's XY plane -- NOT above the FCP - ACP chord (that made it 0 at FCP / ACP whatever the curve's real height;
+ * user, 2026-10-01: the baseline's minima sit at z = 0).
+ */
+export function primitiveBaselineZ(context is Context, baseline is map, xs is array) returns array
+{
+    var out = [];
+    for (var hit in primitiveChainAtX(context, baseline.chain, baseline.lookup, xs))
+    {
+        out = append(out, hit.point[2]);
     }
     return out;
 }

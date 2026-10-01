@@ -533,7 +533,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         }
         const dataX = dataStations(definition, fcp[0], acp[0], forced);
         const dataBottom = primitiveChainAtX(context, frame.chain, frame.lookup, dataX);
-        const dataHeights = primitiveBaselineHeights(context, baseline, dataX, fcp[0], acp[0]);
+        const dataHeights = primitiveBaselineZ(context, baseline, dataX);
         // Footprint crossings for every row in one batch: first the rows' u, then the u the radius is read at.
         var rowU = [];
         var radiusU = [];
