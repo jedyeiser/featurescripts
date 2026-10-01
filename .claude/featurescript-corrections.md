@@ -6,6 +6,140 @@ This document tracks corrections needed to LLM-generated FeatureScript code. It 
 
 ---
 
+## Quick index
+
+Added 2026-09-30. One row per entry; `line` = the heading's line in this file. Read this table and the Critical top 10
+first, then open only the entries whose topic matches your task. Entry bodies below are unchanged.
+
+| # | topic tag | RULE | line |
+|---|---|---|---|
+| Precond dup params (2026-09-11) | params-preconditions | Declare each parameter id once for the whole feature, including array items; combine branch conditions. | 143 |
+| Boolean op enum | ops | Use BooleanOperationType.UNION/SUBTRACT/INTERSECT; BooleanType does not exist. | 162 |
+| opReplaceFace | ops | Set oppositeSense = dot of face normals at UV (0.5,0.5) < 0. | 173 |
+| BSpline splitCurve | splines-nurbs | After refinement, take CPs A with i < splitStart and CPs B from splitEnd - degree. | 190 |
+| Function Call Syntax | syntax-strings | Pass std functions one named-parameter map; evaluateSpline "parameters" must be an array. | 214 |
+| Import Issues | imports-pins | Never alias imports with name::; exports are global, so keep names unique (icons excepted, 35). | 249 |
+| Type System | syntax-strings | Predicates cannot hold standalone var; use a boolean-returning function instead. | 296 |
+| Geometry Operations (template) | geometry-frames | Vectors carry units; direction vectors are unitless and normalized. No real entry. | 367 |
+| Query Patterns (template) | queries-ids | Start from qEverything, chain filters, cache evaluations. No real entry. | 392 |
+| Units Handling (template, 1st) | units | Template only; the real content is the second Units Handling section (next Units Handling row). | 417 |
+| API Usage | splines-nurbs | evaluateSpline returns result[derivOrder][paramIdx]; a single point is [0][0]. | 442 |
+| Tolerance and Numerical Stability | numerics | Never test floats for equality; use TOLERANCE.* (unitless) against abs(value). | 485 |
+| FeatureScript Syntax (8 sub-rules) | syntax-strings | Quote map keys that clash and all op*/ev* keys; id + (i ~ "x"); always braces; annotate every parameter; export. | 509 |
+| Instructions for Use | testing | Process text only: read this log before generating code, add entries after errors. | 831 |
+| Matrix and Array Indexing | numerics | CLT Q is 3x3; shear Q66 is Q[2][2], not Q[5][5]. | 841 |
+| Units Handling (2nd; incl. no pow) | units | Derive unit factors by dimensional analysis, never guess; use ^ not pow(); triangle Jp needs six cross terms. | 882 |
+| Reserved Variable Names | syntax-strings | Never name variables box, line, plane, transform, or type names; use bb, tl, pl. | 981 |
+| addDebugLine cost | testing | Never call addDebugLine/addDebugPoint per sample; stride to about 60 markers or batch in one scope. | 1009 |
+| Reserved words in map access | syntax-strings | Never read a keyword key with dot access (m.type); use another key name or brackets. | 1022 |
+| Annotations ASCII only | syntax-strings | Use printable ASCII only in annotation strings; no en dash, minus, ellipsis, smart quotes. | 1050 |
+| 16 | dialog-ui | Every Query parameter needs a Filter; sketch geometry is FACE/EDGE; unique ids; "Default" only serves new instances. | 1068 |
+| 17 | imports-pins | common.fs omits ProjectionType and queryVariable; import those modules explicitly. | 1095 |
+| 18 | queries-ids | Do not enumerate query variables; getAllVariables omits them and a selection yields a value, not a name. | 1119 |
+| 19 | ops | Filter opCreateCompositePart members to SOLID and SHEET; mate connectors are rejected. | 1145 |
+| 20 | params-preconditions | Precondition visibility ifs allow enum/bool/==/!/&&/|| only; never > < >= <=. | 1164 |
+| 21 | splines-nurbs | Fit corresponding curves under identical constraints; check CPs >= degree+1 and knots = CPs+degree+1. | 1206 |
+| 22 | splines-nurbs | If opLoft refuses compatible B-splines, build the ruled surface via opCreateBSplineSurface (degree 1 across). | 1244 |
+| 23 | splines-nurbs | Pass chord-length "parameters" to approximateSpline or end-derivative magnitudes are ignored; keep spacing even. | 1284 |
+| 26 | geometry-frames | Keep the measuring axis and the point's true velocity as separate vectors in a frame. | 1322 |
+| 24 | splines-nurbs | Split a ruled B-surface at every full-multiplicity interior knot; the kernel refuses creased surfaces. | 1342 |
+| 25 | params-preconditions | A new parameter's annotation "Default" must reproduce OLD behaviour; it migrates into every saved feature. | 1361 |
+| 27 | dialog-ui | Use isButton plus the 8th editing-logic arg clickedButton; never test a button's value or put it in defaults. | 1386 |
+| 28 | geometry-frames | Decide "which side" against the splitter's signed distance, not distance to the pieces. | 1413 |
+| 29 | splines-nurbs | Pass bSplineSurface weights as matrix([[..]]); degenerate rows are fine; edge vertices via AdjacencyType.VERTEX. | 1434 |
+| 30 | params-preconditions | Never use isVolume/isArea as dialog parameters; use isReal in a stated unit and multiply in the body. | 1452 |
+| 31 | ops | Never call FeatureList functions inside startFeature; push a pattern frame on a prefix like applyPattern. | 1468 |
+| 32 | syntax-strings | getVariable with undefined default still throws; use a sentinel default (undefined means absent). | 1491 |
+| 33 | dialog-ui | Write selection "Filter" as a literal expression in every annotation, never a const. | 1505 |
+| 34 | queries-ids | After opSplitFace use untouched faces plus both qSplitBy sides; qCreatedBy FACE is empty. | 1519 |
+| 35 | imports-pins | Feature icons are the one allowed Name::import of an SVG blob tab; use Name::BLOB_DATA. | 1535 |
+| 36 | ops | Never call getProperty in a feature body (even in error messages); read it in editing logic. | 1550 |
+| 37 | ops | For a composite part pass members (SOLID/SHEET plus qFlattenedCompositeParts) to opCreateOutline. | 1562 |
+| 38 | rest-sync | REST-inserted array items must carry every item parameter; custom enum namespace is the feature studio's. | 1573 |
+| 39 | splines-nurbs | Build arcs that must stay arcs as sketch arcs; never evaluateSpline a rational B-spline. | 1585 |
+| 41 | ops | Keep the frame pushed for the whole replay; retry outside it only on SELF_INTERSECTING_CURVE_SELECTED. | 1600 |
+| 40 | ops | Custom feature with std boolean step needs export import of onshape/std/tool.fs; delete helper bodies first. | 1627 |
+| Statistics (stale) | testing | Ignore this block (says 40 corrections, 2026-09-24); see Statistics below. | 1638 |
+| 42 | geometry-frames | Never take "the" closest point of a body; evDistance ties are arbitrary; project a defined point. | 1652 |
+| 43 | dialog-ui | Add UIHint.SHOW_LABEL to every enum parameter or the dropdown has no caption. | 1664 |
+| 44 | queries-ids | Resolve mate-connector selections to the connector body via qOwnerBody; never name connectors. | 1672 |
+| 45a | ops | Cut multi-edge wires with opSplitEdges at arc-length parameters, not planes; compare with TOLERANCE.zeroLength * meter. | 1684 |
+| 46a | params-preconditions | Use a distinct parameter id per precondition branch, even when only one branch is active. | 1696 |
+| 45b | rest-sync | After pin chains, write tab contents directly, GET and compare; never trust "pushed"/"skipped". | 1707 |
+| 46b | splines-nurbs | Never assume clamped kernel curves; get ends from [knots[p], knots[size-1-p]], not first/last CP. | 1721 |
+| 47 | rest-sync | Correctness beats stable op ids; after pushes, check and report downstream features that lost references. | 1732 |
+| 48 | rest-sync | A saved feature's namespace cannot change via REST; replace the old tab with a re-export shim. | 1745 |
+| 49 | imports-pins | Push tabs whose cross-document pin you bumped by direct write; repin.py adopt_remote_pins can revert them. | 1765 |
+| 50 | ops | Never store FeatureList functions in variables; the replaying feature owns its frame; pass outside refs via case inputs. | 1782 |
+| 51 | dialog-ui | Write parameter "Filter" inline, not as a const; fscheck misses it, so run pushproject --check. | 1833 |
+| 52 | queries-ids | Producers publish untracked entities; the consumer chooses tracking (startTracking) after merges. | 1841 |
+| 53 | syntax-strings | No < on strings, no (?i) or ${ in regex/string literals; order by number. | 1858 |
+| 54 | drawings-tables | Views need includeWires; reference edges by deterministicId; add a filter parameter to custom tables. | 1869 |
+| 55 | queries-ids | Split a history query or qUnion([targets, startTracking(targets)]); an evaluated target is lost. | 1880 |
+| 56 | numerics | Use cancellation-free quadratic roots (q = -(B + sign(B)*sqrt(disc))/2; q/A, C/q). | 1897 |
+| 57 | geometry-frames | Never take curvature from opCreateOutline output; use the body's own edges via opExtractWires. | 1915 |
+| 58 | imports-pins | importDerived skips sketch-attached mate connectors; add a BodyType.MATE_CONNECTOR query, pick by position. | 1925 |
+| 59 | numerics | Solve for a named point (x = x_FCP) exactly; never snap to the nearest sample. | 1933 |
+| 60a | ops | Extract sketch-text wires from the SHEET body's edges, not from all sketch edges. | 1945 |
+| 61a | geometry-frames | Unwrap by the point's own base foot; parenthesise ~ inside != comparisons. | 1958 |
+| 60b | ops | Every feature-function call under a foreign id must be inside a pattern frame; the executor owns the list. | 1974 |
+| 62 | params-preconditions | A new length parameter's default migrates in mm; use a mm bound spec or isReal under a fresh id. | 1998 |
+| 61b | rest-sync | Migrate features by inserting at the old index and copying subFeatures; pass rollbackBarIndex explicitly. | 2013 |
+| 63 | splines-nurbs | Add in-between curve points to approximateSpline samples; measure fits between samples, not at them. | 2034 |
+| 64 | drawings-tables | Never add a parameter to a published custom table; placed tables are not migrated. | 2047 |
+| 65 | imports-pins | Put every declaration after the LAST import line, including Namespace::import. | 2061 |
+| 66 | numerics | Use VolumeAccuracy.HIGH for any reported or compared volume; compare to 6 digits at most. | 2077 |
+| 67 | rest-sync | Pass rollbackBarIndex as a QUERY parameter to the eval API, never in the JSON body. | 2088 |
+| 68 | splines-nurbs | Fit adaptive-row curves to 0.5 um with midpoint samples; 1e-7 m fits interpolate and ring. | 2097 |
+| 69 | splines-nurbs | opCreateBSplineCurve needs G1 joints; triple interior knots are fine; arcs as rational Beziers. | 2112 |
+| 70 | numerics | Sample face departure on a trim with a 13x13 grid, not 5x5. | 2125 |
+| 71 | geometry-frames | Make an overshoot part of the chain's own curve, at least 4x the end's distance from the other chain. | 2136 |
+| 72 | testing | Verify rebuilds in both directions (reverse and forward); a reverse check misses missing features. | 2148 |
+| 73 | ops | Sheet union sews gaps up to 1 um and fails entirely from 2 um; fit supports to 0.1-0.5 um. | 2157 |
+| 74 | numerics | Warm-start Newton feet along a row only; seed cold (undefined) after any large jump. | 2168 |
+| 75 | splines-nurbs | Fit closed curves periodic (opFitSpline, last = first); clamped closed splines are refused; use wire-body edges. | 2177 |
+| 76 | geometry-frames | Take a face's trim parameter range from its edges before gridding; the parameter box can be huge. | 2190 |
+| 77 | geometry-frames | Project a LINE to-edge with opPolyline to keep an exact line; give seam checks a 1 um tolerance. | 2197 |
+
+## Critical top 10
+
+1. Always use braces on every if/else/for/while; unbraced follow-on lines run unconditionally (FeatureScript Syntax section).
+2. A new parameter's annotation "Default" migrates into every saved feature, so make it reproduce the OLD behaviour; new length defaults arrive in mm (Corrections 25, 62).
+3. Write selection "Filter" expressions inline in every annotation, never as a const, and give every Query parameter a Filter (Corrections 16, 33, 51).
+4. Declare each parameter id exactly once across the whole precondition, branches and array items included (Corrections 9, 16, 46a).
+5. Put every declaration after the LAST import line, including Namespace::import; otherwise the whole tab fails to compile (Correction 65).
+6. Precondition visibility conditions allow enum/bool/==/&&/|| only; no ordering comparisons (Correction 20).
+7. Never call getProperty in a feature body or its error paths; read it in editing logic (Corrections 36, 63).
+8. Call FeatureList functions inside a pattern frame on a prefix id, never inside startFeature, and let one executor feature own the list (Corrections 31, 41, 60b).
+9. After any push over pin chains, GET the tab and compare; never trust "pushed"/"skipped", and grep bumped cross-document pins (Corrections 45b, 49).
+10. Never add a parameter to a published custom table; placed tables are not migrated and must be re-inserted (Correction 64).
+
+## Known contradictions (which rule wins)
+
+- 9 vs 46a: merge branches into one declaration when the parameter is identical; use a distinct id per branch when the label or meaning differs. Both fall under 16 (one id namespace per feature).
+- 16.3 vs 25 vs 62: the defineFeature defaults map does not protect saved features; the annotation default is what migrates (25), and length defaults migrate in mm (62). 25 and 62 win.
+- 25 vs 64: feature parameters migrate with the annotation default; custom-table parameters do not (defineTable has no defaults map). 64 wins for tables.
+- 31 vs 41 vs 50 vs 60b: use a one-level executor that owns the list and pushes the frame on its own sub-id (60b); 41's "no frame" retry is only for SELF_INTERSECTING_CURVE_SELECTED.
+- 48 vs 61b: both say REST cannot change a feature's namespace. Use the shim re-export tab when instance ids must survive (48); replace at the old index when the library version must change (61b, mind its downstream-click caveat).
+- 45b vs 49: repin.py once reverted a deliberate cross-document bump; it now keeps the newer pin. Still write bumped tabs directly and grep afterwards.
+- 63 vs 68: 68 supersedes 63's tolerance detail (fit to 0.5 um with midpoints; 1e-7 m fits interpolate and ring). 23 and 63 combine: even spacing, chord parameters, extra curve points.
+- 39 vs 69: sketch arcs when an arc must stay an arc (39); rational cubic joins are fine for merged chains (69).
+- 22 vs 24: split at full-multiplicity knots first (24), then build the ruled surface from control nets (22).
+- 67 vs 61b: rollbackBarIndex goes as a QUERY parameter to the eval API, not in the body (67 wins).
+- 35 vs Import Issues: no namespace imports, except icons and description images (35, BLOB_DATA only).
+- The first Units Handling section is an empty template; use the second. The old Statistics block is stale; use the one below.
+- 33 vs 51 do not conflict: 51 repeats 33 and adds that fscheck misses it and pushproject --check catches it.
+- 77 (2026-09-30): a LINE to-edge must project to an exact line, or the wrapAndLoft fast path (arcs preserved) never fires.
+
+## Statistics (corrected 2026-09-30)
+
+- 87 headings: 66 numbered entries (62 distinct numbers, 16 through 77; 1-15 never existed), 20 un-numbered sections, 1 stale Statistics block.
+- Duplicate numbers, disambiguated above as a/b: 45, 46, 60, 61. Out of order: 26 before 24/25, 41 before 40, 62 before 61b.
+- 8 un-numbered sections are unfilled templates (Geometry Operations, Query Patterns, Units Handling 1st, Type System and similar).
+- Date range 2026-01-30 to 2026-09-30.
+
+---
+
 ## Precondition Parameter Declared in Two Branches -- "Duplicate feature parameter"
 **Date**: 2026-09-11
 **File**: `driven_offset/design_map_query_utils.fs` -- `designMapEntryPredicate`
@@ -2059,3 +2193,15 @@ A CORE wall 0.6 mm tall sat in a parameter box whose v range spanned the whole e
 sampled mostly the surface's extension. Take the trim's parameter range from its edges (edge points ->
 `evDistance(point, face).sides[1].parameter`) before gridding a face (Unwrap `faceTrimBox`). Also: `box` is a reserved
 word -- again (the variable in that function first).
+
+## Correction 77: Wrap and Loft lost its arcs in planar mode -- the projected from-path had no exact line (2026-09-30)
+
+With `sourceEdgesArePlanar` the from-path is the to-edges projected onto the source plane. Every projection was refit with
+`approximateSpline` + `opCreateBSplineCurve`, so a true LINE to-edge became a SPLINE; `buildFrenetPath` then only
+"promoted" it (`isLine` true, `frameSamples` set) and `isExactLine` (correction of 2026-09-25) rejected it, so
+`linearRegionMove` never fired and every source arc between FCP and ACP was sampled and refit as a spline.
+Fix (wrapAndLoft_i + public): a LINE to-edge projects to `opPolyline` of its two projected ends (a true line).
+Also in `linearRegionMove`: anchor on the MIDDLE probe, judge probes by foot arc length against the from-edge's span, and
+give the seam checks `CM_SEAM_TOL` (1 um), so an arc ending exactly on a reference vertex (FCP / ACP) is not rejected by rounding.
+Verified in a scratch copy of the K2 ski doc: 39 splines -> 33 circles (FCP..ACP wrapped + both offsets); the tip/tail
+splines stay (they bend onto the curved profile). Needs a curveMapping version, then repin public wrapAndLoft + the Design doc.

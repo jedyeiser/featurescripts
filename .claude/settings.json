@@ -37,6 +37,6 @@
     "The onshape-api-researcher helps find native Onshape functions before custom implementation",
     "The nurbs-geometry-expert provides deep NURBS and analytic geometry expertise (Piegl & Tiller)",
     "Reference .claude/featurescript-corrections.md for known issues and corrections",
-    "See PROJECT.md for workflow and project structure overview"
+    "See CLAUDE.md for workflow and project structure overview (old PROJECT.md is in archive/docs_pre_2026-09)"
   ]
 }

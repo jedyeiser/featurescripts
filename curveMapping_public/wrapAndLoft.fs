@@ -3,13 +3,13 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/approximationUtils.fs", version : "3083.0");
 
 // IMPORT: tools/arc_length.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
 // IMPORT: tools/frenet.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/a19a275a032ee47f4dbcc83c", version : "e11709063628c9ca70edfca2");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/a19a275a032ee47f4dbcc83c", version : "e11709063628c9ca70edfca2");
 // IMPORT: tools/printing.fs
-import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
+import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/6a7ed8c7d74ed47b642b408c/683d867c35fdab9c98d47556", version : "56e375ddd20a07f695dfed04");
+export import(path : "08e8748f2ef24eea16072b75/1e6c50f8b5c1c4c48b5e745d/683d867c35fdab9c98d47556", version : "be9fd598630c331b5bc74e36");
 
 
 // wrapCurve is deliberately NOT imported: nothing here uses it, and its export-import of

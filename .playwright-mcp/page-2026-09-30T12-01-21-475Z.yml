@@ -1,0 +1,61 @@
+- generic [ref=f2e5]:
+  - navigation [ref=f2e6]:
+    - generic [ref=f2e7]:
+      - link [ref=f2e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f2e11]
+      - generic [ref=f2e13] [cursor=pointer]
+    - generic [ref=f2e16]:
+      - generic [ref=f2e18]:
+        - generic [ref=f2e19]: RD 20OEF 28 (K039_V01) 177
+        - generic [ref=f2e20]: Main
+      - generic [ref=f2e22] [cursor=pointer]
+      - link "OEF (K039) - Orchid Explosion by Fournier" [ref=f2e26] [cursor=pointer]:
+        - /url: /documents?nodeId=5a27b22968e779c46328e5fe&resourceType=folder
+    - generic [ref=f2e30]:
+      - button "Notifications" [ref=f2e43] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f2e51]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f2e54] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f2e59] [cursor=pointer]
+      - button "Share" [ref=f2e63] [cursor=pointer]
+      - generic "Help menu" [ref=f2e65] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f2e69] [cursor=pointer]
+  - generic [ref=f2e79]:
+    - generic [ref=f2e81]:
+      - generic [ref=f2e82]:
+        - generic [ref=f2e83]:
+          - generic [ref=f2e84] [cursor=pointer]
+          - generic [ref=f2e87] [cursor=pointer]
+          - generic [ref=f2e90] [cursor=pointer]
+          - generic [ref=f2e93] [cursor=pointer]
+          - generic [ref=f2e96] [cursor=pointer]
+          - generic [ref=f2e99] [cursor=pointer]
+          - generic [ref=f2e102] [cursor=pointer]
+          - generic [ref=f2e105] [cursor=pointer]
+        - generic [ref=f2e109] [cursor=pointer]
+      - generic [ref=f2e113] [cursor=pointer]
+    - generic [ref=f2e120]:
+      - generic [ref=f2e127]:
+        - generic [ref=f2e128]: Another user has this tab open and only one user may open this tab at a time.If you open this tab, you will close it for Another user.
+        - button "Open" [ref=f2e129] [cursor=pointer]
+      - generic [ref=f2e131]:
+        - img [ref=f2e134] [cursor=pointer]
+        - generic [ref=f2e136]:
+          - generic [ref=f2e137] [cursor=pointer]
+          - generic [ref=f2e141]: Part Drawings
+        - generic [ref=f2e148]:
+          - generic [ref=f2e149] [cursor=pointer]: pdfs
+          - generic [ref=f2e155] [cursor=pointer]: RD K039_V01 177 HK Drawing 1
+          - generic [ref=f2e161] [cursor=pointer]: RD K039_V01 178 Bug PLAN Drawing 1
+          - generic [ref=f2e167] [cursor=pointer]: RD K039_V01 177_UG PLAN Drawing 1
+          - generic [ref=f2e173] [cursor=pointer]: RD K039_V01 177 Ende-Mat Drawing 1
+          - generic [ref=f2e179] [cursor=pointer]: RD K039_V01 177 Spitze-Mat Drawing 1
+          - generic [ref=f2e185] [cursor=pointer]: RD K039_V01 177 OG Drawing 1
+          - generic [ref=f2e191] [cursor=pointer]: RD K039_V01 177 OG Drawing 2
+          - generic [ref=f2e197]: RD K039_V01 177_SE Drawing 1
+          - generic [ref=f2e203] [cursor=pointer]: RD K039_V01 177_EE Drawing 1
+          - generic [ref=f2e209] [cursor=pointer]: RD K039_V01 177_EE Drawing 1.pdf
+          - generic [ref=f2e215] [cursor=pointer]: RD K039_V01 177_SW PROFILE Drawing 1
+        - generic [ref=f2e221]:
+          - listitem [ref=f2e222]
+          - listitem [ref=f2e226]

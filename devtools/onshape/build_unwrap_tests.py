@@ -14,6 +14,7 @@ usage (repo root): PYTHONPATH=. python devtools/onshape/build_unwrap_tests.py
 import copy
 
 from sync.core.client import OnshapeClient
+from devtools.onshape.fsapi import write_feature, delete_feature  # noqa: E402  (API budget: one feature-tree GET per studio)
 
 c = OnshapeClient()
 D, W = "f61d2c000ab2d1240776342e", "5b11f323ab31b04cba8b36ef"
@@ -43,19 +44,13 @@ def b(pid, v):
     return {"btType": "BTMParameterBoolean-144", "parameterId": pid, "value": v}
 
 
+_TREE = {}   # feature tree of the test Part Studio, kept in step with each write (API budget)
+
+
 def upsert(feature):
-    f = c.get(f"{BASE}/features")
-    existing = [x for x in f["features"] if x["name"] == feature["name"]]
-    body = {"btType": "BTFeatureDefinitionCall-1406", "feature": feature,
-            "serializationVersion": f["serializationVersion"], "sourceMicroversion": f["sourceMicroversion"]}
-    if existing:
-        feature["featureId"] = existing[0]["featureId"]
-        r = c.post(f"{BASE}/features/featureid/{existing[0]['featureId']}", body)
-    else:
-        r = c.post(f"{BASE}/features", body)
+    r = write_feature(BASE, feature, _TREE, client=c)
     print("%-100s %s" % (feature["name"][:100], r.get("featureState", {}).get("featureStatus")))
     return r["feature"]["featureId"]
-
 
 def unwrap(name, given, enums):
     t, ns = tab("unwrap")

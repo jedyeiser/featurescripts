@@ -71,6 +71,8 @@ Derive_Parts_V1 (all of RD 20TAC 28 Parts @V1; `devtools/onshape/publish_tools_d
 - "4101 stations (test)": plan + flat copy
 - "4501 stations (test)": plan + profile + region (4501 = open composite of core strips; outline gets members)
 - "4101E extents only (test)": no stations at all (extent rows only); "4101T tip tail (test)": FCP / ACP -> TIP / TAIL
+- "4501S silhouette (test)": profile with Profile outline = Silhouette (the old outline, 1143 edges);
+  "4501F section misses (test)": datum at a TOP_SURFACE corner (y = 72.5) -> the section plane misses 4501 -> silhouette + note
 
 All regenerate INFO, no notices. Base widths at Q: 116.2/97.9/93.3/105.9/132.1; core thickness 3.16/8.63/12.07/7.70/4.16.
 
@@ -144,6 +146,25 @@ When the part has no region and a station crosses it once (the surface is edge-o
 TOP_SURFACE in profile), the station is measured from the datum axis to the crossing: half-width or height.
 Fixture: "2D_PERIPHERY stations (test)" (plan half-widths 48.7..68.1) and "TOP_SURFACE stations (test)"
 (profile heights 5.75..14.7; plan 72.5 everywhere because that sheet is an untrimmed rectangle in y).
+
+### Profile outline = section (2026-09-30)
+User (RD 20FOU core HK: the profile DXF had 1334 tiny LINEs, 0.0002-0.6 mm, along the top -- `opCreateOutline`'s
+silhouette tessellation, cf. correction 57): "split with the front plane and get much cleaner wires".
+* New enum "Profile outline" in Views (shown with Profile view): SECTION (default) / SILHOUETTE. Saved features migrate
+  to SECTION (correction 25; intended). Plan and custom views unchanged (outline).
+* SECTION: the part's SOLIDS (composite members) are cut by the datum XZ plane (datum origin, normal datum Y): a 20 m
+  plane sheet, `opBoolean` SUBTRACT_COMPLEMENT with the solids as tools (keepTools) -> the section region, moved
+  along the view normal onto the view plane. Its edges are the exact plane/face intersections (no re-fit); outline
+  wires, REGION sheet and station spans all come from it, so profile thicknesses are measured on the centreline.
+* Only solids whose faces cross the plane are cut; if none does (part entirely at y != datum y) the view falls back to
+  the silhouette and the feature INFO says "PROFILE: the datum XZ plane misses the part, outline from its silhouette."
+* Sheets in the profile keep their handling (face-on copy / dropped boundary).
+* Fixture: 4501 PROFILE OUTLINE 1143 edges (1118 LINE, 2 ARC, 23 spline) -> 8 (3 LINE, 2 ARC, 3 spline). Every
+  station value of every fixture feature unchanged at 0.001 mm (4501 profile 3.16/8.625/12.066/7.703/4.16, CORE
+  9.347/11.827/12.055/10.927, extents 135.018/1634.959; TOP_SURFACE is a sheet -> unchanged path; 4101T profile 1.2):
+  4501's top is constant across the width at every station, so centreline = silhouette here. Parts whose top
+  crowns or bevels across the width WILL read thinner at the centreline than the silhouette did.
+  12 features INFO, no notices.
 
 ### Station table icon (2026-09-28)
 User picked draft B (Station geometry outline + stations over a small grid; drafts icons/drafts/publish_tools/station_table_*.svg). Tab station_table_icon.svg 87946e777d7b592c8d681392, wired with "Icon" on the "Table Type Name" annotation (install_icons.py only wires "Feature Type Name", so it was wired by hand).

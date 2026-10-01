@@ -52,3 +52,6 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+
+# Onshape call ledger (sync/core/client.py)
+.api-calls.jsonl

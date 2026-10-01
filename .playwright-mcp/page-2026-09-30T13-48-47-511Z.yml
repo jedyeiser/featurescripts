@@ -1,0 +1,400 @@
+- generic [ref=f15e5]:
+  - navigation [ref=f15e6]:
+    - generic [ref=f15e7]:
+      - link [ref=f15e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f15e11]
+      - generic [ref=f15e13] [cursor=pointer]
+    - generic [ref=f15e16]:
+      - generic [ref=f15e18]:
+        - generic [ref=f15e19]: RD 20OEF 28 (K039_V01) 177
+        - generic [ref=f15e20]: Main
+      - generic [ref=f15e22] [cursor=pointer]
+      - link "OEF (K039) - Orchid Explosion by Fournier" [ref=f15e26] [cursor=pointer]:
+        - /url: /documents?nodeId=5a27b22968e779c46328e5fe&resourceType=folder
+    - generic [ref=f15e30]:
+      - generic [ref=f15e33] [cursor=pointer]
+      - button "Notifications" [ref=f15e38] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f15e46]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f15e49] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f15e54] [cursor=pointer]
+      - button "Share" [ref=f15e58] [cursor=pointer]
+      - generic "Help menu" [ref=f15e60] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f15e64] [cursor=pointer]
+  - generic [ref=f15e74]:
+    - generic [ref=f15e76]:
+      - generic [ref=f15e77]:
+        - generic [ref=f15e78]:
+          - generic [ref=f15e79] [cursor=pointer]
+          - generic [ref=f15e82] [cursor=pointer]
+          - generic [ref=f15e85] [cursor=pointer]
+          - generic [ref=f15e88] [cursor=pointer]
+          - generic [ref=f15e91] [cursor=pointer]
+          - generic [ref=f15e94] [cursor=pointer]
+          - generic [ref=f15e97] [cursor=pointer]
+          - generic [ref=f15e100] [cursor=pointer]
+        - generic [ref=f15e104] [cursor=pointer]
+      - generic [ref=f15e108] [cursor=pointer]
+    - generic [ref=f15e115]:
+      - generic [ref=f15e122]:
+        - generic [ref=f15e134]:
+          - generic [ref=f15e135]: Sketch
+          - generic [ref=f15e147]:
+            - generic [ref=f15e148] [cursor=pointer]
+            - generic [ref=f15e152] [cursor=pointer]
+            - generic [ref=f15e156] [cursor=pointer]
+            - generic [ref=f15e160] [cursor=pointer]
+            - generic [ref=f15e165]:
+              - generic [ref=f15e166] [cursor=pointer]
+              - generic [ref=f15e170] [cursor=pointer]
+          - generic [ref=f15e176]:
+            - generic [ref=f15e178]:
+              - generic [ref=f15e179] [cursor=pointer]
+              - generic [ref=f15e183] [cursor=pointer]
+            - generic [ref=f15e186] [cursor=pointer]
+            - generic [ref=f15e191]:
+              - generic [ref=f15e192] [cursor=pointer]
+              - generic [ref=f15e196] [cursor=pointer]
+            - generic [ref=f15e199] [cursor=pointer]
+            - generic [ref=f15e203] [cursor=pointer]
+            - generic [ref=f15e207] [cursor=pointer]
+            - generic [ref=f15e211] [cursor=pointer]
+          - generic [ref=f15e218]:
+            - generic [ref=f15e220]:
+              - generic [ref=f15e221] [cursor=pointer]
+              - generic [ref=f15e225] [cursor=pointer]
+            - generic [ref=f15e228] [cursor=pointer]
+          - generic [ref=f15e235]:
+            - generic [ref=f15e236] [cursor=pointer]
+            - generic [ref=f15e240] [cursor=pointer]
+            - generic [ref=f15e245]:
+              - generic [ref=f15e246] [cursor=pointer]
+              - generic [ref=f15e250] [cursor=pointer]
+            - generic [ref=f15e253] [cursor=pointer]
+          - generic [ref=f15e260]:
+            - generic [ref=f15e261] [cursor=pointer]
+            - generic [ref=f15e265] [cursor=pointer]
+            - generic [ref=f15e269] [cursor=pointer]
+            - generic [ref=f15e273] [cursor=pointer]
+          - generic [ref=f15e941]:
+            - generic [ref=f15e942] [cursor=pointer]
+            - generic [ref=f15e946] [cursor=pointer]
+          - generic [ref=f15e293]:
+            - generic [ref=f15e294] [cursor=pointer]: SA
+            - generic [ref=f15e297] [cursor=pointer]
+          - generic [ref=f15e304] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f15e311] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f15e312]:
+            - generic [ref=f15e313]: alt/⌥
+            - generic [ref=f15e314]: c
+      - generic [ref=f15e318]:
+        - generic [ref=f15e321]:
+          - generic [ref=f15e323]:
+            - generic [ref=f15e324]:
+              - generic [ref=f15e326]:
+                - button [ref=f15e328] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f15e333]
+              - generic [ref=f15e334]:
+                - generic [ref=f15e335]: Features (261)
+                - button [ref=f15e336] [cursor=pointer]
+                - button [ref=f15e339] [cursor=pointer]
+                - button [ref=f15e342] [cursor=pointer]
+            - generic [ref=f15e346]:
+              - generic [ref=f15e347]:
+                - generic [ref=f15e349]:
+                  - generic [ref=f15e350] [cursor=pointer]
+                  - generic [ref=f15e353]: Default geometry
+                - generic [ref=f15e355]: Origin
+                - generic [ref=f15e365]: Top
+                - generic [ref=f15e375]: Front
+                - generic [ref=f15e385]: Right
+                - generic [ref=f15e396]:
+                  - generic [ref=f15e398] [cursor=pointer]
+                  - generic [ref=f15e401]: Derive_Ref_Geo
+                - generic [ref=f15e406]: "#extract_qv's"
+                - generic [ref=f15e419]:
+                  - generic [ref=f15e421] [cursor=pointer]
+                  - generic [ref=f15e424]: Side_References (3)
+                - generic [ref=f15e430]:
+                  - generic [ref=f15e432] [cursor=pointer]
+                  - generic [ref=f15e435]: Special_surface_geometry (38)
+                - generic [ref=f15e441]:
+                  - generic [ref=f15e443] [cursor=pointer]
+                  - generic [ref=f15e446]: Steel_Edge (20)
+                - generic [ref=f15e452]:
+                  - generic [ref=f15e454] [cursor=pointer]
+                  - generic [ref=f15e457]: Base (12)
+                - generic [ref=f15e463]:
+                  - generic [ref=f15e465] [cursor=pointer]
+                  - generic [ref=f15e468]: Basefiller (36)
+                - generic [ref=f15e474]:
+                  - generic [ref=f15e476] [cursor=pointer]
+                  - generic [ref=f15e479]: Tip/Tail Mats (14)
+                - generic [ref=f15e485]:
+                  - generic [ref=f15e487] [cursor=pointer]
+                  - generic [ref=f15e490]: Top_Layers (9)
+                - generic [ref=f15e496]:
+                  - generic [ref=f15e498] [cursor=pointer]
+                  - generic [ref=f15e501]: Core (44)
+                - generic [ref=f15e507]:
+                  - generic [ref=f15e509] [cursor=pointer]
+                  - generic [ref=f15e512]: Sidewall (18)
+                - generic [ref=f15e518]:
+                  - generic [ref=f15e520] [cursor=pointer]
+                  - generic [ref=f15e523]: Core_Extension (27)
+                - generic [ref=f15e529]:
+                  - generic [ref=f15e531] [cursor=pointer]
+                  - generic [ref=f15e534]: Shear (11)
+                - generic [ref=f15e539]: 3D_Parts_Composite
+                - generic [ref=f15e548]:
+                  - generic [ref=f15e550] [cursor=pointer]
+                  - generic [ref=f15e553]: Export (22)
+              - list
+          - generic [ref=f15e566]:
+            - generic [ref=f15e568]:
+              - generic [ref=f15e570] [cursor=pointer]
+              - generic [ref=f15e573]: Parts (30)
+            - generic [ref=f15e575]: RD K039_V01 177 STK L
+            - generic [ref=f15e585]: RD K039_V01 177 STK R
+            - generic [ref=f15e595]: RD K039_V01 177 Bug_3D
+            - generic [ref=f15e605]: RD K039_V01 177 Bug
+            - generic [ref=f15e615]: RD K039_V01 177 UG_3D
+            - generic [ref=f15e625]: RD K039_V01 177 UG
+            - generic [ref=f15e635]: RD K039_V01 177 Spitze-Mat_3D
+            - generic [ref=f15e645]: RD K039_V01 177 Ende-Mat_3D
+            - generic [ref=f15e655]: RD K039_V01 177 Ende-Mat
+            - generic [ref=f15e665]: RD K039_V01 177 Spitze-Mat
+            - generic [ref=f15e675]: RD K039_V01 177 OFL_3D
+            - generic [ref=f15e685]: RD K039_V01 177 OG_3D
+            - generic [ref=f15e695]: RD K039_V01 177 OFL
+            - generic [ref=f15e705]: RD K039_V01 177 OG
+            - generic [ref=f15e715]: 3D HK
+            - generic [ref=f15e725]: 2D HK
+            - generic [ref=f15e735]: Part 7
+            - generic [ref=f15e745]: Long_Beech
+            - generic [ref=f15e755]: Part 7
+            - generic [ref=f15e765]: Long_Beech
+            - generic [ref=f15e775]: RD K039_V01 177 SW_L
+        - generic [ref=f15e786]:
+          - generic [ref=f15e788] [cursor=pointer]
+          - generic [ref=f15e792]:
+            - generic [ref=f15e794]:
+              - button [ref=f15e795] [cursor=pointer]
+              - button [ref=f15e799] [cursor=pointer]
+              - button [ref=f15e803] [cursor=pointer]
+            - generic [ref=f15e807] [cursor=pointer]
+          - generic [ref=f15e812]:
+            - generic [ref=f15e813] [cursor=pointer]
+            - generic [ref=f15e817] [cursor=pointer]
+            - generic [ref=f15e821] [cursor=pointer]
+            - generic [ref=f15e825] [cursor=pointer]
+            - generic [ref=f15e829] [cursor=pointer]
+            - generic [ref=f15e833] [cursor=pointer]
+            - generic [ref=f15e836] [cursor=pointer]
+        - iframe [active] [ref=f15e955]:
+          - generic [ref=f16e3]:
+            - banner [ref=f16e4]:
+              - generic [ref=f16e5]:
+                - img "EOC Data Tools" [ref=f16e6]
+                - generic [ref=f16e9]: EOC Data Tools
+              - generic [ref=f16e10]:
+                - button "Switch to light mode" [ref=f16e11] [cursor=pointer]
+                - button "Theme" [ref=f16e18] [cursor=pointer]
+                - button "About EOC Data Tools" [ref=f16e25] [cursor=pointer]
+            - navigation [ref=f16e28]:
+              - button "Release Tree" [ref=f16e29] [cursor=pointer]
+              - button "Copy Doc" [ref=f16e30] [cursor=pointer]
+              - button "Rename" [ref=f16e31] [cursor=pointer]
+              - button "Export" [active] [ref=f16e32] [cursor=pointer]
+              - button "Images" [ref=f16e33] [cursor=pointer]
+            - main [ref=f16e34]:
+              - generic [ref=f16e107]:
+                - generic [ref=f16e108]:
+                  - generic [ref=f16e109]: Source
+                  - generic [ref=f16e110]:
+                    - combobox [disabled] [ref=f16e111]:
+                      - option "Workspace (current)"
+                      - option "V2"
+                      - option "Initial release — latest release" [selected]
+                      - option "Start"
+                    - button "Refresh" [disabled] [ref=f16e112] [cursor=pointer]
+                  - generic [ref=f16e118]: Latest released version — what the factory got.
+                - generic [ref=f16e119]:
+                  - generic [ref=f16e120]: Package
+                  - generic [ref=f16e121]:
+                    - button "Save package" [ref=f16e122] [cursor=pointer]
+                    - generic [ref=f16e127]: No saved package for this document.
+                - generic [ref=f16e128]:
+                  - generic [ref=f16e129]: 1 · Find items
+                  - generic [ref=f16e130]:
+                    - textbox "Search items by name" [ref=f16e134]:
+                      - /placeholder: Search by name
+                      - text: SE
+                    - button "Clear search" [ref=f16e135] [cursor=pointer]
+                  - group "Show item types" [ref=f16e139]:
+                    - button "Part" [pressed] [ref=f16e140] [cursor=pointer]
+                    - button "Surface" [pressed] [ref=f16e141] [cursor=pointer]
+                    - button "Wire" [pressed] [ref=f16e142] [cursor=pointer]
+                    - button "Assemblies" [pressed] [ref=f16e143] [cursor=pointer]
+                    - button "Drawings" [pressed] [ref=f16e144] [cursor=pointer]
+                  - generic [ref=f16e145]:
+                    - generic [ref=f16e146]: Part Studio
+                    - combobox "Filter by Part Studio" [ref=f16e147]:
+                      - option "All tabs (parts, assemblies, drawings)" [selected]
+                      - option "Design Master"
+                      - option "Parts"
+                      - option "3D_Ski"
+                      - option "Kartonform"
+                  - generic [ref=f16e148]:
+                    - generic [ref=f16e149]:
+                      - combobox "Filter by release" [ref=f16e150]:
+                        - option "All items" [selected]
+                        - option "Released"
+                        - option "Recently released (last 30 days)"
+                        - option "In progress / never released"
+                      - generic [ref=f16e151]: Group by
+                      - group "Group by" [ref=f16e152]:
+                        - button "Type" [pressed] [ref=f16e153] [cursor=pointer]
+                        - button "Release" [ref=f16e154] [cursor=pointer]
+                    - generic "Ticking a part also ticks (PDF) the drawings that show it; unticking it removes only those auto-added drawings." [ref=f16e155]:
+                      - checkbox "Add drawings automatically" [checked] [ref=f16e156]
+                      - text: Add drawings automatically
+                  - generic [ref=f16e157]:
+                    - generic [ref=f16e158]:
+                      - text: 10 of 192 shown ·
+                      - button "Show all" [ref=f16e159] [cursor=pointer]
+                    - button "Check all shown" [ref=f16e160] [cursor=pointer]
+                    - button "Check released shown" [ref=f16e161] [cursor=pointer]
+                  - generic [ref=f16e162]:
+                    - generic [ref=f16e163]:
+                      - button "Design Master 0/39 · 2 shown" [ref=f16e164] [cursor=pointer]:
+                        - generic [ref=f16e167]: Design Master
+                        - generic [ref=f16e168]: 0/39 · 2 shown
+                      - generic [ref=f16e169] [cursor=pointer]:
+                        - checkbox "Check RD K039_V01 177 Baseline" [ref=f16e170]
+                        - generic [ref=f16e171]: RD K039_V01 177 Baseline
+                        - generic [ref=f16e172]: Wire
+                      - generic [ref=f16e173] [cursor=pointer]:
+                        - checkbox "Check RD K039_V01 177_BASELINE" [ref=f16e174]
+                        - generic [ref=f16e175]: RD K039_V01 177_BASELINE
+                        - generic [ref=f16e176]: Wire
+                    - generic [ref=f16e177]:
+                      - button "Parts 0/86 · 3 shown" [ref=f16e178] [cursor=pointer]:
+                        - generic [ref=f16e181]: Parts
+                        - generic [ref=f16e182]: 0/86 · 3 shown
+                      - generic [ref=f16e183] [cursor=pointer]:
+                        - checkbox "Check RD K039_V01 177_BASELINE" [ref=f16e184]
+                        - generic [ref=f16e185]: RD K039_V01 177_BASELINE
+                        - generic [ref=f16e186]: Wire
+                      - generic [ref=f16e187] [cursor=pointer]:
+                        - checkbox "Check RD K039_V01 177_SE" [ref=f16e188]
+                        - generic [ref=f16e189]: RD K039_V01 177_SE
+                        - generic [ref=f16e190]: PRT-3508
+                        - generic [ref=f16e191]: Solid
+                      - generic [ref=f16e192] [cursor=pointer]:
+                        - checkbox "Check RD K039_V01 177_SE_3D" [ref=f16e193]
+                        - generic [ref=f16e194]: RD K039_V01 177_SE_3D
+                        - generic [ref=f16e195]: Solid
+                    - generic [ref=f16e196]:
+                      - button "3D_Ski 0/25 · 3 shown" [ref=f16e197] [cursor=pointer]:
+                        - generic [ref=f16e200]: 3D_Ski
+                        - generic [ref=f16e201]: 0/25 · 3 shown
+                      - generic [ref=f16e202] [cursor=pointer]:
+                        - checkbox "Check RD 21SKH 28 177 X-Sect" [ref=f16e203]
+                        - generic [ref=f16e204]: RD 21SKH 28 177 X-Sect
+                        - generic [ref=f16e205]: Other
+                      - generic [ref=f16e206] [cursor=pointer]:
+                        - checkbox "Check RD K039_V01 177 Baseline" [ref=f16e207]
+                        - generic [ref=f16e208]: RD K039_V01 177 Baseline
+                        - generic [ref=f16e209]: Wire
+                      - generic [ref=f16e210] [cursor=pointer]:
+                        - checkbox "Check RD K039_V01 177_SE_3D" [ref=f16e211]
+                        - generic [ref=f16e212]: RD K039_V01 177_SE_3D
+                        - generic [ref=f16e213]: Solid
+                    - generic [ref=f16e214] [cursor=pointer]:
+                      - checkbox "Check RD K039_V01 177_SE Drawing 1" [ref=f16e215]
+                      - generic [ref=f16e216]: RD K039_V01 177_SE Drawing 1
+                      - generic [ref=f16e217]: Drawing
+                    - generic [ref=f16e218] [cursor=pointer]:
+                      - checkbox "Check RD K039_V01 177 X-Sect" [ref=f16e219]
+                      - generic [ref=f16e220]: RD K039_V01 177 X-Sect
+                      - generic [ref=f16e221]: Drawing
+                - generic [ref=f16e222]:
+                  - generic [ref=f16e223]:
+                    - generic [ref=f16e224]: Add checked to export.zip (top) as
+                    - button "2D Profile/Periphery" [disabled] [ref=f16e225] [cursor=pointer]
+                    - button "3D" [disabled] [ref=f16e226] [cursor=pointer]
+                    - button "choose later" [disabled] [ref=f16e227] [cursor=pointer]
+                  - generic "Each item is exported from the version of ITS latest release (parts were released at different times), with its revision in manifest.csv. Items never released are not added." [ref=f16e228]:
+                    - checkbox "from each item's latest release" [ref=f16e229]
+                    - text: from each item's latest release
+                  - generic [ref=f16e230]: Drawings of added parts come along into the same folder. Drawings are PDF.
+                - generic [ref=f16e231]:
+                  - generic [ref=f16e232]: 2 · Package (0 files · about 0 Onshape calls)
+                  - generic [ref=f16e233]:
+                    - generic [ref=f16e234]:
+                      - button "export.zip" [ref=f16e235] [cursor=pointer]
+                      - generic [ref=f16e236]: adding here
+                      - button "Folder" [ref=f16e237] [cursor=pointer]
+                    - generic [ref=f16e240]: manifest.csv
+                    - generic [ref=f16e244]: Empty. Make folders here, pick one, then check items above and add them to it.
+                  - generic [ref=f16e245]: "Click a folder to add into it. Each entry: 2D or 3D, then the file type; open it for its name and options."
+                - generic [ref=f16e246]:
+                  - generic [ref=f16e247]: DXF exports (0)
+                  - generic [ref=f16e248]:
+                    - button "DXF export" [ref=f16e249] [cursor=pointer]
+                    - generic [ref=f16e251]: "One DXF each: create it, then add faces / edges / bodies from the viewport. It takes the name of the body of its first face."
+                - generic [ref=f16e252]:
+                  - generic [ref=f16e253]: Tables (0)
+                  - generic [ref=f16e254]:
+                    - combobox "Part Studio" [ref=f16e255]:
+                      - option "Design Master"
+                      - option "Parts" [selected]
+                      - option "3D_Ski"
+                      - option "Kartonform"
+                    - combobox "Table" [ref=f16e256]:
+                      - option "Station table" [selected]
+                      - option "Primitive tables"
+                    - button "Table" [ref=f16e257] [cursor=pointer]
+                  - generic [ref=f16e259]: CSV / XLSX of a Part Studio's custom table, into Tables/. One Onshape call per table.
+                - generic [ref=f16e260]:
+                  - generic [ref=f16e261]: Layout sheets (0)
+                  - generic [ref=f16e263]:
+                    - button "Layout sheet" [ref=f16e264] [cursor=pointer]
+                    - generic [ref=f16e266]: Give parts a 2D DXF (Periphery / Profile) in the list, or build DXF exports; a sheet places the ones you add to it on stock. Add as many sheets as you need.
+                - generic [ref=f16e267]:
+                  - generic [ref=f16e268]: Destination
+                  - generic [ref=f16e269]:
+                    - button "Download (.zip)" [ref=f16e270] [cursor=pointer]
+                    - button "Save to document" [ref=f16e274] [cursor=pointer]
+                  - generic [ref=f16e279]: One zip with DXF/ STEP/ IGES/ PARASOLID/ STL/ PDF/ folders, manifest.csv and failures.txt. STEP is in metres.
+                - generic [ref=f16e280]:
+                  - generic [ref=f16e281]: Names from the reference
+                  - generic [ref=f16e282]:
+                    - 'button "{partName}" [ref=f16e283] [cursor=pointer]'
+                    - 'button "{partNumber}_{rev}" [ref=f16e284] [cursor=pointer]'
+                    - 'button "{partName}_{rev}" [ref=f16e285] [cursor=pointer]'
+                    - button "Custom…" [ref=f16e286] [cursor=pointer]
+                  - generic [ref=f16e287]: Type over any item's name to override it; the ↺ button restores the name from the reference.
+                - button "Export files" [disabled] [ref=f16e289]
+      - generic [ref=f15e840]:
+        - img [ref=f15e843] [cursor=pointer]
+        - generic [ref=f15e846]:
+          - generic [ref=f15e847] [cursor=pointer]: Setup
+          - generic [ref=f15e853] [cursor=pointer]: Design Master
+          - generic [ref=f15e859] [cursor=pointer]: RD K039_V01 177 VOLUME PRIMITIVE Drawing 1
+          - generic [ref=f15e865] [cursor=pointer]: RD K039_V01 177 VOLUME PRIMITIVE.pdf
+          - generic [ref=f15e871]: Parts
+          - generic [ref=f15e877] [cursor=pointer]: Part Export
+          - generic [ref=f15e883] [cursor=pointer]: Part Drawings
+          - generic [ref=f15e889] [cursor=pointer]: 3D_Ski
+          - generic [ref=f15e895] [cursor=pointer]: RD K039_V01 177 X-Sect
+          - generic [ref=f15e901] [cursor=pointer]: Tooling
+          - generic [ref=f15e907] [cursor=pointer]: BeamSimulator
+          - generic [ref=f15e912] [cursor=pointer]: RD K039_V01 177 Aufbau
+          - generic [ref=f15e918] [cursor=pointer]: RD K039_V01 177 Aufbau
+          - generic [ref=f15e924] [cursor=pointer]: RD K039_V01 177 Aufbau.pdf
+        - generic [ref=f15e930]:
+          - listitem [ref=f15e931]
+          - listitem [ref=f15e935]

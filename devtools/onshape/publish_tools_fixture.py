@@ -122,3 +122,22 @@ upsert(D, W, E, "stationGeometry", "4101T tip tail (test)", [
     b("stationLines", True), b("outlineWires", False), b("outlineSurface", False),
     b("datumPoint", False), b("flatCopy", False), b("printTable", True),
 ], ns_geo)
+
+# Profile outline (2026-09-30): the profile view is the SECTION by the datum XZ plane by default (4501: 8 exact edges;
+# the silhouette was 1143, 1118 of them tiny lines). SILHOUETTE keeps the projected outline; a datum off the part
+# (TOP_SURFACE corner vertex, y = 72.5 > 4501's 65.7) makes the section plane miss -> silhouette + INFO note.
+V_Y72 = "SFXAC"
+upsert(D, W, E, "stationGeometry", "4501S silhouette (test)", [
+    qids("part", [P4501]), qids("datum", [MC0]), s("prefix", "4501S"),
+    b("planView", False), b("profileView", True), en("profileOutline", "StationProfileOutline", "SILHOUETTE", ns_geo),
+    arr("otherViews", []), flist("stationDefinitions", [DEF_ID]), s("stationSet", ""), arr("stations", []),
+    b("stationLines", True), b("outlineWires", True), b("outlineSurface", False),
+    b("datumPoint", True), b("flatCopy", False), b("printTable", True),
+], ns_geo)
+upsert(D, W, E, "stationGeometry", "4501F section misses (test)", [
+    qids("part", [P4501]), qids("datum", [V_Y72]), s("prefix", "4501F"),
+    b("planView", False), b("profileView", True), en("profileOutline", "StationProfileOutline", "SECTION", ns_geo),
+    arr("otherViews", []), flist("stationDefinitions", [DEF_ID]), s("stationSet", ""), arr("stations", []),
+    b("stationLines", True), b("outlineWires", True), b("outlineSurface", False),
+    b("datumPoint", True), b("flatCopy", False), b("printTable", True),
+], ns_geo)

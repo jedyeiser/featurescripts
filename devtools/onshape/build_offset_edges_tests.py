@@ -51,6 +51,7 @@ import math
 import re
 
 from sync.core.client import OnshapeClient
+from devtools.onshape.fsapi import write_feature, delete_feature  # noqa: E402  (API budget: one feature-tree GET per studio)
 
 c = OnshapeClient()
 DOC = json.load(open("example_1/.document.json"))
@@ -136,22 +137,13 @@ def from_spec(spec_params, given):
     return out
 
 
+_TREE = {}   # feature tree of the test Part Studio, kept in step with each write (API budget)
+
+
 def upsert(feature):
-    if STATE["features"] is None:
-        STATE["features"] = c.get(f"{BASE}/features")
-    f = STATE["features"]
-    existing = [x for x in f["features"] if x["name"] == feature["name"]]
-    body_ = {"btType": "BTFeatureDefinitionCall-1406", "feature": feature,
-             "serializationVersion": f["serializationVersion"], "sourceMicroversion": f["sourceMicroversion"]}
-    if existing:
-        feature["featureId"] = existing[0]["featureId"]
-        r = c.post(f"{BASE}/features/featureid/{existing[0]['featureId']}", body_)
-    else:
-        r = c.post(f"{BASE}/features", body_)
-    STATE["features"] = None
+    r = write_feature(BASE, feature, _TREE, client=c)
     print("%-110s %s" % (feature["name"][:110], r.get("featureState", {}).get("featureStatus")))
     return r["feature"]["featureId"]
-
 
 def feature(name, ftype, params, ns=""):
     f = {"btType": "BTMFeature-134", "featureType": ftype, "name": name, "parameters": params}

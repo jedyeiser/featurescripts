@@ -166,6 +166,8 @@ export enum ProfileSource
  * direction.
  *
  * ALL means the three profiles and nothing else -- the sections joining them are dropped.
+ * TOP_BOTTOM is ALL without the middle, which is never built, so a part whose middle cannot
+ * be rebuilt (or is simply not wanted) still returns its two real profiles.
  * FULL keeps everything: the same three, plus each joining section as its own named body, so
  * the pieces together account for the whole periphery rather than most of it. PERIPHERY is
  * the undivided loop, which is not a profile of anything and so stays its own choice.
@@ -182,6 +184,8 @@ export enum ProfilePart
     PERIPHERY,
     annotation { "Name" : "All profiles" }
     ALL,
+    annotation { "Name" : "Top and bottom" }
+    TOP_BOTTOM,
     annotation { "Name" : "Full" }
     FULL
 }
@@ -849,6 +853,7 @@ function longestExtent(context is Context, edges is Query, plane is Plane) retur
 function wantedProfile(definition is map, part is ProfilePart) returns boolean
 {
     return definition.profileParts == part
+        || (definition.profileParts == ProfilePart.TOP_BOTTOM && part != ProfilePart.MIDDLE)
         || definition.profileParts == ProfilePart.ALL
         || definition.profileParts == ProfilePart.FULL;
 }
@@ -1725,7 +1730,13 @@ function emitConstructed(context is Context, id is Id, definition is map, sample
             }
             else if (run.kind == "arc")
             {
-                arcThroughPoints(context, runId, points, run);
+                // A stretch that reads as an arc but cannot be drawn as one (near-straight, or
+                // the sketch comes back empty) is fitted like freeform rather than dropped.
+                if (!arcThroughPoints(context, runId, points, run))
+                {
+                    curves = append(curves, fitSamples(context, runId, definition,
+                            subArray(samples, run.from, run.to + 1)));
+                }
             }
             else
             {
@@ -1911,15 +1922,19 @@ function onArc(points is array, from is number, to is number, tolerance is Value
 /**
  * A true arc through a detected circular stretch, built on a sketch so it is a real arc
  * rather than a spline that resembles one.
+ *
+ * Returns false, having built nothing, when the arc cannot be drawn: the points are collinear,
+ * or the sketch arc comes back without edges (opExtractWires would otherwise throw a bare
+ * "at least one edge is required"). The caller then fits the stretch instead.
  */
-function arcThroughPoints(context is Context, id is Id, points is array, run is map)
+function arcThroughPoints(context is Context, id is Id, points is array, run is map) returns boolean
 {
     const middle = floor((run.from + run.to) / 2);
     const circleData = circleThroughPoints(points[run.from], points[middle], points[run.to]);
 
     if (circleData == undefined)
     {
-        return;
+        return false;
     }
 
     const sketchId = id + "arcSketch";
@@ -1934,8 +1949,19 @@ function arcThroughPoints(context is Context, id is Id, points is array, run is 
             });
     skSolve(sk);
 
-    opExtractWires(context, id + "wire", { "edges" : qCreatedBy(sketchId, EntityType.EDGE) });
+    const sketchEdges = qCreatedBy(sketchId, EntityType.EDGE);
+    if (isQueryEmpty(context, sketchEdges))
+    {
+        if (!isQueryEmpty(context, qCreatedBy(sketchId, EntityType.BODY)))
+        {
+            opDeleteBodies(context, id + "deleteSketch", { "entities" : qCreatedBy(sketchId, EntityType.BODY) });
+        }
+        return false;
+    }
+
+    opExtractWires(context, id + "wire", { "edges" : sketchEdges });
     opDeleteBodies(context, id + "deleteSketch", { "entities" : qCreatedBy(sketchId, EntityType.BODY) });
+    return true;
 }
 
 /**

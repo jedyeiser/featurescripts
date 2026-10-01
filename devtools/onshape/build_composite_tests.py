@@ -36,6 +36,7 @@ import os
 import sys
 
 from sync.core.client import OnshapeClient
+from devtools.onshape.fsapi import write_feature, delete_feature, feature_status  # noqa: E402  (API budget: one feature-tree GET per studio)
 
 DOC_JSON = "composite_part_tools/.document.json"
 TAB = "composite_boolean"
@@ -144,7 +145,7 @@ class Studio:
             studios[STUDIO] = c.post(f"/api/v10/partstudios/d/{self.D}/w/{self.W}", {"name": STUDIO})["id"]
         self.E = studios[STUDIO]
         self.base = f"/api/v10/partstudios/d/{self.D}/w/{self.W}/e/{self.E}"
-        self.features = None
+        self.tree = {}   # the Part Studio feature tree (write_feature keeps it in step)
         self.specs = {}
         tab_el = [e for e in elements if e["name"] == TAB][0]
         self.ns = "e%s::m%s" % (tab_el["id"], tab_el["microversionId"])
@@ -154,18 +155,8 @@ class Studio:
         print("studio %s (%s), %s namespace %s" % (STUDIO, self.E, feature_type, self.ns))
 
     def upsert(self, feature):
-        if self.features is None:
-            self.features = c.get(f"{self.base}/features")
-        f = self.features
-        existing = [x for x in f["features"] if x["name"] == feature["name"]]
-        body_ = {"btType": "BTFeatureDefinitionCall-1406", "feature": feature,
-                 "serializationVersion": f["serializationVersion"], "sourceMicroversion": f["sourceMicroversion"]}
-        if existing:
-            feature["featureId"] = existing[0]["featureId"]
-            r = c.post(f"{self.base}/features/featureid/{existing[0]['featureId']}", body_)
-        else:
-            r = c.post(f"{self.base}/features", body_)
-        self.features = None
+        # API budget: the feature tree is read once and kept in step with each write (write_feature).
+        r = write_feature(self.base, feature, self.tree, client=c)
         print("%-110s %s" % (feature["name"][:110], r.get("featureState", {}).get("featureStatus")))
         return r["feature"]["featureId"]
 
@@ -208,9 +199,8 @@ class Studio:
     def temporary(self, label, name, given, want="ERROR"):
         """Insert an instance, read its status, delete it (error cases stay out of the tree)."""
         tmp = self.custom(name, given)
-        status = c.get(f"{self.base}/features")["featureStates"][tmp]["featureStatus"]
-        c._request("DELETE", f"{self.base}/features/featureid/{tmp}")
-        self.features = None
+        status = feature_status(self.base, self.tree, tmp, client=c)   # from the insert's own response
+        delete_feature(self.base, tmp, self.tree, client=c)
         print("%s -> %s (%s)" % (label, status, "PASS" if status == want else "FAIL: expected " + want))
         return status == want
 

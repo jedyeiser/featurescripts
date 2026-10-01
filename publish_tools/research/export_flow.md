@@ -11,7 +11,7 @@ Proposal only -- nothing built yet.
 
 - One DXF per piece, exported by hand, one at a time.
 - Pieces sit where they are in the model (EE near x = 0, SE near x = 1700) -- not where the factory cuts them.
-- No units in the files (`$INSUNITS` missing) -- the factory has to assume mm.
+- Units are declared (mm, R2004 / AC1018), single layer "Visible". (An earlier draft said no units -- that was a checking error.)
 - Mirror pairs are separate files (KF_2 + KF_2.1, KF_3 + KF_3.1).
 
 ---

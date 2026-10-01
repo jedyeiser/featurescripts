@@ -15,6 +15,7 @@ import os
 import sys
 
 from sync.core.client import OnshapeClient
+from devtools.onshape.fsapi import write_feature, delete_feature  # noqa: E402  (API budget: one feature-tree GET per studio)
 
 c = OnshapeClient()
 DOC = json.load(open("variable_tools/.document.json"))
@@ -53,19 +54,13 @@ def s(pid, v):
     return {"btType": "BTMParameterString-149", "parameterId": pid, "value": v}
 
 
-def upsert(feature):
-    f = c.get(f"{BASE}/features")
-    existing = [x for x in f["features"] if x["name"] == feature["name"]]
-    body = {"btType": "BTFeatureDefinitionCall-1406", "feature": feature,
-            "serializationVersion": f["serializationVersion"], "sourceMicroversion": f["sourceMicroversion"]}
-    if existing:
-        feature["featureId"] = existing[0]["featureId"]
-        r = c.post(f"{BASE}/features/featureid/{existing[0]['featureId']}", body)
-    else:
-        r = c.post(f"{BASE}/features", body)
-    print("%-80s %s" % (feature["name"], r.get("featureState", {}).get("featureStatus")))
-    return r["feature"]["featureId"]
+_TREE = {}   # feature tree of the test Part Studio, kept in step with each write (API budget)
 
+
+def upsert(feature):
+    r = write_feature(BASE, feature, _TREE, client=c)
+    print("%-80s %s" % (feature["name"][:80], r.get("featureState", {}).get("featureStatus")))
+    return r["feature"]["featureId"]
 
 def sketch(name, plane_expr, entities):
     return upsert({"btType": "BTMSketch-151", "featureType": "newSketch", "name": name,

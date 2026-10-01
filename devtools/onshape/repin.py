@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sys
+import time
 
 from sync.core.client import OnshapeClient
 
@@ -112,22 +113,32 @@ def main():
                 open(path, "wb").write(local.encode("utf-8"))
                 print("%-20s cross-document pins taken from Onshape" % name)
             ok = False
-            for _ in range(3):
-                try:
-                    client.update_featurestudio_contents(did, wid, eid, local)
-                except Exception:  # client timeouts: the write often lands anyway; verify below
-                    pass
+            remote = before
+            if unpinned(before) == unpinned(local):
+                ok = True   # already current (API budget: no write, no verify GET)
+            timed_out = False
+            for attempt in range(0 if ok else 4):
+                if attempt == 0 or not timed_out:
+                    try:
+                        client.update_featurestudio_contents(did, wid, eid, local)
+                        timed_out = False
+                    except Exception:  # client timeout: the write usually lands anyway; wait and verify, do NOT re-post
+                        timed_out = True
+                else:
+                    time.sleep(10)
                 remote = client.get("/api/v10/featurestudios/d/%s/w/%s/e/%s" % (did, wid, eid))["contents"]
                 if unpinned(remote) == unpinned(local):
                     ok = True
-                    if lf(remote) != lf(local):
-                        # Take Onshape's pins back so the next push does not undo them.
-                        text = remote.replace("\r\n", "\n")
-                        if "\r\n" in local:
-                            text = text.replace("\n", "\r\n")
-                        open(path, "wb").write(text.encode("utf-8"))
-                        print("%-20s pins updated from Onshape" % name)
                     break
+                if attempt >= 2:
+                    timed_out = False   # it never landed: post again
+            if ok and lf(remote) != lf(local):
+                # Take Onshape's pins back so the next push does not undo them.
+                text = remote.replace("\r\n", "\n")
+                if "\r\n" in local:
+                    text = text.replace("\n", "\r\n")
+                open(path, "wb").write(text.encode("utf-8"))
+                print("%-20s pins updated from Onshape" % name)
             print("%-20s %s" % (name, "MATCH" if ok else "STILL DIFFERS"))
             failed += not ok
         return 1 if failed else 0

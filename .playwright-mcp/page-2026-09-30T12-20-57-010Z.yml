@@ -1,0 +1,21 @@
+- generic [ref=f9e3]:
+  - navigation [ref=f9e4]:
+    - generic [ref=f9e5]:
+      - link [ref=f9e8] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f9e9]
+      - generic [ref=f9e11] [cursor=pointer]
+    - generic [ref=f9e14]:
+      - generic [ref=f9e16]:
+        - generic [ref=f9e17]: RD 20OEF 28 (K039_V01) 177
+        - generic [ref=f9e18]: Main
+      - generic [ref=f9e20] [cursor=pointer]
+    - generic [ref=f9e23]:
+      - button "Notifications" [ref=f9e25] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f9e33]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f9e36] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f9e41] [cursor=pointer]
+      - button "Share" [ref=f9e45] [cursor=pointer]
+      - generic "Help menu" [ref=f9e47] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f9e51] [cursor=pointer]
+  - paragraph [ref=f9e77]: Loading workspace…

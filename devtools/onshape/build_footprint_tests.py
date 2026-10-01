@@ -35,6 +35,7 @@ The case table (ids, names with the expected results, expected values) is CASES 
 usage (repo root): PYTHONPATH=. python devtools/onshape/build_footprint_tests.py
 """
 import copy
+from devtools.onshape.fsapi import write_feature, delete_feature  # noqa: E402  (API budget: one feature-tree GET per studio)
 import json
 import math
 
@@ -476,23 +477,13 @@ def b(pid, v):
     return {"btType": "BTMParameterBoolean-144", "parameterId": pid, "value": v}
 
 
+_TREE = {}   # feature tree of the test Part Studio, kept in step with each write (API budget)
+
+
 def upsert(feature):
-    c, base = STATE["client"], STATE["base"]
-    if STATE["features"] is None:
-        STATE["features"] = c.get(f"{base}/features")
-    f = STATE["features"]
-    existing = [x for x in f["features"] if x["name"] == feature["name"]]
-    body = {"btType": "BTFeatureDefinitionCall-1406", "feature": feature,
-            "serializationVersion": f["serializationVersion"], "sourceMicroversion": f["sourceMicroversion"]}
-    if existing:
-        feature["featureId"] = existing[0]["featureId"]
-        r = c.post(f"{base}/features/featureid/{existing[0]['featureId']}", body)
-    else:
-        r = c.post(f"{base}/features", body)
-    STATE["features"] = None
+    r = write_feature(STATE["base"], feature, _TREE, client=STATE["client"])
     print("%-110s %s" % (feature["name"][:110], r.get("featureState", {}).get("featureStatus")))
     return r["feature"]["featureId"]
-
 
 def feature(name, ftype, params, ns=""):
     f = {"btType": "BTMFeature-134", "featureType": ftype, "name": name, "parameters": params}

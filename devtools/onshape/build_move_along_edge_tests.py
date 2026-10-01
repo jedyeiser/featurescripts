@@ -29,6 +29,7 @@ import math
 import re
 
 from sync.core.client import OnshapeClient
+from devtools.onshape.fsapi import write_feature, delete_feature, feature_status  # noqa: E402  (API budget: one feature-tree GET per studio)
 
 c = OnshapeClient()
 DOC = json.load(open("smallTools/.document.json"))
@@ -69,22 +70,13 @@ def s(pid, v):
     return {"btType": "BTMParameterString-149", "parameterId": pid, "value": v}
 
 
+_TREE = {}   # feature tree of the test Part Studio, kept in step with each write (API budget)
+
+
 def upsert(feature):
-    if STATE["features"] is None:
-        STATE["features"] = c.get(f"{BASE}/features")
-    f = STATE["features"]
-    existing = [x for x in f["features"] if x["name"] == feature["name"]]
-    body = {"btType": "BTFeatureDefinitionCall-1406", "feature": feature,
-            "serializationVersion": f["serializationVersion"], "sourceMicroversion": f["sourceMicroversion"]}
-    if existing:
-        feature["featureId"] = existing[0]["featureId"]
-        r = c.post(f"{BASE}/features/featureid/{existing[0]['featureId']}", body)
-    else:
-        r = c.post(f"{BASE}/features", body)
-    STATE["features"] = None
+    r = write_feature(BASE, feature, _TREE, client=c)
     print("%-100s %s" % (feature["name"][:100], r.get("featureState", {}).get("featureStatus")))
     return r["feature"]["featureId"]
-
 
 def feature(name, ftype, params, ns=""):
     f = {"btType": "BTMFeature-134", "featureType": ftype, "name": name, "parameters": params}
@@ -328,7 +320,7 @@ move("M20 connector picked by its vertex, points off, named 'M20 MC' -> connecto
 l11 = sketch("M11 path: two lines with a gap", TOP, polyline("l", [(11000, 0), (11100, 0)]) + polyline("m", [(11200, 0), (11300, 0)]))
 c11 = cube("M11 cube at (11000, 0, 0)", 11000, 0)
 tmp = move("M11 temporary", body(c11), edges(l11), "50 mm")
-status = c.get(f"{BASE}/features")["featureStates"][tmp]["featureStatus"]
-c._request("DELETE", f"{BASE}/features/featureid/{tmp}")
+status = feature_status(BASE, _TREE, tmp, client=c)   # from the insert's own response
+delete_feature(BASE, tmp, _TREE, client=c)
 print("M11 disconnected edges -> %s (%s)" % (status, "PASS" if status == "ERROR" else "FAIL: expected ERROR"))
 print("studio", E)

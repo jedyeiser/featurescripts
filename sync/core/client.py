@@ -1,11 +1,44 @@
-import os
 """HTTP client wrapper for Onshape API."""
 
+import json
+import os
+import re
+import sys
+import time
+from pathlib import Path
 from typing import Any
 
 import requests
 
 from .auth import OnshapeAuth
+
+# ---------------------------------------------------------------------------------------------------------------------
+# API budget (CLAUDE.md "Onshape API budget"). Every REST call goes through OnshapeClient._request, which
+#   * appends one line to the call ledger (.api-calls.jsonl at the repo root, or $ONSHAPE_CALL_LOG):
+#       {"t": epoch, "caller": <$ONSHAPE_CALLER or the script name>, "m": METHOD, "p": path with ids as {id}, "s": status}
+#     (status 0 = the request never got a response; 4xx/5xx are logged but do not count against the quota)
+#   * refuses to send once this process has made $ONSHAPE_CALL_CAP calls (unset = no cap). Give every agent run a cap.
+# Report: python -m sync.core.callstats [--days N]
+# ---------------------------------------------------------------------------------------------------------------------
+_ID = re.compile(r"/[0-9a-f]{24}(?=/|$)")
+_CALLS_THIS_PROCESS = 0
+
+
+def _ledger_path() -> Path:
+    return Path(os.environ.get("ONSHAPE_CALL_LOG") or Path(__file__).resolve().parents[2] / ".api-calls.jsonl")
+
+
+def _caller() -> str:
+    return os.environ.get("ONSHAPE_CALLER") or Path(sys.argv[0] or "python").stem or "python"
+
+
+def _log_call(method: str, path: str, status: int) -> None:
+    line = json.dumps({"t": round(time.time(), 1), "caller": _caller(), "m": method, "p": _ID.sub("/{id}", path), "s": status})
+    try:
+        with open(_ledger_path(), "a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
+    except OSError:
+        pass   # a read-only checkout must not break a call; the in-process cap still works
 
 
 class OnshapeAPIError(Exception):
@@ -31,6 +64,7 @@ class OnshapeClient:
         """
         self.auth = auth or OnshapeAuth()
         self.session = requests.Session()
+        self._document_info: dict[str, dict[str, Any]] = {}
 
     def _request(
         self,
@@ -64,6 +98,13 @@ class OnshapeClient:
 
         url = self.auth.get_full_url(path, query_params)
 
+        global _CALLS_THIS_PROCESS
+        cap = os.environ.get("ONSHAPE_CALL_CAP")
+        if cap and _CALLS_THIS_PROCESS >= int(cap):
+            raise OnshapeAPIError(f"ONSHAPE_CALL_CAP={cap} reached; refusing {method} {path} (raise the cap deliberately, see CLAUDE.md API budget)")
+        _CALLS_THIS_PROCESS += 1
+
+        status = 0
         try:
             response = self.session.request(
                 method=method,
@@ -74,6 +115,7 @@ class OnshapeClient:
                 timeout=float(os.environ.get("FS_SYNC_TIMEOUT", "30")),
             )
 
+            status = response.status_code
             if response.status_code >= 400:
                 error_msg = f"API error {response.status_code}: {response.text[:500]}"
                 raise OnshapeAPIError(error_msg, response.status_code, response)
@@ -86,6 +128,8 @@ class OnshapeClient:
 
         except requests.RequestException as e:
             raise OnshapeAPIError(f"Request failed: {e}") from e
+        finally:
+            _log_call(method, path, status)
 
     def get(
         self,
@@ -265,16 +309,22 @@ class OnshapeClient:
         Returns:
             Document metadata including name, defaultWorkspace, etc.
         """
+        # API budget: document metadata (name, default workspace, parent folder) is read once per process; the
+        # sync commands ask for it per project, per reference and per push.
+        if document_id in self._document_info:
+            return self._document_info[document_id]
         # Try without /d/ prefix first (works on enterprise instances)
         path = f"/api/{self.API_VERSION}/documents/{document_id}"
         try:
-            return self.get(path)
+            info = self.get(path)
         except OnshapeAPIError as e:
             # If that fails, try with /d/ prefix (public Onshape)
-            if e.status_code == 404:
-                path = f"/api/{self.API_VERSION}/documents/d/{document_id}"
-                return self.get(path)
-            raise
+            if e.status_code != 404:
+                raise
+            path = f"/api/{self.API_VERSION}/documents/d/{document_id}"
+            info = self.get(path)
+        self._document_info[document_id] = info
+        return info
 
     def get_default_workspace(self, document_id: str) -> str:
         """Get the default workspace ID for a document.
