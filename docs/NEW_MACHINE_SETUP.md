@@ -30,6 +30,49 @@ The repo is PUBLIC -- never commit `.env`, memory files, or browser sessions.
 7. Smoke test, no live API calls needed: `python fscheck.py driven_offset/*.fs`.
    Remember the API budget (CLAUDE.md): 10k calls/user/yr, shared by both machines.
 
+## Where each file from the jump drive goes (D:\Laptop_Transfer\featurescripts\)
+| On the drive | Put it at | Rename? |
+|---|---|---|
+| `dot-env.SECRET.txt` | `C:\Users\jed.yeiser\Documents\featurescripts\.env` (repo root, next to `pyproject.toml`) | Yes -> exactly `.env`. Turn on Explorer > View > Show > File name extensions so it does not become `.env.txt`. |
+| `.sync-state.json` (optional) | repo root | no |
+| `claude_memory\*` (the contents) | `C:\Users\jed.yeiser\.claude\projects\C--Users-jed-yeiser-Documents-featurescripts\memory\` | no (rename the project folder if username/path differ) |
+| `claude_global\settings.json` | `C:\Users\jed.yeiser\.claude\settings.json` | no; merge into the installer's file |
+
+No Windows environment variables are needed: credentials come from `.env` via python-dotenv. Optional per-run variables
+(`ONSHAPE_CALL_CAP`, `ONSHAPE_CALLER`, `FS_SYNC_TIMEOUT`) are set on the command line.
+Check: `venv\Scripts\python.exe -m sync.main verify-auth` from the repo root.
+
+## Software to install (the new machine has only Python)
+Required for the core workflow (FeatureScript edit -> fscheck -> push to Onshape -> read notices):
+1. **Git for Windows** (2.50 here). Then `git config --global user.name jedyeiser` and set your email.
+2. **GitHub CLI** `gh` (2.79 here), then `gh auth login`. Handy for PRs/visibility checks; plain `git push` also works via Git Credential Manager.
+3. **Claude Code** (2.1.x here). Sign in once.
+4. **VS Code** (+ extensions below).
+5. **Node.js 20 LTS** (v20.19 / npm 10.8): required because `.mcp.json` launches the Playwright MCP server through `npx @playwright/mcp@latest`.
+6. **Python**: you have 3.14. A venv is built from whichever Python creates it; it does not choose a version for you. The repo says
+   `requires-python >=3.10` and this laptop ran 3.13.2. 3.14 should work, but if `pip install` fails building a wheel
+   (numpy/scipy/lxml/pillow), install 3.13 alongside and use `py -3.13 -m venv venv`.
+7. After the venv: `pip install -e ".[dev]"`, then `venv\Scripts\python.exe -m playwright install chromium`
+   (the sync `notices` / `--check` commands drive headless Chromium). Playwright is a declared dependency, but on the old laptop it was
+   actually installed globally, not in the venv -- verify `venv\Scripts\python.exe -c "import playwright"` works.
+
+Optional / only for some work:
+- `pip install -r requirements-docs.txt`: explainers, decks, figures, contact sheets (matplotlib, numpy, scipy, python-pptx, pillow, CairoSVG...).
+  These are NOT in pyproject.toml. CairoSVG may need the Cairo DLL on Windows; if SVG->PNG fails, install the GTK3 runtime or skip it.
+- **Pandoc** (3.5 here): docs/markdown conversion.
+- Not installed on the old laptop either, so not needed: LibreOffice, ffmpeg, ImageMagick, Graphviz, uv.
+- eocProductData only (other agent's area): Node for the React/Vite frontends, its own venv (Django 5.2 + DRF), Docker/Postgres tooling.
+
+VS Code extensions worth installing for this repo:
+`anthropic.claude-code`, `ms-python.python`, `ms-python.vscode-pylance`, `ms-python.debugpy`, `github.vscode-pull-request-github`,
+`mechatroner.rainbow-csv` (materialData / test CSVs), `ms-toolsai.jupyter` (the .ipynb files in Documents),
+`humao.rest-client` or `rangav.vscode-thunder-client` (Onshape REST probing).
+There is no FeatureScript extension: `.fs` files are edited as plain text and tested in Onshape.
+For eocProductData add: `dbaeumer.vscode-eslint`, `esbenp.prettier-vscode`, `bradlc.vscode-tailwindcss`, `dsznajder.es7-react-js-snippets`,
+`bigonesystems.django`, `maxchamps.django-commands`, `bibhasdn.django-html`, `ms-azuretools.vscode-containers`, `ms-ossdata.vscode-pgsql`.
+Skip (installed on the old laptop but not needed): `saoudrizwan.claude-dev` (Cline, a different agent), `iceworks-team.iceworks-refactor`,
+`christian-kohler.path-intellisense`, `qwtel.sqlite-viewer`, remote-containers.
+
 ## Things that bite on a new machine
 - `settings.local.json` allow-rules hardcode `venv/Scripts/python.exe`; keep the venv at `venv\`.
 - Windows line endings: git warns "LF will be replaced by CRLF". Consider `git config core.autocrlf true` (or add a `.gitattributes`) so diffs stay clean.
