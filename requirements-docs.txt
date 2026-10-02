@@ -1,0 +1,13 @@
+# Optional: only for docs/figure/deck/contact-sheet scripts (docs/tooling, driven_offset/docs/img/src,
+# devtools/xsection, devtools/onshape/templates). Not needed for sync, fscheck or live tests.
+# Versions are those on the 2026-10 laptop.
+matplotlib>=3.10
+numpy>=2.3
+scipy>=1.16
+python-pptx>=1.0
+pillow>=11
+openpyxl>=3.1
+pandas>=2.3
+lxml>=6
+fonttools>=4.56
+CairoSVG>=2.9
