@@ -48,7 +48,7 @@ Required for the core workflow (FeatureScript edit -> fscheck -> push to Onshape
 2. **GitHub CLI** `gh` (2.79 here), then `gh auth login`. Handy for PRs/visibility checks; plain `git push` also works via Git Credential Manager.
 3. **Claude Code** (2.1.x here). Sign in once.
 4. **VS Code** (+ extensions below).
-5. **Node.js 20 LTS** (v20.19 / npm 10.8): required because `.mcp.json` launches the Playwright MCP server through `npx @playwright/mcp@latest`.
+5. **Node.js 22.23.1** (eocProductData needs it; featurescripts only needs Node >= 20, so 22 covers both. The old laptop had 20.19): required here because `.mcp.json` launches the Playwright MCP server through `npx @playwright/mcp@latest`.
 6. **Python**: you have 3.14. A venv is built from whichever Python creates it; it does not choose a version for you. The repo says
    `requires-python >=3.10` and this laptop ran 3.13.2. 3.14 should work, but if `pip install` fails building a wheel
    (numpy/scipy/lxml/pillow), install 3.13 alongside and use `py -3.13 -m venv venv`.
