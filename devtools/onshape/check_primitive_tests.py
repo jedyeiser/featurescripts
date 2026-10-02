@@ -297,7 +297,9 @@ def compare(case, a, b, tol, dx=0.0, dz=0.0, sign=1.0):
                 va = sign * va + dx
             if field == "s" and isinstance(va, float):
                 va = sign * va + ds
-            if field == "z" and isinstance(va, float):
+            # baselineHeight is the baseline's own z in the datum frame (2026-10-01; was height above the FCP - ACP
+            # chord, 0 at FCP / ACP), so a datum moved in z shifts it like z.
+            if field in ("z", "baselineHeight") and isinstance(va, float):
                 va = va + dz
             if isinstance(va, float) and not near(va, vb, tol):
                 bad.append("data[%d].%s %s vs %s" % (i, field, va, vb))

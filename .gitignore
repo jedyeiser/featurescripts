@@ -55,3 +55,6 @@ build/
 
 # Onshape call ledger (sync/core/client.py)
 .api-calls.jsonl
+
+# Claude agent worktrees (gitlinks break fresh clones)
+.claude/worktrees/
