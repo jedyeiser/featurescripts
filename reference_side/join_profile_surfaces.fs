@@ -151,7 +151,7 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         const inside = offsetProfile(context, id + "insideOffset", definition.insideProfile, definition.insideOffset, definition.insidePoint);
 
         // 2. Splits (Split+ with the inside point; the split tools are the user's and are kept).
-        const insideSplit = splitProfile(context, id + "insideSplit", inside, definition.startSplit, definition.endSplit, definition.insidePoint, SplitPlusKeep.INSIDE);
+        const insideSplit = splitProfileAtSeams(context, id + "insideSplit", inside, definition.startSplit, definition.endSplit, definition.insidePoint, SplitPlusKeep.INSIDE);
         const insideStart = insideSplit.startCut;
         const insideEnd = insideSplit.endCut;
         const insideFaces = frozenAndTracked(context, qOwnedByBody(insideSplit.inside, EntityType.FACE));
@@ -163,7 +163,7 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         if (same)
         {
             const outside = offsetProfile(context, id + "outsideOffset", definition.outsideProfile, definition.outsideOffset, definition.insidePoint);
-            const outsideSplit = splitProfile(context, id + "outsideSplit", outside, definition.startSplit, definition.endSplit, definition.insidePoint, SplitPlusKeep.OUTSIDE);
+            const outsideSplit = splitProfileAtSeams(context, id + "outsideSplit", outside, definition.startSplit, definition.endSplit, definition.insidePoint, SplitPlusKeep.OUTSIDE);
             outsideStart = outsideSplit.startCut;
             outsideEnd = outsideSplit.endCut;
             startOutsideFaces = frozenAndTracked(context, qOwnedByBody(outsideSplit.start, EntityType.FACE));
@@ -173,9 +173,9 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         {
             // One tool each: its cut is Split+'s startCut, the piece beyond it Split+'s start region.
             const startOut = offsetProfile(context, id + "startOffset", definition.startProfile, definition.startOffset, definition.insidePoint);
-            const startSplit = splitProfile(context, id + "startSplit", startOut, definition.startSplit, qNothing(), definition.insidePoint, SplitPlusKeep.OUTSIDE);
+            const startSplit = splitProfileAtSeams(context, id + "startSplit", startOut, definition.startSplit, qNothing(), definition.insidePoint, SplitPlusKeep.OUTSIDE);
             const endOut = offsetProfile(context, id + "endOffset", definition.endProfile, definition.endOffset, definition.insidePoint);
-            const endSplit = splitProfile(context, id + "endSplit", endOut, definition.endSplit, qNothing(), definition.insidePoint, SplitPlusKeep.OUTSIDE);
+            const endSplit = splitProfileAtSeams(context, id + "endSplit", endOut, definition.endSplit, qNothing(), definition.insidePoint, SplitPlusKeep.OUTSIDE);
             outsideStart = startSplit.startCut;
             outsideEnd = endSplit.startCut;
             startOutsideFaces = frozenAndTracked(context, qOwnedByBody(startSplit.start, EntityType.FACE));
@@ -204,13 +204,15 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
 
         // 4. Merge (always: joining is the point), then the fillets on the merged joint edges.
         var mergeFailed = false;
+        var mergeError = "";
         try silent
         {
             opBoolean(context, id + "merge", { "tools" : qUnion(evaluateQuery(context, pieces)), "operationType" : BooleanOperationType.UNION });
         }
-        catch
+        catch (error)
         {
             mergeFailed = true;
+            mergeError = toString(error);
         }
         const result = qUnion(evaluateQuery(context, qOwnerBody(qUnion([insideFaces, startOutsideFaces, endOutsideFaces, startLoftFaces, endLoftFaces]))));
         const jointEdge = function(key is string) returns Query
@@ -230,6 +232,7 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         if (mergeFailed || size(evaluateQuery(context, result)) != 1 || size(openJoints) > 0)
         {
             throw regenError("The pieces did not join into one surface" ~ (size(openJoints) > 0 ? ": open at the " ~ join(openJoints, ", ") : "")
+                    ~ (mergeFailed ? " (the merge failed: " ~ mergeError ~ ")" : "")
                     ~ ". A loft edge does not meet its cut edge -- check that the profiles reach the splits cleanly.", ["startSplit"]);
         }
         if (definition.startFillet)
@@ -358,4 +361,200 @@ function filletJoint(context is Context, id is Id, insideEdge is Query, outsideE
 function frozenAndTracked(context is Context, q is Query) returns Query
 {
     return qUnion([qUnion(evaluateQuery(context, q)), startTracking(context, q)]);
+}
+
+/**
+ * A split tool this close to an edge of a profile counts as lying ON it. Onshape's modelling tolerance
+ * is 0.01 mm; a cut closer than that to a seam leaves sliver faces (2026-10-06: a mate connector 0.0025 mm
+ * and 0.0083 mm off the inside profile's seams cut slivers of 0.04 and 0.15 mm2) or, exactly on a seam,
+ * creates no cut edge at all, and the joints then never close.
+ */
+const SEAM_TOLERANCE = 0.05 * millimeter;
+
+/**
+ * splitProfile, except where a split tool lies on an edge the profile already has (the bump stations of a
+ * profile built in pieces are such seams). Cutting there makes no edge, or a sliver, so the seam itself is
+ * the cut: every face is placed on its side of the tools, each kept region is extracted as its own sheet body,
+ * and the cut is that body's one-sided edge in the tool. A split that is not on a seam goes through the
+ * ordinary opSplitPart. Returns the same keys as splitProfile (inside, start, end, startCut, endCut).
+ *
+ * Seam handling needs every tool to be a plane (mate connector, planar face or plane): a tool of another shape on a
+ * seam is an error that names it.
+ */
+function splitProfileAtSeams(context is Context, id is Id, target is Query, startTool is Query, endTool is Query,
+    insidePoint is Query, keep is SplitPlusKeep) returns map
+{
+    const tools = isQueryEmpty(context, endTool) ? [startTool] : [startTool, endTool];
+    const edges = evaluateQuery(context, qOwnedByBody(target, EntityType.EDGE));
+    var planes = [];
+    var onSeam = [];
+    for (var tool in tools)
+    {
+        const cutPlane = toolPlane(context, tool);
+        var found = false;
+        for (var edge in edges)
+        {
+            if (edgeLiesOnTool(context, edge, tool, cutPlane))
+            {
+                found = true;
+                break;
+            }
+        }
+        planes = append(planes, cutPlane);
+        onSeam = append(onSeam, found);
+    }
+    if (!isIn(true, onSeam))
+    {
+        return splitProfile(context, id, target, startTool, endTool, insidePoint, keep);
+    }
+    for (var cutPlane in planes)
+    {
+        if (cutPlane == undefined)
+        {
+            throw regenError("A split lies on an existing edge of a profile, and it is not a plane or mate connector, so it cannot be applied there. "
+                ~ "Move the split off the edge (more than " ~ roundToPrecision(SEAM_TOLERANCE / millimeter, 2) ~ " mm) or use a mate connector or plane.", ["startSplit", "endSplit"]);
+        }
+    }
+
+    // Which side of each tool is inside.
+    const point = insidePointOf(context, insidePoint);
+    var insideSigns = [];
+    for (var cutPlane in planes)
+    {
+        insideSigns = append(insideSigns, sideOfPlane(point, cutPlane));
+    }
+
+    // Splits only where the tool is not on a seam; every piece is kept.
+    var pieces = qUnion([target, startTracking(context, target)]);
+    var tempPlanes = [];
+    for (var i = 0; i < size(tools); i += 1)
+    {
+        if (onSeam[i])
+        {
+            continue;
+        }
+        const planeId = id + ("plane" ~ i);
+        opPlane(context, planeId, { "plane" : planes[i] });
+        tempPlanes = append(tempPlanes, qCreatedBy(planeId, EntityType.BODY));
+        const splitId = id + ("split" ~ i);
+        opSplitPart(context, splitId, {
+                    "targets" : pieces,
+                    "tool" : qCreatedBy(planeId, EntityType.FACE),
+                    "keepTools" : true,
+                    "keepType" : SplitOperationKeepType.KEEP_ALL
+                });
+        pieces = qUnion([pieces, qCreatedBy(splitId, EntityType.BODY)]);
+    }
+
+    // Every face in its region: inside, beyond the start tool, beyond the end tool (beyond both: dropped).
+    const pieceBodies = qUnion(evaluateQuery(context, pieces));
+    var regionFaces = { "inside" : [], "start" : [], "end" : [] };
+    for (var face in evaluateQuery(context, qOwnedByBody(pieceBodies, EntityType.FACE)))
+    {
+        const centroid = evApproximateCentroid(context, { "entities" : face });
+        const onFace = evDistance(context, { "side0" : centroid, "side1" : face }).sides[1].point;
+        var beyond = [];
+        for (var i = 0; i < size(planes); i += 1)
+        {
+            beyond = append(beyond, sideOfPlane(onFace, planes[i]) != insideSigns[i]);
+        }
+        if (size(planes) == 2 && beyond[0] && beyond[1])
+        {
+            continue;
+        }
+        const region = beyond[0] ? "start" : ((size(planes) == 2 && beyond[1]) ? "end" : "inside");
+        regionFaces[region] = append(regionFaces[region], face);
+    }
+
+    // Each kept region becomes its own sheet body.
+    var result = { "inside" : qNothing(), "start" : qNothing(), "end" : qNothing(), "startCut" : qNothing(), "endCut" : qNothing() };
+    for (var region in ["inside", "start", "end"])
+    {
+        const wanted = region == "inside" ? keep != SplitPlusKeep.OUTSIDE : keep != SplitPlusKeep.INSIDE;
+        if (!wanted || size(regionFaces[region]) == 0)
+        {
+            continue;
+        }
+        const extractId = id + ("extract" ~ region);
+        opExtractSurface(context, extractId, { "faces" : qUnion(regionFaces[region]), "tangentPropagation" : false });
+        result[region] = qCreatedBy(extractId, EntityType.BODY);
+    }
+
+    // The cut of each tool: the kept piece's one-sided edge(s) in the tool (the inside piece, or the outside one when keeping outside).
+    for (var k = 0; k < size(tools); k += 1)
+    {
+        const cutBody = keep == SplitPlusKeep.OUTSIDE ? result[k == 0 ? "start" : "end"] : result.inside;
+        var cutEdges = [];
+        for (var edge in evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(cutBody, EntityType.EDGE), EdgeTopology.ONE_SIDED)))
+        {
+            if (edgeLiesOnTool(context, edge, tools[k], planes[k]))
+            {
+                cutEdges = append(cutEdges, edge);
+            }
+        }
+        result[k == 0 ? "startCut" : "endCut"] = qUnion(cutEdges);
+    }
+
+    opDeleteBodies(context, id + "deletePieces", { "entities" : qUnion(concatenateArrays([evaluateQuery(context, pieceBodies), tempPlanes])) });
+    return result;
+}
+
+/** The plane a split tool cuts on: a mate connector's XY plane, or one planar face / plane. undefined for any other tool. */
+function toolPlane(context is Context, tool is Query)
+{
+    if (!isQueryEmpty(context, qBodyType(tool, BodyType.MATE_CONNECTOR)))
+    {
+        return plane(evMateConnector(context, { "mateConnector" : tool }));
+    }
+    const faces = evaluateQuery(context, qUnion([qEntityFilter(tool, EntityType.FACE),
+                    qOwnedByBody(qEntityFilter(tool, EntityType.BODY), EntityType.FACE)]));
+    if (size(faces) != 1)
+    {
+        return undefined;
+    }
+    var result = undefined;
+    try silent
+    {
+        result = evPlane(context, { "face" : faces[0] });
+    }
+    return result;
+}
+
+/** Distance from a point to a tool: to its plane when it has one, else to the tool itself. */
+function distanceToTool(context is Context, point is Vector, tool is Query, cutPlane) returns ValueWithUnits
+{
+    if (cutPlane != undefined)
+    {
+        return abs(dot(point - cutPlane.origin, cutPlane.normal));
+    }
+    return evDistance(context, { "side0" : point, "side1" : tool }).distance;
+}
+
+/** An edge lies on a tool when five points along it are all within SEAM_TOLERANCE of it. */
+function edgeLiesOnTool(context is Context, edge is Query, tool is Query, cutPlane) returns boolean
+{
+    for (var line in evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 0.25, 0.5, 0.75, 1] }))
+    {
+        if (distanceToTool(context, line.origin, tool, cutPlane) > SEAM_TOLERANCE)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** Which side of a plane a point is on: 1 in front, -1 behind (and on it). */
+function sideOfPlane(point is Vector, cutPlane is Plane) returns number
+{
+    return dot(point - cutPlane.origin, cutPlane.normal) > 0 * meter ? 1 : -1;
+}
+
+/** The inside point's position: a mate connector's origin, or a vertex. */
+function insidePointOf(context is Context, reference is Query) returns Vector
+{
+    if (!isQueryEmpty(context, qBodyType(reference, BodyType.MATE_CONNECTOR)))
+    {
+        return evMateConnector(context, { "mateConnector" : reference }).origin;
+    }
+    return evVertexPoint(context, { "vertex" : qEntityFilter(reference, EntityType.VERTEX) });
 }
