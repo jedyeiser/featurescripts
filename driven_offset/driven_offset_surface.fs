@@ -1999,9 +1999,9 @@ function sheetCurvature(context is Context, sheet is Query) returns number
     var curvature = 1;
     try silent
     {
-        const box = evBox3d(context, { "topology" : face });
-        const nearest = evDistance(context, { "side0" : (box.minCorner + box.maxCorner) / 2, "side1" : face });
-        const principal = evFaceCurvature(context, { "face" : face, "parameters" : [nearest.sides[1].parameter] })[0];
+        const faceBox = evBox3d(context, { "topology" : face });
+        const nearest = evDistance(context, { "side0" : (faceBox.minCorner + faceBox.maxCorner) / 2, "side1" : face });
+        const principal = evFaceCurvatures(context, { "face" : face, "parameters" : [nearest.sides[1].parameter] })[0];
         curvature = max([abs(principal.minCurvature * meter), abs(principal.maxCurvature * meter)]);
     }
     return curvature;
