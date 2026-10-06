@@ -1,0 +1,367 @@
+- generic [ref=f8e5]:
+  - navigation [ref=f8e6]:
+    - generic [ref=f8e7]:
+      - link [ref=f8e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f8e11]
+      - generic [ref=f8e13] [cursor=pointer]
+    - generic [ref=f8e16]:
+      - generic [ref=f8e18]:
+        - generic [ref=f8e19]: RD 20OEF 28 (K034_SZ03) 177
+        - generic [ref=f8e20]: Main
+      - generic [ref=f8e22] [cursor=pointer]
+      - link "OEF (K034_SZ03) - Orchid Explosion by Fournier" [ref=f8e26] [cursor=pointer]:
+        - /url: /documents?nodeId=5a27b22968e779c46328e5fe&resourceType=folder
+    - generic [ref=f8e30]:
+      - generic [ref=f8e41] [cursor=pointer]
+      - button "Notifications" [ref=f8e46] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f8e54]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f8e57] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f8e62] [cursor=pointer]
+      - button "Share" [ref=f8e66] [cursor=pointer]
+      - generic "Help menu" [ref=f8e68] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f8e72] [cursor=pointer]
+  - generic [ref=f8e82]:
+    - generic [ref=f8e84]:
+      - generic [ref=f8e85]:
+        - generic [ref=f8e86]:
+          - generic [ref=f8e87] [cursor=pointer]
+          - generic [ref=f8e90] [cursor=pointer]
+          - generic [ref=f8e93] [cursor=pointer]
+          - generic [ref=f8e96] [cursor=pointer]
+          - generic [ref=f8e99] [cursor=pointer]
+          - generic [ref=f8e102] [cursor=pointer]
+          - generic [ref=f8e105] [cursor=pointer]
+          - generic [ref=f8e108] [cursor=pointer]
+        - generic [ref=f8e112] [cursor=pointer]
+      - generic [ref=f8e116] [cursor=pointer]
+    - generic [ref=f8e123]:
+      - generic [ref=f8e130]:
+        - generic [ref=f8e142]:
+          - generic [ref=f8e143]: Sketch
+          - generic [ref=f8e155]:
+            - generic [ref=f8e156] [cursor=pointer]
+            - generic [ref=f8e160] [cursor=pointer]
+            - generic [ref=f8e164] [cursor=pointer]
+            - generic [ref=f8e168] [cursor=pointer]
+            - generic [ref=f8e173]:
+              - generic [ref=f8e174] [cursor=pointer]
+              - generic [ref=f8e178] [cursor=pointer]
+          - generic [ref=f8e184]:
+            - generic [ref=f8e186]:
+              - generic [ref=f8e187] [cursor=pointer]
+              - generic [ref=f8e191] [cursor=pointer]
+            - generic [ref=f8e194] [cursor=pointer]
+            - generic [ref=f8e199]:
+              - generic [ref=f8e200] [cursor=pointer]
+              - generic [ref=f8e204] [cursor=pointer]
+            - generic [ref=f8e207] [cursor=pointer]
+            - generic [ref=f8e211] [cursor=pointer]
+            - generic [ref=f8e215] [cursor=pointer]
+            - generic [ref=f8e219] [cursor=pointer]
+          - generic [ref=f8e226]:
+            - generic [ref=f8e228]:
+              - generic [ref=f8e229] [cursor=pointer]
+              - generic [ref=f8e233] [cursor=pointer]
+            - generic [ref=f8e236] [cursor=pointer]
+          - generic [ref=f8e243]:
+            - generic [ref=f8e244] [cursor=pointer]
+            - generic [ref=f8e248] [cursor=pointer]
+            - generic [ref=f8e253]:
+              - generic [ref=f8e254] [cursor=pointer]
+              - generic [ref=f8e258] [cursor=pointer]
+            - generic [ref=f8e261] [cursor=pointer]
+          - generic [ref=f8e268]:
+            - generic [ref=f8e269] [cursor=pointer]
+            - generic [ref=f8e273] [cursor=pointer]
+            - generic [ref=f8e277] [cursor=pointer]
+            - generic [ref=f8e281] [cursor=pointer]
+          - generic [ref=f8e289]:
+            - generic [ref=f8e290] [cursor=pointer]
+            - generic [ref=f8e294] [cursor=pointer]
+          - generic [ref=f8e301]:
+            - generic [ref=f8e302] [cursor=pointer]
+            - generic [ref=f8e308] [cursor=pointer]
+          - generic [ref=f8e315] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f8e322] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f8e323]:
+            - generic [ref=f8e324]: alt/⌥
+            - generic [ref=f8e325]: c
+      - generic [ref=f8e327]:
+        - generic [ref=f8e328]: Opening Create_SW_Rout…
+        - generic [ref=f8e329]:
+          - generic [ref=f8e332]:
+            - generic [ref=f8e334]:
+              - generic [ref=f8e335]:
+                - generic [ref=f8e337]:
+                  - button [ref=f8e339] [cursor=pointer]
+                  - textbox "Filter by name or type" [ref=f8e344]
+                - generic [ref=f8e345]:
+                  - button [ref=f8e346] [cursor=pointer]
+                  - generic [ref=f8e349]: Features (101)
+                  - button [disabled] [ref=f8e350]
+                  - button [disabled] [ref=f8e353]
+                  - button [ref=f8e356] [cursor=pointer]
+              - generic [ref=f8e360]:
+                - generic [ref=f8e361]:
+                  - generic [ref=f8e363]:
+                    - generic [ref=f8e364] [cursor=pointer]
+                    - generic [ref=f8e367]: Default geometry
+                  - generic [ref=f8e369]: Origin
+                  - generic [ref=f8e379]: Top
+                  - generic [ref=f8e389]: Front
+                  - generic [ref=f8e399]: Right
+                  - generic [ref=f8e410]:
+                    - generic [ref=f8e412] [cursor=pointer]
+                    - generic [ref=f8e415]: Setup (6)
+                  - generic [ref=f8e420]: Derive Footprint
+                  - generic [ref=f8e433]: "#REF_fpt_edges"
+                  - generic [ref=f8e442]:
+                    - generic [ref=f8e444] [cursor=pointer]
+                    - generic [ref=f8e447]: Footprint Scaling (4)
+                  - generic [ref=f8e453]:
+                    - generic [ref=f8e455] [cursor=pointer]
+                    - generic [ref=f8e458]: Ref Wire Creation (8)
+                  - generic [ref=f8e464]:
+                    - generic [ref=f8e466] [cursor=pointer]
+                    - generic [ref=f8e469]: Profiles (7)
+                  - generic [ref=f8e475]:
+                    - generic [ref=f8e477] [cursor=pointer]
+                    - generic [ref=f8e480]: Tip_Tail_Locs (8)
+                  - generic [ref=f8e486]:
+                    - generic [ref=f8e488] [cursor=pointer]
+                    - generic [ref=f8e491]: Baseline (8)
+                  - generic [ref=f8e497]:
+                    - generic [ref=f8e499] [cursor=pointer]
+                    - generic [ref=f8e502]: Create_SW_Shelf (5)
+                  - generic [ref=f8e508]:
+                    - generic [ref=f8e510] [cursor=pointer]
+                    - generic [ref=f8e513]: Profile/Periphery Surfaces (11)
+                  - generic [ref=f8e519]:
+                    - generic [ref=f8e521] [cursor=pointer]
+                    - generic [ref=f8e524]: Part_Trim_Surfaces (9)
+                  - generic [ref=f8e530]:
+                    - generic [ref=f8e532] [cursor=pointer]
+                    - generic [ref=f8e535]: SW_Rout_Surf (9)
+                  - generic [ref=f8e540]: Copy_FPT
+                  - generic [ref=f8e550]: SW_Flange_Profile
+                  - generic [ref=f8e564]: SW_Bottom_Profile
+                  - generic [ref=f8e578]: Rout_Top_Offset
+                  - generic [ref=f8e592]: Create_SW_Rout
+                  - generic [ref=f8e612]: Delete_Rout_Offsets
+                  - generic [ref=f8e622]: Revolve 1
+                  - generic [ref=f8e632]: Revolve 2
+                  - generic [ref=f8e642]: Mutual Trim+ 1
+                  - generic [ref=f8e657]:
+                    - generic [ref=f8e659] [cursor=pointer]
+                    - generic [ref=f8e662]: VOLUME (5)
+                  - generic [ref=f8e667]: Part_Ref_Geo
+                  - generic [ref=f8e675]: KartonFormRefGeo
+                  - generic [ref=f8e683]: Name_Volume
+                  - generic [ref=f8e696]:
+                    - generic [ref=f8e698] [cursor=pointer]
+                    - generic [ref=f8e701]: Export_Query_Variables (11)
+                  - generic [ref=f8e706]: Generate_Primative
+                - list
+            - generic [ref=f8e722]:
+              - generic [ref=f8e724]:
+                - generic [ref=f8e726] [cursor=pointer]
+                - generic [ref=f8e729]: Parts (0)
+              - generic [ref=f8e732]:
+                - generic [ref=f8e734] [cursor=pointer]
+                - generic [ref=f8e737]: Surfaces (23)
+              - generic [ref=f8e740]:
+                - generic [ref=f8e742] [cursor=pointer]
+                - generic [ref=f8e745]: Curves (17)
+          - generic [ref=f8e748]:
+            - generic [ref=f8e750] [cursor=pointer]
+            - generic [ref=f8e754]:
+              - button [ref=f8e757] [cursor=pointer]
+              - generic [ref=f8e761] [cursor=pointer]
+            - generic [ref=f8e766]:
+              - generic [ref=f8e767] [cursor=pointer]
+              - generic [ref=f8e771] [cursor=pointer]
+              - generic [ref=f8e775] [cursor=pointer]
+              - generic [ref=f8e779] [cursor=pointer]
+              - generic [ref=f8e783] [cursor=pointer]
+              - generic [ref=f8e787] [cursor=pointer]
+              - generic [ref=f8e790] [cursor=pointer]
+        - generic [ref=f8e793]:
+          - dialog [ref=f8e794]:
+            - generic [ref=f8e795]: Create_SW_Rout
+          - generic [ref=f8e806]:
+            - list [ref=f8e807]:
+              - generic [ref=f8e808]:
+                - generic [ref=f8e809]:
+                  - generic [ref=f8e812]:
+                    - generic [ref=f8e813]: Surface
+                    - generic [ref=f8e815]:
+                      - generic "Select box activate" [ref=f8e817] [cursor=pointer]:
+                        - generic [ref=f8e818]: Loft between profiles
+                        - text: 
+                      - button "Select box focus" [ref=f8e821] [cursor=pointer]
+                  - generic [ref=f8e824]:
+                    - generic [ref=f8e825]: Name
+                    - textbox [ref=f8e826]: SW_ROUT_SURF
+                  - generic [ref=f8e833]:
+                    - generic [ref=f8e834]: Offset edges
+                    - list [ref=f8e836]:
+                      - listitem [ref=f8e837]:
+                        - generic [ref=f8e838]: periphery_wire_3d
+                        - generic [ref=f8e840] [cursor=pointer]: ×
+                  - generic [ref=f8e851]:
+                    - generic [ref=f8e852]: Zero point
+                    - list [ref=f8e854]:
+                      - listitem [ref=f8e855]:
+                        - generic [ref=f8e856]: MRS
+                        - generic [ref=f8e858] [cursor=pointer]: ×
+                  - generic [ref=f8e869]:
+                    - generic [ref=f8e870] [cursor=pointer]: World X
+                    - generic [ref=f8e872] [cursor=pointer]: Along source
+                    - generic [ref=f8e874] [cursor=pointer]: Along reference
+                - generic [ref=f8e877]:
+                  - generic [ref=f8e878]:
+                    - generic [ref=f8e880] [cursor=pointer]
+                    - generic [ref=f8e884] [cursor=pointer]: Offset spacing definition
+                  - generic [ref=f8e885]:
+                    - generic [ref=f8e888]:
+                      - generic [ref=f8e895]:
+                        - generic [ref=f8e896]: Reference wire
+                        - list [ref=f8e898]:
+                          - listitem [ref=f8e899]:
+                            - generic [ref=f8e900]: "#refWire"
+                            - generic [ref=f8e902] [cursor=pointer]: ×
+                      - generic [ref=f8e909]:
+                        - generic [ref=f8e910]: Offset delta
+                        - textbox [ref=f8e912]: 0 mm
+                    - generic [ref=f8e926] [cursor=pointer]:
+                      - checkbox "Hold length in the reference surface" [checked]
+                      - generic [ref=f8e928]: Hold length in the reference surface
+                - generic [ref=f8e929]:
+                  - generic [ref=f8e932]:
+                    - generic [ref=f8e933]: Offset alignment
+                    - generic [ref=f8e935]:
+                      - generic "Select box activate" [ref=f8e937] [cursor=pointer]:
+                        - generic [ref=f8e938]: Along
+                        - text: 
+                      - button "Select box focus" [ref=f8e941] [cursor=pointer]
+                  - generic [ref=f8e944]:
+                    - generic [ref=f8e945]: Break output at
+                    - generic [ref=f8e947]:
+                      - generic "Select box activate" [ref=f8e949] [cursor=pointer]:
+                        - generic [ref=f8e950]: Corners and offset breaks
+                        - text: 
+                      - button "Select box focus" [ref=f8e953] [cursor=pointer]
+                  - generic [ref=f8e956]:
+                    - generic [ref=f8e957]: Varying offset on arcs
+                    - generic [ref=f8e959]:
+                      - generic "Select box activate" [ref=f8e961] [cursor=pointer]:
+                        - generic [ref=f8e962]: Spline
+                        - text: 
+                      - button "Select box focus" [ref=f8e965] [cursor=pointer]
+                  - generic [ref=f8e970]:
+                    - generic [ref=f8e971]:
+                      - generic [ref=f8e972]: Offsets
+                      - button [ref=f8e973] [cursor=pointer]
+                      - button "CLEAR" [ref=f8e976] [cursor=pointer]
+                    - list [ref=f8e977]:
+                      - listitem [ref=f8e978]:
+                        - generic [ref=f8e979]:
+                          - generic [ref=f8e980] [cursor=pointer]
+                          - generic [ref=f8e984] [cursor=pointer]: flange
+                          - generic [ref=f8e985] [cursor=pointer]: ×
+                        - generic [ref=f8e988]:
+                          - generic [ref=f8e995]:
+                            - generic [ref=f8e996]: Offset profile
+                            - list [ref=f8e998]:
+                              - listitem [ref=f8e999]:
+                                - generic [ref=f8e1000]: Rout_Flange_offset
+                                - generic [ref=f8e1002] [cursor=pointer]: ×
+                          - generic [ref=f8e1009]:
+                            - generic [ref=f8e1010]: Name
+                            - textbox [ref=f8e1011]: flange
+                      - listitem [ref=f8e1012]:
+                        - generic [ref=f8e1013]:
+                          - generic [ref=f8e1014] [cursor=pointer]
+                          - generic [ref=f8e1018] [cursor=pointer]: bottom
+                          - generic [ref=f8e1019] [cursor=pointer]: ×
+                        - generic [ref=f8e1022]:
+                          - generic [ref=f8e1029]:
+                            - generic [ref=f8e1030]: Offset profile
+                            - list [ref=f8e1032]:
+                              - listitem [ref=f8e1033]:
+                                - generic [ref=f8e1034]: Rout_Bottom_offset
+                                - generic [ref=f8e1036] [cursor=pointer]: ×
+                          - generic [ref=f8e1043]:
+                            - generic [ref=f8e1044]: Name
+                            - textbox [ref=f8e1045]: bottom
+                      - listitem [ref=f8e1046]:
+                        - generic [ref=f8e1047]:
+                          - generic [ref=f8e1048] [cursor=pointer]
+                          - generic [ref=f8e1052] [cursor=pointer]: top
+                          - generic [ref=f8e1053] [cursor=pointer]: ×
+                        - generic [ref=f8e1056]:
+                          - generic [ref=f8e1063]:
+                            - generic [ref=f8e1064]: Offset profile
+                            - list [ref=f8e1066]:
+                              - listitem [ref=f8e1067]:
+                                - generic [ref=f8e1068]: Curve 17
+                                - generic [ref=f8e1070] [cursor=pointer]: ×
+                          - generic [ref=f8e1077]:
+                            - generic [ref=f8e1078]: Name
+                            - textbox [ref=f8e1079]: top
+                    - button "Add offset" [ref=f8e1080] [cursor=pointer]
+                - generic [ref=f8e1085] [cursor=pointer]:
+                  - checkbox "Blend through profiles"
+                  - generic [ref=f8e1087]: Blend through profiles
+                - generic [ref=f8e1092] [cursor=pointer]:
+                  - checkbox "Keep offset wires"
+                  - generic [ref=f8e1094]: Keep offset wires
+                - generic [ref=f8e1096]:
+                  - generic [ref=f8e1097]:
+                    - generic [ref=f8e1099] [cursor=pointer]
+                    - generic [ref=f8e1103] [cursor=pointer]: Corners
+                  - text:  
+                - generic [ref=f8e1106]:
+                  - generic [ref=f8e1108] [cursor=pointer]
+                  - generic [ref=f8e1112] [cursor=pointer]: Ends
+                - generic [ref=f8e1115]:
+                  - generic [ref=f8e1117] [cursor=pointer]
+                  - generic [ref=f8e1121] [cursor=pointer]: Spacing & approximation
+                - generic [ref=f8e1124]:
+                  - generic [ref=f8e1126] [cursor=pointer]
+                  - generic [ref=f8e1130] [cursor=pointer]: Debug
+                - generic [ref=f8e1132]:
+                  - generic [ref=f8e1133]:
+                    - generic [ref=f8e1135] [cursor=pointer]
+                    - generic [ref=f8e1139] [cursor=pointer]: Surface debug
+                  - generic [ref=f8e1242]:
+                    - generic [ref=f8e1245]:
+                      - generic [ref=f8e1249] [cursor=pointer]:
+                        - checkbox "Print surface" [checked]
+                        - generic [ref=f8e1251]: Print surface
+                      - generic [ref=f8e1254]:
+                        - generic [ref=f8e1255]: Only run
+                        - textbox [ref=f8e1257]: "-1"
+                    - generic [ref=f8e1264] [cursor=pointer]:
+                      - checkbox "Keep section curves"
+                      - generic [ref=f8e1266]: Keep section curves
+            - generic [ref=f8e1146] [cursor=pointer]
+      - generic [ref=f8e1150]:
+        - img [ref=f8e1153] [cursor=pointer]
+        - generic [ref=f8e1156]:
+          - generic [ref=f8e1157] [cursor=pointer]: Setup
+          - generic [ref=f8e1163]: Design Master
+          - generic [ref=f8e1174] [cursor=pointer]: RD K034_SZ03 177 VOLUME PRIMITIVE Drawing 1
+          - generic [ref=f8e1180] [cursor=pointer]: Parts
+          - generic [ref=f8e1186] [cursor=pointer]: Part Drawings
+          - generic [ref=f8e1192] [cursor=pointer]: 3D_Ski
+          - generic [ref=f8e1203] [cursor=pointer]: RD K034_SZ03 177 X-Sect
+          - generic [ref=f8e1209] [cursor=pointer]: Tooling
+          - generic [ref=f8e1215] [cursor=pointer]: BeamSimulator
+          - generic [ref=f8e1220] [cursor=pointer]: RD K034_SZ03 177 Aufbau
+          - generic [ref=f8e1226] [cursor=pointer]: RD K034_SZ03 177 Aufbau
+        - generic [ref=f8e1232]:
+          - listitem [ref=f8e1233]
+          - listitem [ref=f8e1237]

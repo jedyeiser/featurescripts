@@ -1984,12 +1984,16 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
  *
  * One union of every sheet is tried first. If the kernel refuses it ("Boolean operation failed to
  * return a valid part") nothing says which patch it choked on, and the whole feature used to fail
- * for it. So the sheets are then joined one at a time; the patches that will not join are named
- * (run:profiles, as in the loft's own refusals) and left as separate sheets, with a warning. The
- * surface is then complete but in more than one piece, instead of missing altogether.
+ * for it. So the sheets are then joined one at a time. A sheet that is refused is retried as a clean
+ * copy of its own face (the raw loft sheet can be refused where the copy joins); one that is refused
+ * as a copy too is named (run:profiles, as in the loft's own refusals) and left as a separate sheet,
+ * with a warning. The surface is then complete but in more than one piece, instead of missing
+ * altogether.
  */
-function joinSheets(context is Context, id is Id, sheets is array, sheetLabels is array)
+function joinSheets(context is Context, id is Id, patchSheets is array, sheetLabels is array)
 {
+    var sheets = patchSheets;
+
     try silent
     {
         opBoolean(context, id + "join", {
@@ -2022,7 +2026,46 @@ function joinSheets(context is Context, id is Id, sheets is array, sheetLabels i
         }
         catch
         {
-            apart = append(apart, sheetLabels[i]);
+            // The sheet as the loft built it is refused, though its edges lie on the others' to well under a
+            // micron and a copy of the very same face joins (2026-10-06, OEF run 1 wall: 22 face copies union
+            // cleanly). So retry with a copy and drop the original; if the copy is refused too, it stays
+            // as the separate sheet.
+            var copyId = id + ("copy" ~ i);
+            var copied = false;
+            try silent
+            {
+                opExtractSurface(context, copyId, { "faces" : qOwnedByBody(sheets[i], EntityType.FACE) });
+                opDeleteBodies(context, id + ("dropOriginal" ~ i), { "entities" : sheets[i] });
+                sheets[i] = qCreatedBy(copyId, EntityType.BODY);
+                copied = true;
+            }
+
+            var rejoined = false;
+            if (copied)
+            {
+                var growingCopy = [];
+                for (var k in joined)
+                {
+                    growingCopy = append(growingCopy, sheets[k]);
+                }
+                growingCopy = append(growingCopy, sheets[i]);
+
+                try silent
+                {
+                    opBoolean(context, id + ("joinCopy" ~ i), {
+                                "tools" : qUnion(growingCopy),
+                                "operationType" : BooleanOperationType.UNION,
+                                "eraseImprintedEdges" : false
+                            });
+                    joined = append(joined, i);
+                    rejoined = true;
+                }
+            }
+
+            if (!rejoined)
+            {
+                apart = append(apart, sheetLabels[i]);
+            }
         }
     }
 
