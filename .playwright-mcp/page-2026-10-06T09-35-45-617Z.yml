@@ -1,0 +1,203 @@
+- generic [active] [ref=f7e1]:
+  - generic [ref=f7e5]:
+    - navigation [ref=f7e6]:
+      - generic [ref=f7e7]:
+        - link [ref=f7e10] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f7e11]
+        - generic [ref=f7e13] [cursor=pointer]
+      - generic [ref=f7e16]:
+        - generic [ref=f7e18]:
+          - generic [ref=f7e19]: RD 20OEF 28 (K034_SZ03) 177
+          - generic [ref=f7e20]: Main
+        - generic [ref=f7e22] [cursor=pointer]
+        - link "OEF (K034_SZ03) - Orchid Explosion by Fournier" [ref=f7e26] [cursor=pointer]:
+          - /url: /documents?nodeId=5a27b22968e779c46328e5fe&resourceType=folder
+      - generic [ref=f7e30]:
+        - generic [ref=f7e301] [cursor=pointer]
+        - button "Notifications" [ref=f7e40] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f7e48]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f7e51] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f7e56] [cursor=pointer]
+        - button "Share" [ref=f7e60] [cursor=pointer]
+        - generic "Help menu" [ref=f7e62] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f7e66] [cursor=pointer]
+    - generic [ref=f7e76]:
+      - generic [ref=f7e78]:
+        - generic [ref=f7e79]:
+          - generic [ref=f7e80]:
+            - generic [ref=f7e81] [cursor=pointer]
+            - generic [ref=f7e84] [cursor=pointer]
+            - generic [ref=f7e87] [cursor=pointer]
+            - generic [ref=f7e90] [cursor=pointer]
+            - generic [ref=f7e93] [cursor=pointer]
+            - generic [ref=f7e96] [cursor=pointer]
+            - generic [ref=f7e99] [cursor=pointer]
+            - generic [ref=f7e102] [cursor=pointer]
+          - generic [ref=f7e106] [cursor=pointer]
+        - generic [ref=f7e110] [cursor=pointer]
+      - generic [ref=f7e117]:
+        - generic [ref=f7e312]:
+          - generic [ref=f7e324]:
+            - generic [ref=f7e325]: Sketch
+            - generic [ref=f7e337]:
+              - generic [ref=f7e338] [cursor=pointer]
+              - generic [ref=f7e342] [cursor=pointer]
+              - generic [ref=f7e346] [cursor=pointer]
+              - generic [ref=f7e350] [cursor=pointer]
+              - generic [ref=f7e355]:
+                - generic [ref=f7e356] [cursor=pointer]
+                - generic [ref=f7e360] [cursor=pointer]
+            - generic [ref=f7e366]:
+              - generic [ref=f7e368]:
+                - generic [ref=f7e369] [cursor=pointer]
+                - generic [ref=f7e373] [cursor=pointer]
+              - generic [ref=f7e376] [cursor=pointer]
+              - generic [ref=f7e381]:
+                - generic [ref=f7e382] [cursor=pointer]
+                - generic [ref=f7e386] [cursor=pointer]
+              - generic [ref=f7e389] [cursor=pointer]
+              - generic [ref=f7e393] [cursor=pointer]
+              - generic [ref=f7e397] [cursor=pointer]
+              - generic [ref=f7e401] [cursor=pointer]
+            - generic [ref=f7e408]:
+              - generic [ref=f7e410]:
+                - generic [ref=f7e411] [cursor=pointer]
+                - generic [ref=f7e415] [cursor=pointer]
+              - generic [ref=f7e418] [cursor=pointer]
+            - generic [ref=f7e425]:
+              - generic [ref=f7e426] [cursor=pointer]
+              - generic [ref=f7e430] [cursor=pointer]
+              - generic [ref=f7e435]:
+                - generic [ref=f7e436] [cursor=pointer]
+                - generic [ref=f7e440] [cursor=pointer]
+              - generic [ref=f7e443] [cursor=pointer]
+            - generic [ref=f7e450]:
+              - generic [ref=f7e451] [cursor=pointer]
+              - generic [ref=f7e455] [cursor=pointer]
+              - generic [ref=f7e459] [cursor=pointer]
+              - generic [ref=f7e463] [cursor=pointer]
+            - generic [ref=f7e471]:
+              - generic [ref=f7e472] [cursor=pointer]
+              - generic [ref=f7e476] [cursor=pointer]
+            - generic [ref=f7e483]:
+              - generic [ref=f7e484] [cursor=pointer]: SA
+              - generic [ref=f7e487] [cursor=pointer]
+          - button "Search tools… alt/⌥ c" [ref=f7e491] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f7e492]:
+              - generic [ref=f7e493]: alt/⌥
+              - generic [ref=f7e494]: c
+        - generic [ref=f7e125]:
+          - generic [ref=f7e128]:
+            - generic [ref=f7e130]:
+              - generic [ref=f7e131]:
+                - generic [ref=f7e133]:
+                  - button [ref=f7e135] [cursor=pointer]
+                  - textbox "Filter by name or type" [ref=f7e140]
+                - generic [ref=f7e141]:
+                  - button [ref=f7e496] [cursor=pointer]
+                  - generic [ref=f7e142]: Features (101)
+                  - button [ref=f7e143] [cursor=pointer]
+                  - button [ref=f7e146] [cursor=pointer]
+                  - button [ref=f7e149] [cursor=pointer]
+              - generic [ref=f7e153]:
+                - generic [ref=f7e499]:
+                  - generic [ref=f7e527]: Front
+                  - generic [ref=f7e537]: Right
+                  - generic [ref=f7e548]:
+                    - generic [ref=f7e550] [cursor=pointer]
+                    - generic [ref=f7e553]: Setup (6)
+                  - generic [ref=f7e558]: Derive Footprint
+                  - generic [ref=f7e571]: "#REF_fpt_edges"
+                  - generic [ref=f7e580]:
+                    - generic [ref=f7e582] [cursor=pointer]
+                    - generic [ref=f7e585]: Footprint Scaling (4)
+                  - generic [ref=f7e591]:
+                    - generic [ref=f7e593] [cursor=pointer]
+                    - generic [ref=f7e596]: Ref Wire Creation (8)
+                  - generic [ref=f7e602]:
+                    - generic [ref=f7e604] [cursor=pointer]
+                    - generic [ref=f7e607]: Profiles (7)
+                  - generic [ref=f7e613]:
+                    - generic [ref=f7e615] [cursor=pointer]
+                    - generic [ref=f7e618]: Tip_Tail_Locs (8)
+                  - generic [ref=f7e624]:
+                    - generic [ref=f7e626] [cursor=pointer]
+                    - generic [ref=f7e629]: Baseline (8)
+                  - generic [ref=f7e635]:
+                    - generic [ref=f7e637] [cursor=pointer]
+                    - generic [ref=f7e640]: Create_SW_Shelf (5)
+                  - generic [ref=f7e646]:
+                    - generic [ref=f7e648] [cursor=pointer]
+                    - generic [ref=f7e651]: Profile/Periphery Surfaces (11)
+                  - generic [ref=f7e657]:
+                    - generic [ref=f7e659] [cursor=pointer]
+                    - generic [ref=f7e662]: Part_Trim_Surfaces (9)
+                  - generic [ref=f7e668]:
+                    - generic [ref=f7e670] [cursor=pointer]
+                    - generic [ref=f7e673]: SW_Rout_Surf (9)
+                  - generic [ref=f7e678]: Copy_FPT
+                  - generic [ref=f7e688]: SW_Flange_Profile
+                  - generic [ref=f7e702]: SW_Bottom_Profile
+                  - generic [ref=f7e716]: Rout_Top_Offset
+                  - generic [ref=f7e730]: Create_SW_Rout
+                  - generic [ref=f7e750]: Delete_Rout_Offsets
+                  - generic [ref=f7e760]: Revolve 1
+                  - generic [ref=f7e770]: Revolve 2
+                  - generic [ref=f7e780]: Mutual Trim+ 1
+                  - generic [ref=f7e795]:
+                    - generic [ref=f7e797] [cursor=pointer]
+                    - generic [ref=f7e800]: VOLUME (5)
+                  - generic [ref=f7e805]: Part_Ref_Geo
+                  - generic [ref=f7e813]: KartonFormRefGeo
+                  - generic [ref=f7e863]: Name_Volume
+                  - generic [ref=f7e876]:
+                    - generic [ref=f7e878] [cursor=pointer]
+                    - generic [ref=f7e881]: Export_Query_Variables (11)
+                  - generic [ref=f7e886]: Generate_Primative
+                - list
+            - generic [ref=f7e158]:
+              - generic [ref=f7e160]:
+                - generic [ref=f7e162] [cursor=pointer]
+                - generic [ref=f7e165]: Parts (0)
+              - generic [ref=f7e822]:
+                - generic [ref=f7e824] [cursor=pointer]
+                - generic [ref=f7e827]: Surfaces (21)
+              - generic [ref=f7e830]:
+                - generic [ref=f7e832] [cursor=pointer]
+                - generic [ref=f7e835]: Curves (17)
+          - generic [ref=f7e168]:
+            - generic [ref=f7e170] [cursor=pointer]
+            - generic [ref=f7e174]:
+              - generic [ref=f7e175]:
+                - button [ref=f7e838] [cursor=pointer]
+                - button [ref=f7e842] [cursor=pointer]
+                - button [ref=f7e846] [cursor=pointer]
+              - generic [ref=f7e850] [cursor=pointer]
+            - generic [ref=f7e188]:
+              - generic [ref=f7e855] [cursor=pointer]
+              - generic [ref=f7e189] [cursor=pointer]
+              - generic [ref=f7e193] [cursor=pointer]
+              - generic [ref=f7e197] [cursor=pointer]
+              - generic [ref=f7e859] [cursor=pointer]
+              - generic [ref=f7e201] [cursor=pointer]
+              - generic [ref=f7e204] [cursor=pointer]
+        - generic [ref=f7e208]:
+          - img [ref=f7e211] [cursor=pointer]
+          - generic [ref=f7e214]:
+            - generic [ref=f7e215] [cursor=pointer]: Setup
+            - generic [ref=f7e221]: Design Master
+            - generic [ref=f7e232] [cursor=pointer]: RD K034_SZ03 177 VOLUME PRIMITIVE Drawing 1
+            - generic [ref=f7e238] [cursor=pointer]: Parts
+            - generic [ref=f7e244] [cursor=pointer]: Part Drawings
+            - generic [ref=f7e250] [cursor=pointer]: 3D_Ski
+            - generic [ref=f7e261] [cursor=pointer]: RD K034_SZ03 177 X-Sect
+            - generic [ref=f7e267] [cursor=pointer]: Tooling
+            - generic [ref=f7e273] [cursor=pointer]: BeamSimulator
+            - generic [ref=f7e278] [cursor=pointer]: RD K034_SZ03 177 Aufbau
+            - generic [ref=f7e284] [cursor=pointer]: RD K034_SZ03 177 Aufbau
+          - generic [ref=f7e290]:
+            - listitem [ref=f7e291]
+            - listitem [ref=f7e295]
+  - 'tooltip "Create_SW_Rout [Driven offset surface] did not regenerate properly: Boolean operation failed to return a valid part."'

@@ -1713,6 +1713,7 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
     }
 
     var sheets = [];
+    var sheetLabels = [];
     var skipped = 0;
     var refused = [];
 
@@ -1939,6 +1940,7 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             }
 
             sheets = append(sheets, qCreatedBy(patchId, EntityType.BODY));
+            sheetLabels = append(sheetLabels, (atCorner ? "corner " : "") ~ toString(slot.cell) ~ ":" ~ toString(members));
         }
     }
 
@@ -1973,11 +1975,65 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
 
     if (size(sheets) > 1)
     {
+        joinSheets(context, id, sheets, sheetLabels);
+    }
+}
+
+/**
+ * Join the patch sheets into one body.
+ *
+ * One union of every sheet is tried first. If the kernel refuses it ("Boolean operation failed to
+ * return a valid part") nothing says which patch it choked on, and the whole feature used to fail
+ * for it. So the sheets are then joined one at a time; the patches that will not join are named
+ * (run:profiles, as in the loft's own refusals) and left as separate sheets, with a warning. The
+ * surface is then complete but in more than one piece, instead of missing altogether.
+ */
+function joinSheets(context is Context, id is Id, sheets is array, sheetLabels is array)
+{
+    try silent
+    {
         opBoolean(context, id + "join", {
                     "tools" : qUnion(sheets),
                     "operationType" : BooleanOperationType.UNION,
                     "eraseImprintedEdges" : false
                 });
+        return;
+    }
+
+    var apart = [];
+    var joined = [0];
+    for (var i = 1; i < size(sheets); i += 1)
+    {
+        var growing = [];
+        for (var k in joined)
+        {
+            growing = append(growing, sheets[k]);
+        }
+        growing = append(growing, sheets[i]);
+
+        try silent
+        {
+            opBoolean(context, id + ("join" ~ i), {
+                        "tools" : qUnion(growing),
+                        "operationType" : BooleanOperationType.UNION,
+                        "eraseImprintedEdges" : false
+                    });
+            joined = append(joined, i);
+        }
+        catch
+        {
+            apart = append(apart, sheetLabels[i]);
+        }
+    }
+
+    println("[join]        the union of all " ~ toString(size(sheets)) ~ " patches failed; one by one, " ~ toString(size(apart))
+        ~ " would not join: " ~ join(apart, ", "));
+
+    if (size(apart) > 0)
+    {
+        reportFeatureWarning(context, id, "The patches could not all be joined into one surface; "
+            ~ toString(size(apart)) ~ " of " ~ toString(size(sheets)) ~ " stay separate, at run:profiles "
+            ~ join(apart, ", ") ~ ".");
     }
 }
 
