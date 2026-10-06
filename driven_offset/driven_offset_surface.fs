@@ -1980,24 +1980,86 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
 }
 
 /**
+ * Curvature of a patch sheet, for ordering the join: 0 for a plane, 1 / R for a cylinder, the larger
+ * principal curvature at the middle of the face for anything else. A sheet is one face.
+ */
+function sheetCurvature(context is Context, sheet is Query) returns number
+{
+    const face = qOwnedByBody(sheet, EntityType.FACE);
+    const surface = evSurfaceDefinition(context, { "face" : face });
+    if (surface is Plane)
+    {
+        return 0;
+    }
+    if (surface is Cylinder)
+    {
+        return 1 / (surface.radius / meter);
+    }
+
+    var curvature = 1;
+    try silent
+    {
+        const box = evBox3d(context, { "topology" : face });
+        const nearest = evDistance(context, { "side0" : (box.minCorner + box.maxCorner) / 2, "side1" : face });
+        const principal = evFaceCurvature(context, { "face" : face, "parameters" : [nearest.sides[1].parameter] })[0];
+        curvature = max([abs(principal.minCurvature * meter), abs(principal.maxCurvature * meter)]);
+    }
+    return curvature;
+}
+
+/**
  * Join the patch sheets into one body.
  *
- * One union of every sheet is tried first. If the kernel refuses it ("Boolean operation failed to
- * return a valid part") nothing says which patch it choked on, and the whole feature used to fail
- * for it. So the sheets are then joined one at a time. A sheet that is refused is retried as a clean
- * copy of its own face (the raw loft sheet can be refused where the copy joins); one that is refused
- * as a copy too is named (run:profiles, as in the loft's own refusals) and left as a separate sheet,
- * with a warning. The surface is then complete but in more than one piece, instead of missing
- * altogether.
+ * The kernel's union of sheets that meet along tangent seams depends on which sheet is the base (the
+ * first tool): a tight arc cannot absorb its flatter, tangent neighbour, but the flatter one absorbs
+ * the tight arc. That is exactly the S-curve at the tip and tail, where a reversed R 0.9-1.4 m arc
+ * meets the R 15-18 m sidecut (2026-10-06, OEF Design Master: W0 then W1 failed with BOOLEAN_INVALID
+ * in every option tried - allowSheets, recomputeMatches, detectAdjacencyForSheets, explicit coincident
+ * matches - and succeeded for all 22 sheets once the flattest went first; tightest first failed).
+ *
+ * One union of the sheets as built is tried first. If the kernel refuses it, copies of the sheets
+ * are made in order of increasing curvature (flattest first), the originals are dropped and the
+ * copies are unioned at once, then one by one. A sheet that still will not join is named
+ * (run:profiles, as in the loft's own refusals) and left as a separate sheet, with a warning.
  */
 function joinSheets(context is Context, id is Id, patchSheets is array, sheetLabels is array)
 {
-    var sheets = patchSheets;
-
     try silent
     {
         opBoolean(context, id + "join", {
-                    "tools" : qUnion(sheets),
+                    "tools" : qUnion(patchSheets),
+                    "operationType" : BooleanOperationType.UNION,
+                    "eraseImprintedEdges" : false
+                });
+        return;
+    }
+
+    // Rank flattest first; the index keeps equal curvatures in build order whatever the sort does.
+    var ranked = [];
+    for (var i = 0; i < size(patchSheets); i += 1)
+    {
+        ranked = append(ranked, { "index" : i, "curvature" : sheetCurvature(context, patchSheets[i]) });
+    }
+    ranked = sort(ranked, function(a, b)
+        {
+            return abs(a.curvature - b.curvature) < 1e-9 ? a.index - b.index : a.curvature - b.curvature;
+        });
+
+    var copies = [];
+    var copyLabels = [];
+    for (var i = 0; i < size(ranked); i += 1)
+    {
+        const copyId = id + ("flattestFirst" ~ i);
+        opExtractSurface(context, copyId, { "faces" : qOwnedByBody(patchSheets[ranked[i].index], EntityType.FACE) });
+        copies = append(copies, qCreatedBy(copyId, EntityType.BODY));
+        copyLabels = append(copyLabels, sheetLabels[ranked[i].index]);
+    }
+    opDeleteBodies(context, id + "dropOriginals", { "entities" : qUnion(patchSheets) });
+
+    try silent
+    {
+        opBoolean(context, id + "joinOrdered", {
+                    "tools" : qUnion(copies),
                     "operationType" : BooleanOperationType.UNION,
                     "eraseImprintedEdges" : false
                 });
@@ -2006,18 +2068,18 @@ function joinSheets(context is Context, id is Id, patchSheets is array, sheetLab
 
     var apart = [];
     var joined = [0];
-    for (var i = 1; i < size(sheets); i += 1)
+    for (var i = 1; i < size(copies); i += 1)
     {
         var growing = [];
         for (var k in joined)
         {
-            growing = append(growing, sheets[k]);
+            growing = append(growing, copies[k]);
         }
-        growing = append(growing, sheets[i]);
+        growing = append(growing, copies[i]);
 
         try silent
         {
-            opBoolean(context, id + ("join" ~ i), {
+            opBoolean(context, id + ("joinOrdered" ~ i), {
                         "tools" : qUnion(growing),
                         "operationType" : BooleanOperationType.UNION,
                         "eraseImprintedEdges" : false
@@ -2026,60 +2088,20 @@ function joinSheets(context is Context, id is Id, patchSheets is array, sheetLab
         }
         catch
         {
-            // The sheet as the loft built it is refused, though its edges lie on the others' to well under a
-            // micron and a copy of the very same face joins (2026-10-06, OEF run 1 wall: 22 face copies union
-            // cleanly). So retry with a copy and drop the original; if the copy is refused too, it stays
-            // as the separate sheet.
-            var copyId = id + ("copy" ~ i);
-            var copied = false;
-            try silent
-            {
-                opExtractSurface(context, copyId, { "faces" : qOwnedByBody(sheets[i], EntityType.FACE) });
-                opDeleteBodies(context, id + ("dropOriginal" ~ i), { "entities" : sheets[i] });
-                sheets[i] = qCreatedBy(copyId, EntityType.BODY);
-                copied = true;
-            }
-
-            var rejoined = false;
-            if (copied)
-            {
-                var growingCopy = [];
-                for (var k in joined)
-                {
-                    growingCopy = append(growingCopy, sheets[k]);
-                }
-                growingCopy = append(growingCopy, sheets[i]);
-
-                try silent
-                {
-                    opBoolean(context, id + ("joinCopy" ~ i), {
-                                "tools" : qUnion(growingCopy),
-                                "operationType" : BooleanOperationType.UNION,
-                                "eraseImprintedEdges" : false
-                            });
-                    joined = append(joined, i);
-                    rejoined = true;
-                }
-            }
-
-            if (!rejoined)
-            {
-                apart = append(apart, sheetLabels[i]);
-            }
+            apart = append(apart, copyLabels[i]);
         }
     }
 
-    println("[join]        the union of all " ~ toString(size(sheets)) ~ " patches failed; one by one, " ~ toString(size(apart))
-        ~ " would not join: " ~ join(apart, ", "));
+    println("[join]        the union of all " ~ toString(size(copies)) ~ " patches failed even flattest first; one by one, "
+        ~ toString(size(apart)) ~ " would not join: " ~ join(apart, ", "));
 
     if (size(apart) > 0)
     {
         reportFeatureWarning(context, id, "The patches could not all be joined into one surface; "
-            ~ toString(size(apart)) ~ " of " ~ toString(size(sheets)) ~ " stay separate, at run:profiles "
+            ~ toString(size(apart)) ~ " of " ~ toString(size(copies)) ~ " stay separate, at run:profiles "
             ~ join(apart, ", ") ~ ".");
     }
 }
-
 // ============================================================================
 // Debug
 // ============================================================================
