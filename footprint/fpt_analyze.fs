@@ -204,8 +204,9 @@ export function filterAndTrimBSplines(context is Context, bsplines is array, tol
     {
         var bounds = getBSplineBounds(bspline);
         
-        // Case 1: Entirely below Y=0 - skip
-        if (bounds.yMax < -tolerance)
+        // Case 1: Entirely below Y=0 - skip. A curve that only touches Y=0 at an end (the -Y half of a tip or tail
+        // spline ends exactly on the centerline) has yMax of about 0 and is still entirely below.
+        if (bounds.yMax < -tolerance || (bounds.yMax <= tolerance && bounds.yMin < -tolerance))
         {
             continue;
         }
@@ -222,8 +223,13 @@ export function filterAndTrimBSplines(context is Context, bsplines is array, tol
         
         if (size(crossings) == 0)
         {
-            // No crossings found but bounds suggest it crosses - keep whole curve
-            result = append(result, bspline);
+            // No crossings found but bounds suggest it crosses (it only touches Y=0): decide by its midpoint
+            var touchRange = getBSplineParamRange(bspline);
+            var touchMid = evaluateSpline({ "spline" : bspline, "parameters" : [(touchRange.uMin + touchRange.uMax) / 2] })[0][0];
+            if (touchMid[1] >= -tolerance)
+            {
+                result = append(result, bspline);
+            }
             continue;
         }
         
@@ -780,7 +786,9 @@ export function findInflectionPoint(curveDataArray is array, xInner is ValueWith
         var inBoundsSamples = [];
         for (var s in samples)
         {
-            if (s.x >= xMin - xTol && s.x <= xMax + xTol)
+            // Only the +Y half is analyzed: a mirrored -Y sample has the opposite curvature sign and would read
+            // as a false inflection against its +Y twin.
+            if (s.x >= xMin - xTol && s.x <= xMax + xTol && s.y >= -xTol)
             {
                 inBoundsSamples = append(inBoundsSamples, s);
             }
