@@ -139,6 +139,9 @@ export const offsetPlus = defineFeature(function(context is Context, id is Id, d
                     "Description" : "On: toward the reference. Off: away from it. Without a reference: a plain flip." }
         definition.towardReference is boolean;
 
+        annotation { "Name" : "Output name", "Description" : "Optional. Names the offset bodies; leave empty for the default names." }
+        definition.outputName is string;
+
         if (definition.offsetType == OffsetPlusType.CURVE)
         {
             annotation { "Group Name" : "Fit", "Collapsed By Default" : true }
@@ -178,6 +181,7 @@ export const offsetPlus = defineFeature(function(context is Context, id is Id, d
         "planeNormal" : qNothing(),
         "sideReference" : qNothing(),
         "towardReference" : true,
+        "outputName" : "",
         "samplesPerEdge" : 24,
         "maxSpacing" : 5 * millimeter,
         "fitTolerance" : 0.001 * millimeter,
@@ -225,6 +229,11 @@ function offsetSurfaces(context is Context, id is Id, definition is map, probe)
                     "offset" : definition.distance * direction,
                     "useFacesAroundToTrimOffset" : false
                 });
+    }
+
+    if (definition.outputName != "")
+    {
+        setProperty(context, { "entities" : qCreatedBy(id, EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : definition.outputName });
     }
 
     embedStandardOutputs(context, id, settledOutputs(context, {
@@ -288,6 +297,11 @@ function offsetCurves(context is Context, id is Id, definition is map, probe)
     else if (counts.rounded + counts.trimmed > 0)
     {
         reportFeatureInfo(context, id, "Corners: " ~ counts.rounded ~ " rounded, " ~ counts.trimmed ~ " trimmed.");
+    }
+
+    if (definition.outputName != "")
+    {
+        setProperty(context, { "entities" : output, "propertyType" : PropertyType.NAME, "value" : definition.outputName });
     }
 
     embedStandardOutputs(context, id, settledOutputs(context, {

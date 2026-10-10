@@ -417,7 +417,10 @@ for tag, want_faces, x_range in (("E1", 6, None), ("E2", 6, (18350, 18450)), ("E
             ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0])];''' % (want_faces, xr, want_faces))
 
 # Join profile surfaces (2026-09-27)
-for tag, area, faces in (("J1", 24000, 5), ("J2", 25000, 5), ("J3", 25000, 5), ("J4", None, 6)):
+NO_END = ["endOutside", "endLoft", "endInsideEdge", "endOutsideEdge"]
+NO_START = ["startOutside", "startLoft", "startInsideEdge", "startOutsideEdge"]
+for tag, area, faces, absent in (("J1", 24000, 5, []), ("J2", 25000, 5, []), ("J3", 25000, 5, []), ("J4", None, 6, []),
+                                 ("J5", 22000, 3, NO_END), ("J6", 22000, 3, NO_START), ("J7", 22000, 3, NO_END), ("J8", 22000, 3, NO_START)):
     case(tag + " ", r'''
         const out = embedded(SELF);
         const bodies = evaluateQuery(context, out.query.output.value);
@@ -429,12 +432,12 @@ for tag, area, faces in (("J1", 24000, 5), ("J2", 25000, 5), ("J3", 25000, 5), (
         for (var k in ["insideSurface", "startOutside", "endOutside", "startLoft", "endLoft", "startInsideEdge", "startOutsideEdge", "endInsideEdge", "endOutsideEdge"])
         {
             const n = count(out.query[k].value);
-            keysOk = keysOk && n >= 1;
+            keysOk = keysOk && (isIn(k, ABSENT) ? n == 0 : n >= 1);
             keys ~= k ~ " " ~ n ~ ", ";
         }
         const sq = millimeter * millimeter;
         const areaOk = %s;
-        return [faces == %d && areaOk && keysOk, "faces " ~ faces ~ " (%d), area " ~ roundToPrecision(area / sq, 2) ~ " (%s); " ~ keys];''' % (
+        return [faces == %d && areaOk && keysOk, "faces " ~ faces ~ " (%d), area " ~ roundToPrecision(area / sq, 2) ~ " (%s); " ~ keys];'''.replace("ABSENT", json.dumps(absent)) % (
         "true" if area is None else "abs(area - %d * sq) < 0.01 * sq" % area, faces, faces, "any" if area is None else area))
 
 # Referenced part (2026-09-28): volume, x range (or None), face counts per key.
@@ -445,7 +448,10 @@ for tag, vol, x_range, keys in (
         ("P4", 26400, (24745, 24855), {"profileFaces": 1, "oppositeFaces": 1, "sideFaces": 2, "cap1Faces": 2}),
         ("P5", 17500, (25375, 25425), {"topFaces": 1, "bottomFaces": 1, "sideFaces": 4}),
         ("P6", 12000, (25990, 26010), {"topFaces": 1, "bottomFaces": 1, "sideFaces": 2, "cap1Faces": 1, "cap2Faces": 1}),
-        ("P7", 48000, (26560, 26640), {"topFaces": 1, "bottomFaces": 1, "sideFaces": 2, "cap1Faces": 1, "cap2Faces": 1})):
+        ("P7", 48000, (26560, 26640), {"topFaces": 1, "bottomFaces": 1, "sideFaces": 2, "cap1Faces": 1, "cap2Faces": 1}),
+        ("P9", 26400, (27945, 28055), {"profileFaces": 1, "oppositeFaces": 1, "sideFaces": 2, "cap1Faces": 2}),
+        ("P10", 26400, (28545, 28655), {"profileFaces": 1, "oppositeFaces": 1, "sideFaces": 2, "cap1Faces": 2}),
+        ("P11", 26400, (29145, 29255), {"profileFaces": 1, "oppositeFaces": 1, "sideFaces": 2, "cap1Faces": 2})):
     xr = "true" if x_range is None else "near(bb.minCorner[0], mm(%g), mm(0.01)) && near(bb.maxCorner[0], mm(%g), mm(0.01))" % x_range
     key_src = "".join('\n        n = count(out.query.%s.value); keysOk = keysOk && n == %d; keys ~= "%s " ~ n ~ " (%d), ";' % (k, n, k, n) for k, n in keys.items())
     case(tag + " ", r"""
@@ -461,7 +467,7 @@ for tag, vol, x_range, keys in (
         return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (%d), x " ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0]) ~ ", z "
             ~ fmt(bb.minCorner[2]) ~ ".." ~ fmt(bb.maxCorner[2]) ~ "; " ~ keys];""" % (key_src, vol, xr, vol))
 
-EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part"]
+EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
 
 
 def strings(result):

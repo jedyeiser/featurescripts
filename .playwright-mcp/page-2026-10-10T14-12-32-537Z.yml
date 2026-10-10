@@ -1,0 +1,179 @@
+- generic [active] [ref=f8e1]:
+  - generic [ref=f8e5]:
+    - navigation [ref=f8e6]:
+      - generic [ref=f8e7]:
+        - link [ref=f8e10] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f8e11]
+        - generic [ref=f8e13] [cursor=pointer]
+      - generic [ref=f8e16]:
+        - generic [ref=f8e18]:
+          - generic [ref=f8e19]: Concept_1_Full
+          - generic [ref=f8e20]: Main
+        - generic [ref=f8e22] [cursor=pointer]
+        - link "ID_Concepts" [ref=f8e26] [cursor=pointer]:
+          - /url: /documents?nodeId=de0f87d5f2ac69acd64a653f&resourceType=folder
+      - generic [ref=f8e30]:
+        - generic [ref=f8e44] [cursor=pointer]
+        - button "Notifications" [ref=f8e49] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f8e57]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f8e60] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f8e65] [cursor=pointer]
+        - button "Share" [ref=f8e69] [cursor=pointer]
+        - generic "Help menu" [ref=f8e71] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f8e75] [cursor=pointer]
+    - generic [ref=f8e85]:
+      - generic [ref=f8e87]:
+        - generic [ref=f8e88]:
+          - generic [ref=f8e89]:
+            - generic [ref=f8e90] [cursor=pointer]
+            - generic [ref=f8e93] [cursor=pointer]
+            - generic [ref=f8e96] [cursor=pointer]
+            - generic [ref=f8e99] [cursor=pointer]
+            - generic [ref=f8e102] [cursor=pointer]
+            - generic [ref=f8e105] [cursor=pointer]
+            - generic [ref=f8e108] [cursor=pointer]
+            - generic [ref=f8e113] [cursor=pointer]
+          - generic [ref=f8e117] [cursor=pointer]
+        - generic [ref=f8e121] [cursor=pointer]
+      - generic [ref=f8e128]:
+        - generic [ref=f8e135]:
+          - generic [ref=f8e147]:
+            - generic [ref=f8e148]: Sketch
+            - generic [ref=f8e160]:
+              - generic [ref=f8e161] [cursor=pointer]
+              - generic [ref=f8e165] [cursor=pointer]
+              - generic [ref=f8e169] [cursor=pointer]
+              - generic [ref=f8e173] [cursor=pointer]
+              - generic [ref=f8e178]:
+                - generic [ref=f8e179] [cursor=pointer]
+                - generic [ref=f8e183] [cursor=pointer]
+            - generic [ref=f8e189]:
+              - generic [ref=f8e191]:
+                - generic [ref=f8e192] [cursor=pointer]
+                - generic [ref=f8e196] [cursor=pointer]
+              - generic [ref=f8e199] [cursor=pointer]
+              - generic [ref=f8e204]:
+                - generic [ref=f8e205] [cursor=pointer]
+                - generic [ref=f8e209] [cursor=pointer]
+              - generic [ref=f8e212] [cursor=pointer]
+              - generic [ref=f8e216] [cursor=pointer]
+              - generic [ref=f8e220] [cursor=pointer]
+              - generic [ref=f8e224] [cursor=pointer]
+            - generic [ref=f8e231]:
+              - generic [ref=f8e233]:
+                - generic [ref=f8e234] [cursor=pointer]
+                - generic [ref=f8e238] [cursor=pointer]
+              - generic [ref=f8e241] [cursor=pointer]
+            - generic [ref=f8e248]:
+              - generic [ref=f8e249] [cursor=pointer]
+              - generic [ref=f8e253] [cursor=pointer]
+              - generic [ref=f8e258]:
+                - generic [ref=f8e259] [cursor=pointer]
+                - generic [ref=f8e263] [cursor=pointer]
+              - generic [ref=f8e266] [cursor=pointer]
+            - generic [ref=f8e273]:
+              - generic [ref=f8e274] [cursor=pointer]
+              - generic [ref=f8e278] [cursor=pointer]
+              - generic [ref=f8e282] [cursor=pointer]
+              - generic [ref=f8e286] [cursor=pointer]
+            - generic [ref=f8e294]:
+              - generic [ref=f8e295] [cursor=pointer]
+              - generic [ref=f8e299] [cursor=pointer]
+            - generic [ref=f8e306]:
+              - generic [ref=f8e307] [cursor=pointer]: SA
+              - generic [ref=f8e310] [cursor=pointer]
+          - button "Search tools… alt/⌥ c" [ref=f8e314] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f8e315]:
+              - generic [ref=f8e316]: alt/⌥
+              - generic [ref=f8e317]: c
+        - generic [ref=f8e321]:
+          - generic [ref=f8e324]:
+            - generic [ref=f8e326]:
+              - generic [ref=f8e327]:
+                - generic [ref=f8e329]:
+                  - button [ref=f8e331] [cursor=pointer]
+                  - textbox "Filter by name or type" [ref=f8e336]
+                - generic [ref=f8e337]:
+                  - button [ref=f8e338] [cursor=pointer]
+                  - generic [ref=f8e341]: Features (15)
+                  - button [ref=f8e342] [cursor=pointer]
+                  - button [ref=f8e345] [cursor=pointer]
+                  - button [ref=f8e348] [cursor=pointer]
+              - generic [ref=f8e352]:
+                - generic [ref=f8e353]:
+                  - generic [ref=f8e355]:
+                    - generic [ref=f8e356] [cursor=pointer]
+                    - generic [ref=f8e359]: Default geometry
+                  - generic [ref=f8e361]: Origin
+                  - generic [ref=f8e371]: Top
+                  - generic [ref=f8e381]: Front
+                  - generic [ref=f8e391]: Right
+                  - generic [ref=f8e401]: Derived 1
+                  - generic [ref=f8e409]: Mirror_SW_Rout
+                  - generic [ref=f8e417]: Split 1
+                  - generic [ref=f8e425]: ACP
+                  - generic [ref=f8e433]: FCP
+                  - generic [ref=f8e441]: "#baseline"
+                  - generic [ref=f8e449]: Intersection curve 1
+                  - generic [ref=f8e457]: "#EI_Bodies"
+                  - generic [ref=f8e465]: Bridging curve 1
+                  - generic [ref=f8e473]: Join wires 1
+                  - generic [ref=f8e485]: EI and Cross Section 1
+                - list
+            - generic [ref=f8e505]:
+              - generic [ref=f8e507]:
+                - generic [ref=f8e509] [cursor=pointer]
+                - generic [ref=f8e512]: Parts (16)
+              - generic [ref=f8e516]: RD K034 177 STK L
+              - generic [ref=f8e528]: RD K034 177 STK R
+              - generic [ref=f8e540]: Part 12
+              - generic [ref=f8e552]: Part 13
+              - generic [ref=f8e564]: RD K034 177 SE
+              - generic [ref=f8e576]: Iter_4_15g
+              - generic [ref=f8e588]: Iter_4_15g
+              - generic [ref=f8e600]: RD K034 177 Belag
+              - generic [ref=f8e612]: RD K034 177 UG
+              - generic [ref=f8e624]: RD K034 177 OFL
+              - generic [ref=f8e636]: RD K034 177 OG
+              - generic [ref=f8e648]: RD K034 177 SW_L
+              - generic [ref=f8e660]: RD K034 177 SW_R
+              - generic [ref=f8e672]: RD K034 177 EE
+              - generic [ref=f8e684]: Iter_4_15g
+              - generic [ref=f8e696]: Iter_4_15g
+              - generic [ref=f8e709]:
+                - generic [ref=f8e711] [cursor=pointer]
+                - generic [ref=f8e714]: Composite parts (1)
+              - generic [ref=f8e719]:
+                - generic [ref=f8e721] [cursor=pointer]
+                - generic [ref=f8e724]: Surfaces (2)
+              - generic [ref=f8e729]:
+                - generic [ref=f8e731] [cursor=pointer]
+                - generic [ref=f8e734]: Curves (2)
+          - generic [ref=f8e739]:
+            - generic [ref=f8e741] [cursor=pointer]
+            - generic [ref=f8e745]:
+              - generic [ref=f8e747]:
+                - button [ref=f8e748] [cursor=pointer]
+                - button [ref=f8e752] [cursor=pointer]
+                - button [ref=f8e756] [cursor=pointer]
+              - generic [ref=f8e760] [cursor=pointer]
+            - generic [ref=f8e765]:
+              - generic [ref=f8e766] [cursor=pointer]
+              - generic [ref=f8e770] [cursor=pointer]
+              - generic [ref=f8e774] [cursor=pointer]
+              - generic [ref=f8e778] [cursor=pointer]
+              - generic [ref=f8e782] [cursor=pointer]
+              - generic [ref=f8e786] [cursor=pointer]
+              - generic [ref=f8e789] [cursor=pointer]
+        - generic [ref=f8e793]:
+          - img [ref=f8e796] [cursor=pointer]
+          - generic [ref=f8e799]:
+            - generic [ref=f8e800] [cursor=pointer]: Variable Studios
+            - generic [ref=f8e806] [cursor=pointer]: Design_Master
+            - generic [ref=f8e812] [cursor=pointer]: Tooling
+            - generic [ref=f8e828] [cursor=pointer]: Parts
+            - generic [ref=f8e834]: 3D_Ski
+            - generic [ref=f8e845] [cursor=pointer]: CSV
+  - 'tooltip "EI and Cross Section 1 did not regenerate properly: Could not intersect given faces."'

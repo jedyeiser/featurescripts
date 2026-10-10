@@ -2,10 +2,10 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 // curveTrimCore (same document) - plane-cut trim/split engine
-import(path : "d56d74c24234ab2b885e6fc1", version : "48a46b25fd6a7f8bae1ec0e8");
+import(path : "d56d74c24234ab2b885e6fc1", version : "b949d12015d8f32fcd55f420");
 
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 
 IconNamespace::import(path : "a4ceb2cfcdb959208b76a85c", version : "e1d6923ac9355dc407e71a4f");
 
@@ -90,6 +90,19 @@ export enum INFLECTION_MODE
     NEAR_ENDS
 }
 
+/**
+ * Which part of the curve a distance trim keeps, relative to the reference point: the cut
+ * sits the given distance from the point, so either the side of the cut that contains the
+ * point (the default) or the side away from it survives.
+ */
+export enum TRIM_KEEP
+{
+    annotation { "Name" : "Toward point" }
+    POINT_SIDE,
+    annotation { "Name" : "Away from point" }
+    FAR_SIDE
+}
+
 // Manipulator key for the inflection-point picker - shared between the feature
 // body (which adds it) and the change function (which reads the toggled indices).
 const INFLECTION_MANIPULATOR = "inflectionManipulator";
@@ -126,6 +139,13 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
 
             annotation { "Name" : "Opposite direction", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false, "Description" : "Reverse the positive direction (blue arrow)." }
             definition.distanceFlip is boolean;
+
+            if (definition.operation == OPERATION.TRIM)
+            {
+                annotation { "Name" : "Side to keep", "UIHint" : [UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : TRIM_KEEP.POINT_SIDE,
+                            "Description" : "Toward point keeps the side of the cut that contains the reference point and removes everything past the cut. Away from point keeps the far side and removes the stretch between the point and the cut." }
+                definition.trimKeep is TRIM_KEEP;
+            }
 
             if (definition.operation == OPERATION.SPLIT)
             {
@@ -189,8 +209,9 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
             annotation { "Name" : "Return single wire", "Default" : false, "Description" : "Recombine the split pieces into one wire body with multiple edges." }
             definition.returnSingleWire is boolean;
         }
-        else
+        else if (definition.cutBy != CUT_BY.ARC_LENGTH_FROM_POINT)
         {
+            // Distance mode has its own "Keep" choice (relative to the reference point).
             annotation { "Name" : "Keep opposite side", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false, "Description" : "Which side of the cut to keep. Trim discards the other side." }
             definition.flipHeuristics is boolean;
         }
@@ -249,6 +270,8 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
     {
         "inflectionIndices" : [],
         "distanceFlip" : false,
+        "flipHeuristics" : false,
+        "trimKeep" : TRIM_KEEP.POINT_SIDE,
         "extraDistances" : [],
         "splitAtReference" : false
     });
@@ -277,6 +300,16 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
     if (definition.operation == OPERATION.TRIM && size(fractions) > 1)
     {
         fractions = [fractions[0]];
+    }
+
+    if (definition.operation == OPERATION.TRIM && definition.cutBy == CUT_BY.ARC_LENGTH_FROM_POINT)
+    {
+        // Distance mode keeps a side relative to the reference point, not the path start.
+        // applyCut keeps the path end unless flipHeuristics, so translate.
+        var f0 = fractionOfPoint(context, wp, resolvePoint(context, definition.fromPoint));
+        var cutIsAfterPoint = fractions[0] > f0;
+        var keepEnd = (definition.trimKeep == TRIM_KEEP.FAR_SIDE) == cutIsAfterPoint;
+        definition.flipHeuristics = !keepEnd;
     }
 
     return applyCut(context, id, definition, wire, wp, fractions);
@@ -318,6 +351,16 @@ function applyCut(context is Context, id is Id, definition is map, wire is Query
             spans = append(spans, qUnion(g));
         }
         return { "output" : wire, "cutPoints" : points, "pieces" : spans };
+    }
+
+    if (definition.operation == OPERATION.TRIM && size(fractions) == 1)
+    {
+        // Preferred: trim in place so the wire body (and references to it) survive.
+        var inPlace = trimWireInPlace(context, id, wire, wp, fractions[0], !definition.flipHeuristics);
+        if (inPlace.done)
+        {
+            return { "output" : inPlace.wire, "cutPoints" : points, "pieces" : [inPlace.wire] };
+        }
     }
 
     var pieces = splitWireIntoPieces(context, id, wire, wp, fractions);

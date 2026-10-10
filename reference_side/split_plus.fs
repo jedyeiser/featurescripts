@@ -4,7 +4,7 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: reference_side_utils.fs
 import(path : "9aebe5ead538258b285aec19", version : "51d2aab9634029141009803d");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: split_plus_icon.svg (feature icon)
 IconNamespace::import(path : "3dba0e19457f30c7c2f9dddd", version : "0f63f7efa33cc8032cc45c9e");
 
@@ -34,6 +34,9 @@ IconNamespace::import(path : "3dba0e19457f30c7c2f9dddd", version : "0f63f7efa33c
  *     startCut, endCut              the cut each tool made (edges on the inside piece)
  *     splitEdges                    every cut; splitFaces  faces the splits created (the caps on solids)
  */
+/** Faces of a piece whose points are tried when reading which side of the tools the piece is on (see piecePoint). */
+const PIECE_POINT_CANDIDATES = 4;
+
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Split+",
         "Feature Type Description" : "Split parts, surfaces, curves or faces at a start tool and an optional end tool; the pieces are named inside / outside (start, end) from a reference, and you keep both, the inside or the outside.",
         "Filter Selector" : "allparts" }
@@ -169,15 +172,30 @@ export const splitPlus = defineFeature(function(context is Context, id is Id, de
                 println("[split+] " ~ toolNames[k] ~ ": inside is its " ~ (sides.signs[k] > 0 ? "front" : "back") ~ " (" ~ sides.how ~ ").");
             }
         }
-        const regions = classifyPieces(context, evaluateQuery(context, pieces), tools, sides.signs);
+        const regions = classifyPieces(context, evaluateQuery(context, pieces), tools, sides.signs, qCreatedBy(id, EntityType.FACE));
         const pieceEdges = faceMode ? qAdjacent(pieces, AdjacencyType.EDGE, EntityType.EDGE)
                                     : qOwnedByBody(qUnion(evaluateQuery(context, pieces)), EntityType.EDGE);
         const allCuts = qIntersection([pieceEdges, qCreatedBy(id, EntityType.EDGE)]);
         // The published cut edge must be on a piece that is KEPT: the inside one, or the outside one
         // when keeping outside (the inside pieces are deleted then -- 2026-09-27, RD ext_split).
         const cutsFromInside = faceMode || definition.keep != SplitPlusKeep.OUTSIDE;
-        const splitEdges = oneEdgePerCut(context, allCuts, tools, sides.signs, cutsFromInside);
-        const cutsByTool = cutsPerTool(context, splitEdges, tools);
+        var splitEdges;
+        var cutsByTool;
+        if (!faceMode && size(tools) == 1)
+        {
+            // One tool: every cut edge is its edge, and a part split leaves each cut as two coincident edges, one on
+            // the piece on each side of the tool. The kept one is the edge on the inside (or the outside) piece, and the
+            // pieces are already placed, so it is a query. Matching the pairs edge by edge cost about 12 kernel calls
+            // per cut and a pairwise loop: 2.8 s of a 3.1 s Referenced part with a periphery that makes 500 cut edges
+            // (2026-10-09; the kernel's own split took 0.06 s).
+            splitEdges = qIntersection([allCuts, qOwnedByBody(qUnion(cutsFromInside ? regions.inside : regions.start), EntityType.EDGE)]);
+            cutsByTool = [splitEdges];
+        }
+        else
+        {
+            splitEdges = oneEdgePerCut(context, allCuts, tools, sides.signs, cutsFromInside);
+            cutsByTool = cutsPerTool(context, splitEdges, tools);
+        }
 
         if (size(tempPlanes) > 0)
         {
@@ -341,12 +359,12 @@ function insideSides(context is Context, tools is array, probe, toolNames is arr
  * Every piece placed by the side of each tool its point is on: inside (inside of every tool),
  * start (beyond the start tool only), end (beyond the end tool only), beyondBoth, onTool.
  */
-function classifyPieces(context is Context, pieces is array, tools is array, signs is array) returns map
+function classifyPieces(context is Context, pieces is array, tools is array, signs is array, onTools is Query) returns map
 {
     var result = { "inside" : [], "start" : [], "end" : [], "beyondBoth" : [], "onTool" : [] };
     for (var piece in pieces)
     {
-        const point = piecePoint(context, piece, tools);
+        const point = piecePoint(context, piece, tools, onTools);
         var beyond = [];
         var readable = true;
         for (var k = 0; k < size(tools); k += 1)
@@ -426,17 +444,24 @@ function faceRegionEdges(context is Context, faces is Query, cuts is Query) retu
  *                         wire), the one farthest from the nearest tool -- so a solid's cap
  *                         faces, which lie on a tool, never decide
  */
-function piecePoint(context is Context, piece is Query, tools is array) returns Vector
+function piecePoint(context is Context, piece is Query, tools is array, onTools is Query) returns Vector
 {
     if (!isQueryEmpty(context, qEntityFilter(piece, EntityType.FACE)))
     {
         return pointOnFace(context, piece);
     }
     var candidates = [];
-    const faces = evaluateQuery(context, qOwnedByBody(piece, EntityType.FACE));
-    for (var face in faces)
+    // A piece's faces are wholly on its side of every tool, except the faces this split made ON a tool: those cannot
+    // decide, so they are left out, and a handful of the rest are enough to pick a point from. Testing every face of a
+    // 160-face piece cost over a thousand kernel calls.
+    var faces = evaluateQuery(context, qSubtraction(qOwnedByBody(piece, EntityType.FACE), onTools));
+    if (size(faces) == 0)
     {
-        candidates = append(candidates, pointOnFace(context, face));
+        faces = evaluateQuery(context, qOwnedByBody(piece, EntityType.FACE));
+    }
+    for (var i = 0; i < min(size(faces), PIECE_POINT_CANDIDATES); i += 1)
+    {
+        candidates = append(candidates, pointOnFace(context, faces[i]));
     }
     if (size(faces) == 0)
     {

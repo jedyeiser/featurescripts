@@ -55,6 +55,7 @@ DRAFTS = {
     "offset_plus": glyph("offset-surface-button") + PLUS_BADGE,
     "move_face_plus": glyph("move-face-button") + PLUS_BADGE,
     "enclose_plus": glyph("enclose-button") + PLUS_BADGE,
+    "curve_pattern_plus": glyph("curve-pattern-button") + PLUS_BADGE,
 
     # driven offset family: the profile graph is the shared motif
     "create_offset_profile": profile_graph(2, 3, 16, 14, DARK, 1.6),

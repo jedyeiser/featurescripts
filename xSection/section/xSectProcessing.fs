@@ -21,7 +21,7 @@ import(path : "17142132b20343b5f125e7e7", version : "92eaeac3778fb2c3abe9bc15");
 // IMPORTS - xSectUtils (constants, utilities, polyline projection)
 import(path : "c2c3edd39b85fde5e6062533", version : "ba11d48ccdd4952265f29ad5");
 // IMPORTS - xSect_Triangulation (processBodyCurves)
-import(path : "08d3a8d4e34a60d45d46e261", version : "d441f8c0aef95acc87399758");
+import(path : "08d3a8d4e34a60d45d46e261", version : "bbb11fe5b47a00ffa534a410");
 // IMPORTS - xSectMaterials (buildMaterialLookup, normalizeMaterialName, tryGetKey)
 import(path : "f8e590162884d45f56e0a05f", version : "eea0dd2f92bbe788ad4ed3b4");
 
@@ -92,6 +92,7 @@ export enum OverlapType
  */
 export function processCrossSections(context is Context, id is Id, definition is map, fcpX, acpX) returns map
 {
+    const debug = definition.debug == true;   // gates the console progress lines
     var frameData = getCrossSectionFramesAdaptive(context, definition.xSectAlong, definition.numSections, fcpX, acpX);
 
     // -----------------------------------------------------------------
@@ -218,23 +219,28 @@ export function processCrossSections(context is Context, id is Id, definition is
     var curvesAt = makeArray(stationCount, {});   // curvesAt[station][bodyIdx] = [curveData]
     for (var bodyIdx, stations in stationsOfBody)
     {
-        var tools = [];
-        for (var s in stations)
+        if (debug)
         {
-            tools = append(tools, qCreatedBy(id + ("plane" ~ s), EntityType.FACE));
+            println("xSect: intersecting body " ~ (bodies[bodyIdx].bodyName == undefined ? bodyIdx : bodies[bodyIdx].bodyName)
+                ~ " with " ~ size(stations) ~ " station plane(s)");
         }
-        const intersectId = id + ("intersectBody" ~ bodyIdx);
-        opIntersectFaces(context, intersectId, {
-                "tools" : qUnion(tools),
-                "targets" : entityOfBody[bodyIdx]
-        });
-
-        for (var edge in evaluateQuery(context, qCreatedBy(intersectId, EntityType.EDGE)))
+        const cut = intersectStations(context, id, entityOfBody[bodyIdx], bodyIdx, stations, frameData, debug);
+        for (var s in cut.failed)
         {
+            diagnostics = append(diagnostics, intersectDiagnostic(frameData, s, bodyIdx, bodies, true, undefined));
+        }
+        for (var n in cut.nudged)
+        {
+            diagnostics = append(diagnostics, intersectDiagnostic(frameData, n.station, bodyIdx, bodies, false, n.offset));
+        }
+
+        for (var item in cut.found)
+        {
+            const edge = item.edge;
             // forceNonRational: the triangulation samples with evaluateSpline, which ignores weights; an exact
             // (rational) arc was sampled off the circle -- a r5 circle came out 26% too large (correction 39).
             const bspline = evApproximateBSplineCurve(context, { "edge" : edge, "forceNonRational" : true });
-            const station = nearestStation(bspline, stations, stationPlanes);
+            const station = item.station == undefined ? nearestStation(bspline, stations, stationPlanes) : item.station;
             const curveData = {
                 "bSplineCurve" : bspline,
                 "bodyIndices" : [bodyIdx],
@@ -306,6 +312,11 @@ export function processCrossSections(context is Context, id is Id, definition is
             if (bodyCurves == undefined)
                 bodyCurves = [];
 
+            if (debug)
+            {
+                println("xSect: station " ~ stationNumber ~ " (x = " ~ roundToPrecision(frame.origin[0] / millimeter, 1) ~ " mm), body "
+                    ~ (bodies[bodyIdx].bodyName == undefined ? bodyIdx : bodies[bodyIdx].bodyName) ~ ": " ~ size(bodyCurves) ~ " curve(s)");
+            }
             var result = processBodyCurves(bodyCurves, frame, sectionPoints, spatialGrid);
             sectionPoints = result.sectionPoints;
             spatialGrid = result.spatialGrid;
@@ -407,6 +418,101 @@ export function processCrossSections(context is Context, id is Id, definition is
         "crossSections" : crossSections,
         "diagnostics" : diagnostics
     };
+}
+
+// Offsets tried along the plane normal when a station plane cannot be intersected with a body. A plane
+// lying on a planar face (an end cap, a ply drop) makes opIntersectFaces fail; a tiny shift avoids it.
+const PLANE_NUDGES = [0 * millimeter, 0.02 * millimeter, -0.02 * millimeter, 0.1 * millimeter, -0.1 * millimeter];
+
+/**
+ * Intersect one body with the planes of `stations` (indices into frameData). Tries all planes in one
+ * opIntersectFaces; if that makes nothing, splits the stations in halves and recurses, so a failing plane
+ * costs about 2 log2(n) ops and the good planes stay batched. A single plane is retried at PLANE_NUDGES.
+ * The try silent is needed: the op reports a failure only as an error, and a failure is expected here.
+ *
+ * Returns { found : [{ edge, station }], failed : [station index], nudged : [{ station, offset }] }.
+ * `station` of a found edge is undefined when it came from a multi-plane op (resolve with nearestStation).
+ */
+function intersectStations(context is Context, id is Id, body is Query, bodyIdx is number, stations is array,
+        frameData is array, debug is boolean) returns map
+{
+    if (size(stations) == 1)
+    {
+        const s = stations[0];
+        const frame = frameData[s].frame;
+        for (var k = 0; k < size(PLANE_NUDGES); k += 1)
+        {
+            var tool = qCreatedBy(id + ("plane" ~ s), EntityType.FACE);
+            if (k > 0)
+            {
+                const nudgeId = id + ("planeN" ~ s ~ "_" ~ k);
+                opPlane(context, nudgeId, { "plane" : plane(frame.origin + PLANE_NUDGES[k] * frame.zAxis, frame.zAxis) });
+                tool = qCreatedBy(nudgeId, EntityType.FACE);
+            }
+            const attemptId = id + ("ibs" ~ bodyIdx ~ "_" ~ s ~ "_" ~ k);
+            try silent(opIntersectFaces(context, attemptId, { "tools" : tool, "targets" : body }));
+            const edges = evaluateQuery(context, qCreatedBy(attemptId, EntityType.EDGE));
+            if (size(edges) > 0)
+            {
+                return {
+                        "found" : mapArray(edges, function(e) { return { "edge" : e, "station" : s }; }),
+                        "failed" : [],
+                        "nudged" : k > 0 ? [{ "station" : s, "offset" : PLANE_NUDGES[k] }] : []
+                    };
+            }
+        }
+        return { "found" : [], "failed" : [s], "nudged" : [] };
+    }
+
+    var tools = [];
+    for (var s in stations)
+    {
+        tools = append(tools, qCreatedBy(id + ("plane" ~ s), EntityType.FACE));
+    }
+    const batchId = id + ("ibr" ~ bodyIdx ~ "_" ~ stations[0] ~ "_" ~ stations[size(stations) - 1]);
+    try silent(opIntersectFaces(context, batchId, { "tools" : qUnion(tools), "targets" : body }));
+    const batchEdges = evaluateQuery(context, qCreatedBy(batchId, EntityType.EDGE));
+    if (size(batchEdges) > 0)
+    {
+        return {
+                "found" : mapArray(batchEdges, function(e) { return { "edge" : e, "station" : undefined }; }),
+                "failed" : [],
+                "nudged" : []
+            };
+    }
+
+    if (debug)
+    {
+        println("xSect: body " ~ bodyIdx ~ ": batch of " ~ size(stations) ~ " planes (stations " ~ stations[0] ~ ".."
+            ~ stations[size(stations) - 1] ~ ") made no edges; splitting");
+    }
+    const half = floor(size(stations) / 2);
+    const lo = intersectStations(context, id, body, bodyIdx, subArray(stations, 0, half), frameData, debug);
+    const hi = intersectStations(context, id, body, bodyIdx, subArray(stations, half, size(stations)), frameData, debug);
+    return {
+            "found" : concatenateArrays([lo.found, hi.found]),
+            "failed" : concatenateArrays([lo.failed, hi.failed]),
+            "nudged" : concatenateArrays([lo.nudged, hi.nudged])
+        };
+}
+
+/** A diagnostics entry for a station plane that could not be intersected (failed) or only after a nudge. */
+function intersectDiagnostic(frameData is array, s is number, bodyIdx is number, bodies is array, failed is boolean, nudge) returns map
+{
+    return {
+            "station" : s,
+            "stationNumber" : frameData[s].stationNumber,
+            "xCoord" : frameData[s].frame.origin[0],
+            "bodyIdx" : bodyIdx,
+            "bodyName" : bodies[bodyIdx].bodyName,
+            "duplicatesRemoved" : 0,
+            "degenerateRemoved" : 0,
+            "maxBridge" : 0 * meter,
+            "openChains" : 0,
+            "zeroArea" : false,
+            "failedIntersect" : failed,
+            "nudge" : nudge
+        };
 }
 
 /**

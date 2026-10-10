@@ -10,9 +10,10 @@ usage (repo root): PYTHONPATH=. python devtools/onshape/build_reference_side_tes
 """
 import json
 import math
+import os
 
 from sync.core.client import OnshapeClient
-from devtools.onshape.fsapi import write_feature, delete_feature  # noqa: E402  (API budget: one feature-tree GET per studio)
+from devtools.onshape.fsapi import write_feature, delete_feature, cached_tree  # noqa: E402  (API budget: one feature-tree GET per studio)
 
 c = OnshapeClient()
 DOC = json.load(open("reference_side/.document.json"))
@@ -50,6 +51,12 @@ _TREE = {}   # feature tree of the test Part Studio, kept in step with each writ
 
 
 def upsert(feature):
+    # API budget: BUILD_ONLY_NEW=1 leaves features that already exist untouched, except the feature types listed in
+    # BUILD_REPOST (comma separated), which are rewritten so they pick up the tab's new microversion.
+    if os.environ.get("BUILD_ONLY_NEW") and feature.get("featureType") not in os.environ.get("BUILD_REPOST", "").split(","):
+        have = [x for x in cached_tree(BASE, _TREE, c)["features"] if x["name"] == feature["name"]]
+        if have:
+            return have[0]["featureId"]
     r = write_feature(BASE, feature, _TREE, client=c)
     print("%-100s %s" % (feature["name"][:100], r.get("featureState", {}).get("featureStatus")))
     return r["feature"]["featureId"]
@@ -306,8 +313,8 @@ for n, near1 in enumerate([True, False]):
 # ============================================================================
 # Thicken+
 # ============================================================================
-def thicken(name, params):
-    return feature(name, "thickenPlus", params, NS["thicken_plus"])
+def thicken(name, params, ns=None):
+    return feature(name, "thickenPlus", params, ns or NS["thicken_plus"])
 
 
 for n, (toward, away, swap) in enumerate([(5, 0, False), (2, 3, False), (2, 3, True)]):
@@ -517,12 +524,12 @@ def join(name, params):
 
 def join_params(start, end, point, inside, inside_off, outside=None, outside_off="0 mm", start_prof=None, start_off="0 mm",
                 end_prof=None, end_off="0 mm", start_fillet=None):
-    p = [q("startSplit", start), q("endSplit", end), q("insidePoint", point), q("insideProfile", body(inside)), num("insideOffset", inside_off)]
+    p = [q("startSplit", start) if start is not None else q("startSplit"), q("endSplit", end) if end is not None else q("endSplit"), q("insidePoint", point), q("insideProfile", body(inside)), num("insideOffset", inside_off)]
     if outside is not None:
         p += [en("outsideMode", "JoinOutsideMode", "SAME", NS["join_profile_surfaces"]), q("outsideProfile", body(outside)), num("outsideOffset", outside_off)]
     else:
-        p += [en("outsideMode", "JoinOutsideMode", "DIFFERENT", NS["join_profile_surfaces"]), q("startProfile", body(start_prof)),
-              num("startOffset", start_off), q("endProfile", body(end_prof)), num("endOffset", end_off)]
+        p += [en("outsideMode", "JoinOutsideMode", "DIFFERENT", NS["join_profile_surfaces"]), q("startProfile", body(start_prof)) if start_prof is not None else q("startProfile"),
+              num("startOffset", start_off), q("endProfile", body(end_prof)) if end_prof is not None else q("endProfile"), num("endOffset", end_off)]
     if start_fillet is not None:
         p += [b("startFillet", True), num("startRadius", start_fillet[0]),
               en("startFilletEdge", "JoinFilletEdge", start_fillet[1], NS["join_profile_surfaces"]), b("startKeepOpposite", start_fillet[2])]
@@ -548,22 +555,44 @@ eo = sheet("J3 end outside profile z 30, x %d..%d" % (x0, x0 + 100), [(x0, 30), 
 join("J3 Join profile surfaces, different start (z 20) / end (z 30) -> area 25000", join_params(
     plane_at("J3 start split x = %d" % (x0 - 50), "Right", x0 - 50), plane_at("J3 end split x = %d" % (x0 + 50), "Right", x0 + 50),
     ref_front("J3 inside point (%d, 0, -10)" % x0, x0, -10), ins, "0 mm", start_prof=so, end_prof=eo))
+
+# One split (2026-10-08): the inside profile keeps the inside point's side, the outside the other side, one loft.
+for tag, x0, start_on, mode, want in (("J5", 22600, True, "same", "start split only, same outside -> 3 faces, area 22000"),
+                                      ("J6", 23000, False, "same", "end split only, same outside -> 3 faces, area 22000"),
+                                      ("J7", 23400, True, "different", "start split only, different outside -> 3 faces, area 22000"),
+                                      ("J8", 23800, False, "different", "end split only, different outside -> 3 faces, area 22000")):
+    ins = sheet("%s inside profile z 0, x %d..%d" % (tag, x0 - 100, x0 + 100), [(x0 - 100, 0), (x0 + 100, 0)])
+    cut = x0 - 50 if start_on else x0 + 50
+    split = plane_at("%s %s split x = %d" % (tag, "start" if start_on else "end", cut), "Right", cut)
+    pt = ref_front("%s inside point (%d, 0, -10)" % (tag, x0), x0, -10)
+    outside_x = (x0 - 100, x0 - 50) if start_on else (x0 + 50, x0 + 100)
+    if mode == "same":
+        out = sheet("%s outside profile z 20" % tag, [(x0 - 100, 20), (x0 + 100, 20)])
+        params = join_params(split if start_on else None, None if start_on else split, pt, ins, "0 mm", outside=out)
+    else:
+        out = sheet("%s outside profile z 20, x %d..%d" % (tag, outside_x[0], outside_x[1]), [(outside_x[0], 20), (outside_x[1], 20)])
+        params = join_params(split if start_on else None, None if start_on else split, pt, ins, "0 mm",
+                             start_prof=out if start_on else None, end_prof=None if start_on else out)
+    join("%s Join profile surfaces, %s" % (tag, want), params)
+
+join("J9 Join profile surfaces, no split -> ERROR", join_params(None, None, ref_front("J9 inside point (24200, 0, -10)", 24200, -10),
+     sheet("J9 inside profile z 0", [(24100, 0), (24300, 0)]), "0 mm", outside=sheet("J9 outside profile z 20", [(24100, 20), (24300, 20)])))
 print("studio", E)
 
 # ============================================================================
 # Referenced part (2026-09-28)
 # ============================================================================
 def refpart(name, part_type, point, profile=None, profile_off="0 mm", thickness="1 mm", top=None, top_off="0 mm", bottom=None,
-            bottom_off="0 mm", periphery=None, periphery_off="0 mm", cap1=None, cap1_off="0 mm", cap2=None, cap2_off="0 mm", mirror=None):
+            bottom_off="0 mm", periphery=None, periphery_off="0 mm", cap1=None, cap1_off="0 mm", cap2=None, cap2_off="0 mm", mirror=None, ns=None):
     def qs(pid, e):
         return q(pid, e) if e is not None else q(pid)
     return feature(name, "referencedPart", [
-        en("partType", "ReferencedPartType", part_type, NS["referenced_part"]), q("referencePoint", point),
+        en("partType", "ReferencedPartType", part_type, ns or NS["referenced_part"]), q("referencePoint", point),
         qs("profile", profile), num("profileOffset", profile_off), num("thickness", thickness),
         qs("top", top), num("topOffset", top_off), qs("bottom", bottom), num("bottomOffset", bottom_off),
         qs("periphery", periphery), num("peripheryOffset", periphery_off),
         qs("cap1", cap1), num("cap1Offset", cap1_off), qs("cap2", cap2), num("cap2Offset", cap2_off), qs("mirrorPlane", mirror)],
-        NS["referenced_part"])
+        ns or NS["referenced_part"])
 
 
 x0 = 23000
@@ -589,6 +618,18 @@ refpart("P4 Referenced part, half, cap plane x %d offset 5, mirror x %d -> x %d.
         "THICKENED", ref_front("P4 reference point (%d, 0, 10) on the mirror plane" % x0, x0, 10), profile=body(p4), thickness="3 mm",
         periphery=body(p4w), cap1=plane_at("P4 cap plane x = %d" % (x0 - 60), "Right", x0 - 60), cap1_off="5 mm",
         mirror=plane_at("P4 mirror plane x = %d" % x0, "Right", x0))
+
+# P4 again with a profile offset (2026-10-08): with a mirror plane the layer is built from the unoffset profile
+# (thickenLayer). The profile is at z 0 and the point above it, so "toward" is +z.
+for tag, x0, p_off, thick, layer in (("P9", 28000, "2 mm", "3 mm", "z 2..5 (above the profile)"),
+                                    ("P10", 28600, "1 mm", "-3 mm", "z -2..1 (spans the profile)"),
+                                    ("P11", 29200, "-4 mm", "3 mm", "z -4..-1 (below the profile)")):
+    pp = sheet("%s half profile z 0, x %d..%d" % (tag, x0 - 100, x0), [(x0 - 100, 0), (x0, 0)])
+    pw = tube("%s periphery U open at x %d" % (tag, x0), [(x0 + 20, -40), (x0 - 80, -40), (x0 - 80, 40), (x0 + 20, 40)], closed=False)
+    refpart("%s Referenced part, half, profile offset %s, thickness %s, cap, mirror -> layer %s, x %d..%d, volume 26400, 2 cap faces" % (tag, p_off, thick, layer, x0 - 55, x0 + 55),
+            "THICKENED", ref_front("%s reference point (%d, 0, 10) on the mirror plane" % (tag, x0), x0, 10), profile=body(pp), profile_off=p_off, thickness=thick,
+            periphery=body(pw), cap1=plane_at("%s cap plane x = %d" % (tag, x0 - 60), "Right", x0 - 60), cap1_off="5 mm",
+            mirror=plane_at("%s mirror plane x = %d" % (tag, x0), "Right", x0))
 
 x0 = 25400
 p5t = sheet("P5 top z 10, x %d..%d" % (x0 - 100, x0 + 100), [(x0 - 100, 10), (x0 + 100, 10)])
@@ -622,3 +663,48 @@ p8w = tube("P8 periphery square 60 at x %d" % x0, square(x0, 30))
 refpart("P8 Referenced part, constrained, point outside the periphery -> ERROR", "CONSTRAINED",
         ref_front("P8 reference point (%d, 0, 5) outside" % (x0 + 60), x0 + 60, 5), top=body(p8t), bottom=body(p8b), periphery=body(p8w))
 print("studio", E)
+
+
+# ============================================================================
+# Regeneration-time pairs (2026-10-09): the same inputs run by the code before and after the speed-ups, read off the
+# Part Studio clock. A 76-face profile like the ski top sheet (a gentle convex arc, 1.3 mm segments). OLD_MV is the
+# document microversion just before the changes (documenthistory); set it in the environment to compare against another.
+# ============================================================================
+OLD_MV = os.environ.get("OLD_MV", "82656baaebb8f5c025383342")
+OLD = {name: "e%s::m%s" % (TABS[name]["id"], OLD_MV) for name in ("thicken_plus", "referenced_part")}
+N_SEG = 76
+RADIUS = 3000.0
+
+x0 = 31000
+arc_pts = [(x0 - 100 + 100.0 * i / N_SEG, -((100.0 * (N_SEG - i) / N_SEG) ** 2) / (2 * RADIUS)) for i in range(N_SEG + 1)]
+pf = sheet("PF profile, %d segments (76 faces), x %d..%d" % (N_SEG, x0 - 100, x0), arc_pts)
+pt_ref = ref_front("PF reference point (%d, 0, 10)" % x0, x0, 10)
+for tag, ns in (("new", None), ("old", OLD["thicken_plus"])):
+    thicken("PT %s Thicken+ 76 faces, toward 3 mm (%s code)" % (tag, tag), [
+        en("operationType", "NewBodyOperationType", "NEW", ns or NS["thicken_plus"]), q("entities", body(pf)), q("sideReference", pt_ref),
+        num("thicknessToward", "3 mm"), b("keepTools", True)], ns)
+
+pw = tube("PF periphery U open at x %d" % x0, [(x0 + 20, -40), (x0 - 80, -40), (x0 - 80, 40), (x0 + 20, 40)], closed=False)
+pc = plane_at("PF cap plane x = %d" % (x0 - 60), "Right", x0 - 60)
+pm = plane_at("PF mirror plane x = %d" % x0, "Right", x0)
+for tag, ns in (("new", None), ("old", OLD["referenced_part"])):
+    refpart("PR %s Referenced part 76 faces, cap, mirror (%s code)" % (tag, tag), "THICKENED", pt_ref, profile=body(pf), thickness="3 mm",
+            periphery=body(pw), cap1=pc, cap1_off="5 mm", mirror=pm, ns=ns)
+
+def splitp(name, params):
+    return feature(name, "splitPlus", params, NS["split_plus"])
+
+
+# Where does a Referenced part's time go? The same steps as separate features on the same inputs (clock readings).
+offset("PX1 Offset+ 76 faces, distance 0 (the profile copy)", [
+    en("offsetType", "OffsetPlusType", "SURFACE", NS["offset_plus"]), q("surfaces", body(pf)), num("distance", "0 mm"),
+    q("sideReference", pt_ref), b("towardReference", True)])
+px2 = thicken("PX2 Thicken+ 76 faces, toward 3 mm (the solid the splits cut)", [
+    en("operationType", "NewBodyOperationType", "NEW", NS["thicken_plus"]), q("entities", body(pf)), q("sideReference", pt_ref),
+    num("thicknessToward", "3 mm"), b("keepTools", True)])
+splitp("PX3 Split+ the thickened solid by the periphery sheet, keep inside", [
+    q("targets", body(px2)), q("startTool", body(pw)), q("insideReference", pt_ref), keep("INSIDE")])
+splitp("PX4 Split+ the solid by the cap plane, keep inside", [
+    q("targets", body(px2)), q("startTool", pc), q("insideReference", pt_ref), keep("INSIDE")])
+splitp("PX5 Split+ the solid by the mirror plane, keep inside (stands in for the mirror cut)", [
+    q("targets", body(px2)), q("startTool", pm), q("insideReference", ref_front("PX reference point left of the mirror plane (%d, 0, 10)" % (x0 - 30), x0 - 30, 10)), keep("INSIDE")])

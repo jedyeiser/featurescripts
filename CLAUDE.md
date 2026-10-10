@@ -143,6 +143,7 @@ copy the tabs into a scratch document (same-document imports work by microversio
 
 - `.claude/agents/featurescript-expert.md` - Full FeatureScript expertise (auto-invoked on .fs files)
 - `.claude/featurescript-corrections.md` - Living log of known issues and fixes
+- `.claude/onshape-featurescript-basics.md` - Onshape/FeatureScript basics (regen and recovery, step/time limits, performance, debugging, imports/pins/derive); claims tagged by source, gaps listed at the end
 - `docs/STATUS.md` - which features have explainers / briefs / decks and their state (generated from docs/status.json)
 - `archive/docs_pre_2026-09/README.md` - what was archived and why (old PROJECT.md, February fix notes, old curveMapping design)
 - `driven_offset/docs/unwrap_explained.md` - Unwrap / undrape explained end to end (theory, use, code map, tests)

@@ -1,5 +1,6 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/movecurveboundarytype.gen.fs", version : "3083.0");
 
 /**
  * curveTrimCore - shared engine for the betterCurveTrim feature.
@@ -29,6 +30,12 @@ export const CTC_ON_CURVE_TOL = 1e-5 * meter;
 // Keep cut fractions strictly inside the curve so a cut never lands exactly on
 // an endpoint (which produces a zero-length segment or no split at all).
 export const CTC_FRACTION_EPS = 1e-6;
+
+// In-place trim: samples along the path when counting plane crossings, and the fraction of
+// the path length by which the two ends' distances to the cut must differ for the side
+// opMoveCurveBoundary removes to be predictable.
+export const CTC_TRIM_CROSSING_SAMPLES = 400;
+export const CTC_TRIM_SIDE_MARGIN = 0.01;
 
 // Number of equal segments for the even-division mode (this many pieces, so
 // this-minus-one interior cuts).
@@ -410,6 +417,105 @@ export function splitWireIntoPieces(context is Context, id is Id, wire is Query,
     }
     opDeleteBodies(context, id + "deleteSource", { "entities" : wire });
     return pieces;
+}
+
+/**
+ * TRIM at ONE path fraction without replacing the wire body: opMoveCurveBoundary trims
+ * the wire in place against a plane through the cut, normal to the path there, so
+ * references to the wire survive (splitWireIntoPieces extracts new bodies instead).
+ *
+ * opMoveCurveBoundary removes the end nearest the plane unless flipHeuristics is set, so
+ * the flip is chosen from that rule to keep the wanted side. Returns false, having
+ * changed nothing, when an in-place trim is not safe and the caller must use the
+ * extract-and-delete route: the plane crosses the wire more than once (it would also cut
+ * elsewhere), or both ends are nearly equally far from the cut (the side is ambiguous).
+ *
+ * @param keepEnd {boolean} : true keeps the part after the cut (toward path end).
+ * @returns {{
+ *      @field done {boolean} : The wire was trimmed in place.
+ *      @field wire {Query} : The trimmed wire (use this, not the input: its transient id changes).
+ * }}
+ */
+export function trimWireInPlace(context is Context, id is Id, wire is Query, wp is map, f is number, keepEnd is boolean) returns map
+{
+    var cut = pathTangentAtFraction(context, wp, f);
+    var dir = normalize(cut.direction);
+
+    var samples = [];
+    for (var i = 0; i <= CTC_TRIM_CROSSING_SAMPLES; i += 1)
+    {
+        samples = append(samples, i / CTC_TRIM_CROSSING_SAMPLES);
+    }
+    var crossings = 0;
+    var lastSign = 0;
+    for (var tl in evPathTangentLines(context, wp.path, samples).tangentLines)
+    {
+        var s = dot(tl.origin - cut.origin, dir) / meter;
+        if (abs(s) > 1e-9)
+        {
+            var side = s > 0 ? 1 : -1;
+            if (lastSign != 0 && side != lastSign)
+            {
+                crossings += 1;
+            }
+            lastSign = side;
+        }
+    }
+    if (crossings != 1)
+    {
+        return { "done" : false, "wire" : wire };
+    }
+
+    var startPoint = pathPointAtFraction(context, wp, 0);
+    var endPoint = pathPointAtFraction(context, wp, 1);
+    var dStart = abs(dot(startPoint - cut.origin, dir));
+    var dEnd = abs(dot(endPoint - cut.origin, dir));
+    if (abs(dStart - dEnd) < CTC_TRIM_SIDE_MARGIN * wp.total)
+    {
+        return { "done" : false, "wire" : wire };
+    }
+    // The default removes the end nearest the plane; flip when that is the end we keep.
+    var nearerIsStart = dStart < dEnd;
+    var flip = nearerIsStart != keepEnd;
+
+    // Trace the span about to be removed (the op deletes it) like the other trim route.
+    var removeFrom = keepEnd ? 0 : f;
+    var removeTo = keepEnd ? f : 1;
+    var prev = undefined;
+    for (var k = 0; k <= 24; k += 1)
+    {
+        var pt = pathPointAtFraction(context, wp, removeFrom + (removeTo - removeFrom) * k / 24);
+        if (prev != undefined)
+        {
+            addDebugLine(context, prev, pt, DebugColor.MAGENTA);
+        }
+        prev = pt;
+    }
+
+    var planeSize = 2 * wp.total;
+    opPlane(context, id + "trimPlane", { "plane" : plane(cut.origin, dir), "width" : planeSize, "height" : planeSize });
+    opMoveCurveBoundary(context, id + "trimMove", {
+                "wires" : wire,
+                "moveBoundaryType" : MoveCurveBoundaryType.TRIM,
+                "trimTo" : qCreatedBy(id + "trimPlane", EntityType.BODY),
+                "flipHeuristics" : flip
+            });
+    opDeleteBodies(context, id + "trimPlaneDelete", { "entities" : qCreatedBy(id + "trimPlane", EntityType.BODY) });
+
+    // The trimmed wire: a (non-sketch) wire body with a vertex at both the kept end and the
+    // cut. startTracking was not used: it comes back empty when the start side is kept. If
+    // none exists, the side prediction was wrong (the kept end went with the removed part).
+    var keptEnd = keepEnd ? endPoint : startPoint;
+    var trimmed = qIntersection([
+                qSketchFilter(qBodyType(qEverything(EntityType.BODY), BodyType.WIRE), SketchObject.NO),
+                qOwnerBody(qContainsPoint(qEverything(EntityType.VERTEX), keptEnd)),
+                qOwnerBody(qContainsPoint(qEverything(EntityType.VERTEX), cut.origin))
+            ]);
+    if (isQueryEmpty(context, trimmed))
+    {
+        throw regenError("Trim kept the wrong side of the curve. Try the other Keep setting.", ["curves"]);
+    }
+    return { "done" : true, "wire" : trimmed };
 }
 
 // ============================================================================

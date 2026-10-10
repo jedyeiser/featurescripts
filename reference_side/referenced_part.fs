@@ -4,13 +4,13 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: reference_side_utils.fs
 import(path : "9aebe5ead538258b285aec19", version : "51d2aab9634029141009803d");
 // IMPORT: offset_plus.fs (Offset+, every surface offset)
-import(path : "742e5b3f04cc9115de8b6d8a", version : "cb9c79a1a023c8b7935e4cce");
+import(path : "742e5b3f04cc9115de8b6d8a", version : "0b41870364cf9b0f0e7c8cd3");
 // IMPORT: split_plus.fs (Split+, periphery and cap cuts)
-import(path : "637854639ad04840dc6f998d", version : "6828f3e1413feb45737a2464");
+import(path : "637854639ad04840dc6f998d", version : "f803257d22d5a7ba34163ec7");
 // IMPORT: thicken_plus.fs (Thicken+, the Thickened mode)
-import(path : "0c55868c5058e59d958b7223", version : "79e13566b2db89cc20dbcbfc");
+import(path : "0c55868c5058e59d958b7223", version : "67f2adc834b29839d2ba5e44");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: referenced_part_icon.svg (feature icon)
 IconNamespace::import(path : "385dde1d1db1fd331e975189", version : "c6ae68c4419cca3f9189e4a0");
 
@@ -37,7 +37,8 @@ IconNamespace::import(path : "385dde1d1db1fd331e975189", version : "c6ae68c4419c
  * mate connectors (infinite planes, moved by the offset). The part keeps the point's side of each.
  *
  * Mirror plane (optional): the surfaces are one half. The half is cut at the plane (the side the
- * surfaces are on is kept -- a point ON the plane is fine), mirrored and united.
+ * surfaces are on is kept -- a point ON the plane is fine), mirrored and united. With a profile offset the
+ * thickened layer is built from the unoffset profile (see thickenLayer) so its faces meet the plane exactly.
  *
  * The inputs are never changed: every offset is a new surface (0 = a copy), deleted at the end.
  *
@@ -130,6 +131,9 @@ export const referencedPart = defineFeature(function(context is Context, id is I
         annotation { "Name" : "Mirror plane", "Filter" : EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
                     "Description" : "Optional: the surfaces are one half. The half is made, mirrored and united." }
         definition.mirrorPlane is Query;
+
+        annotation { "Name" : "Output name", "Description" : "Optional. Names the part; leave empty for the default name." }
+        definition.outputName is string;
     }
     {
         const thickened = definition.partType == ReferencedPartType.THICKENED;
@@ -159,6 +163,18 @@ export const referencedPart = defineFeature(function(context is Context, id is I
             }
         }
 
+        // Constrained: the top and bottom offsets are made BEFORE the periphery and caps. opEnclose is sensitive to the order
+        // the boundary bodies were created in: on the real core it fails (BOOLEAN_INVALID) in every one of the 8 orders that
+        // make the periphery before both top and bottom, and succeeds in all 16 others; the order the entities are passed
+        // in does not matter (2026-10-09).
+        var top = undefined;
+        var bottom = undefined;
+        if (!thickened)
+        {
+            top = offsetSurface(context, id + "topOffset", definition.top, definition.topOffset, definition.referencePoint);
+            bottom = offsetSurface(context, id + "bottomOffset", definition.bottom, definition.bottomOffset, definition.referencePoint);
+        }
+
         // The boundaries, as new surfaces: each face of the part is later sorted onto one of them.
         var boundaries = [];
         const hasPeriphery = !isQueryEmpty(context, definition.periphery);
@@ -183,21 +199,26 @@ export const referencedPart = defineFeature(function(context is Context, id is I
         const solids = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SOLID);
         if (thickened)
         {
-            const profile = offsetSurface(context, id + "profileOffset", definition.profile, definition.profileOffset, definition.referencePoint);
+            // Offset 0 is the profile itself: no copy (about 0.7 s on a 76-face profile). It is only measured against and
+            // thickened with the tools kept, so the input is never changed.
+            const profile = abs(definition.profileOffset) < TOLERANCE.zeroLength * meter ? definition.profile
+                : offsetSurface(context, id + "profileOffset", definition.profile, definition.profileOffset, definition.referencePoint);
             boundaries = concatenateArrays([boundaries, [
                             { "key" : "profileFaces", "surface" : profile, "distance" : 0 * meter },
                             { "key" : "oppositeFaces", "surface" : profile, "distance" : abs(definition.thickness) }]]);
-            thickenPlus(context, id + "thicken", {
-                        "operationType" : NewBodyOperationType.NEW,
-                        "entities" : profile,
-                        "sideReference" : definition.referencePoint,
-                        "thicknessToward" : definition.thickness > 0 * meter ? definition.thickness : 0 * meter,
-                        "thicknessAway" : definition.thickness < 0 * meter ? -definition.thickness : 0 * meter,
-                        "swapSides" : false,
-                        "keepTools" : true,
-                        "checkCurvature" : true,
-                        "debugPrint" : false
-                    });
+            if (mirror != undefined && abs(definition.profileOffset) > TOLERANCE.zeroLength * meter)
+            {
+                // The profile offset is not applied to the surface here; see thickenLayer.
+                thickenLayer(context, id, definition.profile, definition.referencePoint,
+                    min(definition.profileOffset, definition.profileOffset + definition.thickness),
+                    max(definition.profileOffset, definition.profileOffset + definition.thickness));
+            }
+            else
+            {
+                thickenSides(context, id + "thicken", profile, definition.referencePoint,
+                    definition.thickness > 0 * meter ? definition.thickness : 0 * meter,
+                    definition.thickness < 0 * meter ? -definition.thickness : 0 * meter);
+            }
             if (side != undefined)
             {
                 keepInside(context, id + "peripherySplit", solids, side, qNothing(), definition.referencePoint);
@@ -205,8 +226,6 @@ export const referencedPart = defineFeature(function(context is Context, id is I
         }
         else
         {
-            const top = offsetSurface(context, id + "topOffset", definition.top, definition.topOffset, definition.referencePoint);
-            const bottom = offsetSurface(context, id + "bottomOffset", definition.bottom, definition.bottomOffset, definition.referencePoint);
             boundaries = concatenateArrays([boundaries, [
                             { "key" : "topFaces", "surface" : top, "distance" : 0 * meter },
                             { "key" : "bottomFaces", "surface" : bottom, "distance" : 0 * meter }]]);
@@ -233,6 +252,11 @@ export const referencedPart = defineFeature(function(context is Context, id is I
         if (!isQueryEmpty(context, temporary))
         {
             opDeleteBodies(context, id + "deleteTemporary", { "entities" : temporary });
+        }
+
+        if (definition.outputName != "")
+        {
+            setProperty(context, { "entities" : result, "propertyType" : PropertyType.NAME, "value" : definition.outputName });
         }
 
         var queries = {};
@@ -269,8 +293,50 @@ export const referencedPart = defineFeature(function(context is Context, id is I
         "cap1Offset" : 0 * meter,
         "cap2" : qNothing(),
         "cap2Offset" : 0 * meter,
-        "mirrorPlane" : qNothing()
+        "mirrorPlane" : qNothing(),
+        "outputName" : ""
     });
+
+/** Thicken+ of a surface into a new solid: `toward` on the reference point's side, `away` on the other. */
+function thickenSides(context is Context, id is Id, surface is Query, reference is Query, toward is ValueWithUnits, away is ValueWithUnits)
+{
+    thickenPlus(context, id, {
+                "operationType" : NewBodyOperationType.NEW,
+                "entities" : surface,
+                "sideReference" : reference,
+                "thicknessToward" : toward,
+                "thicknessAway" : away,
+                "swapSides" : false,
+                "keepTools" : true,
+                "checkCurvature" : true,
+                "debugPrint" : false
+            });
+}
+
+/**
+ * Thickened with a mirror plane and a profile offset: the layer from `lo` to `hi` (signed distances from the
+ * profile, positive toward the reference point), built from the ORIGINAL profile instead of from an offset copy.
+ *
+ * The union with the mirror image needs the half's faces to meet the mirror plane exactly. An offset surface's
+ * edges at the plane stop a fraction of a micron short of it (0.3 um on a 76-face profile), and the union then
+ * fails with BOOLEAN_NON_MANIFOLD_RESULT -- for any positive offset, however small (2026-10-08). The original
+ * profile's edges lie in the plane. A layer that spans the profile (lo <= 0 <= hi) is one thicken; a layer wholly
+ * on one side is the thicken out to its far face less the thicken out to its near face.
+ */
+function thickenLayer(context is Context, id is Id, profile is Query, reference is Query, lo is ValueWithUnits, hi is ValueWithUnits)
+{
+    thickenSides(context, id + "thicken", profile, reference, max(hi, 0 * meter), max(-lo, 0 * meter));
+    if (lo > 0 * meter || hi < 0 * meter)
+    {
+        thickenSides(context, id + "thickenNear", profile, reference, max(lo, 0 * meter), max(-hi, 0 * meter));
+        opBoolean(context, id + "layer", {
+                    "targets" : qCreatedBy(id + "thicken", EntityType.BODY),
+                    "tools" : qCreatedBy(id + "thickenNear", EntityType.BODY),
+                    "operationType" : BooleanOperationType.SUBTRACTION,
+                    "keepTools" : false
+                });
+    }
+}
 
 /** Offset+ of a surface toward the reference point (0 = a copy); the new surface. */
 function offsetSurface(context is Context, id is Id, surface is Query, distance is ValueWithUnits, reference is Query) returns Query
@@ -403,7 +469,15 @@ function mirrorAndUnite(context is Context, id is Id, solids is Query, mirror is
     var dropped = [];
     for (var piece in evaluateQuery(context, solids))
     {
-        const ps = dot(evApproximateCentroid(context, { "entities" : piece }) - mirror.origin, mirror.normal);
+        // The cut can leave slivers thinner than a micron beyond the plane (a thicken's end wall leans off it by about
+        // 0.06 um), and one of zero volume has no centroid. It is dropped with the other half.
+        const centroid = try silent(evApproximateCentroid(context, { "entities" : piece }));
+        if (centroid == undefined)
+        {
+            dropped = append(dropped, piece);
+            continue;
+        }
+        const ps = dot(centroid - mirror.origin, mirror.normal);
         if (ps * s > 0 * meter * meter)
         {
             kept = append(kept, piece);

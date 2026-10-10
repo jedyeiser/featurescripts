@@ -6,7 +6,7 @@ export import(path : "onshape/std/tool.fs", version : "3083.0");
 // IMPORT: reference_side_utils.fs
 import(path : "9aebe5ead538258b285aec19", version : "51d2aab9634029141009803d");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: thicken_plus_icon.svg (feature icon)
 IconNamespace::import(path : "b485aa90a94179256b9b5aca", version : "95d6a7e0281857d46f768b63");
 
@@ -62,6 +62,12 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
 
         annotation { "Name" : "Keep tools", "Default" : false }
         definition.keepTools is boolean;
+
+        if (definition.operationType == NewBodyOperationType.NEW)
+        {
+            annotation { "Name" : "Output name", "Description" : "Optional. Names the new bodies; leave empty for the default names." }
+            definition.outputName is string;
+        }
 
         booleanStepScopePredicate(definition);
 
@@ -130,17 +136,6 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
             }
         }
 
-        // A copy of each group's faces to measure the result against: opThicken consumes the input surfaces
-        // (Keep tools off), and the copies must be gone before the boolean step, which takes every body created
-        // under id as a tool.
-        for (var i = 0; i < size(groups); i += 1)
-        {
-            opExtractSurface(context, id + ("measure" ~ i), { "faces" : groups[i].faces });
-            groups[i].copy = qCreatedBy(id + ("measure" ~ i), EntityType.FACE);
-            // which side of the copy is "toward": the reference's side of it (the copy's own normal need not match)
-            groups[i].towardSign = probe != undefined ? sideSign(context, probe, groups[i].copy) : 1;
-        }
-
         // std Thicken, per group, then its boolean step unchanged.
         const remainingTransform = getRemainderPatternTransform(context, { "references" : definition.entities });
         const thickenAll = function(opId is Id)
@@ -159,17 +154,26 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
             };
         thickenAll(id);
 
-        // Name the faces before the boolean, tracked through it.
+        // Name the faces before the boolean, tracked through it. opThicken makes its START cap on the thickness1 side
+        // (along the normal) and its END cap on the thickness2 side, also when that thickness is 0 (the cap then sits
+        // on the input); which of the two is Toward is the surface's side of the reference. Two queries name every
+        // face -- classifying them one by one by distance cost about 0.8 s on 160 faces and mislabelled side faces
+        // that happened to lie one thickness from the input (2026-10-09).
+        const frozen = function(q is Query) returns Query
+            {
+                return qUnion(evaluateQuery(context, q));
+            };
         var towardFaces = [];
         var awayFaces = [];
         var sideFaces = [];
         for (var i = 0; i < size(groups); i += 1)
         {
-            const named = classifyFaces(context, id + ("thicken" ~ i), groups[i], toward, away);
-            towardFaces = append(towardFaces, named.toward);
-            awayFaces = append(awayFaces, named.away);
-            sideFaces = append(sideFaces, named.side);
-            opDeleteBodies(context, id + ("deleteMeasure" ~ i), { "entities" : qOwnerBody(groups[i].copy) });
+            const thickenId = id + ("thicken" ~ i);
+            const startCap = frozen(qCapEntity(thickenId, CapType.START, EntityType.FACE));
+            const endCap = frozen(qCapEntity(thickenId, CapType.END, EntityType.FACE));
+            towardFaces = append(towardFaces, groups[i].alongNormal > 0 ? startCap : endCap);
+            awayFaces = append(awayFaces, groups[i].alongNormal > 0 ? endCap : startCap);
+            sideFaces = append(sideFaces, frozen(qSubtraction(qOwnedByBody(qCreatedBy(thickenId, EntityType.BODY), EntityType.FACE), qUnion([startCap, endCap]))));
         }
         const tracked = function(q is Query) returns Query
             {
@@ -184,6 +188,12 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
         const output = tracked(created);
 
         processNewBodyIfNeeded(context, id, definition, thickenAll);
+
+        // Only new bodies: with Add / Remove / Intersect the result is a part the user already has.
+        if (definition.operationType == NewBodyOperationType.NEW && definition.outputName != "")
+        {
+            setProperty(context, { "entities" : created, "propertyType" : PropertyType.NAME, "value" : definition.outputName });
+        }
 
         embedStandardOutputs(context, id, settledOutputs(context, {
                     // With Remove / Intersect the thickened bodies are consumed by the boolean: the
@@ -203,55 +213,10 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
         "thicknessAway" : 0 * meter,
         "swapSides" : false,
         "keepTools" : false,
+        "outputName" : "",
         "checkCurvature" : true,
         "debugPrint" : false
     });
-
-/**
- * The faces one opThicken made, sorted by where they sit relative to the input surface: at the Toward thickness
- * on the reference side, at the Away thickness on the other, or neither (the side faces). Read at a point on each
- * face (the face's point nearest its centroid), as a signed distance from a copy of the input faces taken before
- * the thicken consumed them.
- */
-function classifyFaces(context is Context, thickenId is Id, group is map, toward is ValueWithUnits, away is ValueWithUnits) returns map
-{
-    var smallest = inf * meter;
-    for (var t in [toward, away])
-    {
-        if (t > 0 * meter)
-        {
-            smallest = min(smallest, t);
-        }
-    }
-    const tol = min(1e-5 * meter, 0.25 * smallest);
-    var result = { "toward" : [], "away" : [], "side" : [] };
-    for (var face in evaluateQuery(context, qOwnedByBody(qCreatedBy(thickenId, EntityType.BODY), EntityType.FACE)))
-    {
-        const centroid = evApproximateCentroid(context, { "entities" : face });
-        const onFace = evDistance(context, { "side0" : face, "side1" : centroid }).sides[0].point;
-        const s = signedSideOf(context, onFace, group.copy);
-        if (s == undefined)
-        {
-            result.side = append(result.side, face);
-            continue;
-        }
-        // positive toward the reference
-        const d = s * group.towardSign;
-        if (abs(d - toward) < tol)
-        {
-            result.toward = append(result.toward, face);
-        }
-        else if (abs(d + away) < tol)
-        {
-            result.away = append(result.away, face);
-        }
-        else
-        {
-            result.side = append(result.side, face);
-        }
-    }
-    return { "toward" : qUnion(result.toward), "away" : qUnion(result.away), "side" : qUnion(result.side) };
-}
 
 /**
  * A thicken of t on one side of a face cannot pass a place where the face is concave toward that side with a

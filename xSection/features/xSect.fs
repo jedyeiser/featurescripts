@@ -16,7 +16,7 @@ import(path : "ebac109589e3bf405d3f3ae7", version : "07cfdc7634781f7f69ffd5b3");
 //import xSectMatrials
 import(path : "f8e590162884d45f56e0a05f", version : "eea0dd2f92bbe788ad4ed3b4");
 //import xSectProcessing
-import(path : "3cb3cff6974529bf6bed096b", version : "5c0da7e5bb9cff50242858ad");
+import(path : "3cb3cff6974529bf6bed096b", version : "21d0740560d74ea5bd3e5022");
 //import xSectVisualization
 import(path : "19991d0446ad0551339572d9", version : "9cc7ada68c37bb8a8eabea7f");
 //import xSectStorage
@@ -494,7 +494,7 @@ function reportSectionDiagnostics(context is Context, id is Id, diagnostics, fcp
     var failed = 0;
     for (var d in diagnostics)
     {
-        const lost = d.zeroArea || d.openChains > 0;
+        const lost = d.zeroArea || d.openChains > 0 || d.failedIntersect == true;
         const inReference = fcpX == undefined || acpX == undefined
             || (d.xCoord >= min(fcpX, acpX) - REFERENCE_REGION_TOL && d.xCoord <= max(fcpX, acpX) + REFERENCE_REGION_TOL);
         if (lost && inReference)
@@ -507,15 +507,17 @@ function reportSectionDiagnostics(context is Context, id is Id, diagnostics, fcp
             ~ (d.degenerateRemoved > 0 ? (d.degenerateRemoved ~ " zero-length edge(s) removed; ") : "")
             ~ (d.maxBridge > 0 * meter ? ("gap of " ~ roundToPrecision(d.maxBridge / millimeter * 1000, 1) ~ " um bridged; ") : "")
             ~ (d.openChains > 0 ? (d.openChains ~ " outline(s) left open and closed by a chord; ") : "")
+            ~ (d.failedIntersect == true ? "plane could not be intersected with this body, even when shifted up to 0.1 mm -- this body is missing from the section; " : "")
+            ~ (d.nudge != undefined ? ("plane shifted " ~ roundToPrecision(d.nudge / millimeter, 2) ~ " mm to intersect; ") : "")
             ~ (d.zeroArea ? "NO AREA -- this body is missing from the section" : "")
             ~ (inReference ? "" : " (outside FCP-ACP)"));
     }
     if (failed > 0)
     {
-        reportFeatureWarning(context, id, failed ~ " body section(s) between FCP and ACP could not be closed or came out with no area; EI is low there. See the console.");
+        reportFeatureWarning(context, id, failed ~ " body section(s) between FCP and ACP could not be intersected, could not be closed, or came out with no area; EI is low there. See the console.");
     }
     else
     {
-        reportFeatureInfo(context, id, "Repaired " ~ size(diagnostics) ~ " body section outline(s) (duplicate edges or micron gaps from the cut). See the console.");
+        reportFeatureInfo(context, id, "Repaired or adjusted " ~ size(diagnostics) ~ " body section(s) (duplicate edges, micron gaps from the cut, or a station plane shifted to intersect). See the console.");
     }
 }

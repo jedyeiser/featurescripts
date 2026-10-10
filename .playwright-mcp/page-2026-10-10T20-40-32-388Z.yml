@@ -1,0 +1,79 @@
+- generic [ref=e5]:
+  - navigation [ref=e6]:
+    - generic [ref=e7]:
+      - link [ref=e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=e11]
+      - generic [ref=e13] [cursor=pointer]
+    - generic [ref=e16]:
+      - generic [ref=e18]:
+        - generic [ref=e19]: curve pattern +
+        - generic [ref=e20]: Main
+      - generic [ref=e22] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=e26] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=e30]:
+      - generic [ref=e38] [cursor=pointer]
+      - generic [ref=e44] [cursor=pointer]
+      - button "Notifications" [ref=e49] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=e57]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=e60] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=e65] [cursor=pointer]
+      - button "Share" [ref=e69] [cursor=pointer]
+      - generic "Help menu" [ref=e71] [cursor=pointer]
+      - button "Jed Yeiser" [ref=e75] [cursor=pointer]
+  - generic [ref=e85]:
+    - generic [ref=e87]:
+      - generic [ref=e88]:
+        - generic [ref=e89]:
+          - generic [ref=e90] [cursor=pointer]
+          - generic [ref=e93] [cursor=pointer]
+          - generic [ref=e96] [cursor=pointer]
+          - generic [ref=e99] [cursor=pointer]
+          - generic [ref=e102] [cursor=pointer]
+          - generic [ref=e105] [cursor=pointer]
+          - generic [ref=e108] [cursor=pointer]
+          - generic [ref=e111] [cursor=pointer]
+        - generic [ref=e115] [cursor=pointer]
+      - generic [ref=e119] [cursor=pointer]
+    - generic [ref=e126]:
+      - generic [ref=e129]:
+        - generic [ref=e133]:
+          - generic [ref=e145]:
+            - generic [ref=e146]: New feature
+            - generic [ref=e159]:
+              - generic [ref=e160] [cursor=pointer]: Length parameter
+              - generic [ref=e162] [cursor=pointer]
+            - generic [ref=e169]:
+              - generic [ref=e170] [cursor=pointer]
+              - generic [ref=e174] [cursor=pointer]
+            - generic [ref=e177]: Commit
+          - button "Search tools… alt/⌥ c" [ref=e188] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=e189]:
+              - generic [ref=e190]: alt/⌥
+              - generic [ref=e191]: c
+          - generic [ref=e192]:
+            - switch "Co-complete" [disabled] [ref=e194] [cursor=pointer]
+            - generic [ref=e195]: Co-complete
+        - generic [ref=e200]:
+          - generic [ref=e201]: Monitor Part Studio 1
+          - generic [ref=e213]: Module outline
+          - generic [ref=e248]: Line 1 , Column 1
+      - generic [ref=e255]:
+        - textbox "Cursor at row 1" [active] [ref=e256]: FeatureScript 3095;
+        - generic [ref=e258]:
+          - generic [aria-hidden] [ref=e259]: "1"
+          - generic [aria-hidden] [ref=e260]: "2"
+          - generic [aria-hidden] [ref=e261]: "3"
+          - generic [aria-hidden] [ref=e262]: "4"
+        - generic [ref=e264]:
+          - generic:
+            - generic: FeatureScript 3095;
+            - generic: "import(path : \"onshape/std/common.fs\", version : \"3095.0\");"
+      - generic [ref=e269]:
+        - img [ref=e272] [cursor=pointer]
+        - generic [ref=e275]:
+          - generic [ref=e276] [cursor=pointer]: Part Studio 1
+          - generic [ref=e282]: Feature Studio 1
+          - generic [ref=e293] [cursor=pointer]: Assembly 1

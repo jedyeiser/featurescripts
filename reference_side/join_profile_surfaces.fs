@@ -4,11 +4,11 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: reference_side_utils.fs
 import(path : "9aebe5ead538258b285aec19", version : "51d2aab9634029141009803d");
 // IMPORT: offset_plus.fs (Offset+, called for every profile)
-import(path : "742e5b3f04cc9115de8b6d8a", version : "cb9c79a1a023c8b7935e4cce");
+import(path : "742e5b3f04cc9115de8b6d8a", version : "0b41870364cf9b0f0e7c8cd3");
 // IMPORT: split_plus.fs (Split+, called for every profile)
-import(path : "637854639ad04840dc6f998d", version : "6828f3e1413feb45737a2464");
+import(path : "637854639ad04840dc6f998d", version : "f803257d22d5a7ba34163ec7");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: join_profile_surfaces_icon.svg (feature icon)
 IconNamespace::import(path : "3749310adb8f74e6e862ad8e", version : "0f493347f757f749e45e12b9");
 
@@ -28,6 +28,11 @@ IconNamespace::import(path : "3749310adb8f74e6e862ad8e", version : "0f493347f757
  *        the end.
  *     4. Merge: everything is united into one surface (always -- joining is the point; a joint that
  *        does not close is an error naming it), then the fillets on the merged joint edges.
+ *
+ * Either split alone is enough (2026-10-08): the inside profile keeps the inside point's side of
+ * it, the outside profile the other side, and one loft joins them. The keys of the missing side
+ * (endOutside, endLoft, the end joint edges, or the start ones) are then empty. Fillets and
+ * "different" outside profiles are needed only for the splits given.
  *
  * Publishes (Extract variables): output (the joined surface), insideSurface,
  * startOutside, endOutside, startLoft, endLoft (faces), the four joint edges startInsideEdge,
@@ -58,14 +63,16 @@ annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Join prof
 export const joinProfileSurfaces = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Start split", "Filter" : (EntityType.BODY && BodyType.SHEET && SketchObject.NO) || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Start split", "Filter" : (EntityType.BODY && BodyType.SHEET && SketchObject.NO) || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                    "Description" : "Give a start split, an end split, or both. With one split there is one transition." }
         definition.startSplit is Query;
 
-        annotation { "Name" : "End split", "Filter" : (EntityType.BODY && BodyType.SHEET && SketchObject.NO) || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "End split", "Filter" : (EntityType.BODY && BodyType.SHEET && SketchObject.NO) || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                    "Description" : "Give a start split, an end split, or both. With one split there is one transition." }
         definition.endSplit is Query;
 
         annotation { "Name" : "Inside point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
-                    "Description" : "A point inside every profile surface and between the start and end splits. Positive offsets move toward it." }
+                    "Description" : "A point inside every profile surface, on the side of the split(s) the inside profile keeps: between the start and end splits, or beyond the only split. Positive offsets move toward it." }
         definition.insidePoint is Query;
 
         annotation { "Name" : "Inside profile", "Filter" : EntityType.BODY && BodyType.SHEET && SketchObject.NO && ConstructionObject.NO, "MaxNumberOfPicks" : 1 }
@@ -126,82 +133,153 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
             definition.endKeepOpposite is boolean;
         }
 
+        annotation { "Name" : "Output name", "Description" : "Optional. Names the joined surface; leave empty for the default name." }
+        definition.outputName is string;
+
         annotation { "Name" : "Keep input surfaces", "Default" : true, "Description" : "Off: delete the profile surfaces this feature used." }
         definition.keepInputs is boolean;
     }
     {
-        verifyNonemptyQuery(context, definition, "startSplit", "Select the start split.");
-        verifyNonemptyQuery(context, definition, "endSplit", "Select the end split.");
+        // Either split alone is a valid join (one transition); both give a transition at each end.
+        const hasStart = !isQueryEmpty(context, definition.startSplit);
+        const hasEnd = !isQueryEmpty(context, definition.endSplit);
+        if (!hasStart && !hasEnd)
+        {
+            throw regenError("Select a start split, an end split, or both.", ["startSplit"]);
+        }
         verifyNonemptyQuery(context, definition, "insidePoint", "Select the inside point.");
         verifyNonemptyQuery(context, definition, "insideProfile", "Select the inside profile surface.");
+        if (definition.startFillet && !hasStart)
+        {
+            throw regenError("The start fillet needs a start split.", ["startFillet"]);
+        }
+        if (definition.endFillet && !hasEnd)
+        {
+            throw regenError("The end fillet needs an end split.", ["endFillet"]);
+        }
         const same = definition.outsideMode == JoinOutsideMode.SAME;
+        var inputs = [definition.insideProfile];
         if (same)
         {
             verifyNonemptyQuery(context, definition, "outsideProfile", "Select the outside profile surface.");
+            inputs = append(inputs, definition.outsideProfile);
         }
         else
         {
-            verifyNonemptyQuery(context, definition, "startProfile", "Select the start outside profile surface.");
-            verifyNonemptyQuery(context, definition, "endProfile", "Select the end outside profile surface.");
+            if (hasStart)
+            {
+                verifyNonemptyQuery(context, definition, "startProfile", "Select the start outside profile surface.");
+                inputs = append(inputs, definition.startProfile);
+            }
+            if (hasEnd)
+            {
+                verifyNonemptyQuery(context, definition, "endProfile", "Select the end outside profile surface.");
+                inputs = append(inputs, definition.endProfile);
+            }
         }
-        const inputs = same ? [definition.insideProfile, definition.outsideProfile]
-                            : [definition.insideProfile, definition.startProfile, definition.endProfile];
+        // With one split it is the only tool: Split+ names its cut "startCut" whichever end it is.
+        const firstTool = hasStart ? definition.startSplit : definition.endSplit;
+        const secondTool = (hasStart && hasEnd) ? definition.endSplit : qNothing();
 
         // 1. Offsets (Offset+: positive toward the inside point, 0 a copy).
         const inside = offsetProfile(context, id + "insideOffset", definition.insideProfile, definition.insideOffset, definition.insidePoint);
 
         // 2. Splits (Split+ with the inside point; the split tools are the user's and are kept).
-        const insideSplit = splitProfileAtSeams(context, id + "insideSplit", inside, definition.startSplit, definition.endSplit, definition.insidePoint, SplitPlusKeep.INSIDE);
-        const insideStart = insideSplit.startCut;
-        const insideEnd = insideSplit.endCut;
+        const insideSplit = splitProfileAtSeams(context, id + "insideSplit", inside, firstTool, secondTool, definition.insidePoint, SplitPlusKeep.INSIDE);
+        var insideStart = qNothing();
+        var insideEnd = qNothing();
+        if (hasStart && hasEnd)
+        {
+            insideStart = insideSplit.startCut;
+            insideEnd = insideSplit.endCut;
+        }
+        else if (hasStart)
+        {
+            insideStart = insideSplit.startCut;
+        }
+        else
+        {
+            insideEnd = insideSplit.startCut;
+        }
         const insideFaces = frozenAndTracked(context, qOwnedByBody(insideSplit.inside, EntityType.FACE));
 
-        var outsideStart;
-        var outsideEnd;
-        var startOutsideFaces;
-        var endOutsideFaces;
+        var outsideStart = qNothing();
+        var outsideEnd = qNothing();
+        var startOutsideFaces = qNothing();
+        var endOutsideFaces = qNothing();
         if (same)
         {
             const outside = offsetProfile(context, id + "outsideOffset", definition.outsideProfile, definition.outsideOffset, definition.insidePoint);
-            const outsideSplit = splitProfileAtSeams(context, id + "outsideSplit", outside, definition.startSplit, definition.endSplit, definition.insidePoint, SplitPlusKeep.OUTSIDE);
-            outsideStart = outsideSplit.startCut;
-            outsideEnd = outsideSplit.endCut;
-            startOutsideFaces = frozenAndTracked(context, qOwnedByBody(outsideSplit.start, EntityType.FACE));
-            endOutsideFaces = frozenAndTracked(context, qOwnedByBody(outsideSplit.end, EntityType.FACE));
+            const outsideSplit = splitProfileAtSeams(context, id + "outsideSplit", outside, firstTool, secondTool, definition.insidePoint, SplitPlusKeep.OUTSIDE);
+            if (hasStart && hasEnd)
+            {
+                outsideStart = outsideSplit.startCut;
+                outsideEnd = outsideSplit.endCut;
+                startOutsideFaces = frozenAndTracked(context, qOwnedByBody(outsideSplit.start, EntityType.FACE));
+                endOutsideFaces = frozenAndTracked(context, qOwnedByBody(outsideSplit.end, EntityType.FACE));
+            }
+            else if (hasStart)
+            {
+                outsideStart = outsideSplit.startCut;
+                startOutsideFaces = frozenAndTracked(context, qOwnedByBody(outsideSplit.start, EntityType.FACE));
+            }
+            else
+            {
+                outsideEnd = outsideSplit.startCut;
+                endOutsideFaces = frozenAndTracked(context, qOwnedByBody(outsideSplit.start, EntityType.FACE));
+            }
         }
         else
         {
             // One tool each: its cut is Split+'s startCut, the piece beyond it Split+'s start region.
-            const startOut = offsetProfile(context, id + "startOffset", definition.startProfile, definition.startOffset, definition.insidePoint);
-            const startSplit = splitProfileAtSeams(context, id + "startSplit", startOut, definition.startSplit, qNothing(), definition.insidePoint, SplitPlusKeep.OUTSIDE);
-            const endOut = offsetProfile(context, id + "endOffset", definition.endProfile, definition.endOffset, definition.insidePoint);
-            const endSplit = splitProfileAtSeams(context, id + "endSplit", endOut, definition.endSplit, qNothing(), definition.insidePoint, SplitPlusKeep.OUTSIDE);
-            outsideStart = startSplit.startCut;
-            outsideEnd = endSplit.startCut;
-            startOutsideFaces = frozenAndTracked(context, qOwnedByBody(startSplit.start, EntityType.FACE));
-            endOutsideFaces = frozenAndTracked(context, qOwnedByBody(endSplit.start, EntityType.FACE));
+            if (hasStart)
+            {
+                const startOut = offsetProfile(context, id + "startOffset", definition.startProfile, definition.startOffset, definition.insidePoint);
+                const startSplit = splitProfileAtSeams(context, id + "startSplit", startOut, definition.startSplit, qNothing(), definition.insidePoint, SplitPlusKeep.OUTSIDE);
+                outsideStart = startSplit.startCut;
+                startOutsideFaces = frozenAndTracked(context, qOwnedByBody(startSplit.start, EntityType.FACE));
+            }
+            if (hasEnd)
+            {
+                const endOut = offsetProfile(context, id + "endOffset", definition.endProfile, definition.endOffset, definition.insidePoint);
+                const endSplit = splitProfileAtSeams(context, id + "endSplit", endOut, definition.endSplit, qNothing(), definition.insidePoint, SplitPlusKeep.OUTSIDE);
+                outsideEnd = endSplit.startCut;
+                endOutsideFaces = frozenAndTracked(context, qOwnedByBody(endSplit.start, EntityType.FACE));
+            }
         }
-        verifyCut(context, insideStart, "start", "inside");
-        verifyCut(context, insideEnd, "end", "inside");
-        verifyCut(context, outsideStart, "start", "outside");
-        verifyCut(context, outsideEnd, "end", "outside");
+        if (hasStart)
+        {
+            verifyCut(context, insideStart, "start", "inside");
+            verifyCut(context, outsideStart, "start", "outside");
+        }
+        if (hasEnd)
+        {
+            verifyCut(context, insideEnd, "end", "inside");
+            verifyCut(context, outsideEnd, "end", "outside");
+        }
 
-        // 3. Lofts between the paired cut edges.
-        opLoft(context, id + "startLoft", { "profileSubqueries" : [insideStart, outsideStart], "bodyType" : ToolBodyType.SURFACE });
-        opLoft(context, id + "endLoft", { "profileSubqueries" : [insideEnd, outsideEnd], "bodyType" : ToolBodyType.SURFACE });
-        const startLoftFaces = frozenAndTracked(context, qCreatedBy(id + "startLoft", EntityType.FACE));
-        const endLoftFaces = frozenAndTracked(context, qCreatedBy(id + "endLoft", EntityType.FACE));
-        const joints = {
-                "startInside" : frozenAndTracked(context, insideStart),
-                "startOutside" : frozenAndTracked(context, outsideStart),
-                "endInside" : frozenAndTracked(context, insideEnd),
-                "endOutside" : frozenAndTracked(context, outsideEnd)
-            };
+        // 3. A loft between the paired cut edges at each split given.
+        var startLoftFaces = qNothing();
+        var endLoftFaces = qNothing();
+        var joints = { "startInside" : qNothing(), "startOutside" : qNothing(), "endInside" : qNothing(), "endOutside" : qNothing() };
+        if (hasStart)
+        {
+            opLoft(context, id + "startLoft", { "profileSubqueries" : [insideStart, outsideStart], "bodyType" : ToolBodyType.SURFACE });
+            startLoftFaces = frozenAndTracked(context, qCreatedBy(id + "startLoft", EntityType.FACE));
+            joints.startInside = frozenAndTracked(context, insideStart);
+            joints.startOutside = frozenAndTracked(context, outsideStart);
+        }
+        if (hasEnd)
+        {
+            opLoft(context, id + "endLoft", { "profileSubqueries" : [insideEnd, outsideEnd], "bodyType" : ToolBodyType.SURFACE });
+            endLoftFaces = frozenAndTracked(context, qCreatedBy(id + "endLoft", EntityType.FACE));
+            joints.endInside = frozenAndTracked(context, insideEnd);
+            joints.endOutside = frozenAndTracked(context, outsideEnd);
+        }
 
         // Every body this feature made (the offsets' kept pieces and the lofts).
         const pieces = qUnion([qOwnerBody(insideFaces), qOwnerBody(startOutsideFaces), qOwnerBody(endOutsideFaces),
                     qCreatedBy(id + "startLoft", EntityType.BODY), qCreatedBy(id + "endLoft", EntityType.BODY)]);
-
         // 4. Merge (always: joining is the point), then the fillets on the merged joint edges.
         var mergeFailed = false;
         var mergeError = "";
@@ -221,10 +299,10 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
             };
         // Every joint must have closed: its edge now shared by the loft and the surface it joins.
         var openJoints = [];
-        for (var joint in [["startInside", "start loft to the inside surface"], ["startOutside", "start loft to the outside surface"],
-                           ["endInside", "end loft to the inside surface"], ["endOutside", "end loft to the outside surface"]])
+        for (var joint in [["startInside", "start loft to the inside surface", hasStart], ["startOutside", "start loft to the outside surface", hasStart],
+                           ["endInside", "end loft to the inside surface", hasEnd], ["endOutside", "end loft to the outside surface", hasEnd]])
         {
-            if (isQueryEmpty(context, qEdgeTopologyFilter(jointEdge(joint[0]), EdgeTopology.TWO_SIDED)))
+            if (joint[2] && isQueryEmpty(context, qEdgeTopologyFilter(jointEdge(joint[0]), EdgeTopology.TWO_SIDED)))
             {
                 openJoints = append(openJoints, joint[1]);
             }
@@ -253,6 +331,11 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
             {
                 opDeleteBodies(context, id + "deleteInputs", { "entities" : inputBodies });
             }
+        }
+
+        if (definition.outputName != "")
+        {
+            setProperty(context, { "entities" : result, "propertyType" : PropertyType.NAME, "value" : definition.outputName });
         }
 
         const faceKey = function(q is Query, description is string) returns map
@@ -286,6 +369,7 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         "startOffset" : 0 * meter,
         "endProfile" : qNothing(),
         "endOffset" : 0 * meter,
+        "outputName" : "",
         "startFillet" : false,
         "endFillet" : false,
         "keepInputs" : true
@@ -558,3 +642,4 @@ function insidePointOf(context is Context, reference is Query) returns Vector
     }
     return evVertexPoint(context, { "vertex" : qEntityFilter(reference, EntityType.VERTEX) });
 }
+

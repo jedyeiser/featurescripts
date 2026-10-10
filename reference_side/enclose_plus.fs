@@ -4,7 +4,7 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: reference_side_utils.fs
 import(path : "9aebe5ead538258b285aec19", version : "51d2aab9634029141009803d");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
-import(path : "a47f90bfa6b17a59e20cebd0/78504463aa9ea7fa3cce2789/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: enclose_plus_icon.svg (feature icon)
 IconNamespace::import(path : "03964942420afcb28f2079d1", version : "7d6273daa700a3a85e83c6ee");
 
@@ -51,6 +51,9 @@ export const enclosePlus = defineFeature(function(context is Context, id is Id, 
         annotation { "Name" : "Mirror plane", "Filter" : EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
                     "Description" : "Optional: the surfaces are one half. It is enclosed against this plane, mirrored and united." }
         definition.mirrorPlane is Query;
+
+        annotation { "Name" : "Output name", "Description" : "Optional. Names the enclosed part; leave empty for the default name." }
+        definition.outputName is string;
 
         annotation { "Name" : "Keep tools", "Default" : false, "Description" : "Keep the input surfaces (planes and mate connectors are never deleted)." }
         definition.keepTools is boolean;
@@ -172,6 +175,11 @@ export const enclosePlus = defineFeature(function(context is Context, id is Id, 
             }
         }
 
+        if (definition.outputName != "")
+        {
+            setProperty(context, { "entities" : result, "propertyType" : PropertyType.NAME, "value" : definition.outputName });
+        }
+
         // Faces: those on a cap plane or grown from a cap are cap faces; the rest come from the surfaces.
         var capFaceList = [qEntityFilter(qUnion([trackedCaps]), EntityType.FACE)];
         for (var pl in capPlanes)
@@ -199,6 +207,7 @@ export const enclosePlus = defineFeature(function(context is Context, id is Id, 
         "caps" : qNothing(),
         "insidePoint" : qNothing(),
         "mirrorPlane" : qNothing(),
+        "outputName" : "",
         "keepTools" : false
     });
 

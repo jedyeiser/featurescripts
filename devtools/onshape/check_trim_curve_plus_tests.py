@@ -1,4 +1,4 @@
-"""Check the "Trim curve + tests" Part Studio built by build_trim_curve_plus_tests.py.
+﻿"""Check the "Trim curve + tests" Part Studio built by build_trim_curve_plus_tests.py.
 
 Reads every non-sketch wire body (edge count, length, case by x offset), the feature statuses, and the
 Variable_tools keys embedded by T1 and T2 (cut_k vertices / piece_k), and compares with the expected results.
@@ -20,7 +20,7 @@ BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 EXPECT = {
     "T1": [100, 100, 357.080], "T2": [557.080], "T3": [457.080], "T4": [100, 150, 307.080],
     "T5": [50, 507.080], "T6": [50, 507.080], "T7": [100, 457.080], "T8": [557.080],
-    "T9": [20, 130, 100, 307.080],
+    "T9": [20, 130, 100, 307.080], "T10": [407.080], "T11": [150], "T12": [50], "T13": [507.080], "T14": [150],
 }
 EXPECT_EDGES = {"T2": 5}
 
@@ -57,7 +57,7 @@ SCRIPT = """function(context is Context, queries)
 
 feats = c.get(f"{BASE}/features")
 status = {x["featureId"]: feats["featureStates"][x["featureId"]]["featureStatus"] for x in feats["features"]}
-trims = {x["name"][:2]: x["featureId"] for x in feats["features"] if x["featureType"] == "betterCurveTrim"}
+trims = {x["name"].split()[0]: x["featureId"] for x in feats["features"] if x["featureType"] == "betterCurveTrim"}
 fids = [trims["T1"], trims["T2"]]
 script = SCRIPT.replace("FIDS", json.dumps(fids))
 r = c.post(f"{BASE}/featurescript", json_data={"script": script})
@@ -88,3 +88,6 @@ for ln in lines:
     if ln.startswith("K "):
         print(ln)
 print("\n%d/%d pass" % (len(EXPECT) - fails, len(EXPECT)))
+
+
+

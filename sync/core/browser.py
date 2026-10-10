@@ -112,7 +112,11 @@ class OnshapeBrowser:
         except Exception:
             return False
         # Let the post-login redirect settle so all cookies are set before saving.
-        self.page.wait_for_load_state("networkidle")
+        # Onshape keeps websockets open, so the page may never go network-idle; a timeout here is not a failure.
+        try:
+            self.page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception:
+            pass
         self.save_state()
         return True
 

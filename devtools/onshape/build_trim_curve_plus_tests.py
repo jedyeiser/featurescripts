@@ -1,4 +1,4 @@
-"""Build the Trim curve + test cases as real features in smallTools' "Trim curve + tests" Part Studio
+﻿"""Build the Trim curve + test cases as real features in smallTools' "Trim curve + tests" Part Studio
 (created when missing; upsert by name). Fixtures are native features only. Checked by
 check_trim_curve_plus_tests.py.
 
@@ -23,7 +23,9 @@ import json
 import math
 
 from sync.core.client import OnshapeClient
-from devtools.onshape.fsapi import write_feature, delete_feature  # noqa: E402  (API budget: one feature-tree GET per studio)
+import os
+
+from devtools.onshape.fsapi import write_feature, delete_feature, cached_tree  # noqa: E402  (API budget: one feature-tree GET per studio)
 
 c = OnshapeClient()
 DOC = json.load(open("smallTools/.document.json"))
@@ -64,6 +66,10 @@ _TREE = {}   # feature tree of the test Part Studio, kept in step with each writ
 
 
 def upsert(feature):
+    if os.environ.get("BUILD_ONLY_NEW"):   # API budget: leave features that already exist untouched
+        have = [x for x in cached_tree(BASE, _TREE, c)["features"] if x["name"] == feature["name"]]
+        if have:
+            return have[0]["featureId"]
     r = write_feature(BASE, feature, _TREE, client=c)
     print("%-100s %s" % (feature["name"][:100], r.get("featureState", {}).get("featureStatus")))
     return r["feature"]["featureId"]
@@ -217,3 +223,23 @@ w = wire("T8", x0)
 p = points("T8", [(x0 + 100, 0)])
 trim("T8 split 600 from point -> ERROR runs past the end", body(w), [q("fromPoint", vertices(p)), num("distance", "600 mm")],
      dict(SPLIT, cutBy="ARC_LENGTH_FROM_POINT"))
+
+
+def distance_trim(tag, x0, extra, keep, label):
+    w = wire(tag, x0)
+    p = points(tag, [(x0 + 100, 0)])
+    trim("%s %s" % (tag, label), body(w), [q("fromPoint", vertices(p)), num("distance", "50 mm")] + extra,
+         {"operation": "TRIM", "cutBy": "ARC_LENGTH_FROM_POINT", "trimKeep": keep})
+
+
+distance_trim("T10", 9000, [], "FAR_SIDE", "trim 50 from point, keep beyond the cut -> 1 wire 407.080")
+distance_trim("T11", 10000, [], "POINT_SIDE", "trim 50 from point, keep reference point side -> 1 wire 150")
+distance_trim("T12", 11000, [b("distanceFlip", True)], "FAR_SIDE", "trim 50 opposite, keep beyond the cut -> 1 wire 50")
+distance_trim("T13", 12000, [b("distanceFlip", True)], "POINT_SIDE", "trim 50 opposite, keep reference point side -> 1 wire 507.080")
+
+
+w = wire("T14", 13000)
+p = points("T14", [(13100, 0)])
+trim("T14 trim 50 from point, default side to keep (toward point) -> 1 wire 150", body(w), [q("fromPoint", vertices(p)), num("distance", "50 mm")],
+     {"operation": "TRIM", "cutBy": "ARC_LENGTH_FROM_POINT"})
+

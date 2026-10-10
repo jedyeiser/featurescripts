@@ -761,17 +761,28 @@ function classifyNesting(perimeterData is array, sectionPoints is array, frame i
     
     // Determine parent for each perimeter (smallest containing perimeter)
     var parents = [];  // index of parent, or -1 if top-level
-    var areas = [];
+    var areas = [];    // plain numbers (m^2), as are the polygon coordinates below
+    var polyX = [];
+    var polyY = [];
 
     for (var i = 0; i < n; i += 1)
     {
-        areas = append(areas, abs(polygonSignedArea2D(perimeterData[i].points2D)));
+        var xs = [];
+        var ys = [];
+        for (var p in perimeterData[i].points2D)
+        {
+            xs = append(xs, p[0] / meter);
+            ys = append(ys, p[1] / meter);
+        }
+        polyX = append(polyX, xs);
+        polyY = append(polyY, ys);
+        areas = append(areas, abs(polygonSignedAreaXY(xs, ys)));
     }
 
     for (var i = 0; i < n; i += 1)
     {
         var parentIdx = -1;
-        var parentArea = inf * meter * meter;
+        var parentArea = inf;
 
         for (var j = 0; j < n; j += 1)
         {
@@ -785,7 +796,7 @@ function classifyNesting(perimeterData is array, sectionPoints is array, frame i
 
             // i is inside j when most of i's vertices are. A vertex-average test point can fall
             // outside a thin U- or crescent-shaped loop altogether.
-            if (mostlyInside(perimeterData[i].points2D, perimeterData[j].points2D))
+            if (mostlyInside(polyX[i], polyY[i], polyX[j], polyY[j]))
             {
                 // j contains i - is it the smallest container?
                 if (areas[j] < parentArea)
@@ -841,14 +852,15 @@ function buildNestedHierarchy(perimeterData is array, parents is array, parentId
  * inside `outer`. Vertices shared by touching loops sit on the boundary and can go either
  * way, so a majority decides rather than any one point.
  */
-function mostlyInside(inner is array, outer is array) returns boolean
+function mostlyInside(innerX is array, innerY is array, outerX is array, outerY is array) returns boolean
 {
-    const n = size(inner);
+    const n = size(innerX);
     const count = min(n, NESTING_SAMPLES);
     var inside = 0;
     for (var s = 0; s < count; s += 1)
     {
-        if (pointInPolygon2D(inner[floor(s * n / count)], outer))
+        const k = floor(s * n / count);
+        if (pointInPolygonXY(innerX[k], innerY[k], outerX, outerY))
         {
             inside += 1;
         }
@@ -857,25 +869,23 @@ function mostlyInside(inner is array, outer is array) returns boolean
 }
 
 /**
- * Test if point is inside polygon using ray casting.
+ * Test if point (px, py) is inside the polygon (xs, ys) using ray casting. Plain numbers (meters).
  */
-function pointInPolygon2D(point is array, polygon is array) returns boolean
+function pointInPolygonXY(px is number, py is number, xs is array, ys is array) returns boolean
 {
-    var n = size(polygon);
+    const n = size(xs);
     if (n < 3)
         return false;
-    
-    var px = point[0];
-    var py = point[1];
+
     var inside = false;
-    
+
     var j = n - 1;
     for (var i = 0; i < n; i += 1)
     {
-        var xi = polygon[i][0];
-        var yi = polygon[i][1];
-        var xj = polygon[j][0];
-        var yj = polygon[j][1];
+        const xi = xs[i];
+        const yi = ys[i];
+        const xj = xs[j];
+        const yj = ys[j];
         
         // Check if ray from point crosses edge
         if (((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
@@ -952,266 +962,223 @@ function triangulateNestedGroup(nestedGroup is map, sectionPoints is array, fram
 
 /**
  * Ear clipping triangulation.
- * 
+ *
+ * The loops run on plain numbers (meters): a ValueWithUnits operation builds and typechecks a map,
+ * which is far more expensive than a number operation and is what made big sections hit the
+ * interpreter step limit. The units are stripped once on entry; the result is indices only.
+ *
  * @param points2D {array} : Local 2D coordinates
  * @param pointIndices {array} : Indices into sectionPoints
  * @returns {array} : Array of [i, j, k] triangles (indices into sectionPoints)
  */
 export function earClipTriangulate(points2D is array, pointIndices is array) returns array
 {
-    var n = size(points2D);
-    
+    const n = size(points2D);
+
     if (n < 3)
         return [];
-    
+
     if (n == 3)
         return [[pointIndices[0], pointIndices[1], pointIndices[2]]];
-    
-    // Store original polygon for diagonal check
-    var originalPolygon = points2D;
-    
-    // Build working index list (local indices into points2D/pointIndices)
+
+    var xs = [];
+    var ys = [];
+    for (var p in points2D)
+    {
+        xs = append(xs, p[0] / meter);
+        ys = append(ys, p[1] / meter);
+    }
+
+    // Working polygon: local indices into points2D/pointIndices
     var localIndices = [];
     for (var i = 0; i < n; i += 1)
     {
         localIndices = append(localIndices, i);
     }
-    
+
+    // Reflex vertices (local ids) of the working polygon. Only a reflex vertex can lie inside an ear
+    // triangle of a simple polygon, so the contains-a-vertex test needs only these. Clipping an ear
+    // changes the angle of its two neighbours only, so the list is updated there.
+    var reflexList = reflexVertices(xs, ys, localIndices);
+
     var triangles = [];
-    
-    // Ear-clipping algorithm:
-    // Each iteration scans the remaining polygon for a valid "ear" — a convex vertex
-    // whose triangle contains no other vertices and whose diagonal lies inside the polygon.
-    // Once found, the ear triangle is emitted and the ear tip is removed, reducing the
-    // polygon by one vertex. Repeat until 3 vertices remain (the last triangle).
-    //
-    // Termination: if no ear is found in a full scan, the polygon is either degenerate
-    // (all remaining vertices collinear) or numerically ill-conditioned. The collinear
-    // case is handled below by fan-triangulating the remaining vertices. Non-collinear
-    // failure simply breaks out to avoid an infinite loop.
+    var scanStart = 0;   // resume where the last ear was clipped: a clip only changes its neighbours
+
+    // Each pass scans the remaining polygon for a valid ear (a convex vertex whose triangle contains
+    // no other reflex vertex), emits it and removes the tip, until 3 vertices remain. If a full scan
+    // finds no ear the polygon is collinear (fan it) or numerically ill-conditioned (clip the most
+    // convex vertex anyway), so the loop always makes progress.
     while (size(localIndices) > 3)
     {
         var earFound = false;
-        var numLocal = size(localIndices);
-        
-        for (var i = 0; i < numLocal; i += 1)
+        const numLocal = size(localIndices);
+
+        for (var step = 0; step < numLocal; step += 1)
         {
-            var iPrev = (i - 1 + numLocal) % numLocal;
-            var iNext = (i + 1) % numLocal;
-            
-            var localPrev = localIndices[iPrev];
-            var localCurr = localIndices[i];
-            var localNext = localIndices[iNext];
-            
-            var pPrev = points2D[localPrev];
-            var pCurr = points2D[localCurr];
-            var pNext = points2D[localNext];
-            
-            // Check 1: Is vertex convex?
-            if (!isConvexVertex2D(pPrev, pCurr, pNext))
+            const i = (scanStart + step) % numLocal;
+            const localPrev = localIndices[(i - 1 + numLocal) % numLocal];
+            const localCurr = localIndices[i];
+            const localNext = localIndices[(i + 1) % numLocal];
+
+            const ax = xs[localPrev];
+            const ay = ys[localPrev];
+            const bx = xs[localCurr];
+            const by = ys[localCurr];
+            const cx = xs[localNext];
+            const cy = ys[localNext];
+
+            // Convex? (near-zero counts as convex: collinear ears are valid)
+            if ((bx - ax) * (cy - by) - (by - ay) * (cx - bx) < -1e-12)
                 continue;
-            
-            // Check 2: Does triangle contain any other vertex?
-            if (triangleContainsAnyVertex(pPrev, pCurr, pNext, points2D, localIndices, i))
-                continue;
-            
-            // Check 3: Is diagonal inside the original polygon?
-            if (!isDiagonalInsidePolygon(pPrev, pNext, originalPolygon))
-                continue;
-            
-            // Valid ear - clip it
-            triangles = append(triangles, [
-                pointIndices[localPrev],
-                pointIndices[localCurr],
-                pointIndices[localNext]
-            ]);
-            localIndices = removeIndex(localIndices, i);
-            earFound = true;
-            break;
-        }
-        
-        if (!earFound)
-        {
-            // Check if remaining vertices are all collinear (degenerate case)
-            var allCollinear = true;
-            var collinearTol = 1e-12 * meter * meter;
-            
-            for (var i = 0; i < numLocal; i += 1)
+
+            // Does the triangle contain another reflex vertex?
+            var blocked = false;
+            for (var r in reflexList)
             {
-                var iPrev = (i - 1 + numLocal) % numLocal;
-                var iNext = (i + 1) % numLocal;
-                var pPrev = points2D[localIndices[iPrev]];
-                var pCurr = points2D[localIndices[i]];
-                var pNext = points2D[localIndices[iNext]];
-                
-                var cross = (pCurr[0] - pPrev[0]) * (pNext[1] - pCurr[1]) - (pCurr[1] - pPrev[1]) * (pNext[0] - pCurr[0]);
-                
-                if (abs(cross) > collinearTol)
+                if (r == localPrev || r == localCurr || r == localNext)
+                    continue;
+                if (pointInTriangleXY(xs[r], ys[r], ax, ay, bx, by, cx, cy))
                 {
-                    allCollinear = false;
+                    blocked = true;
                     break;
                 }
             }
-            
-            if (allCollinear)
+            if (blocked)
+                continue;
+
+            triangles = append(triangles, [pointIndices[localPrev], pointIndices[localCurr], pointIndices[localNext]]);
+            localIndices = removeIndex(localIndices, i);
+            reflexList = updateReflexAfterClip(reflexList, localIndices, xs, ys, localPrev, localCurr, localNext, i);
+            scanStart = i > 0 ? i - 1 : 0;
+            earFound = true;
+            break;
+        }
+
+        if (earFound)
+            continue;
+
+        // No clean ear. Collinear remainder: fan it.
+        var allCollinear = true;
+        var forced = 0;
+        var forcedCross = -inf;
+        for (var i = 0; i < numLocal; i += 1)
+        {
+            const cross = turnAt(xs, ys, localIndices, i);
+            if (abs(cross) > 1e-12)
+                allCollinear = false;
+            if (cross > forcedCross)
             {
-                // Degenerate case: fan triangulate remaining vertices
-                while (size(localIndices) > 2)
-                {
-                    triangles = append(triangles, [
-                        pointIndices[localIndices[0]],
-                        pointIndices[localIndices[1]],
-                        pointIndices[localIndices[2]]
-                    ]);
-                    localIndices = removeIndex(localIndices, 1);
-                }
-                break;
-            }
-            else
-            {
-                // No clean ear (numerically ill-conditioned: collinear runs, touching
-                // vertices). Clip the most convex vertex anyway rather than dropping the rest
-                // of the polygon, so the triangulation still covers the whole loop. Section
-                // properties come from the outline, so this only affects GJ and the mesh.
-                var forced = 0;
-                var forcedCross = -inf * meter * meter;
-                for (var i = 0; i < numLocal; i += 1)
-                {
-                    var pPrev = points2D[localIndices[(i - 1 + numLocal) % numLocal]];
-                    var pCurr = points2D[localIndices[i]];
-                    var pNext = points2D[localIndices[(i + 1) % numLocal]];
-                    var cross = (pCurr[0] - pPrev[0]) * (pNext[1] - pCurr[1]) - (pCurr[1] - pPrev[1]) * (pNext[0] - pCurr[0]);
-                    if (cross > forcedCross)
-                    {
-                        forcedCross = cross;
-                        forced = i;
-                    }
-                }
-                triangles = append(triangles, [
-                    pointIndices[localIndices[(forced - 1 + numLocal) % numLocal]],
-                    pointIndices[localIndices[forced]],
-                    pointIndices[localIndices[(forced + 1) % numLocal]]
-                ]);
-                localIndices = removeIndex(localIndices, forced);
+                forcedCross = cross;
+                forced = i;
             }
         }
+
+        if (allCollinear)
+        {
+            while (size(localIndices) > 2)
+            {
+                triangles = append(triangles, [pointIndices[localIndices[0]], pointIndices[localIndices[1]], pointIndices[localIndices[2]]]);
+                localIndices = removeIndex(localIndices, 1);
+            }
+            break;
+        }
+
+        // Numerically ill-conditioned (collinear runs, touching vertices): clip the most convex vertex
+        // anyway rather than dropping the rest of the polygon, so the triangulation still covers the
+        // whole loop. Section properties come from the outline, so this only affects the mesh.
+        triangles = append(triangles, [
+                pointIndices[localIndices[(forced - 1 + numLocal) % numLocal]],
+                pointIndices[localIndices[forced]],
+                pointIndices[localIndices[(forced + 1) % numLocal]]
+            ]);
+        localIndices = removeIndex(localIndices, forced);
+        reflexList = reflexVertices(xs, ys, localIndices);
+        scanStart = 0;
     }
-    
+
     // Final triangle
     if (size(localIndices) == 3)
     {
-        triangles = append(triangles, [
-            pointIndices[localIndices[0]],
-            pointIndices[localIndices[1]],
-            pointIndices[localIndices[2]]
-        ]);
+        triangles = append(triangles, [pointIndices[localIndices[0]], pointIndices[localIndices[1]], pointIndices[localIndices[2]]]);
     }
-    
-    // Debug output
-    if (size(triangles) > 0)
-    {
-        var expected = size(points2D) - 2;
-        if (size(triangles) != expected)
-        {
-        }
-    }
-    
+
     return triangles;
 }
 
-
-/**
- * Check if vertex pB forms a convex (non-reflex) angle in a CCW-wound polygon.
- *
- * Uses the 2D cross product of (pB-pA) × (pC-pB). For a CCW polygon:
- *   cross > 0  → left turn → convex vertex (valid ear candidate)
- *   cross < 0  → right turn → reflex vertex (not an ear)
- *   cross ≈ 0  → collinear (treated as convex; collinear ears are valid degenerate cases)
- *
- * @param pA {array} : [x,y] previous vertex
- * @param pB {array} : [x,y] current vertex (candidate ear tip)
- * @param pC {array} : [x,y] next vertex
- * @returns {boolean} : true if convex (cross >= -epsilon)
- */
-function isConvexVertex2D(pA is array, pB is array, pC is array) returns boolean
+/** Cross product of the turn at position `pos` of the working polygon (> 0 = left turn = convex for CCW). */
+function turnAt(xs is array, ys is array, localIndices is array, pos is number) returns number
 {
-    var cross = (pB[0] - pA[0]) * (pC[1] - pB[1]) - (pB[1] - pA[1]) * (pC[0] - pB[0]);
-    // Allow near-zero (collinear points are valid ears)
-    return cross >= -1e-12 * meter * meter;
+    const m = size(localIndices);
+    const a = localIndices[(pos - 1 + m) % m];
+    const b = localIndices[pos];
+    const c = localIndices[(pos + 1) % m];
+    return (xs[b] - xs[a]) * (ys[c] - ys[b]) - (ys[b] - ys[a]) * (xs[c] - xs[b]);
 }
 
-/**
- * Check if the candidate ear triangle (pA, pB, pC) contains any other polygon vertex.
- *
- * @param pA {array} : Previous vertex [x,y]
- * @param pB {array} : Current (ear tip) vertex [x,y]
- * @param pC {array} : Next vertex [x,y]
- * @param points2D {array} : Full 2D points array for the working polygon
- * @param localIndices {array} : Current working index list (indices into points2D)
- * @param skipLocalIdx {number} : Position of the ear tip in localIndices; its neighbors (iPrev, iNext)
- *                                are automatically skipped so the ear's own triangle vertices
- *                                do not self-reject.
- * @returns {boolean} : true if any other vertex lies strictly inside the triangle
- */
-function triangleContainsAnyVertex(pA is array, pB is array, pC is array,
-                                    points2D is array, localIndices is array, skipLocalIdx is number) returns boolean
+/** Local ids of the reflex vertices of the working polygon. */
+function reflexVertices(xs is array, ys is array, localIndices is array) returns array
 {
-    var numLocal = size(localIndices);
-    var iPrev = (skipLocalIdx - 1 + numLocal) % numLocal;
-    var iNext = (skipLocalIdx + 1) % numLocal;
-    
-    for (var j = 0; j < numLocal; j += 1)
+    var reflex = [];
+    for (var i = 0; i < size(localIndices); i += 1)
     {
-        if (j == iPrev || j == skipLocalIdx || j == iNext)
-            continue;
-        
-        var testPt = points2D[localIndices[j]];
-        
-        if (pointInTriangle2D(testPt, pA, pB, pC))
-            return true;
+        if (turnAt(xs, ys, localIndices, i) < -1e-12)
+        {
+            reflex = append(reflex, localIndices[i]);
+        }
     }
-    
-    return false;
+    return reflex;
 }
 
 /**
- * Point-in-triangle test using barycentric coordinates.
- *
- * Computes barycentric coordinates (u, v) for point p relative to triangle (a, b, c).
- * Returns true iff p is strictly inside the triangle (u > tol, v > tol, u+v < 1-tol).
- * Degenerate triangles (zero denominator) return false.
- *
- * @param p {array} : Query point [x, y]
- * @param a {array} : Vertex A [x, y]
- * @param b {array} : Vertex B [x, y]
- * @param c {array} : Vertex C [x, y]
- * @returns {boolean} : true if p is strictly inside triangle abc
+ * The reflex list after the ear tip `localCurr` (position `removedPos`) was removed from the working
+ * polygon. Only its two neighbours get new neighbours, so only their reflex state is recomputed.
+ * `localIndices` is the working polygon AFTER the removal.
  */
-function pointInTriangle2D(p is array, a is array, b is array, c is array) returns boolean
+function updateReflexAfterClip(reflexList is array, localIndices is array, xs is array, ys is array,
+        localPrev is number, localCurr is number, localNext is number, removedPos is number) returns array
 {
-    var v0x = c[0] - a[0];
-    var v0y = c[1] - a[1];
-    var v1x = b[0] - a[0];
-    var v1y = b[1] - a[1];
-    var v2x = p[0] - a[0];
-    var v2y = p[1] - a[1];
-    
-    var dot00 = v0x * v0x + v0y * v0y;
-    var dot01 = v0x * v1x + v0y * v1y;
-    var dot02 = v0x * v2x + v0y * v2y;
-    var dot11 = v1x * v1x + v1y * v1y;
-    var dot12 = v1x * v2x + v1y * v2y;
-    
-    var denom = dot00 * dot11 - dot01 * dot01;
-    
-    if (abs(denom) < 1e-20 * meter^4)
+    const m = size(localIndices);
+    var updated = filter(reflexList, function(r) { return r != localCurr && r != localPrev && r != localNext; });
+    for (var pos in [(removedPos - 1 + m) % m, removedPos % m])
+    {
+        if (turnAt(xs, ys, localIndices, pos) < -1e-12)
+        {
+            updated = append(updated, localIndices[pos]);
+        }
+    }
+    return updated;
+}
+
+/**
+ * Point-in-triangle test using barycentric coordinates, on plain numbers (meters).
+ * True iff (px, py) is strictly inside triangle abc (u > tol, v > tol, u + v < 1 - tol);
+ * degenerate triangles (zero denominator) return false.
+ */
+function pointInTriangleXY(px is number, py is number, ax is number, ay is number, bx is number, by is number,
+        cx is number, cy is number) returns boolean
+{
+    const v0x = cx - ax;
+    const v0y = cy - ay;
+    const v1x = bx - ax;
+    const v1y = by - ay;
+    const v2x = px - ax;
+    const v2y = py - ay;
+
+    const dot00 = v0x * v0x + v0y * v0y;
+    const dot01 = v0x * v1x + v0y * v1y;
+    const dot02 = v0x * v2x + v0y * v2y;
+    const dot11 = v1x * v1x + v1y * v1y;
+    const dot12 = v1x * v2x + v1y * v2y;
+
+    const denom = dot00 * dot11 - dot01 * dot01;
+    if (abs(denom) < 1e-20)
         return false;
-    
-    var invDenom = 1 / denom;
-    var u = (dot11 * dot02 - dot01 * dot12) * invDenom;
-    var v = (dot00 * dot12 - dot01 * dot02) * invDenom;
-    
-    var tol = 1e-9;
+
+    const invDenom = 1 / denom;
+    const u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+    const v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+
+    const tol = 1e-9;
     return (u > tol) && (v > tol) && (u + v < 1 - tol);
 }
 
@@ -1323,22 +1290,30 @@ function computeSectionPropertiesFromPolygon(points2D is array, frame is CoordSy
     {
         return emptySectionProperties(frame);
     }
-    const ox = points2D[0][0];
-    const oy = points2D[0][1];
+    // Plain numbers (meters) in the loop: unit arithmetic is far costlier. Units are put back on the result.
+    const ox = points2D[0][0] / meter;
+    const oy = points2D[0][1] / meter;
+    var px = [];
+    var py = [];
+    for (var p in points2D)
+    {
+        px = append(px, p[0] / meter - ox);
+        py = append(py, p[1] / meter - oy);
+    }
 
-    var a2 = 0 * meter^2;       // twice the signed area
-    var sx = 0 * meter^3;       // 6 A cx
-    var sy = 0 * meter^3;       // 6 A cy
-    var sxx = 0 * meter^4;      // 12 * integral x^2
-    var syy = 0 * meter^4;      // 12 * integral y^2
-    var sxy = 0 * meter^4;      // 24 * integral xy
+    var a2 = 0;       // twice the signed area
+    var sx = 0;       // 6 A cx
+    var sy = 0;       // 6 A cy
+    var sxx = 0;      // 12 * integral x^2
+    var syy = 0;      // 12 * integral y^2
+    var sxy = 0;      // 24 * integral xy
     for (var i = 0; i < n; i += 1)
     {
         const j = (i + 1) % n;
-        const xi = points2D[i][0] - ox;
-        const yi = points2D[i][1] - oy;
-        const xj = points2D[j][0] - ox;
-        const yj = points2D[j][1] - oy;
+        const xi = px[i];
+        const yi = py[i];
+        const xj = px[j];
+        const yj = py[j];
         const c = xi * yj - xj * yi;
         a2 += c;
         sx += (xi + xj) * c;
@@ -1349,7 +1324,7 @@ function computeSectionPropertiesFromPolygon(points2D is array, frame is CoordSy
     }
 
     var area = a2 / 2;
-    if (abs(area) < 1e-20 * meter * meter)
+    if (abs(area) < 1e-20)
     {
         return emptySectionProperties(frame);
     }
@@ -1362,7 +1337,7 @@ function computeSectionPropertiesFromPolygon(points2D is array, frame is CoordSy
     var Ixy = sxy / 24 - area * cxLocal * cyLocal;
 
     // Orientation-independent, as the triangle version (whose triangle areas are unsigned)
-    if (area < 0 * meter * meter)
+    if (area < 0)
     {
         area = -area;
         Ixx = -Ixx;
@@ -1370,14 +1345,14 @@ function computeSectionPropertiesFromPolygon(points2D is array, frame is CoordSy
         Ixy = -Ixy;
     }
 
-    const centroid2D = [cxLocal + ox, cyLocal + oy];
+    const centroid2D = [(cxLocal + ox) * meter, (cyLocal + oy) * meter];
     return {
-        "area" : area,
+        "area" : area * meter^2,
         "centroid2D" : centroid2D,
         "centroid3D" : frame2DToWorld(centroid2D, frame),
-        "Ixx" : Ixx,
-        "Iyy" : Iyy,
-        "Ixy" : Ixy
+        "Ixx" : Ixx * meter^4,
+        "Iyy" : Iyy * meter^4,
+        "Ixy" : Ixy * meter^4
     };
 }
 
@@ -1459,16 +1434,28 @@ export function triangleArea2D(a is array, b is array, c is array) returns Value
  */
 export function polygonSignedArea2D(points2D is array) returns ValueWithUnits
 {
-    var n = size(points2D);
-    var area = 0 * meter * meter;
-    
+    var xs = [];
+    var ys = [];
+    for (var p in points2D)
+    {
+        xs = append(xs, p[0] / meter);
+        ys = append(ys, p[1] / meter);
+    }
+    return polygonSignedAreaXY(xs, ys) * meter * meter;
+}
+
+/**
+ * Signed area (m^2, plain number) of the polygon with coordinates xs, ys in meters (positive = CCW).
+ */
+function polygonSignedAreaXY(xs is array, ys is array) returns number
+{
+    const n = size(xs);
+    var area = 0;
     for (var i = 0; i < n; i += 1)
     {
-        var j = (i + 1) % n;
-        area += points2D[i][0] * points2D[j][1];
-        area -= points2D[j][0] * points2D[i][1];
+        const j = (i + 1) % n;
+        area += xs[i] * ys[j] - xs[j] * ys[i];
     }
-    
     return area / 2;
 }
 
@@ -1504,26 +1491,5 @@ export function frame2DToWorld(point2D is array, frame is CoordSystem) returns V
  */
 function removeIndex(arr is array, index is number) returns array
 {
-    var result = [];
-    for (var i = 0; i < size(arr); i += 1)
-    {
-        if (i != index)
-            result = append(result, arr[i]);
-    }
-    return result;
-}
-
-
-/**
- * Check if an ear's diagonal lies inside the polygon.
- * The diagonal is the edge from pPrev to pNext.
- */
-function isDiagonalInsidePolygon(pPrev is array, pNext is array, originalPolygon is array) returns boolean
-{
-    // Midpoint of the diagonal
-    var midX = (pPrev[0] + pNext[0]) / 2;
-    var midY = (pPrev[1] + pNext[1]) / 2;
-    var midpoint = [midX, midY];
-    
-    return pointInPolygon2D(midpoint, originalPolygon);
+    return concatenateArrays([subArray(arr, 0, index), subArray(arr, index + 1, size(arr))]);
 }

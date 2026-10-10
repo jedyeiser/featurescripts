@@ -1,0 +1,81 @@
+- generic [ref=f9e5]:
+  - navigation [ref=f9e6]:
+    - generic [ref=f9e7]:
+      - link [ref=f9e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f9e11]
+      - generic [ref=f9e13] [cursor=pointer]
+    - generic [ref=f9e16]:
+      - generic [ref=f9e18]:
+        - generic [ref=f9e19]: Stiffness Tools
+        - generic [ref=f9e20]: Main
+      - generic [ref=f9e22] [cursor=pointer]
+      - link "Ski/Snowboard" [ref=f9e26] [cursor=pointer]:
+        - /url: /documents?nodeId=a4031dd13e6b49409dda5f9c&resourceType=folder
+    - generic [ref=f9e30]:
+      - generic [ref=f9e41] [cursor=pointer]
+      - generic [ref=f9e47] [cursor=pointer]
+      - button "Notifications" [ref=f9e52] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f9e60]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f9e63] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f9e68] [cursor=pointer]
+      - button "Share" [ref=f9e72] [cursor=pointer]
+      - generic "Help menu" [ref=f9e74] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f9e78] [cursor=pointer]
+  - generic [ref=f9e88]:
+    - generic [ref=f9e90]:
+      - generic [ref=f9e91]:
+        - generic [ref=f9e92]:
+          - generic [ref=f9e93] [cursor=pointer]
+          - generic [ref=f9e96] [cursor=pointer]
+          - generic [ref=f9e99] [cursor=pointer]
+          - generic [ref=f9e102] [cursor=pointer]
+          - generic [ref=f9e105] [cursor=pointer]
+          - generic [ref=f9e108] [cursor=pointer]
+          - generic [ref=f9e111] [cursor=pointer]
+          - generic [ref=f9e114] [cursor=pointer]
+        - generic [ref=f9e118] [cursor=pointer]
+      - generic [ref=f9e122] [cursor=pointer]
+    - generic [ref=f9e129]:
+      - generic [ref=f9e132]:
+        - generic [ref=f9e135]:
+          - generic [ref=f9e137]:
+            - generic [ref=f9e138]:
+              - generic [ref=f9e140]:
+                - button [ref=f9e142] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f9e147]
+              - generic [ref=f9e148]:
+                - generic [ref=f9e149]: Features (0)
+                - button [disabled] [ref=f9e150]
+                - button [ref=f9e153] [cursor=pointer]
+                - button [ref=f9e156] [cursor=pointer]
+            - generic [ref=f9e160]:
+              - list
+          - generic [ref=f9e167]:
+            - generic [ref=f9e169] [cursor=pointer]
+            - generic [ref=f9e172]: Parts (0)
+        - generic [ref=f9e176]:
+          - generic [ref=f9e178] [cursor=pointer]
+          - generic [ref=f9e182]:
+            - generic [ref=f9e184]:
+              - button [ref=f9e185] [cursor=pointer]
+              - button [ref=f9e189] [cursor=pointer]
+              - button [ref=f9e193] [cursor=pointer]
+            - generic [ref=f9e197] [cursor=pointer]
+          - generic [ref=f9e202]:
+            - generic [ref=f9e203] [cursor=pointer]
+            - generic [ref=f9e207] [cursor=pointer]
+            - generic [ref=f9e211] [cursor=pointer]
+            - generic [ref=f9e215] [cursor=pointer]
+            - generic [ref=f9e218] [cursor=pointer]
+      - generic [ref=f9e222]:
+        - img [ref=f9e225] [cursor=pointer]
+        - generic [ref=f9e227]:
+          - generic [ref=f9e228] [cursor=pointer]
+          - generic [ref=f9e232]: Tests
+        - generic [ref=f9e239]:
+          - generic [ref=f9e240] [cursor=pointer]: Test2
+          - generic [ref=f9e248] [cursor=pointer]: Test
+          - generic [ref=f9e256] [cursor=pointer]: SKH_Trials
+          - generic [ref=f9e264] [cursor=pointer]: ROY_Test
+          - generic [ref=f9e270]: K034 177 Test
