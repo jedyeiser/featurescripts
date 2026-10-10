@@ -4,9 +4,11 @@
   "document_name": "curve_pattern",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/6bb5012bb1984f39a42c080e/w/294e252e6c71add20fdb720d",
-  "last_sync": "2026-10-10T20:49:52.974880+00:00",
+  "last_sync": "2026-10-10T20:53:25.345558+00:00",
   "feature_studios": {
-    "Feature Studio 1": "a470f4d39840b6d247f52d57"
+    "Feature Studio 1": "a470f4d39840b6d247f52d57",
+    "curve_pattern_frames": "c587afc527d1699f012e37ee",
+    "curve_pattern_spacing": "b04cdadd24f6d70a50c76980"
   },
   "tab_folders": {}
 }

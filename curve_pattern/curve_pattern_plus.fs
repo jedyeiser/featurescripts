@@ -4,11 +4,11 @@ import(path : "onshape/std/patternUtils.fs", version : "3095.0");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 // IMPORT: curve_pattern_spacing.fs (resolveCurveSpacing and the spacing enums)
-import(path : "SPACING_ELEMENT_ID", version : "000000000000000000000000");
+import(path : "b04cdadd24f6d70a50c76980", version : "c8dcfffecd83eece521b35b8");
 // IMPORT: curve_pattern_frames.fs (curveStationFrames, curveStationTransforms, mateConnectorFrame)
-import(path : "FRAMES_ELEMENT_ID", version : "000000000000000000000000");
+import(path : "c587afc527d1699f012e37ee", version : "3f03b5027def997a1aeabe4a");
 // IMPORT: curve_pattern_plus_icon.svg (feature icon)
-IconNamespace::import(path : "348c5db94758980ab98c9b92", version : "000000000000000000000000");
+IconNamespace::import(path : "348c5db94758980ab98c9b92", version : "9f3924dd9eac5cd655dde204");
 
 /**
  * Curve pattern plus.
