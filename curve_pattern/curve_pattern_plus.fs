@@ -1,12 +1,12 @@
 FeatureScript 3095;
-import(path : "onshape/std/common.fs", version : "3095.0");
-import(path : "onshape/std/patternUtils.fs", version : "3095.0");
+export import(path : "onshape/std/common.fs", version : "3095.0");
+export import(path : "onshape/std/patternUtils.fs", version : "3095.0");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractable wrappers)
 import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
 // IMPORT: curve_pattern_spacing.fs (resolveCurveSpacing and the spacing enums)
-import(path : "b04cdadd24f6d70a50c76980", version : "c8dcfffecd83eece521b35b8");
+export import(path : "b04cdadd24f6d70a50c76980", version : "dea3e5729f5f644a6331d18b");
 // IMPORT: curve_pattern_frames.fs (curveStationFrames, curveStationTransforms, mateConnectorFrame)
-import(path : "c587afc527d1699f012e37ee", version : "3f03b5027def997a1aeabe4a");
+export import(path : "c587afc527d1699f012e37ee", version : "3f03b5027def997a1aeabe4a");
 // IMPORT: curve_pattern_plus_icon.svg (feature icon)
 IconNamespace::import(path : "348c5db94758980ab98c9b92", version : "9f3924dd9eac5cd655dde204");
 
@@ -84,7 +84,7 @@ export const curvePatternPlus = defineFeature(function(context is Context, id is
                 if (!definition.fillPath)
                 {
                     annotation { "Name" : "Total length" }
-                    isLength(definition.distance, PATTERN_OFFSET_BOUND);
+                    isLength(definition.totalLength, PATTERN_OFFSET_BOUND);
                 }
 
                 annotation { "Name" : "Instance count type", "UIHint" : [UIHint.REMEMBER_PREVIOUS_VALUE, UIHint.SHOW_LABEL] }
@@ -93,7 +93,7 @@ export const curvePatternPlus = defineFeature(function(context is Context, id is
                 if (definition.countType == CurveCountType.COUNT)
                 {
                     annotation { "Name" : "Instance count" }
-                    isInteger(definition.count, CURVE_PATTERN_BOUNDS);
+                    isInteger(definition.lengthCount, CURVE_PATTERN_BOUNDS);
                 }
                 else
                 {
@@ -184,14 +184,18 @@ export const curvePatternPlus = defineFeature(function(context is Context, id is
         const path = constructed.path;
         const pathLength = evPathLength(context, path);
 
+        // The two spacing modes use different parameters (names must be unique in the dialog)
+        const bySpacing = definition.spacingType == CurveSpacingType.SPACING;
         const spacing = resolveCurveSpacing({
                     "pathLength" : pathLength,
                     "closed" : path.closed,
                     "spacingType" : definition.spacingType,
                     "fillPath" : definition.fillPath,
-                    "distance" : definition.distance,
+                    "distance" : bySpacing ? definition.distance : definition.totalLength,
+                    "distanceParameter" : bySpacing ? "distance" : "totalLength",
                     "countType" : definition.countType,
-                    "count" : definition.count,
+                    "count" : bySpacing ? definition.count : definition.lengthCount,
+                    "countParameter" : bySpacing ? "count" : "lengthCount",
                     "targetSpacing" : definition.targetSpacing,
                     "roundingType" : definition.roundingType,
                     "startOffset" : definition.startOffset,

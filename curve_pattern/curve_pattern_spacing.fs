@@ -78,6 +78,9 @@ export function resolveCurveSpacing(p is map) returns map
 {
     const L = p.pathLength;
     const closed = p.closed == true;
+    // names of the dialog parameters to highlight in errors
+    const distanceId = p.distanceParameter == undefined ? "distance" : p.distanceParameter;
+    const countId = p.countParameter == undefined ? "count" : p.countParameter;
     const startOffset = p.startOffset == undefined ? 0 * meter : p.startOffset;
     const endOffset = (closed || p.endOffset == undefined) ? 0 * meter : p.endOffset;
     const usable = closed ? L : L - startOffset - endOffset;
@@ -94,7 +97,7 @@ export function resolveCurveSpacing(p is map) returns map
     {
         if (count == undefined || count < 1)
         {
-            throw regenError("The instance count must be at least 1.", ["count"]);
+            throw regenError("The instance count must be at least 1.", [countId]);
         }
         spacing = p.distance;
         span = spacing * (count - 1);
@@ -104,7 +107,7 @@ export function resolveCurveSpacing(p is map) returns map
         const total = p.fillPath == true ? usable : p.distance;
         if (total == undefined || total < 0 * meter)
         {
-            throw regenError("The total length must not be negative.", ["distance"]);
+            throw regenError("The total length must not be negative.", [distanceId]);
         }
         if (p.countType == CurveCountType.TARGET_SPACING)
         {
@@ -132,7 +135,7 @@ export function resolveCurveSpacing(p is map) returns map
         }
         if (count == undefined || count < 1)
         {
-            throw regenError("The instance count must be at least 1.", ["count"]);
+            throw regenError("The instance count must be at least 1.", [countId]);
         }
         if (count == 1)
         {
@@ -159,7 +162,7 @@ export function resolveCurveSpacing(p is map) returns map
     if (!closed && first + span > L - endOffset + OVERRUN_TOLERANCE)
     {
         throw regenError("The pattern runs past the end of the path. Reduce the spacing, count or length.",
-                p.spacingType == CurveSpacingType.SPACING ? ["distance", "count"] : ["distance"]);
+                p.spacingType == CurveSpacingType.SPACING ? [distanceId, countId] : [distanceId]);
     }
     if (!closed && first < -OVERRUN_TOLERANCE)
     {
