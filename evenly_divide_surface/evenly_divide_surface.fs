@@ -63,6 +63,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         definition.keepSections is boolean;
     }
     {
+        println("DBG evenlyDivideSurface start");
         const surfaceFaces = qOwnedByBody(definition.surface, EntityType.FACE);
         const wireEdges = qUnion([qEntityFilter(definition.crossWire, EntityType.EDGE),
                                   qOwnedByBody(qEntityFilter(definition.crossWire, EntityType.BODY), EntityType.EDGE)]);
@@ -78,6 +79,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         const inset = SECTION_END_INSET / wireLength;
         const firstU = extent.minU + inset;
         const lastU = extent.maxU - inset;
+        println("DBG extent u " ~ extent.minU ~ " .. " ~ extent.maxU ~ " of wire length " ~ (wireLength / millimeter) ~ " mm");
         if (!(lastU > firstU))
             throw regenError("The surface does not extend along the cross section wire.", ["surface", "crossWire"]);
 
@@ -113,6 +115,9 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             {
                 const sectionPath = constructPath(context, sectionEdges, { "tolerance" : PATH_TOLERANCE }).path;
                 const divided = divideSection(context, sectionPath, symPlane, definition.divisions, definition.onSymmetryPlane);
+                println("DBG section " ~ k ~ ": edges " ~ size(sectionPath.edges) ~ " closed " ~ divided.closed ~
+                        " length " ~ (evPathLength(context, sectionPath) / millimeter) ~ " mm, crossings " ~ divided.crossings ~
+                        ", start u " ~ divided.startU ~ ", first point " ~ toString(divided.points[0] / millimeter));
                 sections = append(sections, { "index" : k, "points" : divided.points, "closed" : divided.closed });
                 if (divided.closed)
                     closedCount += 1;
@@ -287,7 +292,8 @@ function divideSection(context is Context, sectionPath is Path, symPlane is Plan
         params = append(params, closed ? wrapUnit(start.u + direction * f) : (start.u > 0.5 ? 1 - f : f));
 
     const lines = evPathTangentLines(context, sectionPath, params).tangentLines;
-    return { "points" : mapArray(lines, function(l) { return l.origin; }), "closed" : closed };
+    return { "points" : mapArray(lines, function(l) { return l.origin; }), "closed" : closed,
+             "crossings" : size(crossings), "startU" : start.u };
 }
 
 /** Wrap a path parameter into [0, 1). */
