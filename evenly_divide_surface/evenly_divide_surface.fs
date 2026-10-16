@@ -139,7 +139,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 wirePoints = append(wirePoints, s.points[i]);
 
             const wireId = id + ("wire" ~ i);
-            opFitSpline(context, wireId, { "points" : wirePoints });
+            opFitSpline(context, wireId, { "points" : wirePoints, "parameters" : chordLengthParameters(wirePoints) });
             worstOff = max(worstOff, deviationFromSurface(context, qCreatedBy(wireId, EntityType.EDGE), surfaceFaces, size(sections) * WIRE_CHECK_SAMPLES_PER_SPAN));
         }
 
@@ -166,6 +166,16 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             reportFeatureInfo(context, id, summary);
     });
 
+
+/** Chord-length parameters (0..1) for a spline through `points`: far fewer wiggles than evenly spaced parameters on unevenly spaced points. */
+function chordLengthParameters(points is array) returns array
+{
+    var cumulative = [0];
+    for (var j = 1; j < size(points); j += 1)
+        cumulative = append(cumulative, cumulative[j - 1] + norm(points[j] - points[j - 1]) / meter);
+    const total = cumulative[size(cumulative) - 1];
+    return mapArray(cumulative, function(c) { return c / total; });
+}
 
 /** The largest distance from `samples` evenly spaced points of the wire edge(s) to the surface faces. */
 function deviationFromSurface(context is Context, wireEdge is Query, surfaceFaces is Query, samples is number) returns ValueWithUnits
