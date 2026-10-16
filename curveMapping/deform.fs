@@ -730,6 +730,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
                 // A connector owned by a deformed body belongs to that body's result;
                 // anything else (stand-alone, or owned by a body not deformed) stays stand-alone.
+                println("DBG owners of mc " ~ mcIdx ~ ": " ~ toString(evaluateQuery(context, qOwnerBody(mcQueries[mcIdx]))) ~ " unitResult keys: " ~ toString(keys(unitResults)));
                 for (var ownerBody in evaluateQuery(context, qOwnerBody(mcQueries[mcIdx])))
                 {
                     var ownerResult = unitResults[toString(ownerBody)];

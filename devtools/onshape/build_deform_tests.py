@@ -18,7 +18,7 @@ import math
 import os
 
 from sync.core.client import OnshapeClient
-from devtools.onshape.fsapi import write_feature, cached_tree  # API budget: one feature-tree GET per studio
+from devtools.onshape.fsapi import write_feature, delete_feature, cached_tree  # API budget: one feature-tree GET per studio
 
 c = OnshapeClient()
 D, W = "08e8748f2ef24eea16072b75", "e24fbbae7712ef62dd256c89"   # curveMapping (featurescriptSettings.json)
@@ -120,6 +120,10 @@ def box(name, x0, x1):
         q("entities", 'qSketchRegion(makeId("%s"))' % sk), en("endBound", "BoundingType", "BLIND"), num("depth", "10 mm")])
 
 
+# Start from an empty studio: upsert-by-name appends renamed features at the END of the tree, behind the cases that need them.
+for f in reversed(cached_tree(BASE, _TREE, c)["features"]):
+    delete_feature(BASE, f["featureId"], _TREE, client=c)
+
 # ---- fixtures ----
 from_sk = sketch("From path: line (0,0)-(300,0)", [seg("l", *mmv(0, 0, 300, 0))])
 to_sk = sketch("To path: R300 quarter arc about (0,300)", [arc("a", *mmv(0, 300, 300), -math.pi / 2, 0)])
@@ -131,7 +135,8 @@ pt_sk = sketch("MC_B point (150, 0)", [{"btType": "BTMSketchPoint-158", "entityI
 mc_a = feature("MC_A box A corner (100,-10,10), owned by A", "mateConnector", [
     en("originType", "OriginCreationType", "ON_ENTITY"),
     q("originQuery", 'qClosestTo(qOwnedByBody(%s, EntityType.VERTEX), vector(100, -10, 10) * millimeter)' % body(box_a)),
-    en("entityInferenceType", "EntityInferenceType", "POINT"), b("allowOwnerEntity", True), b("requireOwnerPart", False)])
+    en("entityInferenceType", "EntityInferenceType", "POINT"), b("allowOwnerEntity", True), b("requireOwnerPart", True),
+    q("ownerPart", body(box_a))])
 mc_b = feature("MC_B stand-alone at (150,0,0)", "mateConnector", [
     en("originType", "OriginCreationType", "ON_ENTITY"),
     q("originQuery", 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % pt_sk),
