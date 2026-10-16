@@ -26,7 +26,10 @@ const SECTION_END_MARGIN = 1e-3 * meter;
 /** Samples per section interval when measuring how far a wire strays from the surface. */
 const WIRE_CHECK_SAMPLES_PER_SPAN = 4;
 /** A wire farther than this from the surface (between its section points) is reported. */
-const WIRE_SURFACE_TOLERANCE = 1e-4 * meter;
+const WIRE_SURFACE_TOLERANCE = 1e-5 * meter;
+/** Rounds of adding sections, and the most sections the refinement may reach. */
+const MAX_REFINE_ROUNDS = 4;
+const MAX_SECTIONS = 600;
 /** Bisection steps when locating where complete sections start and stop. */
 const RANGE_BISECTIONS = 12;
 /** Edge endpoints closer than this are one point when joining section edges into a path. */
@@ -66,6 +69,10 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                      "Description" : "On: the first and last wire lie on the symmetry plane. Off: they start a half step away from it." }
         definition.onSymmetryPlane is boolean;
 
+        annotation { "Name" : "Refine sections", "Default" : true,
+                     "Description" : "Add cross sections where a wire would otherwise stray from the surface (the number above is the starting count)." }
+        definition.refine is boolean;
+
         annotation { "Name" : "Keep section curves", "Default" : false }
         definition.keepSections is boolean;
     }
@@ -94,62 +101,102 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             throw regenError("The surface does not extend along the cross section wire.", ["surface", "crossWire"]);
 
         // 2. Section planes at even arc length over that range, and the curves they cut in the surface.
-        var sectionParams = [];
-        for (var k = 0; k < definition.sections; k += 1)
-            sectionParams = append(sectionParams, firstU + (lastU - firstU) * k / (definition.sections - 1));
         var sections = [];
-        var closedCount = 0;
+        var sectionCount = 0;      // ids used so far: section0, section1, ...
         for (var k = 0; k < definition.sections; k += 1)
         {
-            const cut = cutSection(context, id + ("section" ~ k), crossPath, sectionParams[k], surfaceFaces, planeSize);
-            if (cut.path == undefined)
-            {
-                println("evenlyDivideSurface: section " ~ k ~ " has no cut and was skipped");
-                continue;
-            }
-            try
-            {
-                const divided = divideSection(context, cut.path, symPlane, definition.divisions, definition.onSymmetryPlane);
-                sections = append(sections, { "index" : k, "points" : divided.points, "closed" : divided.closed });
-                if (divided.closed)
-                    closedCount += 1;
-            }
-            catch (e)
-            {
-                println("evenlyDivideSurface: section " ~ k ~ " skipped: " ~ toString(e));
-            }
+            const u = firstU + (lastU - firstU) * k / (definition.sections - 1);
+            const section = makeSection(context, id + ("section" ~ sectionCount), crossPath, u, surfaceFaces, planeSize, symPlane,
+                                         definition.divisions, definition.onSymmetryPlane);
+            sectionCount += 1;
+            if (section == undefined)
+                println("evenlyDivideSurface: the section at " ~ roundToPrecision(u, 4) ~ " could not be divided and was skipped");
+            else
+                sections = append(sections, section);
         }
-
         if (size(sections) < 2)
             throw regenError("Fewer than two cross sections met the surface.", ["surface", "crossWire", "sections"]);
-        if (size(sections) < definition.sections)
-            println("evenlyDivideSurface: only " ~ size(sections) ~ " of " ~ definition.sections ~ " sections divided");
-        if (size(sections) < definition.sections)
-            reportFeatureWarning(context, id, (definition.sections - size(sections)) ~ " of " ~ definition.sections ~ " cross sections could not be divided and were skipped.");
-        if (closedCount != 0 && closedCount != size(sections))
-            reportFeatureWarning(context, id, "Some sections are closed loops and some are open; the divisions may not line up.");
+        const baseSections = size(sections);
+        if (baseSections < definition.sections)
+            reportFeatureWarning(context, id, (definition.sections - baseSections) ~ " of " ~ definition.sections ~ " cross sections could not be divided and were skipped.");
 
         // 3. One wire per division: a spline through that division's point on every section. (Dropping the spline onto the
         //    surface with opDropCurve was tried and rejected: it projects onto every face the curve can reach and returns
-        //    many fragments per division, not one wire.) The distance of each wire from the surface is measured instead.
+        //    many fragments per division, not one wire.) Instead, where a wire strays from the surface between two sections,
+        //    a section is added midway and the wires are fitted again.
         const wireCount = size(sections[0].points);
+        const crossSamples = pathSamples(context, crossPath);
+        var wireIds = [];
         var worstOff = 0 * meter;
-        for (var i = 0; i < wireCount; i += 1)
+        var rounds = 0;
+        while (true)
         {
-            var wirePoints = [];
-            for (var s in sections)
-                wirePoints = append(wirePoints, s.points[i]);
+            wireIds = [];
+            for (var i = 0; i < wireCount; i += 1)
+            {
+                var wirePoints = [];
+                for (var s in sections)
+                    wirePoints = append(wirePoints, s.points[i]);
+                const wireId = id + ("wire" ~ i ~ "r" ~ rounds);
+                opFitSpline(context, wireId, { "points" : wirePoints, "parameters" : chordLengthParameters(wirePoints) });
+                wireIds = append(wireIds, wireId);
+            }
 
-            const wireId = id + ("wire" ~ i);
-            opFitSpline(context, wireId, { "points" : wirePoints, "parameters" : chordLengthParameters(wirePoints) });
-            const dev = deviationFromSurface(context, qCreatedBy(wireId, EntityType.EDGE), surfaceFaces, size(sections) * WIRE_CHECK_SAMPLES_PER_SPAN);
-            println("DBG wire " ~ i ~ " worst " ~ (dev.value / millimeter) ~ " mm at " ~ toString(dev.at / millimeter));
-            worstOff = max(worstOff, dev.value);
+            // How far do the wires stray from the surface, and between which sections?
+            var weak = makeArray(size(sections) - 1, false);
+            var weakCount = 0;
+            worstOff = 0 * meter;
+            for (var wireId in wireIds)
+            {
+                for (var edge in evaluateQuery(context, qCreatedBy(wireId, EntityType.EDGE)))
+                {
+                    const samples = WIRE_CHECK_SAMPLES_PER_SPAN * (size(sections) - 1);
+                    for (var l in evEdgeTangentLines(context, { "edge" : edge, "parameters" : range(0, 1, samples + 1) }))
+                    {
+                        const d = evDistance(context, { "side0" : l.origin, "side1" : surfaceFaces }).distance;
+                        worstOff = max(worstOff, d);
+                        if (d > WIRE_SURFACE_TOLERANCE)
+                        {
+                            const j = intervalIndex(sections, nearestPathParameter(crossSamples, l.origin / meter));
+                            if (!weak[j])
+                            {
+                                weak[j] = true;
+                                weakCount += 1;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!definition.refine || weakCount == 0 || rounds >= MAX_REFINE_ROUNDS || size(sections) + weakCount > MAX_SECTIONS)
+                break;
+
+            // Add a section midway through each weak interval and fit again.
+            opDeleteBodies(context, id + ("discard" ~ rounds), { "entities" : qUnion(mapArray(wireIds, function(w) { return qCreatedBy(w, EntityType.BODY); })) });
+            var refined = [];
+            for (var j = 0; j < size(sections); j += 1)
+            {
+                refined = append(refined, sections[j]);
+                if (j < size(sections) - 1 && weak[j])
+                {
+                    const u = (sections[j].u + sections[j + 1].u) / 2;
+                    const section = makeSection(context, id + ("section" ~ sectionCount), crossPath, u, surfaceFaces, planeSize, symPlane,
+                                                definition.divisions, definition.onSymmetryPlane);
+                    sectionCount += 1;
+                    if (section != undefined)
+                        refined = append(refined, section);
+                }
+            }
+            if (size(refined) == size(sections))
+                break;
+            sections = refined;
+            rounds += 1;
+            // The wires of this round are gone: fit again (next pass of the loop).
         }
 
         // 4. Clean up the construction geometry.
         var scratch = [];
-        for (var k = 0; k < definition.sections; k += 1)
+        for (var k = 0; k < sectionCount; k += 1)
         {
             if (definition.keepSections)
                 scratch = append(scratch, qSubtraction(qCreatedBy(id + ("section" ~ k), EntityType.BODY),
@@ -161,15 +208,65 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         if (!isQueryEmpty(context, scratchQuery))
             opDeleteBodies(context, id + "cleanup", { "entities" : scratchQuery });
 
+        var closedCount = 0;
+        for (var s in sections)
+            if (s.closed)
+                closedCount += 1;
+        if (closedCount != 0 && closedCount != size(sections))
+            reportFeatureWarning(context, id, "Some sections are closed loops and some are open; the divisions may not line up.");
+
         const summary = wireCount ~ " wires through " ~ size(sections) ~ " cross sections" ~
-                        (closedCount > 0 ? " (closed sections)" : " (open sections)") ~
+                        (size(sections) > baseSections ? " (" ~ (size(sections) - baseSections) ~ " added to follow the surface)" : "") ~
+                        (closedCount > 0 ? ", closed sections" : ", open sections") ~
                         "; widest gap to the surface " ~ roundToPrecision(worstOff / millimeter, 4) ~ " mm.";
         println("evenlyDivideSurface: " ~ summary);
         if (worstOff > WIRE_SURFACE_TOLERANCE)
-            reportFeatureWarning(context, id, summary ~ " Increase the number of cross sections.");
+            reportFeatureWarning(context, id, summary ~ (definition.refine ? " Increase the number of cross sections." : " Turn on Refine sections or increase the number of cross sections."));
         else
             reportFeatureInfo(context, id, summary);
     });
+
+
+/**
+ * Cut the surface at parameter `u` of the wire and divide the section. Everything made is created under `id`.
+ *
+ * @returns {{ u, points, closed }} or `undefined` when the plane cuts nothing usable
+ */
+function makeSection(context is Context, id is Id, crossPath is Path, u is number, surfaceFaces is Query, planeSize is ValueWithUnits,
+        symPlane is Plane, divisions is number, onSymmetryPlane is boolean)
+{
+    const cut = cutSection(context, id, crossPath, u, surfaceFaces, planeSize);
+    if (cut.path == undefined)
+        return undefined;
+    try
+    {
+        const divided = divideSection(context, cut.path, symPlane, divisions, onSymmetryPlane);
+        return { "u" : u, "points" : divided.points, "closed" : divided.closed };
+    }
+    catch (e)
+    {
+        println("evenlyDivideSurface: section at " ~ roundToPrecision(u, 4) ~ " skipped: " ~ toString(e));
+        return undefined;
+    }
+}
+
+/** Index j of the interval between sections j and j+1 that contains path parameter u. */
+function intervalIndex(sections is array, u is number) returns number
+{
+    var j = 0;
+    while (j < size(sections) - 2 && u > sections[j + 1].u)
+        j += 1;
+    return j;
+}
+
+/** Evenly spaced points of the path (unitless, meters), for projecting points onto it with `nearestPathParameter`. */
+function pathSamples(context is Context, path is Path) returns array
+{
+    var params = [];
+    for (var j = 0; j <= EXTENT_SAMPLES; j += 1)
+        params = append(params, j / EXTENT_SAMPLES);
+    return mapArray(evPathTangentLines(context, path, params).tangentLines, function(l) { return l.origin / meter; });
+}
 
 
 /** Chord-length parameters (0..1) for a spline through `points`: far fewer wiggles than evenly spaced parameters on unevenly spaced points. */
