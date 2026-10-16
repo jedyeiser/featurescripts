@@ -346,6 +346,17 @@
       "last_push": "2026-10-10T21:01:36.599167+00:00",
       "document_id": "6bb5012bb1984f39a42c080e",
       "workspace_id": "294e252e6c71add20fdb720d"
+    },
+    {
+      "name": "evenly_divide_surface",
+      "description": "Working project: evenly_divide_surface",
+      "working_directory": "evenly_divide_surface",
+      "onshape_url": "https://k2-sports.onshape.com/documents/69ab3696c014c05409202108/w/c176011bc60a3f918e673d98",
+      "references": [],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "69ab3696c014c05409202108",
+      "workspace_id": "c176011bc60a3f918e673d98"
     }
   ],
   "sync_metadata": {}
