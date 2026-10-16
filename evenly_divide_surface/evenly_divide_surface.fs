@@ -600,7 +600,7 @@ function nearestPathParameter(samples is array, p is Vector) returns number
  */
 function divideSection(context is Context, pe is map, symPlane is Plane, divisions is number, onSymmetryPlane is boolean) returns map
 {
-    const closed = sectionPath.closed;
+    const closed = pe.path.closed;
 
     // Where does the section meet the symmetry plane?
     const crossings = symmetryCrossings(context, pe, symPlane);
