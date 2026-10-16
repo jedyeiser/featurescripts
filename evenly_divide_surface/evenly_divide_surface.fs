@@ -1,6 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/path.fs", version : "3083.0");
+import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 
 /**
  * Evenly divide surface (phase 1: the division wires).
