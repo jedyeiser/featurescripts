@@ -24,7 +24,10 @@ export import(path : "683d867c35fdab9c98d47556", version : "");
 
 export const FaceControlMultiplierBounds = {(unitless) : [2, 3, 10]} as IntegerBoundSpec;
 
-const NAME_SEPARATOR = "\n"; // also used as a regexp by splitByRegexp
+/** A mate connector within this distance of a deformed source body is attached to that body's result. */
+const MC_ON_BODY_TOLERANCE = 1e-5 * meter;
+
+const NAME_SEPARATOR ="\n"; // also used as a regexp by splitByRegexp
 
 function splitNames(joined is string) returns array
 {
@@ -81,7 +84,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             definition.sourceFaces is Query;
         }
 
-        annotation { "Name" : "Mate connectors to deform", "Filter" : BodyType.MATE_CONNECTOR, "Description" : "Mate connectors carried through the same deform: each lands where it would end up if it were part of the source body, with its orientation rotated to match. A connector owned by a deformed body belongs to that body's result; any other stays stand-alone." }
+        annotation { "Name" : "Mate connectors to deform", "Filter" : BodyType.MATE_CONNECTOR, "Description" : "Mate connectors carried through the same deform: each lands where it would end up if it were part of the source body, with its orientation rotated to match. A connector lying on a deformed source body (within 0.01 mm) is attached to that body's result; any other stays stand-alone." }
         definition.mateConnectors is Query;
 
         annotation { "Group Name" : "From data", "Collapsed By Default" : true }
@@ -719,22 +722,20 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             });
             var mcMapped = mapCoordSystems(context, fromFrenetPath, toFrenetPath,
                 fromRefArc, toRefArc, definition.flipToNormal, mcSystems);
-            println("DBG mc count " ~ size(mcQueries) ~ " systems " ~ size(mcSystems) ~ " mapped " ~ size(mcMapped));
-            for (var dbg = 0; dbg < size(mcSystems); dbg += 1)
-                println("DBG mc " ~ dbg ~ " src " ~ toString(mcSystems[dbg]) ~ " -> " ~ toString(mcMapped[dbg]));
 
             for (var mcIdx = 0; mcIdx < size(mcQueries); mcIdx += 1)
             {
                 var mcId  = id + ("mateConnector" ~ mcIdx);
                 var mcDef = { "coordSystem" : mcMapped[mcIdx] };
 
-                // A connector owned by a deformed body belongs to that body's result;
-                // anything else (stand-alone, or owned by a body not deformed) stays stand-alone.
-                println("DBG owners of mc " ~ mcIdx ~ ": " ~ toString(evaluateQuery(context, qOwnerBody(mcQueries[mcIdx]))) ~ " unitResult keys: " ~ toString(keys(unitResults)));
-                for (var ownerBody in evaluateQuery(context, qOwnerBody(mcQueries[mcIdx])))
+                // A connector on a deformed body goes onto that body's result; anything else stays stand-alone.
+                // FeatureScript cannot read which body owns a mate connector (qOwnerBody returns the
+                // connector itself), so a connector counts as belonging to the source body it lies on.
+                for (var srcBody in unitBodies)
                 {
-                    var ownerResult = unitResults[toString(ownerBody)];
-                    if (ownerResult != undefined && size(evaluateQuery(context, ownerResult)) == 1)
+                    var ownerResult = unitResults[toString(srcBody)];
+                    if (ownerResult != undefined && size(evaluateQuery(context, ownerResult)) == 1 &&
+                        evDistance(context, { "side0" : mcSystems[mcIdx].origin, "side1" : srcBody }).distance < MC_ON_BODY_TOLERANCE)
                     {
                         mcDef.owner = ownerResult;
                         break;

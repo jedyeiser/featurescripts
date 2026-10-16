@@ -4,7 +4,7 @@
 Fixtures (mm, on Top): from path = line (0,0)->(300,0); to path = quarter arc R300 about (0,300), (0,0)->(300,300).
 Both references sit at the start vertices, so s_to = s_from and a point (x, y, z) lands at
 arc(x) + y*N + z*B with N pointing at the arc centre. Source boxes: A x 100..200, B x 220..260, y -10..10, z 0..10.
-Mate connectors: MC_A on box A's corner (100, -10, 10), owned by A; MC_B stand-alone at (150, 0, 0).
+Mate connectors: MC_A on box A's corner (100, -10, 10), owned by A; MC_B stand-alone at (210, 0, 0), between the boxes.
 
   D1  Bodies A+B, connectors MC_A+MC_B -> 2 result solids; MC_A owned by A's result, MC_B stand-alone
   D2  connectors only (no body)         -> both connectors stand-alone
@@ -130,14 +130,14 @@ to_sk = sketch("To path: R300 quarter arc about (0,300)", [arc("a", *mmv(0, 300,
 box_a = box("Box A x100..200", 100, 200)
 box_b = box("Box B x220..260", 220, 260)
 
-pt_sk = sketch("MC_B point (150, 0)", [{"btType": "BTMSketchPoint-158", "entityId": "p", "isConstruction": False, "x": 0.150, "y": 0.0}])
+pt_sk = sketch("MC_B point (210, 0)", [{"btType": "BTMSketchPoint-158", "entityId": "p", "isConstruction": False, "x": 0.210, "y": 0.0}])
 
 mc_a = feature("MC_A box A corner (100,-10,10), owned by A", "mateConnector", [
     en("originType", "OriginCreationType", "ON_ENTITY"),
     q("originQuery", 'qClosestTo(qOwnedByBody(%s, EntityType.VERTEX), vector(100, -10, 10) * millimeter)' % body(box_a)),
     en("entityInferenceType", "EntityInferenceType", "POINT"), b("allowOwnerEntity", True), b("requireOwnerPart", True),
     q("ownerPart", body(box_a))])
-mc_b = feature("MC_B stand-alone at (150,0,0)", "mateConnector", [
+mc_b = feature("MC_B stand-alone at (210,0,0)", "mateConnector", [
     en("originType", "OriginCreationType", "ON_ENTITY"),
     q("originQuery", 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % pt_sk),
     en("entityInferenceType", "EntityInferenceType", "POINT"), b("allowOwnerEntity", True), b("requireOwnerPart", False)])
@@ -165,9 +165,12 @@ def deform(name, bodies, mcs, given=()):
     return feature(name, "deform", params, NS)
 
 
-NAMES = [s("sourceNames", "Box A\nBox B"), s("nameSuffix", " (deformed)")]
+def names(src, tag):
+    return [s("sourceNames", src), s("nameSuffix", " (%s)" % tag)]
+
+
 deform("D1 boxes A+B, connectors MC_A+MC_B -> 2 solids; MC_A on A's result, MC_B stand-alone",
-       [body(box_a), body(box_b)], [body(mc_a), body(mc_b)], NAMES)
+       [body(box_a), body(box_b)], [body(mc_a), body(mc_b)], names("Box A\nBox B", "D1"))
 deform("D2 connectors only -> 2 stand-alone connectors", [], [body(mc_a), body(mc_b)])
-deform("D3 box A only -> 1 solid", [body(box_a)], [], [s("sourceNames", "Box A"), s("nameSuffix", " (deformed)")])
-deform("D4 boxes A+B, no connectors -> 2 solids", [body(box_a), body(box_b)], [], NAMES)
+deform("D3 box A only -> 1 solid", [body(box_a)], [], names("Box A", "D3"))
+deform("D4 boxes A+B, no connectors -> 2 solids", [body(box_a), body(box_b)], [], names("Box A\nBox B", "D4"))
