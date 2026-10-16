@@ -66,10 +66,10 @@ def boolean(pid, v):
     return {"btType": "BTMParameterBoolean-144", "parameterId": pid, "value": v}
 
 
-def feature(name, divisions, sections, refine, tol_mm):
+def feature(name, divisions, sections, refine, tol_mm, on_plane=True):
     given = {p["parameterId"]: p for p in [
         qids("surface", [full]), qids("crossWire", [wire]), q("symmetryPlane", 'qCreatedBy(makeId("Front"), EntityType.FACE)'),
-        num("divisions", str(divisions), True), num("sections", str(sections), True), boolean("onSymmetryPlane", True),
+        num("divisions", str(divisions), True), num("sections", str(sections), True), boolean("onSymmetryPlane", on_plane),
         boolean("refine", refine), num("surfaceTolerance", "%g mm" % tol_mm)]}
     params = []
     for p in SPEC["parameters"]:
@@ -85,13 +85,13 @@ def feature(name, divisions, sections, refine, tol_mm):
 cases = []
 for item in os.environ.get("BENCH", "5:60:1,5:60:0,16:60:1,16:60:0,5:4:0").split(","):
     t = item.split(":")
-    cases.append((int(t[0]), int(t[1]), t[2] == "1", float(t[3]) if len(t) > 3 else 0.01))
+    cases.append((int(t[0]), int(t[1]), t[2] == "1", float(t[3]) if len(t) > 3 else 0.01, (t[4] == "1") if len(t) > 4 else True))
 
 print("%-34s %8s  %s" % ("case (divisions:sections:refine:tol)", "seconds", "status"))
-for n, s, refine, tol in cases:
-    name = "BENCH %d:%d:%d:%g" % (n, s, refine, tol)
+for n, s, refine, tol, on_plane in cases:
+    name = "BENCH %d:%d:%d:%g:%d" % (n, s, refine, tol, on_plane)
     t0 = time.perf_counter()
-    resp = write_feature(BASE, feature(name, n, s, refine, tol), _TREE, client=c)
+    resp = write_feature(BASE, feature(name, n, s, refine, tol, on_plane), _TREE, client=c)
     dt = time.perf_counter() - t0
-    print("%-34s %8.1f  %s" % ("%d:%d:%d:%g" % (n, s, refine, tol), dt, resp.get("featureState", {}).get("featureStatus")))
+    print("%-34s %8.1f  %s" % ("%d:%d:%d:%g:%d" % (n, s, refine, tol, on_plane), dt, resp.get("featureState", {}).get("featureStatus")))
     delete_feature(BASE, resp["feature"]["featureId"], _TREE, client=c)

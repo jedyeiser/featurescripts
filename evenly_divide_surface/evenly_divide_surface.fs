@@ -32,7 +32,7 @@ const MAX_SPLIT = 5;
 /** Bounds of the surface tolerance input: 0.001 - 0.01 (default) - 1 mm. */
 export const SurfaceToleranceBounds = { (meter) : [1e-6, 1e-5, 1e-3], (millimeter) : 0.001, (centimeter) : 0.0001, (inch) : 0.00004 } as LengthBoundSpec;
 /** Rounds of adding sections, and the most sections the refinement may reach. */
-const MAX_REFINE_ROUNDS = 4;
+const MAX_REFINE_ROUNDS = 5;
 const MAX_SECTIONS = 600;
 /** Bisection steps when locating where complete sections start and stop. */
 const RANGE_BISECTIONS = 12;
@@ -199,8 +199,9 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             if (!definition.refine || weakCount == 0 || rounds >= MAX_REFINE_ROUNDS || size(sections) + weakCount > MAX_SECTIONS)
                 break;
 
-            // Split each weak interval into pieces sized from its error (interpolation error falls roughly as the 4th power
-            // of the spacing), then fit again. The wires of this round are discarded.
+            // Split each weak interval into pieces sized from its error, then fit again; the wires of this round are discarded.
+            // A smooth surface converges like the 4th power of the spacing, but near a face seam only like the square, and a
+            // round (fit + measure) costs far more than a section, so the square law is assumed.
             opDeleteBodies(context, id + ("discard" ~ rounds), { "entities" : qUnion(mapArray(wireIds, function(w) { return qCreatedBy(w, EntityType.BODY); })) });
             var refined = [];
             var refinedDev = [];
@@ -213,7 +214,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 var added = 0;
                 if (intervalDev[j] > definition.surfaceTolerance)
                 {
-                    const pieces = min(MAX_SPLIT, max(2, ceil(sqrt(sqrt(intervalDev[j] / definition.surfaceTolerance)) * 1.2)));
+                    const pieces = min(MAX_SPLIT, max(2, ceil(sqrt(intervalDev[j] / definition.surfaceTolerance) * 1.1)));
                     for (var p = 1; p < pieces; p += 1)
                     {
                         const u = sections[j].u + (sections[j + 1].u - sections[j].u) * p / pieces;
