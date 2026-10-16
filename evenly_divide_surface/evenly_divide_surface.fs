@@ -23,8 +23,12 @@ export const SectionCountBounds  = { (unitless) : [2, 60, 1000] } as IntegerBoun
 const SECTION_END_INSET = 1e-4 * meter;
 /** Planes keep this far inside the first/last COMPLETE section (a plane that only just clears a trimmed end cuts a degenerate section). */
 const SECTION_END_MARGIN = 1e-3 * meter;
-/** Samples per section interval when measuring how far a wire strays from the surface. */
-const WIRE_CHECK_SAMPLES_PER_SPAN = 4;
+/** Samples inside each section interval when measuring how far a wire strays from the surface (error peaks mid-interval). */
+const WIRE_CHECK_SAMPLES = 2;
+/** A face is a candidate for a distance check when the point is within its bounding box inflated by at least this much. */
+const WIRE_CHECK_BOX_INFLATE = 2e-3 * meter;
+/** Most pieces a weak interval is split into in one round. */
+const MAX_SPLIT = 5;
 /** Bounds of the surface tolerance input: 0.001 - 0.01 (default) - 1 mm. */
 export const SurfaceToleranceBounds = { (meter) : [1e-6, 1e-5, 1e-3], (millimeter) : 0.001, (centimeter) : 0.0001, (inch) : 0.00004 } as LengthBoundSpec;
 /** Rounds of adding sections, and the most sections the refinement may reach. */
@@ -126,76 +130,127 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         // 3. One wire per division: a spline through that division's point on every section. (Dropping the spline onto the
         //    surface with opDropCurve was tried and rejected: it projects onto every face the curve can reach and returns
         //    many fragments per division, not one wire.) Instead, where a wire strays from the surface between two sections,
-        //    a section is added midway and the wires are fitted again.
+        //    sections are added in that interval and the wires are fitted again.
+        //
+        //    Cost control: a wire's deviation is sampled INSIDE each section interval (the spline's own parameters of its
+        //    section points delimit the intervals, so no search is needed), each sample is measured against only the faces
+        //    whose bounding box contains it, and after the first round only intervals near new sections are re-measured.
         const wireCount = size(sections[0].points);
-        const crossSamples = pathSamples(context, crossPath);
+        const faceBoxes = surfaceFaceBoxes(context, surfaceFaces, max(2 * definition.surfaceTolerance, WIRE_CHECK_BOX_INFLATE));
         var wireIds = [];
-        var worstOff = 0 * meter;
+        var intervalDev = makeArray(size(sections) - 1, 0 * meter);   // worst deviation seen in each interval
+        var dirty = makeArray(size(sections) - 1, true);              // intervals to (re)measure this round
         var rounds = 0;
         while (true)
         {
+            // Fit one spline per division.
             wireIds = [];
+            var wireParams = [];
             for (var i = 0; i < wireCount; i += 1)
             {
                 var wirePoints = [];
                 for (var s in sections)
                     wirePoints = append(wirePoints, s.points[i]);
+                const params = chordLengthParameters(wirePoints);
                 const wireId = id + ("wire" ~ i ~ "r" ~ rounds);
-                opFitSpline(context, wireId, { "points" : wirePoints, "parameters" : chordLengthParameters(wirePoints) });
+                opFitSpline(context, wireId, { "points" : wirePoints, "parameters" : params });
                 wireIds = append(wireIds, wireId);
+                wireParams = append(wireParams, params);
             }
 
-            // How far do the wires stray from the surface, and between which sections?
-            var weak = makeArray(size(sections) - 1, false);
-            var weakCount = 0;
-            worstOff = 0 * meter;
-            for (var wireId in wireIds)
+            // Measure the dirty intervals: WIRE_CHECK_SAMPLES samples strictly inside each, on every wire.
+            for (var j = 0; j < size(intervalDev); j += 1)
+                if (dirty[j])
+                    intervalDev[j] = 0 * meter;
+            for (var i = 0; i < wireCount; i += 1)
             {
-                for (var edge in evaluateQuery(context, qCreatedBy(wireId, EntityType.EDGE)))
+                var sampleParams = [];
+                var sampleInterval = [];
+                for (var j = 0; j < size(intervalDev); j += 1)
                 {
-                    const samples = WIRE_CHECK_SAMPLES_PER_SPAN * (size(sections) - 1);
-                    for (var l in evEdgeTangentLines(context, { "edge" : edge, "parameters" : range(0, 1, samples + 1) }))
+                    if (!dirty[j])
+                        continue;
+                    for (var k = 1; k <= WIRE_CHECK_SAMPLES; k += 1)
                     {
-                        const d = evDistance(context, { "side0" : l.origin, "side1" : surfaceFaces }).distance;
-                        worstOff = max(worstOff, d);
-                        if (d > definition.surfaceTolerance)
-                        {
-                            const j = intervalIndex(sections, nearestPathParameter(crossSamples, l.origin / meter));
-                            if (!weak[j])
-                            {
-                                weak[j] = true;
-                                weakCount += 1;
-                            }
-                        }
+                        sampleParams = append(sampleParams, wireParams[i][j] + (wireParams[i][j + 1] - wireParams[i][j]) * k / (WIRE_CHECK_SAMPLES + 1));
+                        sampleInterval = append(sampleInterval, j);
                     }
                 }
+                if (size(sampleParams) == 0)
+                    continue;
+                const lines = evEdgeTangentLines(context, { "edge" : qCreatedBy(wireIds[i], EntityType.EDGE), "parameters" : sampleParams,
+                                                            "arcLengthParameterization" : false });
+                for (var m = 0; m < size(lines); m += 1)
+                    intervalDev[sampleInterval[m]] = max(intervalDev[sampleInterval[m]], distanceToSurface(context, faceBoxes, surfaceFaces, lines[m].origin));
             }
 
+            var roundWorst = 0 * meter;
+            var weakCount = 0;
+            for (var j = 0; j < size(intervalDev); j += 1)
+            {
+                roundWorst = max(roundWorst, intervalDev[j]);
+                if (intervalDev[j] > definition.surfaceTolerance)
+                    weakCount += 1;
+            }
+            println("evenlyDivideSurface: round " ~ rounds ~ ": " ~ size(sections) ~ " sections, " ~ weakCount ~ " weak intervals, worst " ~
+                    roundToPrecision(roundWorst / millimeter, 4) ~ " mm");
             if (!definition.refine || weakCount == 0 || rounds >= MAX_REFINE_ROUNDS || size(sections) + weakCount > MAX_SECTIONS)
                 break;
 
-            // Add a section midway through each weak interval and fit again.
+            // Split each weak interval into pieces sized from its error (interpolation error falls roughly as the 4th power
+            // of the spacing), then fit again. The wires of this round are discarded.
             opDeleteBodies(context, id + ("discard" ~ rounds), { "entities" : qUnion(mapArray(wireIds, function(w) { return qCreatedBy(w, EntityType.BODY); })) });
             var refined = [];
+            var refinedDev = [];
+            var changed = [];        // new interval i is next to a new section
             for (var j = 0; j < size(sections); j += 1)
             {
                 refined = append(refined, sections[j]);
-                if (j < size(sections) - 1 && weak[j])
+                if (j == size(sections) - 1)
+                    break;
+                var added = 0;
+                if (intervalDev[j] > definition.surfaceTolerance)
                 {
-                    const u = (sections[j].u + sections[j + 1].u) / 2;
-                    const section = makeSection(context, id + ("section" ~ sectionCount), crossPath, u, surfaceFaces, planeSize, symPlane,
-                                                definition.divisions, definition.onSymmetryPlane);
-                    sectionCount += 1;
-                    if (section != undefined)
-                        refined = append(refined, section);
+                    const pieces = min(MAX_SPLIT, max(2, ceil(sqrt(sqrt(intervalDev[j] / definition.surfaceTolerance)) * 1.2)));
+                    for (var p = 1; p < pieces; p += 1)
+                    {
+                        const u = sections[j].u + (sections[j + 1].u - sections[j].u) * p / pieces;
+                        const section = makeSection(context, id + ("section" ~ sectionCount), crossPath, u, surfaceFaces, planeSize, symPlane,
+                                                    definition.divisions, definition.onSymmetryPlane);
+                        sectionCount += 1;
+                        if (section != undefined)
+                        {
+                            refined = append(refined, section);
+                            added += 1;
+                        }
+                    }
+                }
+                // intervals j (split into added + 1 pieces)
+                for (var p = 0; p <= added; p += 1)
+                {
+                    refinedDev = append(refinedDev, intervalDev[j]);
+                    changed = append(changed, added > 0);
                 }
             }
             if (size(refined) == size(sections))
                 break;
+            // An interval next to a changed one is re-measured too: the refit moves the spline a little there.
+            dirty = makeArray(size(changed), false);
+            for (var j = 0; j < size(changed); j += 1)
+            {
+                if (changed[j])
+                {
+                    for (var near = max(0, j - 1); near <= min(size(changed) - 1, j + 1); near += 1)
+                        dirty[near] = true;
+                }
+            }
+            intervalDev = refinedDev;
             sections = refined;
             rounds += 1;
-            // The wires of this round are gone: fit again (next pass of the loop).
         }
+        var worstOff = 0 * meter;
+        for (var dev in intervalDev)
+            worstOff = max(worstOff, dev);
 
         // 4. Clean up the construction geometry.
         var scratch = [];
@@ -253,25 +308,35 @@ function makeSection(context is Context, id is Id, crossPath is Path, u is numbe
     }
 }
 
-/** Index j of the interval between sections j and j+1 that contains path parameter u. */
-function intervalIndex(sections is array, u is number) returns number
+
+
+
+/** Bounding box (unitless, meters) of every face of the surface, inflated by `inflate`. */
+function surfaceFaceBoxes(context is Context, surfaceFaces is Query, inflate is ValueWithUnits) returns array
 {
-    var j = 0;
-    while (j < size(sections) - 2 && u > sections[j + 1].u)
-        j += 1;
-    return j;
+    const pad = inflate / meter;
+    return mapArray(evaluateQuery(context, surfaceFaces), function(face)
+        {
+            const box = evBox3d(context, { "topology" : face });
+            return { "face" : face, "lo" : box.minCorner / meter - vector(pad, pad, pad), "hi" : box.maxCorner / meter + vector(pad, pad, pad) };
+        });
 }
 
-/** Evenly spaced points of the path (unitless, meters), for projecting points onto it with `nearestPathParameter`. */
-function pathSamples(context is Context, path is Path) returns array
+/**
+ * Distance from `p` to the surface. Only faces whose (inflated) bounding box contains `p` are measured: exact whenever the
+ * distance is within the inflation, since the nearest face's box then contains `p`; with no candidate every face is measured.
+ */
+function distanceToSurface(context is Context, boxes is array, surfaceFaces is Query, p is Vector) returns ValueWithUnits
 {
-    var params = [];
-    for (var j = 0; j <= EXTENT_SAMPLES; j += 1)
-        params = append(params, j / EXTENT_SAMPLES);
-    return mapArray(evPathTangentLines(context, path, params).tangentLines, function(l) { return l.origin / meter; });
+    const q = p / meter;
+    var near = [];
+    for (var b in boxes)
+    {
+        if (q[0] >= b.lo[0] && q[0] <= b.hi[0] && q[1] >= b.lo[1] && q[1] <= b.hi[1] && q[2] >= b.lo[2] && q[2] <= b.hi[2])
+            near = append(near, b.face);
+    }
+    return evDistance(context, { "side0" : p, "side1" : (size(near) == 0) ? surfaceFaces : qUnion(near) }).distance;
 }
-
-
 /** Chord-length parameters (0..1) for a spline through `points`: far fewer wiggles than evenly spaced parameters on unevenly spaced points. */
 function chordLengthParameters(points is array) returns array
 {
