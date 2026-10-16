@@ -39,7 +39,7 @@ function splitNames(joined is string) returns array
  * body) so the feature can name each deformed result "<source name><suffix>".
  */
 export function deformEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
-    specifiedParameters is map, hiddenBodies is Query) returns map
+    isCreating is boolean, specifiedParameters is map, hiddenBodies is Query) returns map
 {
     if (definition.deformMode == DeformMode.FACES)
     {
@@ -746,6 +746,11 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             }
         }
 
+    }, {
+        // Saved features predate these parameters: keep their behaviour (no connectors, no naming).
+        "mateConnectors" : qNothing(),
+        "nameSuffix"     : "",
+        "sourceNames"    : ""
     });
 
 
