@@ -5,7 +5,8 @@ import(path : "onshape/std/approximationUtils.fs", version : "3083.0");
 // curveMappingCore, EXPORT-imported: the dialog's enums (SamplingMode, FrameNormalMode,
 // BinormalSource) come from it. wrapCurve is not imported: nothing here uses it, and its own
 // export-import of the core could bring a second version of the core into this scope.
-export import(path : "683d867c35fdab9c98d47556", version : "f48cd8a0782e83964ecae099");
+// Unpinned while mapCoordSystems is tested; re-pin after the user versions the core.
+export import(path : "683d867c35fdab9c98d47556", version : "");
 
 
 
@@ -22,6 +23,12 @@ export import(path : "683d867c35fdab9c98d47556", version : "f48cd8a0782e83964eca
  */
 
 export const FaceControlMultiplierBounds = {(unitless) : [2, 3, 10]} as IntegerBoundSpec;
+
+/** `base` alone when there is one item, else `base 1`, `base 2`, ... (idx is 0-based). */
+function numberedName(base is string, idx is number, count is number) returns string
+{
+    return count > 1 ? base ~ " " ~ (idx + 1) : base;
+}
 
 /** Whether to deform a whole body or a user-selected set of faces. */
 export enum DeformMode
@@ -42,7 +49,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
         if (definition.deformMode != DeformMode.FACES)
         {
-            annotation { "Name" : "Source body", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET), "MaxNumberOfPicks" : 1, "Description" : "Source body to deform" }
+            annotation { "Name" : "Source bodies", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET), "Description" : "Bodies to deform. Each body is deformed separately and produces its own result." }
             definition.sourceBody is Query;
         }
         else
@@ -50,6 +57,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Source faces", "Filter" : EntityType.FACE, "Description" : "Faces to deform. Adjacent selected faces will be recombined into sheet bodies." }
             definition.sourceFaces is Query;
         }
+
+        annotation { "Name" : "Mate connectors to deform", "Filter" : BodyType.MATE_CONNECTOR, "Description" : "Mate connectors carried through the same deform: each lands where it would end up if it were part of the source body, with its orientation rotated to match. A connector owned by a deformed body belongs to that body's result; any other stays stand-alone." }
+        definition.mateConnectors is Query;
 
         annotation { "Group Name" : "From data", "Collapsed By Default" : true }
         {
@@ -154,6 +164,15 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             definition.keepWires is boolean;
         }
 
+        annotation { "Group Name" : "Naming", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Part name", "Description" : "Name for the deformed bodies (numbered when there are several). Blank leaves them unnamed. The source name cannot be read inside a feature." }
+            definition.bodyName is string;
+
+            annotation { "Name" : "Mate connector name", "Description" : "Name for the deformed mate connectors (numbered when there are several). Blank leaves them unnamed." }
+            definition.mateConnectorName is string;
+        }
+
         annotation { "Name" : "Debug", "Default" : false }
         definition.debug is boolean;
         
@@ -218,399 +237,495 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
         var isFacesMode = definition.deformMode == DeformMode.FACES;
 
-        // Pre-transform all body vertices in one batch so every edge uses the same
-        // canonical mapped position for each shared vertex.  This eliminates the
-        // floating-point gap that arises when two adjacent edges sample the same
-        // source vertex independently and get slightly different float values.
-        var allVerts = evaluateQuery(context, isFacesMode
-            ? qAdjacent(definition.sourceFaces, AdjacencyType.VERTEX, EntityType.VERTEX)
-            : qOwnedByBody(definition.sourceBody, EntityType.VERTEX));
-        var vertSrcPositions = mapArray(allVerts, function(v) {
-            return evVertexPoint(context, { "vertex": v });
-        });
-        var vertMappedPositions = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
-            fromRefArc, toRefArc, definition.flipToNormal, vertSrcPositions);
-        var vertexMap = {};
-        for (var vIdx = 0; vIdx < size(allVerts); vIdx += 1)
+        if ((isFacesMode ? isQueryEmpty(context, definition.sourceFaces) : isQueryEmpty(context, definition.sourceBody))
+            && isQueryEmpty(context, definition.mateConnectors))
         {
-            vertexMap[toString(allVerts[vIdx])] = vertMappedPositions[vIdx];
+            throw regenError(isFacesMode ? "Select faces or mate connectors to deform." : "Select bodies or mate connectors to deform.",
+                [isFacesMode ? "sourceFaces" : "sourceBody", "mateConnectors"]);
         }
 
-        var settings = {
-            "fromRefArc"             : fromRefArc,
-            "toRefArc"               : toRefArc,
-            "flipToNormal"           : definition.flipToNormal,
-            "samplingMode"           : definition.sourceSamplingMode,
-            "samplingDensity"        : definition.samplingDensity,
-            "sourceCPMultiplier"     : definition.sourceCPMultiplier,
-            "keepDegree"             : definition.keepDegree,
-            "approximationDegree"    : definition.approximationDegree,
-            "approximationMaxCPs"    : definition.approximationMaxCPs,
-            "approximationTolerance" : definition.approximationTolerance,
-            "vertexMap"              : vertexMap
-        };
-
-        // Accumulators declared before conditional blocks so all steps share scope
-        var edgeMapping = [];
-
-        // Cumulative debug conditions: each step implies all prior steps ran
-        var runWires  = !definition.debug || definition.createWires  || definition.createFaces || definition.createBodies;
-        var runFaces  = !definition.debug || definition.createFaces  || definition.createBodies;
-        var runBodies = !definition.debug || definition.createBodies;
-
-        // --- Step 1: Transform edges ---
-        if (runWires)
+        // One deform per source body (FACES mode is a single unit). Each unit works under its
+        // own id so the ops, qCreatedBy lookups and the union in step 3 never mix bodies.
+        var unitBodies = [];
+        if (isFacesMode)
         {
-            var allEdges = evaluateQuery(context, isFacesMode
-                ? qAdjacent(definition.sourceFaces, AdjacencyType.EDGE, EntityType.EDGE)
-                : qOwnedByBody(definition.sourceBody, EntityType.EDGE));
-            edgeMapping  = transformEdges(context, id + "wires", allEdges, fromFrenetPath, toFrenetPath, settings);
+            if (!isQueryEmpty(context, definition.sourceFaces))
+                unitBodies = [undefined];
+        }
+        else
+        {
+            unitBodies = evaluateQuery(context, definition.sourceBody);
         }
 
-        // --- Step 2: Reconstruct faces ---
-        if (runFaces)
+        // toString(source body) -> query for its deformed result body; lets mate connectors
+        // find the body they now belong to.
+        var unitResults = {};
+
+        for (var unitIdx = 0; unitIdx < size(unitBodies); unitIdx += 1)
         {
-            var allFaces = evaluateQuery(context, isFacesMode
-                ? definition.sourceFaces
-                : qOwnedByBody(definition.sourceBody, EntityType.FACE));
+            var uid      = id + ("unit" ~ unitIdx);
+            var unitBody = unitBodies[unitIdx];
 
-            // Build O(1) lookup: toString(sourceEdge) → wrappedEdge.
-            // toString on a transient query gives a stable unique string per entity,
-            // which is more reliable than == comparison across different evaluateQuery call sites.
-            var edgeLookupMap = {};
-            for (var m in edgeMapping)
+
+            // Pre-transform all body vertices in one batch so every edge uses the same
+            // canonical mapped position for each shared vertex.  This eliminates the
+            // floating-point gap that arises when two adjacent edges sample the same
+            // source vertex independently and get slightly different float values.
+            var allVerts = evaluateQuery(context, isFacesMode
+                ? qAdjacent(definition.sourceFaces, AdjacencyType.VERTEX, EntityType.VERTEX)
+                : qOwnedByBody(unitBody, EntityType.VERTEX));
+            var vertSrcPositions = mapArray(allVerts, function(v) {
+                return evVertexPoint(context, { "vertex": v });
+            });
+            var vertMappedPositions = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
+                fromRefArc, toRefArc, definition.flipToNormal, vertSrcPositions);
+            var vertexMap = {};
+            for (var vIdx = 0; vIdx < size(allVerts); vIdx += 1)
             {
-                edgeLookupMap[toString(m.sourceEdge)] = m.wrappedEdge;
+                vertexMap[toString(allVerts[vIdx])] = vertMappedPositions[vIdx];
             }
 
-            // Pre-evaluate boundary edges for every face once — avoids repeated qAdjacent
-            // kernel calls inside the loop.
-            var faceBoundaryEdgeSets = [];
-            for (var fIdx = 0; fIdx < size(allFaces); fIdx += 1)
+            var settings = {
+                "fromRefArc"             : fromRefArc,
+                "toRefArc"               : toRefArc,
+                "flipToNormal"           : definition.flipToNormal,
+                "samplingMode"           : definition.sourceSamplingMode,
+                "samplingDensity"        : definition.samplingDensity,
+                "sourceCPMultiplier"     : definition.sourceCPMultiplier,
+                "keepDegree"             : definition.keepDegree,
+                "approximationDegree"    : definition.approximationDegree,
+                "approximationMaxCPs"    : definition.approximationMaxCPs,
+                "approximationTolerance" : definition.approximationTolerance,
+                "vertexMap"              : vertexMap
+            };
+
+            // Accumulators declared before conditional blocks so all steps share scope
+            var edgeMapping = [];
+
+            // Cumulative debug conditions: each step implies all prior steps ran
+            var runWires  = !definition.debug || definition.createWires  || definition.createFaces || definition.createBodies;
+            var runFaces  = !definition.debug || definition.createFaces  || definition.createBodies;
+            var runBodies = !definition.debug || definition.createBodies;
+
+            // --- Step 1: Transform edges ---
+            if (runWires)
             {
-                faceBoundaryEdgeSets = append(faceBoundaryEdgeSets,
-                    evaluateQuery(context, qAdjacent(allFaces[fIdx], AdjacencyType.EDGE, EntityType.EDGE)));
+                var allEdges = evaluateQuery(context, isFacesMode
+                    ? qAdjacent(definition.sourceFaces, AdjacencyType.EDGE, EntityType.EDGE)
+                    : qOwnedByBody(unitBody, EntityType.EDGE));
+                edgeMapping  = transformEdges(context, uid + "wires", allEdges, fromFrenetPath, toFrenetPath, settings);
             }
 
-            for (var fIdx = 0; fIdx < size(allFaces); fIdx += 1)
+            // --- Step 2: Reconstruct faces ---
+            if (runFaces)
             {
-                var face      = allFaces[fIdx];
-                var faceEdges = faceBoundaryEdgeSets[fIdx];
+                var allFaces = evaluateQuery(context, isFacesMode
+                    ? definition.sourceFaces
+                    : qOwnedByBody(unitBody, EntityType.FACE));
 
-                // Gather wrapped counterparts via O(1) map lookup.
-                // Deduplicate by toString(wrappedEdge) to guard against opExtractWires
-                // OVERLAPPING_EDGES when the same wrapped edge resolves for two source keys.
-                var wrappedBoundaryEdgeQueries = [];
-                var seenWrappedKeys = {};
-                for (var eIdx = 0; eIdx < size(faceEdges); eIdx += 1)
+                // Build O(1) lookup: toString(sourceEdge) → wrappedEdge.
+                // toString on a transient query gives a stable unique string per entity,
+                // which is more reliable than == comparison across different evaluateQuery call sites.
+                var edgeLookupMap = {};
+                for (var m in edgeMapping)
                 {
-                    var wrappedEdge = edgeLookupMap[toString(faceEdges[eIdx])];
-                    if (wrappedEdge != undefined)
+                    edgeLookupMap[toString(m.sourceEdge)] = m.wrappedEdge;
+                }
+
+                // Pre-evaluate boundary edges for every face once — avoids repeated qAdjacent
+                // kernel calls inside the loop.
+                var faceBoundaryEdgeSets = [];
+                for (var fIdx = 0; fIdx < size(allFaces); fIdx += 1)
+                {
+                    faceBoundaryEdgeSets = append(faceBoundaryEdgeSets,
+                        evaluateQuery(context, qAdjacent(allFaces[fIdx], AdjacencyType.EDGE, EntityType.EDGE)));
+                }
+
+                for (var fIdx = 0; fIdx < size(allFaces); fIdx += 1)
+                {
+                    var face      = allFaces[fIdx];
+                    var faceEdges = faceBoundaryEdgeSets[fIdx];
+
+                    // Gather wrapped counterparts via O(1) map lookup.
+                    // Deduplicate by toString(wrappedEdge) to guard against opExtractWires
+                    // OVERLAPPING_EDGES when the same wrapped edge resolves for two source keys.
+                    var wrappedBoundaryEdgeQueries = [];
+                    var seenWrappedKeys = {};
+                    for (var eIdx = 0; eIdx < size(faceEdges); eIdx += 1)
                     {
-                        var wk = toString(wrappedEdge);
-                        if (seenWrappedKeys[wk] == undefined)
+                        var wrappedEdge = edgeLookupMap[toString(faceEdges[eIdx])];
+                        if (wrappedEdge != undefined)
                         {
-                            seenWrappedKeys[wk] = true;
-                            wrappedBoundaryEdgeQueries = append(wrappedBoundaryEdgeQueries, wrappedEdge);
-                        }
-                        // else: duplicate wrapped edge — skip to avoid OVERLAPPING_EDGES
-                    }
-                    else
-                    {
-                        println("WARNING: face " ~ fIdx ~ " boundary edge " ~ eIdx ~
-                                " has no wrapped counterpart — it likely failed in transformEdges");
-                    }
-                }
-
-                // Each wrapped edge lives in its own wire body — topologically disconnected
-                // from its neighbours even when endpoints are geometrically coincident.
-                // opFillSurface needs a closed, topologically-connected boundary, so we
-                // stitch the edges into a proper wire first with opExtractWires.
-                if (size(wrappedBoundaryEdgeQueries) == 0)
-                {
-                    println("WARNING: face " ~ fIdx ~ " has no wrapped boundary edges — skipping fill");
-                    continue;
-                }
-
-                var extractId = id + ("bdry" ~ fIdx);
-                try
-                {
-                    opExtractWires(context, extractId, { "edges": qUnion(wrappedBoundaryEdgeQueries) });
-                }
-                catch (extractErr)
-                {
-                    println("ERROR stitching boundary for face " ~ fIdx ~ ": " ~ toString(extractErr));
-
-                    // Cyan = undeformed source boundary edges
-                    for (var seq in faceEdges)
-                        addDebugEntities(context, seq, DebugColor.CYAN);
-                    // Red = wrapped edges that failed to stitch
-                    for (var beq in wrappedBoundaryEdgeQueries)
-                        addDebugEntities(context, beq, DebugColor.RED);
-
-                    // ── Source edges with expected mapped positions ──────────────────────
-                    println("  face " ~ fIdx ~ ": " ~ size(faceEdges) ~ " src edges / " ~
-                            size(wrappedBoundaryEdgeQueries) ~ " wrapped:");
-                    for (var dIdx = 0; dIdx < size(faceEdges); dIdx += 1)
-                    {
-                        var srcPts = evEdgeTangentLines(context, {
-                            "edge": faceEdges[dIdx], "parameters": [0, 1]
-                        });
-                        var expPts = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
-                            settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
-                            [srcPts[0].origin, srcPts[1].origin]);
-                        println("  src " ~ dIdx ~ ": " ~ toString(srcPts[0].origin) ~
-                                " → " ~ toString(srcPts[1].origin));
-                        println("  exp " ~ dIdx ~ ": " ~ toString(expPts[0]) ~
-                                " → " ~ toString(expPts[1]));
-                    }
-
-                    // ── Actual wrapped edge endpoints ────────────────────────────────────
-                    var wrappedPtPairs = [];
-                    for (var wIdx = 0; wIdx < size(wrappedBoundaryEdgeQueries); wIdx += 1)
-                    {
-                        var wPts = evEdgeTangentLines(context, {
-                            "edge": wrappedBoundaryEdgeQueries[wIdx], "parameters": [0, 1]
-                        });
-                        wrappedPtPairs = append(wrappedPtPairs, wPts);
-                        // If counts match, also print the lookup error vs expected
-                        if (size(faceEdges) == size(wrappedBoundaryEdgeQueries))
-                        {
-                            var srcP = evEdgeTangentLines(context, {
-                                "edge": faceEdges[wIdx], "parameters": [0, 1]
-                            });
-                            var expP = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
-                                settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
-                                [srcP[0].origin, srcP[1].origin]);
-                            var errS = norm(expP[0] - wPts[0].origin);
-                            var errE = norm(expP[1] - wPts[1].origin);
-                            println("  wrapped " ~ wIdx ~ ": " ~ toString(wPts[0].origin) ~
-                                    " → " ~ toString(wPts[1].origin) ~
-                                    "  lookupErr start=" ~ toString(errS) ~
-                                    " end=" ~ toString(errE));
+                            var wk = toString(wrappedEdge);
+                            if (seenWrappedKeys[wk] == undefined)
+                            {
+                                seenWrappedKeys[wk] = true;
+                                wrappedBoundaryEdgeQueries = append(wrappedBoundaryEdgeQueries, wrappedEdge);
+                            }
+                            // else: duplicate wrapped edge — skip to avoid OVERLAPPING_EDGES
                         }
                         else
                         {
-                            println("  wrapped " ~ wIdx ~ ": " ~ toString(wPts[0].origin) ~
-                                    " → " ~ toString(wPts[1].origin));
+                            println("WARNING: face " ~ fIdx ~ " boundary edge " ~ eIdx ~
+                                    " has no wrapped counterpart — it likely failed in transformEdges");
                         }
                     }
 
-                    // ── Open endpoint analysis ───────────────────────────────────────────
-                    // Report any wrapped endpoint that has no matching endpoint within 1e-5 m.
-                    var ETOL = 1e-5 * meter;
-                    for (var wIdx = 0; wIdx < size(wrappedPtPairs); wIdx += 1)
+                    // Each wrapped edge lives in its own wire body — topologically disconnected
+                    // from its neighbours even when endpoints are geometrically coincident.
+                    // opFillSurface needs a closed, topologically-connected boundary, so we
+                    // stitch the edges into a proper wire first with opExtractWires.
+                    if (size(wrappedBoundaryEdgeQueries) == 0)
                     {
-                        for (var ep = 0; ep < 2; ep += 1)
-                        {
-                            var pos = wrappedPtPairs[wIdx][ep].origin;
-                            var bestGap = 1e10 * meter;
-                            var bestJ   = -1;
-                            for (var jIdx = 0; jIdx < size(wrappedPtPairs); jIdx += 1)
-                            {
-                                if (jIdx == wIdx) { continue; }
-                                for (var jp = 0; jp < 2; jp += 1)
-                                {
-                                    var d = norm(pos - wrappedPtPairs[jIdx][jp].origin);
-                                    if (d < bestGap) { bestGap = d; bestJ = jIdx; }
-                                }
-                            }
-                            if (bestGap > ETOL)
-                            {
-                                println("  OPEN END: wrapped[" ~ wIdx ~ "]" ~
-                                        (ep == 0 ? ".start" : ".end") ~
-                                        " nearest=wrapped[" ~ bestJ ~ "] gap=" ~ toString(bestGap));
-                            }
-                        }
+                        println("WARNING: face " ~ fIdx ~ " has no wrapped boundary edges — skipping fill");
+                        continue;
                     }
 
-                    continue;
-                }
-
-                var bdryEdges = qCreatedBy(extractId, EntityType.EDGE);
-                var bdryBody  = qCreatedBy(extractId, EntityType.BODY);
-
-                // Generate mapped interior guide points for this face.
-                // Wrapped boundary edges only constrain the perimeter; guide vertices
-                // pull the fill surface interior toward the correct deformed shape.
-                // Gated by definition.useFacePoints — skipped by default because
-                // opCreateCurvesOnFace adds significant computation per face.
-                var guideVerticesQuery = qNothing();
-                var guideVtxDeleteId   = undefined;
-                // Declared outside the try so a failure part-way through the loop can remove the
-                // points already made (they used to be left behind as stray point bodies).
-                var faceGuideVtxQueries = [];
-                if (definition.useFacePoints) try
-                {
-                    var guidePoints = transformFacepoints(
-                        context, id + ("faceGuides" ~ fIdx), face,
-                        definition.faceUsamplingMultiplier, definition.faceVsamplingMultiplier,
-                        fromFrenetPath, toFrenetPath, settings);
-
-                    for (var gIdx = 0; gIdx < size(guidePoints); gIdx += 1)
-                    {
-                        var vtxId = id + ("guideVtx" ~ fIdx ~ "_" ~ gIdx);
-                        opPoint(context, vtxId, { "point": guidePoints[gIdx] });
-                        faceGuideVtxQueries = append(faceGuideVtxQueries,
-                            qCreatedBy(vtxId, EntityType.BODY));
-                    }
-                    if (size(faceGuideVtxQueries) > 0)
-                    {
-                        guideVerticesQuery = qUnion(faceGuideVtxQueries);
-                        guideVtxDeleteId   = id + ("deleteGuideVtx" ~ fIdx);
-                    }
-                }
-                catch (guideErr)
-                {
-                    println("WARNING: guide point generation failed for face " ~ fIdx ~
-                            ": " ~ toString(guideErr));
-                    if (size(faceGuideVtxQueries) > 0)
-                    {
-                        opDeleteBodies(context, id + ("discardGuideVtx" ~ fIdx), { "entities": qUnion(faceGuideVtxQueries) });
-                    }
-                }
-
-                var fillId = id + ("fill" ~ fIdx);
-                try
-                {
-                    opFillSurface(context, fillId, {
-                        "edgesG0"      : bdryEdges,
-                        "edgesG1"      : qNothing(),
-                        "edgesG2"      : qNothing(),
-                        "guideVertices": guideVerticesQuery
-                    });
-                    // Fill succeeded — cleanup intermediates
-                    opDeleteBodies(context, id + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
-                    if (guideVtxDeleteId != undefined)
-                        opDeleteBodies(context, guideVtxDeleteId, { "entities": guideVerticesQuery });
-                }
-                catch (fillErr)
-                {
-                    println("ERROR fill face " ~ fIdx ~ ": " ~ toString(fillErr));
-                    // Cyan = undeformed source boundary, Red = stitched wrapped boundary
-                    for (var seq in faceEdges)
-                        addDebugEntities(context, seq, DebugColor.CYAN);
-                    addDebugEntities(context, bdryEdges, DebugColor.RED);
-
-                    // ── Stitched edge endpoints + open endpoint analysis ─────────────────
-                    var stitchedList = evaluateQuery(context, bdryEdges);
-                    println("  stitched boundary: " ~ size(stitchedList) ~ " edges");
-                    var stPtPairs = [];
-                    for (var sIdx = 0; sIdx < size(stitchedList); sIdx += 1)
-                    {
-                        var sPts = evEdgeTangentLines(context, {
-                            "edge": stitchedList[sIdx], "parameters": [0, 1]
-                        });
-                        stPtPairs = append(stPtPairs, sPts);
-                        println("  stitched[" ~ sIdx ~ "]: " ~ toString(sPts[0].origin) ~
-                                " → " ~ toString(sPts[1].origin));
-                    }
-                    var ETOL = 1e-5 * meter;
-                    for (var sIdx = 0; sIdx < size(stPtPairs); sIdx += 1)
-                    {
-                        for (var ep = 0; ep < 2; ep += 1)
-                        {
-                            var pos = stPtPairs[sIdx][ep].origin;
-                            var bestGap = 1e10 * meter;
-                            var bestJ   = -1;
-                            for (var jIdx = 0; jIdx < size(stPtPairs); jIdx += 1)
-                            {
-                                if (jIdx == sIdx) { continue; }
-                                for (var jp = 0; jp < 2; jp += 1)
-                                {
-                                    var d = norm(pos - stPtPairs[jIdx][jp].origin);
-                                    if (d < bestGap) { bestGap = d; bestJ = jIdx; }
-                                }
-                            }
-                            if (bestGap > ETOL)
-                            {
-                                println("  OPEN END: stitched[" ~ sIdx ~ "]" ~
-                                        (ep == 0 ? ".start" : ".end") ~
-                                        " nearest=stitched[" ~ bestJ ~ "] gap=" ~ toString(bestGap));
-                            }
-                        }
-                    }
-
-                    opDeleteBodies(context, id + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
-                    if (guideVtxDeleteId != undefined)
-                        opDeleteBodies(context, guideVtxDeleteId, { "entities": guideVerticesQuery });
-                }
-            }
-        }
-
-        // --- Step 3: Combine into one body, clean up intermediates ---
-        if (runBodies)
-        {
-            // Wire cleanup first — so qCreatedBy(id) only sees face surface bodies
-            // by the time we boolean.
-            if (size(edgeMapping) > 0)
-            {
-                var allWrappedEdgeQueries = mapArray(edgeMapping, function(m) { return m.wrappedEdge; });
-                var allWrappedBodyQueries = mapArray(edgeMapping, function(m) { return m.wrappedBody; });
-
-                if (definition.keepWires)
-                {
-                    // Try to stitch all wrapped edges into clean wire bodies.
-                    // This will fail with NON_MANIFOLD whenever 3+ faces share a vertex
-                    // (which is normal for any solid) — fall back to a composite part
-                    // of the raw per-edge wire bodies in that case.
+                    var extractId = uid + ("bdry" ~ fIdx);
                     try
                     {
-                        opExtractWires(context, id + "keepWires", { "edges": qUnion(allWrappedEdgeQueries) });
-                        opDeleteBodies(context, id + "deleteWireIntermediates", { "entities": qUnion(allWrappedBodyQueries) });
-                        opCreateCompositePart(context, id + "compositePart", {
-                            "bodies" : qCreatedBy(id + "keepWires", EntityType.BODY),
-                            "closed" : true
-                        });
+                        opExtractWires(context, extractId, { "edges": qUnion(wrappedBoundaryEdgeQueries) });
                     }
-                    catch
+                    catch (extractErr)
                     {
-                        opCreateCompositePart(context, id + "compositePart", {
-                            "bodies" : qUnion(allWrappedBodyQueries),
-                            "closed" : true
-                        });
+                        println("ERROR stitching boundary for face " ~ fIdx ~ ": " ~ toString(extractErr));
+
+                        // Cyan = undeformed source boundary edges
+                        for (var seq in faceEdges)
+                            addDebugEntities(context, seq, DebugColor.CYAN);
+                        // Red = wrapped edges that failed to stitch
+                        for (var beq in wrappedBoundaryEdgeQueries)
+                            addDebugEntities(context, beq, DebugColor.RED);
+
+                        // ── Source edges with expected mapped positions ──────────────────────
+                        println("  face " ~ fIdx ~ ": " ~ size(faceEdges) ~ " src edges / " ~
+                                size(wrappedBoundaryEdgeQueries) ~ " wrapped:");
+                        for (var dIdx = 0; dIdx < size(faceEdges); dIdx += 1)
+                        {
+                            var srcPts = evEdgeTangentLines(context, {
+                                "edge": faceEdges[dIdx], "parameters": [0, 1]
+                            });
+                            var expPts = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
+                                settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
+                                [srcPts[0].origin, srcPts[1].origin]);
+                            println("  src " ~ dIdx ~ ": " ~ toString(srcPts[0].origin) ~
+                                    " → " ~ toString(srcPts[1].origin));
+                            println("  exp " ~ dIdx ~ ": " ~ toString(expPts[0]) ~
+                                    " → " ~ toString(expPts[1]));
+                        }
+
+                        // ── Actual wrapped edge endpoints ────────────────────────────────────
+                        var wrappedPtPairs = [];
+                        for (var wIdx = 0; wIdx < size(wrappedBoundaryEdgeQueries); wIdx += 1)
+                        {
+                            var wPts = evEdgeTangentLines(context, {
+                                "edge": wrappedBoundaryEdgeQueries[wIdx], "parameters": [0, 1]
+                            });
+                            wrappedPtPairs = append(wrappedPtPairs, wPts);
+                            // If counts match, also print the lookup error vs expected
+                            if (size(faceEdges) == size(wrappedBoundaryEdgeQueries))
+                            {
+                                var srcP = evEdgeTangentLines(context, {
+                                    "edge": faceEdges[wIdx], "parameters": [0, 1]
+                                });
+                                var expP = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
+                                    settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
+                                    [srcP[0].origin, srcP[1].origin]);
+                                var errS = norm(expP[0] - wPts[0].origin);
+                                var errE = norm(expP[1] - wPts[1].origin);
+                                println("  wrapped " ~ wIdx ~ ": " ~ toString(wPts[0].origin) ~
+                                        " → " ~ toString(wPts[1].origin) ~
+                                        "  lookupErr start=" ~ toString(errS) ~
+                                        " end=" ~ toString(errE));
+                            }
+                            else
+                            {
+                                println("  wrapped " ~ wIdx ~ ": " ~ toString(wPts[0].origin) ~
+                                        " → " ~ toString(wPts[1].origin));
+                            }
+                        }
+
+                        // ── Open endpoint analysis ───────────────────────────────────────────
+                        // Report any wrapped endpoint that has no matching endpoint within 1e-5 m.
+                        var ETOL = 1e-5 * meter;
+                        for (var wIdx = 0; wIdx < size(wrappedPtPairs); wIdx += 1)
+                        {
+                            for (var ep = 0; ep < 2; ep += 1)
+                            {
+                                var pos = wrappedPtPairs[wIdx][ep].origin;
+                                var bestGap = 1e10 * meter;
+                                var bestJ   = -1;
+                                for (var jIdx = 0; jIdx < size(wrappedPtPairs); jIdx += 1)
+                                {
+                                    if (jIdx == wIdx) { continue; }
+                                    for (var jp = 0; jp < 2; jp += 1)
+                                    {
+                                        var d = norm(pos - wrappedPtPairs[jIdx][jp].origin);
+                                        if (d < bestGap) { bestGap = d; bestJ = jIdx; }
+                                    }
+                                }
+                                if (bestGap > ETOL)
+                                {
+                                    println("  OPEN END: wrapped[" ~ wIdx ~ "]" ~
+                                            (ep == 0 ? ".start" : ".end") ~
+                                            " nearest=wrapped[" ~ bestJ ~ "] gap=" ~ toString(bestGap));
+                                }
+                            }
+                        }
+
+                        continue;
                     }
-                }
-                else
-                {
-                    opDeleteBodies(context, id + "deleteWires", { "entities": qUnion(allWrappedBodyQueries) });
+
+                    var bdryEdges = qCreatedBy(extractId, EntityType.EDGE);
+                    var bdryBody  = qCreatedBy(extractId, EntityType.BODY);
+
+                    // Generate mapped interior guide points for this face.
+                    // Wrapped boundary edges only constrain the perimeter; guide vertices
+                    // pull the fill surface interior toward the correct deformed shape.
+                    // Gated by definition.useFacePoints — skipped by default because
+                    // opCreateCurvesOnFace adds significant computation per face.
+                    var guideVerticesQuery = qNothing();
+                    var guideVtxDeleteId   = undefined;
+                    // Declared outside the try so a failure part-way through the loop can remove the
+                    // points already made (they used to be left behind as stray point bodies).
+                    var faceGuideVtxQueries = [];
+                    if (definition.useFacePoints) try
+                    {
+                        var guidePoints = transformFacepoints(
+                            context, uid + ("faceGuides" ~ fIdx), face,
+                            definition.faceUsamplingMultiplier, definition.faceVsamplingMultiplier,
+                            fromFrenetPath, toFrenetPath, settings);
+
+                        for (var gIdx = 0; gIdx < size(guidePoints); gIdx += 1)
+                        {
+                            var vtxId = uid + ("guideVtx" ~ fIdx ~ "_" ~ gIdx);
+                            opPoint(context, vtxId, { "point": guidePoints[gIdx] });
+                            faceGuideVtxQueries = append(faceGuideVtxQueries,
+                                qCreatedBy(vtxId, EntityType.BODY));
+                        }
+                        if (size(faceGuideVtxQueries) > 0)
+                        {
+                            guideVerticesQuery = qUnion(faceGuideVtxQueries);
+                            guideVtxDeleteId   = uid + ("deleteGuideVtx" ~ fIdx);
+                        }
+                    }
+                    catch (guideErr)
+                    {
+                        println("WARNING: guide point generation failed for face " ~ fIdx ~
+                                ": " ~ toString(guideErr));
+                        if (size(faceGuideVtxQueries) > 0)
+                        {
+                            opDeleteBodies(context, uid + ("discardGuideVtx" ~ fIdx), { "entities": qUnion(faceGuideVtxQueries) });
+                        }
+                    }
+
+                    var fillId = uid + ("fill" ~ fIdx);
+                    try
+                    {
+                        opFillSurface(context, fillId, {
+                            "edgesG0"      : bdryEdges,
+                            "edgesG1"      : qNothing(),
+                            "edgesG2"      : qNothing(),
+                            "guideVertices": guideVerticesQuery
+                        });
+                        // Fill succeeded — cleanup intermediates
+                        opDeleteBodies(context, uid + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
+                        if (guideVtxDeleteId != undefined)
+                            opDeleteBodies(context, guideVtxDeleteId, { "entities": guideVerticesQuery });
+                    }
+                    catch (fillErr)
+                    {
+                        println("ERROR fill face " ~ fIdx ~ ": " ~ toString(fillErr));
+                        // Cyan = undeformed source boundary, Red = stitched wrapped boundary
+                        for (var seq in faceEdges)
+                            addDebugEntities(context, seq, DebugColor.CYAN);
+                        addDebugEntities(context, bdryEdges, DebugColor.RED);
+
+                        // ── Stitched edge endpoints + open endpoint analysis ─────────────────
+                        var stitchedList = evaluateQuery(context, bdryEdges);
+                        println("  stitched boundary: " ~ size(stitchedList) ~ " edges");
+                        var stPtPairs = [];
+                        for (var sIdx = 0; sIdx < size(stitchedList); sIdx += 1)
+                        {
+                            var sPts = evEdgeTangentLines(context, {
+                                "edge": stitchedList[sIdx], "parameters": [0, 1]
+                            });
+                            stPtPairs = append(stPtPairs, sPts);
+                            println("  stitched[" ~ sIdx ~ "]: " ~ toString(sPts[0].origin) ~
+                                    " → " ~ toString(sPts[1].origin));
+                        }
+                        var ETOL = 1e-5 * meter;
+                        for (var sIdx = 0; sIdx < size(stPtPairs); sIdx += 1)
+                        {
+                            for (var ep = 0; ep < 2; ep += 1)
+                            {
+                                var pos = stPtPairs[sIdx][ep].origin;
+                                var bestGap = 1e10 * meter;
+                                var bestJ   = -1;
+                                for (var jIdx = 0; jIdx < size(stPtPairs); jIdx += 1)
+                                {
+                                    if (jIdx == sIdx) { continue; }
+                                    for (var jp = 0; jp < 2; jp += 1)
+                                    {
+                                        var d = norm(pos - stPtPairs[jIdx][jp].origin);
+                                        if (d < bestGap) { bestGap = d; bestJ = jIdx; }
+                                    }
+                                }
+                                if (bestGap > ETOL)
+                                {
+                                    println("  OPEN END: stitched[" ~ sIdx ~ "]" ~
+                                            (ep == 0 ? ".start" : ".end") ~
+                                            " nearest=stitched[" ~ bestJ ~ "] gap=" ~ toString(bestGap));
+                                }
+                            }
+                        }
+
+                        opDeleteBodies(context, uid + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
+                        if (guideVtxDeleteId != undefined)
+                            opDeleteBodies(context, guideVtxDeleteId, { "entities": guideVerticesQuery });
+                    }
                 }
             }
 
-            // Boolean all reconstructed face surface bodies.
-            // Use qCreatedBy(id) filtered to SHEET — this is equivalent to what
-            // the user confirmed works in manual Onshape testing.  Wire bodies
-            // have already been deleted above, so only fill surfaces remain.
-            // In FACES mode the result is always one or more sheet bodies — no makeSolid.
-            var inputIsSolid = !isFacesMode &&
-                !isQueryEmpty(context, qBodyType(definition.sourceBody, BodyType.SOLID));
-            var surfaceBodies     = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SHEET);
-            var surfaceBodiesList = evaluateQuery(context, surfaceBodies);
-            if (size(surfaceBodiesList) > 1)
+            // --- Step 3: Combine into one body, clean up intermediates ---
+            if (runBodies)
             {
-                opBoolean(context, id + "unionFaces", {
-                    "tools"        : surfaceBodies,
-                    "operationType": BooleanOperationType.UNION,
-                    "makeSolid"    : inputIsSolid,
-                });
-            }
-            else if (size(surfaceBodiesList) == 1 && inputIsSolid)
-            {
-                // Single surface body (all fills already merged) — attempt to close into solid.
-                try
+                // Wire cleanup first — so qCreatedBy(uid) only sees face surface bodies
+                // by the time we boolean.
+                if (size(edgeMapping) > 0)
                 {
-                    opBoolean(context, id + "closeSolid", {
+                    var allWrappedEdgeQueries = mapArray(edgeMapping, function(m) { return m.wrappedEdge; });
+                    var allWrappedBodyQueries = mapArray(edgeMapping, function(m) { return m.wrappedBody; });
+
+                    if (definition.keepWires)
+                    {
+                        // Try to stitch all wrapped edges into clean wire bodies.
+                        // This will fail with NON_MANIFOLD whenever 3+ faces share a vertex
+                        // (which is normal for any solid) — fall back to a composite part
+                        // of the raw per-edge wire bodies in that case.
+                        try
+                        {
+                            opExtractWires(context, uid + "keepWires", { "edges": qUnion(allWrappedEdgeQueries) });
+                            opDeleteBodies(context, uid + "deleteWireIntermediates", { "entities": qUnion(allWrappedBodyQueries) });
+                            opCreateCompositePart(context, uid + "compositePart", {
+                                "bodies" : qCreatedBy(uid + "keepWires", EntityType.BODY),
+                                "closed" : true
+                            });
+                        }
+                        catch
+                        {
+                            opCreateCompositePart(context, uid + "compositePart", {
+                                "bodies" : qUnion(allWrappedBodyQueries),
+                                "closed" : true
+                            });
+                        }
+                    }
+                    else
+                    {
+                        opDeleteBodies(context, uid + "deleteWires", { "entities": qUnion(allWrappedBodyQueries) });
+                    }
+                }
+
+                // Boolean all reconstructed face surface bodies.
+                // Use qCreatedBy(uid) filtered to SHEET — this is equivalent to what
+                // the user confirmed works in manual Onshape testing.  Wire bodies
+                // have already been deleted above, so only fill surfaces remain.
+                // In FACES mode the result is always one or more sheet bodies — no makeSolid.
+                var inputIsSolid = !isFacesMode &&
+                    !isQueryEmpty(context, qBodyType(unitBody, BodyType.SOLID));
+                var surfaceBodies     = qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET);
+                var surfaceBodiesList = evaluateQuery(context, surfaceBodies);
+                if (size(surfaceBodiesList) > 1)
+                {
+                    opBoolean(context, uid + "unionFaces", {
                         "tools"        : surfaceBodies,
                         "operationType": BooleanOperationType.UNION,
-                        "makeSolid"    : true,
+                        "makeSolid"    : inputIsSolid,
                     });
                 }
-                catch (solidErr)
+                else if (size(surfaceBodiesList) == 1 && inputIsSolid)
                 {
-                    println("WARNING: could not close surface into solid: " ~ toString(solidErr));
+                    // Single surface body (all fills already merged) — attempt to close into solid.
+                    try
+                    {
+                        opBoolean(context, uid + "closeSolid", {
+                            "tools"        : surfaceBodies,
+                            "operationType": BooleanOperationType.UNION,
+                            "makeSolid"    : true,
+                        });
+                    }
+                    catch (solidErr)
+                    {
+                        println("WARNING: could not close surface into solid: " ~ toString(solidErr));
+                    }
+                }
+            }
+
+            // Record this unit's deformed body and name it. Source names cannot be read here
+            // (getProperty is unavailable on the current context), so the name comes from the dialog.
+            if (!isFacesMode)
+            {
+                var unitResult = qUnion([qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SOLID),
+                                         qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET)]);
+                unitResults[toString(unitBody)] = unitResult;
+
+                if (definition.bodyName != "" && !isQueryEmpty(context, unitResult))
+                {
+                    try silent
+                    {
+                        setProperty(context, {
+                            "entities"     : unitResult,
+                            "propertyType" : PropertyType.NAME,
+                            "value"        : numberedName(definition.bodyName, unitIdx, size(unitBodies))
+                        });
+                    }
                 }
             }
         }
+
+        // --- Mate connectors: where do they end up under the same deform? ---
+        if (!isQueryEmpty(context, definition.mateConnectors))
+        {
+            var mcQueries = evaluateQuery(context, definition.mateConnectors);
+            var mcSystems = mapArray(mcQueries, function(mc) {
+                return evMateConnector(context, { "mateConnector" : mc });
+            });
+            var mcMapped = mapCoordSystems(context, fromFrenetPath, toFrenetPath,
+                fromRefArc, toRefArc, definition.flipToNormal, mcSystems);
+
+            for (var mcIdx = 0; mcIdx < size(mcQueries); mcIdx += 1)
+            {
+                var mcId  = id + ("mateConnector" ~ mcIdx);
+                var mcDef = { "coordSystem" : mcMapped[mcIdx] };
+
+                // A connector owned by a deformed body belongs to that body's result;
+                // anything else (stand-alone, or owned by a body not deformed) stays stand-alone.
+                for (var ownerBody in evaluateQuery(context, qOwnerBody(mcQueries[mcIdx])))
+                {
+                    var ownerResult = unitResults[toString(ownerBody)];
+                    if (ownerResult != undefined && size(evaluateQuery(context, ownerResult)) == 1)
+                    {
+                        mcDef.owner = ownerResult;
+                        break;
+                    }
+                }
+
+                opMateConnector(context, mcId, mcDef);
+
+                if (definition.mateConnectorName != "")
+                {
+                    try silent
+                    {
+                        setProperty(context, {
+                            "entities"     : qCreatedBy(mcId, EntityType.BODY),
+                            "propertyType" : PropertyType.NAME,
+                            "value"        : numberedName(definition.mateConnectorName, mcIdx, size(mcQueries))
+                        });
+                    }
+                }
+            }
+        }
+
     });
 
 

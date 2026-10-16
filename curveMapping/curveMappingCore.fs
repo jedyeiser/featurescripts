@@ -1467,6 +1467,68 @@ export function mapWorldPointChain(context is Context,
 }
 
 
+/**
+ * Map coordinate systems (e.g. mate connector frames) through the same wrap as
+ * `mapSinglePoint`: where would a frame rigidly attached to the source body end up?
+ *
+ * The origin is mapped exactly as a point is. The axes are re-expressed in the from-path
+ * frame at the origin's foot (tangent / normal / binormal components) and rebuilt in the
+ * to-path frame at the mapped arc length, with the same `flipToNormal` sign handling as
+ * `mapSinglePoint`. The result is a pure rotation of the source orientation
+ * (R_to * R_from^T), so the mapped axes stay orthonormal and right-handed.
+ *
+ * @param systems {array} - array of CoordSystem
+ * @returns {array}       - array of CoordSystem, same length and order
+ */
+export function mapCoordSystems(context is Context,
+                                fromFrenetPath is map, toFrenetPath is map,
+                                fromRefArc is ValueWithUnits, toRefArc is ValueWithUnits,
+                                flipToNormal is boolean, systems is array) returns array
+{
+    var result = makeArray(size(systems));
+    for (var i = 0; i < size(systems); i += 1)
+    {
+        var cs = systems[i];
+
+        var projResult = projectOntoFrenetPath(fromFrenetPath, cs.origin, undefined);
+        var s_from     = projResult.arcLength;
+        var fromResult = getFrameAtArcLength(context, fromFrenetPath, s_from);
+        var localCoords = worldPointToFrenet(cs.origin, fromResult);
+
+        var s_to     = mappedArc(fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, s_from, localCoords[1]);
+        var toResult = getFrameAtArcLength(context, toFrenetPath, s_to);
+
+        var toSign = toResult.sign;
+        if (flipToNormal)
+            toSign = -1 * toSign;
+
+        var toFrame = toResult.frame;
+        if (toSign != fromResult.sign)
+            toFrame = coordSystem(toFrame.origin, -1 * toFrame.xAxis, toFrame.zAxis);
+
+        var fromFrame = fromResult.frame;
+        var fromAxes = [cs.xAxis, yAxis(cs), cs.zAxis];
+        var toAxes = [];
+        for (var a in fromAxes)
+        {
+            // components along (tangent, normal, binormal) of the from-frame
+            var dt = dot(a, fromFrame.zAxis);
+            var dn = dot(a, fromFrame.xAxis);
+            var db = dot(a, yAxis(fromFrame));
+            toAxes = append(toAxes, normalize(toFrame.zAxis * dt + toFrame.xAxis * dn + yAxis(toFrame) * db));
+        }
+
+        var toOrigin = toFrame.origin
+            + toFrame.xAxis * localCoords[1]
+            + yAxis(toFrame) * localCoords[2]
+            + toFrame.zAxis * localCoords[0];
+
+        result[i] = coordSystem(toOrigin, toAxes[0], toAxes[2]);
+    }
+    return result;
+}
+
+
 // ============================================================================
 // LINEAR-REGION FAST PATH
 // ============================================================================

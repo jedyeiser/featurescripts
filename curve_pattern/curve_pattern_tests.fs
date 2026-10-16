@@ -1,7 +1,7 @@
 FeatureScript 3095;
 import(path : "onshape/std/common.fs", version : "3095.0");
 // IMPORT: curve_pattern_plus.fs (the feature under test; re-exports the spacing and frames modules)
-import(path : "8779ec77e99a5839df4ca5d9", version : "000000000000000000000000");
+import(path : "8779ec77e99a5839df4ca5d9", version : "ffefbe49ba754f6c19e46bf5");
 
 /**
  * Tests for Curve pattern plus. One feature that builds a 3-D path and a seed, runs the pattern in several modes
@@ -70,6 +70,7 @@ export const curvePatternPlusTests = defineFeature(function(context is Context, 
 
         // Case: start offset 10 mm, end offset 20 mm, centered, spacing 30 mm x4 -> span 90, centred in the usable length
         var c = base;
+        c.entities = seedAt(context, id + "seedC", pathQuery, (10 + (length / mm - 30 - 90) / 2) * mm / length);
         c.distance = 30 * mm;
         c.count = 4;
         c.startOffset = 10 * mm;
@@ -91,14 +92,22 @@ export const curvePatternPlusTests = defineFeature(function(context is Context, 
         const casesD = runCase(context, id + "caseD", d);
         failures = concatenateArrays([failures, checkPositions(context, pathQuery, length, casesD, [40, 80, 120], "D total 120, target 40")]);
 
-        // Case: reverse direction -> measured from the other end
+        // Case: reverse direction, with mate connectors (no seed, so nothing picks the start of the path):
+        // the first connector is at the end of the path, the others 25 and 50 mm back from it
         var e = base;
+        e.outputType = CurvePatternOutput.MATE_CONNECTORS;
         e.distance = 25 * mm;
         e.count = 3;
         e.oppositeDirection = true;
-        const casesE = runCase(context, id + "caseE", e);
-        failures = concatenateArrays([failures, checkPositions(context, pathQuery, length, casesE, [length / mm - 25, length / mm - 50], "E reversed")]);
-
+        runCase(context, id + "caseE", e);
+        const eConnectors = evaluateQuery(context, qBodyType(qCreatedBy(id + "caseE", EntityType.BODY), BodyType.MATE_CONNECTOR));
+        var ePoints = [];
+        for (var connector in eConnectors)
+        {
+            ePoints = append(ePoints, evMateConnector(context, { "mateConnector" : connector }).origin);
+        }
+        failures = concatenateArrays([failures, checkPositionsAt(context, pathQuery, length, ePoints,
+                [length / mm - 50, length / mm - 25, length / mm], "E reversed (mate connectors)")]);
         // Case: mate connectors only, 6 of them
         var f = base;
         f.outputType = CurvePatternOutput.MATE_CONNECTORS;
@@ -138,7 +147,12 @@ export const curvePatternPlusTests = defineFeature(function(context is Context, 
             failures = append(failures, "H overrun: expected an error");
         }
 
-        passes = 8 - size(failures);
+        var failedCases = {};
+        for (var line in failures)
+        {
+            failedCases[substring(line, 0, 1)] = true;
+        }
+        passes = 8 - size(failedCases);
         for (var line in failures)
         {
             println("FAIL " ~ line);
@@ -154,6 +168,14 @@ export const curvePatternPlusTests = defineFeature(function(context is Context, 
         }
     });
 
+/** A small cube centred on the path at the given arc-length fraction: the seed sits at the first station. */
+function seedAt(context is Context, seedId is Id, pathQuery is Query, fraction is number) returns Query
+{
+    const at = evEdgeTangentLine(context, { "edge" : pathQuery, "parameter" : fraction, "arcLengthParameterization" : true }).origin;
+    fCuboid(context, seedId, { "corner1" : at - vector(2, 2, 2) * millimeter, "corner2" : at + vector(2, 2, 2) * millimeter });
+    return qCreatedBy(seedId, EntityType.BODY);
+}
+
 /** Run the pattern and return the instance bodies it created, ordered by creation. */
 function runCase(context is Context, caseId is Id, definition is map) returns array
 {
@@ -161,11 +183,10 @@ function runCase(context is Context, caseId is Id, definition is map) returns ar
     return evaluateQuery(context, qBodyType(qCreatedBy(caseId, EntityType.BODY), BodyType.SOLID));
 }
 
-/** Arc length (mm) of the point nearest `body`'s centroid along the path, and how far the centroid is off the path (mm). */
-function positionOf(context is Context, pathQuery is Query, length is ValueWithUnits, body is Query) returns map
+/** Arc length (mm) of the path point nearest `point`, and how far the point is off the path (mm). */
+function positionOf(context is Context, pathQuery is Query, length is ValueWithUnits, point is Vector) returns map
 {
-    const centroid = evApproximateCentroid(context, { "entities" : body });
-    const near = evDistance(context, { "side0" : pathQuery, "side1" : centroid, "arcLengthParameterization" : true });
+    const near = evDistance(context, { "side0" : pathQuery, "side1" : point, "arcLengthParameterization" : true });
     return { "position" : near.sides[0].parameter * length / millimeter, "off" : near.distance / millimeter };
 }
 
@@ -173,15 +194,27 @@ function positionOf(context is Context, pathQuery is Query, length is ValueWithU
 function checkPositions(context is Context, pathQuery is Query, length is ValueWithUnits, instances is array, expected is array,
         name is string) returns array
 {
-    var failures = [];
-    if (size(instances) != size(expected))
-    {
-        return [name ~ ": " ~ size(instances) ~ " instances, expected " ~ size(expected)];
-    }
-    var found = [];
+    var points = [];
     for (var body in instances)
     {
-        const p = positionOf(context, pathQuery, length, body);
+        points = append(points, evApproximateCentroid(context, { "entities" : body }));
+    }
+    return checkPositionsAt(context, pathQuery, length, points, expected, name);
+}
+
+/** Points, sorted by position along the path, must sit on the path at the expected arc lengths (mm). */
+function checkPositionsAt(context is Context, pathQuery is Query, length is ValueWithUnits, points is array, expected is array,
+        name is string) returns array
+{
+    var failures = [];
+    if (size(points) != size(expected))
+    {
+        return [name ~ ": " ~ size(points) ~ " found, expected " ~ size(expected)];
+    }
+    var found = [];
+    for (var point in points)
+    {
+        const p = positionOf(context, pathQuery, length, point);
         found = append(found, p);
         if (p.off > 0.05)
         {
