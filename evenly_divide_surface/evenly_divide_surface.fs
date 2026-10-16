@@ -317,8 +317,8 @@ function surfaceFaceBoxes(context is Context, surfaceFaces is Query, inflate is 
     const pad = inflate / meter;
     return mapArray(evaluateQuery(context, surfaceFaces), function(face)
         {
-            const box = evBox3d(context, { "topology" : face });
-            return { "face" : face, "lo" : box.minCorner / meter - vector(pad, pad, pad), "hi" : box.maxCorner / meter + vector(pad, pad, pad) };
+            const faceBox = evBox3d(context, { "topology" : face });
+            return { "face" : face, "lo" : faceBox.minCorner / meter - vector(pad, pad, pad), "hi" : faceBox.maxCorner / meter + vector(pad, pad, pad) };
         });
 }
 
