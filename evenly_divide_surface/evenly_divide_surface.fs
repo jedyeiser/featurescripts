@@ -20,8 +20,12 @@ import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 export const DivisionCountBounds = { (unitless) : [1, 5, 500] } as IntegerBoundSpec;
 export const SectionCountBounds  = { (unitless) : [2, 20, 1000] } as IntegerBoundSpec;
 
-/** Section planes sit this far inside the ends of the surface (a plane exactly on a trimmed end edge does not intersect cleanly). */
+/** The first/last probe plane sits this far inside the end of the surface. */
 const SECTION_END_INSET = 1e-4 * meter;
+/** Planes keep this far inside the first/last COMPLETE section (a plane that only just clears a trimmed end cuts a degenerate section). */
+const SECTION_END_MARGIN = 1e-3 * meter;
+/** Bisection steps when locating where complete sections start and stop. */
+const RANGE_BISECTIONS = 12;
 /** Edge endpoints closer than this are one point when joining section edges into a path. */
 const PATH_TOLERANCE = 1e-5 * meter;
 /** Samples along the wire when finding where the surface starts and ends. */
@@ -52,7 +56,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         annotation { "Name" : "Divisions", "Description" : "Number of wires around the section perimeter" }
         isInteger(definition.divisions, DivisionCountBounds);
 
-        annotation { "Name" : "Cross sections", "Description" : "Number of section planes along the part of the wire that meets the surface" }
+        annotation { "Name" : "Cross sections", "Description" : "Number of section planes along the part of the wire that cuts complete sections" }
         isInteger(definition.sections, SectionCountBounds);
 
         annotation { "Name" : "Wires on symmetry plane", "Default" : true,
@@ -63,7 +67,6 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         definition.keepSections is boolean;
     }
     {
-        println("DBG evenlyDivideSurface start");
         const surfaceFaces = qOwnedByBody(definition.surface, EntityType.FACE);
         const wireEdges = qUnion([qEntityFilter(definition.crossWire, EntityType.EDGE),
                                   qOwnedByBody(qEntityFilter(definition.crossWire, EntityType.BODY), EntityType.EDGE)]);
@@ -74,50 +77,36 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         const wireLength = evPathLength(context, crossPath);
         const symPlane = evPlane(context, { "face" : definition.symmetryPlane });
 
-        // 1. Where along the wire does the surface exist?
-        const extent = surfaceExtentAlongPath(context, crossPath, definition.surface);
-        const inset = SECTION_END_INSET / wireLength;
-        const firstU = extent.minU + inset;
-        const lastU = extent.maxU - inset;
-        println("DBG extent u " ~ extent.minU ~ " .. " ~ extent.maxU ~ " of wire length " ~ (wireLength / millimeter) ~ " mm");
-        if (!(lastU > firstU))
-            throw regenError("The surface does not extend along the cross section wire.", ["surface", "crossWire"]);
-
-        var sectionParams = [];
-        for (var k = 0; k < definition.sections; k += 1)
-            sectionParams = append(sectionParams, firstU + (lastU - firstU) * k / (definition.sections - 1));
-        const sectionLines = evPathTangentLines(context, crossPath, sectionParams).tangentLines;
-
-        // 2. Section planes and the curves they cut in the surface.
         const bbox = evBox3d(context, { "topology" : definition.surface });
         const planeSize = 1.5 * norm(bbox.maxCorner - bbox.minCorner);
 
+        // 1. Where along the wire does the surface exist, and where does a plane cut a COMPLETE section from it?
+        //    (Near a trimmed end the plane only clips a sliver of the surface; those partial sections cannot be
+        //    divided consistently with the rest.)
+        const extent = surfaceExtentAlongPath(context, crossPath, definition.surface);
+        const complete = completeSectionRange(context, id, crossPath, wireLength, extent, surfaceFaces, planeSize, symPlane);
+        const firstU = complete.minU + SECTION_END_MARGIN / wireLength;
+        const lastU = complete.maxU - SECTION_END_MARGIN / wireLength;
+        if (!(lastU > firstU))
+            throw regenError("The surface does not extend along the cross section wire.", ["surface", "crossWire"]);
+
+        // 2. Section planes at even arc length over that range, and the curves they cut in the surface.
+        var sectionParams = [];
+        for (var k = 0; k < definition.sections; k += 1)
+            sectionParams = append(sectionParams, firstU + (lastU - firstU) * k / (definition.sections - 1));
         var sections = [];
         var closedCount = 0;
         for (var k = 0; k < definition.sections; k += 1)
         {
-            const planeId = id + ("plane" ~ k);
-            const sectionId = id + ("section" ~ k);
-            opPlane(context, planeId, { "plane" : plane(sectionLines[k].origin, sectionLines[k].direction),
-                                        "width" : planeSize, "height" : planeSize });
-            try
+            const cut = cutSection(context, id + ("section" ~ k), crossPath, sectionParams[k], surfaceFaces, planeSize);
+            if (cut.path == undefined)
             {
-                opIntersectFaces(context, sectionId, { "tools" : qCreatedBy(planeId, EntityType.FACE), "targets" : surfaceFaces });
-            }
-            catch
-            {
+                println("evenlyDivideSurface: section " ~ k ~ " has no cut and was skipped");
                 continue;
             }
-            const sectionEdges = qUnion(evaluateQuery(context, qCreatedBy(sectionId, EntityType.EDGE)));
-            if (isQueryEmpty(context, sectionEdges))
-                continue;
             try
             {
-                const sectionPath = constructPath(context, sectionEdges, { "tolerance" : PATH_TOLERANCE }).path;
-                const divided = divideSection(context, sectionPath, symPlane, definition.divisions, definition.onSymmetryPlane);
-                println("DBG section " ~ k ~ ": edges " ~ size(sectionPath.edges) ~ " closed " ~ divided.closed ~
-                        " length " ~ (evPathLength(context, sectionPath) / millimeter) ~ " mm, crossings " ~ divided.crossings ~
-                        ", start u " ~ divided.startU ~ ", first point " ~ toString(divided.points[0] / millimeter));
+                const divided = divideSection(context, cut.path, symPlane, definition.divisions, definition.onSymmetryPlane);
                 sections = append(sections, { "index" : k, "points" : divided.points, "closed" : divided.closed });
                 if (divided.closed)
                     closedCount += 1;
@@ -130,12 +119,16 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
 
         if (size(sections) < 2)
             throw regenError("Fewer than two cross sections met the surface.", ["surface", "crossWire", "sections"]);
+        if (size(sections) < definition.sections)
+            reportFeatureWarning(context, id, (definition.sections - size(sections)) ~ " of " ~ definition.sections ~ " cross sections could not be divided and were skipped.");
         if (closedCount != 0 && closedCount != size(sections))
             reportFeatureWarning(context, id, "Some sections are closed loops and some are open; the divisions may not line up.");
 
         // 3. One wire per division: fit through that division's point on every section, then drop onto the surface.
+        //    A wire lying along the surface's own boundary edge (on the symmetry plane of a half surface) cannot be
+        //    projected; the fitted spline, which passes through the same points, is kept instead.
         const wireCount = size(sections[0].points);
-        var wires = [];
+        var fitOnly = [];
         for (var i = 0; i < wireCount; i += 1)
         {
             var wirePoints = [];
@@ -143,29 +136,158 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 wirePoints = append(wirePoints, s.points[i]);
 
             const fitId = id + ("fit" ~ i);
-            const dropId = id + ("wire" ~ i);
             opFitSpline(context, fitId, { "points" : wirePoints });
-            opDropCurve(context, dropId, { "tools" : qCreatedBy(fitId, EntityType.EDGE),
-                                           "targets" : surfaceFaces,
-                                           "projectionType" : ProjectionType.NORMAL_TO_TARGET });
-            wires = append(wires, dropId);
+            try
+            {
+                opDropCurve(context, id + ("wire" ~ i), { "tools" : qCreatedBy(fitId, EntityType.EDGE),
+                                                          "targets" : surfaceFaces,
+                                                          "projectionType" : ProjectionType.NORMAL_TO_TARGET });
+            }
+            catch
+            {
+                fitOnly = append(fitOnly, i);
+            }
         }
 
-        // 4. Clean up the construction geometry.
+        // 4. Clean up the construction geometry (and keep the fitted splines that could not be dropped).
         var scratch = [];
         for (var i = 0; i < wireCount; i += 1)
-            scratch = append(scratch, qCreatedBy(id + ("fit" ~ i), EntityType.BODY));
+            if (indexOf(fitOnly, i) < 0)
+                scratch = append(scratch, qCreatedBy(id + ("fit" ~ i), EntityType.BODY));
         for (var k = 0; k < definition.sections; k += 1)
         {
-            scratch = append(scratch, qCreatedBy(id + ("plane" ~ k), EntityType.BODY));
-            if (!definition.keepSections)
+            if (definition.keepSections)
+                scratch = append(scratch, qSubtraction(qCreatedBy(id + ("section" ~ k), EntityType.BODY),
+                                                       qBodyType(qCreatedBy(id + ("section" ~ k), EntityType.BODY), BodyType.WIRE)));
+            else
                 scratch = append(scratch, qCreatedBy(id + ("section" ~ k), EntityType.BODY));
         }
-        opDeleteBodies(context, id + "cleanup", { "entities" : qUnion(scratch) });
+        const scratchQuery = qUnion(scratch);
+        if (!isQueryEmpty(context, scratchQuery))
+            opDeleteBodies(context, id + "cleanup", { "entities" : scratchQuery });
 
-        reportFeatureInfo(context, id, wireCount ~ " wires through " ~ size(sections) ~ " cross sections" ~
-                          (closedCount > 0 ? " (closed sections)." : " (open sections)."));
+        if (size(fitOnly) > 0)
+        {
+            var list = "";
+            for (var i = 0; i < size(fitOnly); i += 1)
+                list ~= (i == 0 ? "" : ", ") ~ (fitOnly[i] + 1);
+            reportFeatureWarning(context, id, "Wire(s) " ~ list ~ " could not be projected onto the surface (they run along its boundary edge); the fitted curves through the section points are kept.");
+        }
+        else
+        {
+            reportFeatureInfo(context, id, wireCount ~ " wires through " ~ size(sections) ~ " cross sections" ~
+                              (closedCount > 0 ? " (closed sections)." : " (open sections)."));
+        }
     });
+
+
+// ============================================================================
+// Cutting sections
+// ============================================================================
+
+/**
+ * Cut the surface with the plane normal to `crossPath` at parameter `u`. Everything made (plane and cut curves) is
+ * created under `id`.
+ *
+ * @returns {{ path : Path or undefined }} the cut curves joined into a path, `undefined` if there is no (single) cut
+ */
+function cutSection(context is Context, id is Id, crossPath is Path, u is number, surfaceFaces is Query, planeSize is ValueWithUnits) returns map
+{
+    const line = evPathTangentLines(context, crossPath, [u]).tangentLines[0];
+    opPlane(context, id + "plane", { "plane" : plane(line.origin, line.direction), "width" : planeSize, "height" : planeSize });
+    try
+    {
+        opIntersectFaces(context, id + "cut", { "tools" : qCreatedBy(id + "plane", EntityType.FACE), "targets" : surfaceFaces });
+    }
+    catch
+    {
+        return { "path" : undefined };
+    }
+    const edges = qUnion(evaluateQuery(context, qCreatedBy(id + "cut", EntityType.EDGE)));
+    if (isQueryEmpty(context, edges))
+        return { "path" : undefined };
+    try
+    {
+        return { "path" : constructPath(context, edges, { "tolerance" : PATH_TOLERANCE }).path };
+    }
+    catch
+    {
+        return { "path" : undefined };
+    }
+}
+
+/** A complete section runs all the way around: a closed loop, or an open arc with both ends on the symmetry plane. */
+function isCompleteSection(context is Context, path is Path, symPlane is Plane) returns boolean
+{
+    const crossings = symmetryCrossings(context, path, symPlane);
+    if (path.closed)
+        return size(crossings) == 2;
+    var atStart = false;
+    var atEnd = false;
+    for (var c in crossings)
+    {
+        if (c.u < 1e-6)
+            atStart = true;
+        if (c.u > 1 - 1e-6)
+            atEnd = true;
+    }
+    return atStart && atEnd;
+}
+
+/** Whether the plane at `u` cuts a complete section (the probe geometry is deleted again). */
+function completeSectionAt(context is Context, id is Id, crossPath is Path, u is number, surfaceFaces is Query,
+        planeSize is ValueWithUnits, symPlane is Plane) returns boolean
+{
+    const cut = cutSection(context, id, crossPath, u, surfaceFaces, planeSize);
+    var complete = false;
+    if (cut.path != undefined)
+    {
+        try silent
+        {
+            complete = isCompleteSection(context, cut.path, symPlane);
+        }
+    }
+    const made = qCreatedBy(id, EntityType.BODY);
+    if (!isQueryEmpty(context, made))
+        opDeleteBodies(context, id + "delete", { "entities" : made });
+    return complete;
+}
+
+/**
+ * The range of path parameters whose planes cut complete sections. The middle of the surface must be complete; each end is
+ * found by bisection between that and the end of the surface.
+ */
+function completeSectionRange(context is Context, id is Id, crossPath is Path, wireLength is ValueWithUnits, extent is map,
+        surfaceFaces is Query, planeSize is ValueWithUnits, symPlane is Plane) returns map
+{
+    const inset = SECTION_END_INSET / wireLength;
+    const middle = (extent.minU + extent.maxU) / 2;
+    if (!completeSectionAt(context, id + "probeMiddle", crossPath, middle, surfaceFaces, planeSize, symPlane))
+        throw regenError("A plane through the middle of the surface does not cut a complete section. Check the wire and the symmetry plane.",
+                         ["surface", "crossWire", "symmetryPlane"]);
+
+    var ends = [];
+    for (var side in [0, 1])
+    {
+        var good = middle;
+        var bad = (side == 0) ? extent.minU + inset : extent.maxU - inset;
+        if (completeSectionAt(context, id + ("probeEnd" ~ side), crossPath, bad, surfaceFaces, planeSize, symPlane))
+        {
+            ends = append(ends, bad);
+            continue;
+        }
+        for (var n = 0; n < RANGE_BISECTIONS; n += 1)
+        {
+            const mid = (good + bad) / 2;
+            if (completeSectionAt(context, id + ("probe" ~ side ~ "_" ~ n), crossPath, mid, surfaceFaces, planeSize, symPlane))
+                good = mid;
+            else
+                bad = mid;
+        }
+        ends = append(ends, good);
+    }
+    return { "minU" : ends[0], "maxU" : ends[1] };
+}
 
 
 // ============================================================================
