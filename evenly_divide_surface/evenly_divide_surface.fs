@@ -42,6 +42,8 @@ const PATH_TOLERANCE = 1e-5 * meter;
 const EXTENT_SAMPLES = 200;
 /** Samples along a section when finding where it meets the symmetry plane. */
 const SYMMETRY_SAMPLES = 400;
+/** Regula falsi stops when a crossing is this close to the symmetry plane (meters). */
+const CROSSING_TOLERANCE = 1e-8;
 /** A section point this close to the symmetry plane is on it. */
 const SYMMETRY_TOLERANCE = 1e-5 * meter;
 
@@ -298,7 +300,7 @@ function makeSection(context is Context, id is Id, crossPath is Path, u is numbe
         return undefined;
     try
     {
-        const divided = divideSection(context, cut.path, symPlane, divisions, onSymmetryPlane);
+        const divided = divideSection(context, pathEvaluator(context, cut.path), symPlane, divisions, onSymmetryPlane);
         return { "u" : u, "points" : divided.points, "closed" : divided.closed };
     }
     catch (e)
@@ -337,6 +339,67 @@ function distanceToSurface(context is Context, boxes is array, surfaceFaces is Q
     }
     return evDistance(context, { "side0" : p, "side1" : (size(near) == 0) ? surfaceFaces : qUnion(near) }).distance;
 }
+/**
+ * A path prepared for evaluation: the arc-length position of every edge boundary, computed once (`evPathTangentLines` in
+ * std/path.fs recomputes the path length and every edge length on EVERY call and evaluates one parameter per kernel call).
+ */
+function pathEvaluator(context is Context, path is Path) returns map
+{
+    var lengths = [];
+    var total = 0 * meter;
+    for (var edge in path.edges)
+    {
+        const len = evLength(context, { "entities" : edge });
+        lengths = append(lengths, len);
+        total += len;
+    }
+    var cum = [0];
+    var run = 0 * meter;
+    for (var len in lengths)
+    {
+        run += len;
+        cum = append(cum, run / total);
+    }
+    return { "path" : path, "cum" : cum };
+}
+
+/**
+ * Tangent lines of a prepared path at arc-length parameters (0..1, any order), the same values as `evPathTangentLines`
+ * but with ONE kernel call per edge touched.
+ *
+ * @returns array of tangent Lines, in the order of `params`
+ */
+function evaluatePath(context is Context, pe is map, params is array) returns array
+{
+    const nEdges = size(pe.path.edges);
+    var onEdge = makeArray(nEdges, []);       // parameters on each edge (in the edge's own direction)
+    var slot = makeArray(nEdges, []);         // where each result goes
+    for (var i = 0; i < size(params); i += 1)
+    {
+        var e = 0;
+        while (e < nEdges - 1 && pe.cum[e + 1] < params[i])
+            e += 1;
+        const fraction = (params[i] - pe.cum[e]) / (pe.cum[e + 1] - pe.cum[e]);
+        onEdge[e] = append(onEdge[e], pe.path.flipped[e] ? 1 - fraction : fraction);
+        slot[e] = append(slot[e], i);
+    }
+    var result = makeArray(size(params));
+    for (var e = 0; e < nEdges; e += 1)
+    {
+        if (size(onEdge[e]) == 0)
+            continue;
+        const lines = evEdgeTangentLines(context, { "edge" : pe.path.edges[e], "parameters" : onEdge[e] });
+        for (var k = 0; k < size(lines); k += 1)
+        {
+            var line = lines[k];
+            if (pe.path.flipped[e])
+                line.direction = -line.direction;
+            result[slot[e][k]] = line;
+        }
+    }
+    return result;
+}
+
 /** Chord-length parameters (0..1) for a spline through `points`: far fewer wiggles than evenly spaced parameters on unevenly spaced points. */
 function chordLengthParameters(points is array) returns array
 {
@@ -383,10 +446,10 @@ function cutSection(context is Context, id is Id, crossPath is Path, u is number
 }
 
 /** A complete section runs all the way around: a closed loop, or an open arc with both ends on the symmetry plane. */
-function isCompleteSection(context is Context, path is Path, symPlane is Plane) returns boolean
+function isCompleteSection(context is Context, pe is map, symPlane is Plane) returns boolean
 {
-    const crossings = symmetryCrossings(context, path, symPlane);
-    if (path.closed)
+    const crossings = symmetryCrossings(context, pe, symPlane);
+    if (pe.path.closed)
         return size(crossings) == 2;
     var atStart = false;
     var atEnd = false;
@@ -410,7 +473,7 @@ function completeSectionAt(context is Context, id is Id, crossPath is Path, u is
     {
         try silent
         {
-            complete = isCompleteSection(context, cut.path, symPlane);
+            complete = isCompleteSection(context, pathEvaluator(context, cut.path), symPlane);
         }
     }
     const made = qCreatedBy(id, EntityType.BODY);
@@ -535,12 +598,12 @@ function nearestPathParameter(samples is array, p is Vector) returns number
  *
  * @returns {{ points : array of Vector (division i of this section, i = 0..N-1, from the start point), closed : boolean }}
  */
-function divideSection(context is Context, sectionPath is Path, symPlane is Plane, divisions is number, onSymmetryPlane is boolean) returns map
+function divideSection(context is Context, pe is map, symPlane is Plane, divisions is number, onSymmetryPlane is boolean) returns map
 {
     const closed = sectionPath.closed;
 
     // Where does the section meet the symmetry plane?
-    const crossings = symmetryCrossings(context, sectionPath, symPlane);
+    const crossings = symmetryCrossings(context, pe, symPlane);
     if (size(crossings) == 0)
         throw regenError("A section does not meet the symmetry plane.");
 
@@ -566,7 +629,7 @@ function divideSection(context is Context, sectionPath is Path, symPlane is Plan
     var direction = 1;
     if (closed)
     {
-        const ahead = evPathTangentLines(context, sectionPath, [wrapUnit(start.u + 0.002)]).tangentLines[0].origin;
+        const ahead = evaluatePath(context, pe, [wrapUnit(start.u + 0.002)])[0].origin;
         if (dot(ahead - symPlane.origin, symPlane.normal) < 0 * meter)
             direction = -1;
     }
@@ -579,7 +642,7 @@ function divideSection(context is Context, sectionPath is Path, symPlane is Plan
     for (var f in fractions)
         params = append(params, closed ? wrapUnit(start.u + direction * f) : (start.u > 0.5 ? 1 - f : f));
 
-    const lines = evPathTangentLines(context, sectionPath, params).tangentLines;
+    const lines = evaluatePath(context, pe, params);
     return { "points" : mapArray(lines, function(l) { return l.origin; }), "closed" : closed,
              "crossings" : size(crossings), "startU" : start.u };
 }
@@ -596,13 +659,13 @@ function wrapUnit(u is number) returns number
  *
  * @returns array of { u : number, z : ValueWithUnits }
  */
-function symmetryCrossings(context is Context, path is Path, symPlane is Plane) returns array
+function symmetryCrossings(context is Context, pe is map, symPlane is Plane) returns array
 {
     var params = [];
     for (var j = 0; j <= SYMMETRY_SAMPLES; j += 1)
         params = append(params, j / SYMMETRY_SAMPLES);
     const tol = SYMMETRY_TOLERANCE / meter;
-    const origins = mapArray(evPathTangentLines(context, path, params).tangentLines, function(l) { return l.origin; });
+    const origins = mapArray(evaluatePath(context, pe, params), function(l) { return l.origin; });
     const d = mapArray(origins, function(o) { return dot(o - symPlane.origin, symPlane.normal) / meter; });
 
     var found = [];      // exact: { u, z }
@@ -614,7 +677,7 @@ function symmetryCrossings(context is Context, path is Path, symPlane is Plane) 
             // Skip the closing sample of a closed path (same point as sample 0) and runs of samples on the plane.
             if (j > 0 && abs(d[j - 1]) <= tol)
                 continue;
-            if (path.closed && j == SYMMETRY_SAMPLES)
+            if (pe.path.closed && j == SYMMETRY_SAMPLES)
                 continue;
             found = append(found, { "u" : params[j], "z" : origins[j][2] });
         }
@@ -624,25 +687,27 @@ function symmetryCrossings(context is Context, path is Path, symPlane is Plane) 
         }
     }
 
-    for (var iter = 0; iter < 5 && size(brackets) > 0; iter += 1)
+    // Refine each bracket by regula falsi; stop as soon as every crossing is within CROSSING_TOLERANCE of the plane.
+    var us = [];
+    var pts = [];
+    for (var iter = 0; iter < 6 && size(brackets) > 0; iter += 1)
     {
-        const us = mapArray(brackets, function(b) { return b.ua - b.da * (b.ub - b.ua) / (b.db - b.da); });
-        const pts = mapArray(evPathTangentLines(context, path, us).tangentLines, function(l) { return l.origin; });
+        us = mapArray(brackets, function(b) { return b.ua - b.da * (b.ub - b.ua) / (b.db - b.da); });
+        pts = mapArray(evaluatePath(context, pe, us), function(l) { return l.origin; });
+        var converged = true;
         for (var m = 0; m < size(brackets); m += 1)
         {
             const dm = dot(pts[m] - symPlane.origin, symPlane.normal) / meter;
+            if (abs(dm) > CROSSING_TOLERANCE)
+                converged = false;
             if ((dm < 0) == (brackets[m].da < 0))
                 brackets[m] = { "ua" : us[m], "da" : dm, "ub" : brackets[m].ub, "db" : brackets[m].db };
             else
                 brackets[m] = { "ua" : brackets[m].ua, "da" : brackets[m].da, "ub" : us[m], "db" : dm };
         }
+        if (converged)
+            break;
     }
-    if (size(brackets) > 0)
-    {
-        const us = mapArray(brackets, function(b) { return b.ua - b.da * (b.ub - b.ua) / (b.db - b.da); });
-        const pts = mapArray(evPathTangentLines(context, path, us).tangentLines, function(l) { return l.origin; });
-        for (var m = 0; m < size(brackets); m += 1)
-            found = append(found, { "u" : us[m], "z" : pts[m][2] });
-    }
-    return found;
+    for (var m = 0; m < size(brackets); m += 1)
+        found = append(found, { "u" : us[m], "z" : pts[m][2] });    return found;
 }
