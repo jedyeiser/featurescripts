@@ -1,0 +1,149 @@
+- generic [ref=f6e5]:
+  - navigation [ref=f6e6]:
+    - generic [ref=f6e7]:
+      - link [ref=f6e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f6e11]
+      - generic [ref=f6e13] [cursor=pointer]
+    - generic [ref=f6e16]:
+      - generic [ref=f6e18]:
+        - generic [ref=f6e19]: evenly_divide_surface
+        - generic [ref=f6e20]: Main
+      - generic [ref=f6e22] [cursor=pointer]
+      - link "Ski/Snowboard" [ref=f6e26] [cursor=pointer]:
+        - /url: /documents?nodeId=a4031dd13e6b49409dda5f9c&resourceType=folder
+    - generic [ref=f6e30]:
+      - generic [ref=f6e38] [cursor=pointer]
+      - generic [ref=f6e44] [cursor=pointer]
+      - button "Notifications" [ref=f6e49] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f6e57]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f6e60] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f6e65] [cursor=pointer]
+      - button "Share" [ref=f6e69] [cursor=pointer]
+      - generic "Help menu" [ref=f6e71] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f6e75] [cursor=pointer]
+  - generic [ref=f6e85]:
+    - generic [ref=f6e87]:
+      - generic [ref=f6e88]:
+        - generic [ref=f6e89]:
+          - generic [ref=f6e90] [cursor=pointer]
+          - generic [ref=f6e93] [cursor=pointer]
+          - generic [ref=f6e96] [cursor=pointer]
+          - generic [ref=f6e99] [cursor=pointer]
+          - generic [ref=f6e102] [cursor=pointer]
+          - generic [ref=f6e105] [cursor=pointer]
+          - generic [ref=f6e108] [cursor=pointer]
+          - generic [ref=f6e111] [cursor=pointer]
+        - generic [ref=f6e115] [cursor=pointer]
+      - generic [ref=f6e119] [cursor=pointer]
+    - generic [ref=f6e126]:
+      - generic [ref=f6e133]:
+        - generic [ref=f6e145]:
+          - generic [ref=f6e146]: Sketch
+          - generic [ref=f6e158]:
+            - generic [ref=f6e159] [cursor=pointer]
+            - generic [ref=f6e163] [cursor=pointer]
+            - generic [ref=f6e167] [cursor=pointer]
+            - generic [ref=f6e171] [cursor=pointer]
+            - generic [ref=f6e176]:
+              - generic [ref=f6e177] [cursor=pointer]
+              - generic [ref=f6e181] [cursor=pointer]
+          - generic [ref=f6e187]:
+            - generic [ref=f6e189]:
+              - generic [ref=f6e190] [cursor=pointer]
+              - generic [ref=f6e194] [cursor=pointer]
+            - generic [ref=f6e197] [cursor=pointer]
+            - generic [ref=f6e202]:
+              - generic [ref=f6e203] [cursor=pointer]
+              - generic [ref=f6e207] [cursor=pointer]
+            - generic [ref=f6e210] [cursor=pointer]
+            - generic [ref=f6e214] [cursor=pointer]
+            - generic [ref=f6e218] [cursor=pointer]
+            - generic [ref=f6e222] [cursor=pointer]
+          - generic [ref=f6e229]:
+            - generic [ref=f6e231]:
+              - generic [ref=f6e232] [cursor=pointer]
+              - generic [ref=f6e236] [cursor=pointer]
+            - generic [ref=f6e239] [cursor=pointer]
+          - generic [ref=f6e246]:
+            - generic [ref=f6e247] [cursor=pointer]
+            - generic [ref=f6e251] [cursor=pointer]
+            - generic [ref=f6e256]:
+              - generic [ref=f6e257] [cursor=pointer]
+              - generic [ref=f6e261] [cursor=pointer]
+            - generic [ref=f6e264] [cursor=pointer]
+          - generic [ref=f6e271]:
+            - generic [ref=f6e272] [cursor=pointer]
+            - generic [ref=f6e276] [cursor=pointer]
+            - generic [ref=f6e280] [cursor=pointer]
+            - generic [ref=f6e284] [cursor=pointer]
+          - generic [ref=f6e292]:
+            - generic [ref=f6e293] [cursor=pointer]
+            - generic [ref=f6e297] [cursor=pointer]
+          - generic [ref=f6e304]:
+            - generic [ref=f6e305] [cursor=pointer]: SA
+            - generic [ref=f6e308] [cursor=pointer]
+          - generic [ref=f6e315] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f6e322] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f6e323]:
+            - generic [ref=f6e324]: alt/⌥
+            - generic [ref=f6e325]: c
+      - generic [ref=f6e329]:
+        - generic [ref=f6e332]:
+          - generic [ref=f6e334]:
+            - generic [ref=f6e335]:
+              - generic [ref=f6e337]:
+                - button [ref=f6e339] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f6e344]
+              - generic [ref=f6e345]:
+                - generic [ref=f6e346]: Features (7)
+                - button [ref=f6e347] [cursor=pointer]
+                - button [ref=f6e350] [cursor=pointer]
+                - button [ref=f6e353] [cursor=pointer]
+            - generic [ref=f6e357]:
+              - generic [ref=f6e358]:
+                - generic [ref=f6e360]:
+                  - generic [ref=f6e361] [cursor=pointer]
+                  - generic [ref=f6e364]: Default geometry
+                - generic [ref=f6e366]: Origin
+                - generic [ref=f6e376]: Top
+                - generic [ref=f6e386]: Front
+                - generic [ref=f6e396]: Right
+                - generic [ref=f6e406]: Derived 1
+                - generic [ref=f6e419]: copy_seed_surf
+                - generic [ref=f6e427]: Split 1
+              - list
+          - generic [ref=f6e443]:
+            - generic [ref=f6e445]:
+              - generic [ref=f6e447] [cursor=pointer]
+              - generic [ref=f6e450]: Parts (0)
+            - generic [ref=f6e454]:
+              - generic [ref=f6e456] [cursor=pointer]
+              - generic [ref=f6e459]: Surfaces (2)
+            - generic [ref=f6e464]:
+              - generic [ref=f6e466] [cursor=pointer]
+              - generic [ref=f6e469]: Curves (1)
+        - generic [ref=f6e474]:
+          - generic [ref=f6e476] [cursor=pointer]
+          - generic [ref=f6e480]:
+            - generic [ref=f6e482]:
+              - button [ref=f6e483] [cursor=pointer]
+              - button [ref=f6e487] [cursor=pointer]
+              - button [ref=f6e491] [cursor=pointer]
+            - generic [ref=f6e495] [cursor=pointer]
+          - generic [ref=f6e500]:
+            - generic [ref=f6e501] [cursor=pointer]
+            - generic [ref=f6e505] [cursor=pointer]
+            - generic [ref=f6e509] [cursor=pointer]
+            - generic [ref=f6e513] [cursor=pointer]
+            - generic [ref=f6e517] [cursor=pointer]
+            - generic [ref=f6e521] [cursor=pointer]
+            - generic [ref=f6e524] [cursor=pointer]
+      - generic [ref=f6e528]:
+        - img [ref=f6e531] [cursor=pointer]
+        - generic [ref=f6e534]:
+          - generic [ref=f6e535]: Part Studio 1
+          - generic [ref=f6e541] [cursor=pointer]: Assembly 1
+          - generic [ref=f6e547] [cursor=pointer]: evenly_divide_surface
+          - generic [ref=f6e553] [cursor=pointer]: Divide tests

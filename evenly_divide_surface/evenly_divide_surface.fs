@@ -25,8 +25,8 @@ const SECTION_END_INSET = 1e-4 * meter;
 const SECTION_END_MARGIN = 1e-3 * meter;
 /** Samples per section interval when measuring how far a wire strays from the surface. */
 const WIRE_CHECK_SAMPLES_PER_SPAN = 4;
-/** A wire farther than this from the surface (between its section points) is reported. */
-const WIRE_SURFACE_TOLERANCE = 1e-5 * meter;
+/** Bounds of the surface tolerance input: 0.001 - 0.01 (default) - 1 mm. */
+export const SurfaceToleranceBounds = { (meter) : [1e-6, 1e-5, 1e-3], (millimeter) : 0.001, (centimeter) : 0.0001, (inch) : 0.00004 } as LengthBoundSpec;
 /** Rounds of adding sections, and the most sections the refinement may reach. */
 const MAX_REFINE_ROUNDS = 4;
 const MAX_SECTIONS = 600;
@@ -68,6 +68,9 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         annotation { "Name" : "Wires on symmetry plane", "Default" : true,
                      "Description" : "On: the first and last wire lie on the symmetry plane. Off: they start a half step away from it." }
         definition.onSymmetryPlane is boolean;
+
+        annotation { "Name" : "Surface tolerance", "Description" : "How far a wire may stray from the surface between two cross sections. Larger values regenerate faster." }
+        isLength(definition.surfaceTolerance, SurfaceToleranceBounds);
 
         annotation { "Name" : "Refine sections", "Default" : true,
                      "Description" : "Add cross sections where a wire would otherwise stray from the surface (the number above is the starting count)." }
@@ -155,7 +158,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                     {
                         const d = evDistance(context, { "side0" : l.origin, "side1" : surfaceFaces }).distance;
                         worstOff = max(worstOff, d);
-                        if (d > WIRE_SURFACE_TOLERANCE)
+                        if (d > definition.surfaceTolerance)
                         {
                             const j = intervalIndex(sections, nearestPathParameter(crossSamples, l.origin / meter));
                             if (!weak[j])
@@ -220,7 +223,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                         (closedCount > 0 ? ", closed sections" : ", open sections") ~
                         "; widest gap to the surface " ~ roundToPrecision(worstOff / millimeter, 4) ~ " mm.";
         println("evenlyDivideSurface: " ~ summary);
-        if (worstOff > WIRE_SURFACE_TOLERANCE)
+        if (worstOff > definition.surfaceTolerance)
             reportFeatureWarning(context, id, summary ~ (definition.refine ? " Increase the number of cross sections." : " Turn on Refine sections or increase the number of cross sections."));
         else
             reportFeatureInfo(context, id, summary);
