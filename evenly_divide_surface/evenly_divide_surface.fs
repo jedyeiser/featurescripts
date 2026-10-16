@@ -123,6 +123,8 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         if (size(sections) < 2)
             throw regenError("Fewer than two cross sections met the surface.", ["surface", "crossWire", "sections"]);
         if (size(sections) < definition.sections)
+            println("evenlyDivideSurface: only " ~ size(sections) ~ " of " ~ definition.sections ~ " sections divided");
+        if (size(sections) < definition.sections)
             reportFeatureWarning(context, id, (definition.sections - size(sections)) ~ " of " ~ definition.sections ~ " cross sections could not be divided and were skipped.");
         if (closedCount != 0 && closedCount != size(sections))
             reportFeatureWarning(context, id, "Some sections are closed loops and some are open; the divisions may not line up.");
@@ -160,6 +162,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         const summary = wireCount ~ " wires through " ~ size(sections) ~ " cross sections" ~
                         (closedCount > 0 ? " (closed sections)" : " (open sections)") ~
                         "; widest gap to the surface " ~ roundToPrecision(worstOff / millimeter, 4) ~ " mm.";
+        println("evenlyDivideSurface: " ~ summary);
         if (worstOff > WIRE_SURFACE_TOLERANCE)
             reportFeatureWarning(context, id, summary ~ " Increase the number of cross sections.");
         else
