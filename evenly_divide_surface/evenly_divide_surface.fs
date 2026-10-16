@@ -1,7 +1,6 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/path.fs", version : "3083.0");
-import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 
 /**
  * Evenly divide surface (phase 1: the division wires).
@@ -24,6 +23,10 @@ export const SectionCountBounds  = { (unitless) : [2, 20, 1000] } as IntegerBoun
 const SECTION_END_INSET = 1e-4 * meter;
 /** Planes keep this far inside the first/last COMPLETE section (a plane that only just clears a trimmed end cuts a degenerate section). */
 const SECTION_END_MARGIN = 1e-3 * meter;
+/** Samples per section interval when measuring how far a wire strays from the surface. */
+const WIRE_CHECK_SAMPLES_PER_SPAN = 4;
+/** A wire farther than this from the surface (between its section points) is reported. */
+const WIRE_SURFACE_TOLERANCE = 1e-5 * meter;
 /** Bisection steps when locating where complete sections start and stop. */
 const RANGE_BISECTIONS = 12;
 /** Edge endpoints closer than this are one point when joining section edges into a path. */
@@ -124,36 +127,24 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         if (closedCount != 0 && closedCount != size(sections))
             reportFeatureWarning(context, id, "Some sections are closed loops and some are open; the divisions may not line up.");
 
-        // 3. One wire per division: fit through that division's point on every section, then drop onto the surface.
-        //    A wire lying along the surface's own boundary edge (on the symmetry plane of a half surface) cannot be
-        //    projected; the fitted spline, which passes through the same points, is kept instead.
+        // 3. One wire per division: a spline through that division's point on every section. (Dropping the spline onto the
+        //    surface with opDropCurve was tried and rejected: it projects onto every face the curve can reach and returns
+        //    many fragments per division, not one wire.) The distance of each wire from the surface is measured instead.
         const wireCount = size(sections[0].points);
-        var fitOnly = [];
+        var worstOff = 0 * meter;
         for (var i = 0; i < wireCount; i += 1)
         {
             var wirePoints = [];
             for (var s in sections)
                 wirePoints = append(wirePoints, s.points[i]);
 
-            const fitId = id + ("fit" ~ i);
-            opFitSpline(context, fitId, { "points" : wirePoints });
-            try
-            {
-                opDropCurve(context, id + ("wire" ~ i), { "tools" : qCreatedBy(fitId, EntityType.EDGE),
-                                                          "targets" : surfaceFaces,
-                                                          "projectionType" : ProjectionType.NORMAL_TO_TARGET });
-            }
-            catch
-            {
-                fitOnly = append(fitOnly, i);
-            }
+            const wireId = id + ("wire" ~ i);
+            opFitSpline(context, wireId, { "points" : wirePoints });
+            worstOff = max(worstOff, deviationFromSurface(context, qCreatedBy(wireId, EntityType.EDGE), surfaceFaces, size(sections) * WIRE_CHECK_SAMPLES_PER_SPAN));
         }
 
-        // 4. Clean up the construction geometry (and keep the fitted splines that could not be dropped).
+        // 4. Clean up the construction geometry.
         var scratch = [];
-        for (var i = 0; i < wireCount; i += 1)
-            if (indexOf(fitOnly, i) < 0)
-                scratch = append(scratch, qCreatedBy(id + ("fit" ~ i), EntityType.BODY));
         for (var k = 0; k < definition.sections; k += 1)
         {
             if (definition.keepSections)
@@ -166,19 +157,27 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         if (!isQueryEmpty(context, scratchQuery))
             opDeleteBodies(context, id + "cleanup", { "entities" : scratchQuery });
 
-        if (size(fitOnly) > 0)
-        {
-            var list = "";
-            for (var i = 0; i < size(fitOnly); i += 1)
-                list ~= (i == 0 ? "" : ", ") ~ (fitOnly[i] + 1);
-            reportFeatureWarning(context, id, "Wire(s) " ~ list ~ " could not be projected onto the surface (they run along its boundary edge); the fitted curves through the section points are kept.");
-        }
+        const summary = wireCount ~ " wires through " ~ size(sections) ~ " cross sections" ~
+                        (closedCount > 0 ? " (closed sections)" : " (open sections)") ~
+                        "; widest gap to the surface " ~ roundToPrecision(worstOff / millimeter, 4) ~ " mm.";
+        if (worstOff > WIRE_SURFACE_TOLERANCE)
+            reportFeatureWarning(context, id, summary ~ " Increase the number of cross sections.");
         else
-        {
-            reportFeatureInfo(context, id, wireCount ~ " wires through " ~ size(sections) ~ " cross sections" ~
-                              (closedCount > 0 ? " (closed sections)." : " (open sections)."));
-        }
+            reportFeatureInfo(context, id, summary);
     });
+
+
+/** The largest distance from `samples` evenly spaced points of the wire edge(s) to the surface faces. */
+function deviationFromSurface(context is Context, wireEdge is Query, surfaceFaces is Query, samples is number) returns ValueWithUnits
+{
+    var worst = 0 * meter;
+    for (var edge in evaluateQuery(context, wireEdge))
+    {
+        for (var l in evEdgeTangentLines(context, { "edge" : edge, "parameters" : range(0, 1, samples + 1) }))
+            worst = max(worst, evDistance(context, { "side0" : l.origin, "side1" : surfaceFaces }).distance);
+    }
+    return worst;
+}
 
 
 // ============================================================================
