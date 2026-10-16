@@ -24,7 +24,7 @@ c = OnshapeClient()
 D, W = "69ab3696c014c05409202108", "c176011bc60a3f918e673d98"
 SOURCE = "Part Studio 1"
 STUDIO = "Divide tests"
-SECTIONS = int(os.environ.get("DIVIDE_SECTIONS", "20"))
+SECTIONS = int(os.environ.get("DIVIDE_SECTIONS", "60"))
 
 ELEMENTS = c.list_elements(D, W)
 studios = {e["name"]: e["id"] for e in ELEMENTS if e["elementType"] == "PARTSTUDIO"}

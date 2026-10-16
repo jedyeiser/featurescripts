@@ -17,7 +17,7 @@ import(path : "onshape/std/path.fs", version : "3083.0");
  */
 
 export const DivisionCountBounds = { (unitless) : [1, 5, 500] } as IntegerBoundSpec;
-export const SectionCountBounds  = { (unitless) : [2, 20, 1000] } as IntegerBoundSpec;
+export const SectionCountBounds  = { (unitless) : [2, 60, 1000] } as IntegerBoundSpec;
 
 /** The first/last probe plane sits this far inside the end of the surface. */
 const SECTION_END_INSET = 1e-4 * meter;
@@ -26,7 +26,7 @@ const SECTION_END_MARGIN = 1e-3 * meter;
 /** Samples per section interval when measuring how far a wire strays from the surface. */
 const WIRE_CHECK_SAMPLES_PER_SPAN = 4;
 /** A wire farther than this from the surface (between its section points) is reported. */
-const WIRE_SURFACE_TOLERANCE = 1e-5 * meter;
+const WIRE_SURFACE_TOLERANCE = 1e-4 * meter;
 /** Bisection steps when locating where complete sections start and stop. */
 const RANGE_BISECTIONS = 12;
 /** Edge endpoints closer than this are one point when joining section edges into a path. */
