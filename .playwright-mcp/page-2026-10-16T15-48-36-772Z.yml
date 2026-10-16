@@ -1,0 +1,172 @@
+- generic [ref=f3e3]:
+  - navigation [ref=f3e29]:
+    - generic [ref=f3e30]:
+      - link [ref=f3e33] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f3e34]
+      - generic [ref=f3e36] [cursor=pointer]
+    - generic [ref=f3e39]:
+      - generic [ref=f3e41]:
+        - generic [ref=f3e42]: Curve_Wrapping_Public
+        - generic [ref=f3e43]: B1
+      - generic [ref=f3e45] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f3e49] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f3e53]:
+      - generic [ref=f3e56] [cursor=pointer]
+      - generic [ref=f3e62] [cursor=pointer]
+      - button "Notifications" [ref=f3e67] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f3e75]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f3e78] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f3e83] [cursor=pointer]
+      - button "Share" [ref=f3e87] [cursor=pointer]
+      - generic "Help menu" [ref=f3e89] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f3e93] [cursor=pointer]
+  - generic [ref=f3e7]:
+    - generic [ref=f3e9]:
+      - generic [ref=f3e10]:
+        - generic [ref=f3e100]:
+          - generic [ref=f3e101] [cursor=pointer]
+          - generic [ref=f3e104] [cursor=pointer]
+          - generic [ref=f3e107] [cursor=pointer]
+          - generic [ref=f3e110] [cursor=pointer]
+          - generic [ref=f3e113] [cursor=pointer]
+          - generic [ref=f3e116] [cursor=pointer]
+          - generic [ref=f3e119] [cursor=pointer]
+          - generic [ref=f3e124] [cursor=pointer]
+        - generic [ref=f3e127] [cursor=pointer]
+      - generic [ref=f3e131] [cursor=pointer]
+    - generic [ref=f3e16]:
+      - generic [ref=f3e140]:
+        - generic [ref=f3e152]:
+          - generic [ref=f3e153]: Sketch
+          - generic [ref=f3e165]:
+            - generic [ref=f3e166] [cursor=pointer]
+            - generic [ref=f3e170] [cursor=pointer]
+            - generic [ref=f3e174] [cursor=pointer]
+            - generic [ref=f3e178] [cursor=pointer]
+            - generic [ref=f3e183]:
+              - generic [ref=f3e184] [cursor=pointer]
+              - generic [ref=f3e188] [cursor=pointer]
+          - generic [ref=f3e194]:
+            - generic [ref=f3e196]:
+              - generic [ref=f3e197] [cursor=pointer]
+              - generic [ref=f3e201] [cursor=pointer]
+            - generic [ref=f3e204] [cursor=pointer]
+            - generic [ref=f3e209]:
+              - generic [ref=f3e210] [cursor=pointer]
+              - generic [ref=f3e214] [cursor=pointer]
+            - generic [ref=f3e217] [cursor=pointer]
+            - generic [ref=f3e221] [cursor=pointer]
+            - generic [ref=f3e225] [cursor=pointer]
+            - generic [ref=f3e229] [cursor=pointer]
+          - generic [ref=f3e236]:
+            - generic [ref=f3e238]:
+              - generic [ref=f3e239] [cursor=pointer]
+              - generic [ref=f3e243] [cursor=pointer]
+            - generic [ref=f3e246] [cursor=pointer]
+          - generic [ref=f3e253]:
+            - generic [ref=f3e254] [cursor=pointer]
+            - generic [ref=f3e258] [cursor=pointer]
+            - generic [ref=f3e263]:
+              - generic [ref=f3e264] [cursor=pointer]
+              - generic [ref=f3e268] [cursor=pointer]
+            - generic [ref=f3e271] [cursor=pointer]
+          - generic [ref=f3e278]:
+            - generic [ref=f3e279] [cursor=pointer]
+            - generic [ref=f3e283] [cursor=pointer]
+            - generic [ref=f3e287] [cursor=pointer]
+            - generic [ref=f3e291] [cursor=pointer]
+          - generic [ref=f3e299]:
+            - generic [ref=f3e300] [cursor=pointer]
+            - generic [ref=f3e304] [cursor=pointer]
+          - generic [ref=f3e311]:
+            - generic [ref=f3e312] [cursor=pointer]: SA
+            - generic [ref=f3e315] [cursor=pointer]
+          - generic [ref=f3e322] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f3e329] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f3e330]:
+            - generic [ref=f3e331]: alt/⌥
+            - generic [ref=f3e332]: c
+      - generic [ref=f3e24]:
+        - generic [ref=f3e336]:
+          - generic [ref=f3e338]:
+            - generic [ref=f3e339]:
+              - generic [ref=f3e341]:
+                - button [ref=f3e343] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f3e348]
+              - generic [ref=f3e349]:
+                - generic [ref=f3e350]: Features (17)
+                - button [ref=f3e351] [cursor=pointer]
+                - button [ref=f3e354] [cursor=pointer]
+                - button [ref=f3e357] [cursor=pointer]
+            - generic [ref=f3e361]:
+              - generic [ref=f3e362]:
+                - generic [ref=f3e364]:
+                  - generic [ref=f3e365] [cursor=pointer]
+                  - generic [ref=f3e368]: Default geometry
+                - generic [ref=f3e370]: Origin
+                - generic [ref=f3e380]: Top
+                - generic [ref=f3e390]: Front
+                - generic [ref=f3e400]: Right
+                - generic [ref=f3e410]: "From path: line (0,0)-(300,0)"
+                - generic [ref=f3e420]: "To path: R300 quarter arc about (0,300)"
+                - generic [ref=f3e430]: Box A x100..200 (sketch)
+                - generic [ref=f3e440]: Box A x100..200
+                - generic [ref=f3e448]: Box B x220..260 (sketch)
+                - generic [ref=f3e458]: Box B x220..260
+                - generic [ref=f3e466]: MC_B point (210, 0)
+                - generic [ref=f3e476]: MC_A box A corner (100,-10,10), owned by A
+                - generic [ref=f3e484]: MC_B stand-alone at (210,0,0)
+                - generic [ref=f3e493]:
+                  - generic [ref=f3e495] [cursor=pointer]
+                  - generic [ref=f3e498]: D1 boxes A+B, connectors MC_A+MC_B -> 2 solids; MC_A on A's result, MC_B stand-alone
+                - generic [ref=f3e503]:
+                  - generic [ref=f3e505] [cursor=pointer]
+                  - generic [ref=f3e508]: D2 connectors only -> 2 stand-alone connectors
+                - generic [ref=f3e512]: D3 box A only -> 1 solid
+                - generic [ref=f3e519]: D4 boxes A+B, no connectors -> 2 solids
+              - list
+          - generic [ref=f3e534]:
+            - generic [ref=f3e536]:
+              - generic [ref=f3e538] [cursor=pointer]
+              - generic [ref=f3e541]: Parts (7)
+            - generic [ref=f3e545]: Part 1
+            - generic [ref=f3e557]: Part 2
+            - generic [ref=f3e569]: Box A (D1)
+            - generic [ref=f3e581]: Box B (D1)
+            - generic [ref=f3e593]: Box A (D3)
+            - generic [ref=f3e605]: Box A (D4)
+            - generic [ref=f3e617]: Box B (D4)
+        - generic [ref=f3e25]:
+          - generic [ref=f3e631] [cursor=pointer]
+          - generic [ref=f3e26]:
+            - generic [ref=f3e636]:
+              - button [ref=f3e637] [cursor=pointer]
+              - button [ref=f3e641] [cursor=pointer]
+              - button [ref=f3e645] [cursor=pointer]
+            - generic [ref=f3e649] [cursor=pointer]
+          - generic [ref=f3e654]:
+            - generic [ref=f3e655] [cursor=pointer]
+            - generic [ref=f3e659] [cursor=pointer]
+            - generic [ref=f3e663] [cursor=pointer]
+            - generic [ref=f3e667] [cursor=pointer]
+            - generic [ref=f3e671] [cursor=pointer]
+            - generic [ref=f3e675] [cursor=pointer]
+            - generic [ref=f3e678] [cursor=pointer]
+      - generic [ref=f3e682]:
+        - img [ref=f3e685] [cursor=pointer]
+        - generic [ref=f3e688]:
+          - generic [ref=f3e689] [cursor=pointer]: Test
+          - generic [ref=f3e695] [cursor=pointer]: SKH_Testing
+          - generic [ref=f3e703] [cursor=pointer]: ONE Testing
+          - generic [ref=f3e711] [cursor=pointer]: Test2
+          - generic [ref=f3e717] [cursor=pointer]: Test_Real
+          - generic [ref=f3e725] [cursor=pointer]: measureBetweenCurves
+          - generic [ref=f3e731] [cursor=pointer]: Curve Wrapping Info.pdf
+          - generic [ref=f3e737] [cursor=pointer]: resources
+          - generic [ref=f3e743] [cursor=pointer]: wrapAndLoft
+          - generic [ref=f3e749] [cursor=pointer]: wrapCurve
+          - generic [ref=f3e755] [cursor=pointer]: deform
+          - generic [ref=f3e761]: Deform tests

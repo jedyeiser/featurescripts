@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "f48cd8a0782e83964ecae099");
+export import(path : "683d867c35fdab9c98d47556", version : "87e3a5183c3a065393776f5c");
 
 
 

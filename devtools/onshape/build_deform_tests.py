@@ -31,7 +31,7 @@ if STUDIO not in studios:
     studios[STUDIO] = c.post(f"/api/v10/partstudios/d/{D}/w/{W}", {"name": STUDIO})["id"]
 E = studios[STUDIO]
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
-TAB = [e for e in ELEMENTS if e["name"] == "deform"][0]
+TAB = [e for e in ELEMENTS if e["name"] == "deform" and e["elementType"] == "FEATURESTUDIO"][0]   # the public doc also has a "deform" SVG
 NS = "e%s::m%s" % (TAB["id"], TAB["microversionId"])
 SPEC = [x for x in c.get(f"/api/v10/featurestudios/d/{D}/w/{W}/e/{TAB['id']}/featurespecs")["featureSpecs"]
         if x["featureType"] == "deform"][0]

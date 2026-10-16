@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/6a7ed8c7d74ed47b642b408c/683d867c35fdab9c98d47556", version : "56e375ddd20a07f695dfed04");
+export import(path : "08e8748f2ef24eea16072b75/7b929214cd84db0fb9ce14a8/683d867c35fdab9c98d47556", version : "87e3a5183c3a065393776f5c");
 
 
 IconNamespace::import(path : "1d6621cd4535c5f1201a122f", version : "5d5d1804a5dc095d14573622");
