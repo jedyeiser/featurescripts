@@ -719,6 +719,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             });
             var mcMapped = mapCoordSystems(context, fromFrenetPath, toFrenetPath,
                 fromRefArc, toRefArc, definition.flipToNormal, mcSystems);
+            println("DBG mc count " ~ size(mcQueries) ~ " systems " ~ size(mcSystems) ~ " mapped " ~ size(mcMapped));
+            for (var dbg = 0; dbg < size(mcSystems); dbg += 1)
+                println("DBG mc " ~ dbg ~ " src " ~ toString(mcSystems[dbg]) ~ " -> " ~ toString(mcMapped[dbg]));
 
             for (var mcIdx = 0; mcIdx < size(mcQueries); mcIdx += 1)
             {

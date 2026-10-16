@@ -1,0 +1,184 @@
+- generic [ref=e4]:
+  - navigation [ref=e5]:
+    - generic [ref=e6]:
+      - link [ref=e9] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=e10]
+      - generic [ref=e12] [cursor=pointer]
+    - generic [ref=e15]:
+      - generic [ref=e17]:
+        - generic [ref=e18]: CurveWrapping_Full
+        - generic [ref=e19]: Main
+      - generic [ref=e21] [cursor=pointer]
+      - link "Curve Features" [ref=e25] [cursor=pointer]:
+        - /url: /documents?nodeId=51ee18495de21143dcea6ac7&resourceType=folder
+    - generic [ref=e29]:
+      - generic [ref=e32] [cursor=pointer]
+      - generic [ref=e38] [cursor=pointer]
+      - button "Notifications" [ref=e43] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=e51]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=e54] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=e59] [cursor=pointer]
+      - button "Share" [ref=e63] [cursor=pointer]
+      - generic "Help menu" [ref=e65] [cursor=pointer]
+      - button "Jed Yeiser" [ref=e69] [cursor=pointer]
+  - generic [ref=e79]:
+    - generic [ref=e81]:
+      - generic [ref=e82]:
+        - generic [ref=e83]:
+          - generic [ref=e84] [cursor=pointer]
+          - generic [ref=e87] [cursor=pointer]
+          - generic [ref=e90] [cursor=pointer]
+          - generic [ref=e93] [cursor=pointer]
+          - generic [ref=e96] [cursor=pointer]
+          - generic [ref=e99] [cursor=pointer]
+          - generic [ref=e102] [cursor=pointer]
+          - generic [ref=e107] [cursor=pointer]
+        - generic [ref=e111] [cursor=pointer]
+      - generic [ref=e115] [cursor=pointer]
+    - generic [ref=e122]:
+      - generic [ref=e289]:
+        - generic [ref=e301]:
+          - generic [ref=e302]: Sketch
+          - generic [ref=e314]:
+            - generic [ref=e315] [cursor=pointer]
+            - generic [ref=e319] [cursor=pointer]
+            - generic [ref=e323] [cursor=pointer]
+            - generic [ref=e327] [cursor=pointer]
+            - generic [ref=e332]:
+              - generic [ref=e333] [cursor=pointer]
+              - generic [ref=e337] [cursor=pointer]
+          - generic [ref=e343]:
+            - generic [ref=e345]:
+              - generic [ref=e346] [cursor=pointer]
+              - generic [ref=e350] [cursor=pointer]
+            - generic [ref=e353] [cursor=pointer]
+            - generic [ref=e358]:
+              - generic [ref=e359] [cursor=pointer]
+              - generic [ref=e363] [cursor=pointer]
+            - generic [ref=e366] [cursor=pointer]
+            - generic [ref=e370] [cursor=pointer]
+            - generic [ref=e374] [cursor=pointer]
+            - generic [ref=e378] [cursor=pointer]
+          - generic [ref=e385]:
+            - generic [ref=e387]:
+              - generic [ref=e388] [cursor=pointer]
+              - generic [ref=e392] [cursor=pointer]
+            - generic [ref=e395] [cursor=pointer]
+          - generic [ref=e402]:
+            - generic [ref=e403] [cursor=pointer]
+            - generic [ref=e407] [cursor=pointer]
+            - generic [ref=e412]:
+              - generic [ref=e413] [cursor=pointer]
+              - generic [ref=e417] [cursor=pointer]
+            - generic [ref=e420] [cursor=pointer]
+          - generic [ref=e427]:
+            - generic [ref=e428] [cursor=pointer]
+            - generic [ref=e432] [cursor=pointer]
+            - generic [ref=e436] [cursor=pointer]
+            - generic [ref=e440] [cursor=pointer]
+          - generic [ref=e448]:
+            - generic [ref=e449] [cursor=pointer]
+            - generic [ref=e453] [cursor=pointer]
+          - generic [ref=e460]:
+            - generic [ref=e461] [cursor=pointer]: SA
+            - generic [ref=e464] [cursor=pointer]
+          - generic [ref=e471] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=e478] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=e479]:
+            - generic [ref=e480]: alt/⌥
+            - generic [ref=e481]: c
+      - generic [ref=e130]:
+        - generic [ref=e133]:
+          - generic [ref=e135]:
+            - generic [ref=e136]:
+              - generic [ref=e138]:
+                - button [ref=e140] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=e145]
+              - generic [ref=e146]:
+                - generic [ref=e147]: Features (26)
+                - button [ref=e148] [cursor=pointer]
+                - button [ref=e151] [cursor=pointer]
+                - button [ref=e154] [cursor=pointer]
+            - generic [ref=e158]:
+              - generic [ref=e483]:
+                - generic [ref=e485]:
+                  - generic [ref=e486] [cursor=pointer]
+                  - generic [ref=e489]: Default geometry
+                - generic [ref=e491]: Origin
+                - generic [ref=e501]: Top
+                - generic [ref=e511]: Front
+                - generic [ref=e521]: Right
+                - generic [ref=e531]: Sketch 1
+                - generic [ref=e541]: Routing curve (1262.029 mm)
+                - generic [ref=e549]: Sketch 2
+                - generic [ref=e559]: Sketch 3
+                - generic [ref=e572]:
+                  - generic [ref=e573]: WC
+                  - generic [ref=e575]: Wrap Curve 1
+                - generic [ref=e576]: Sketch 4
+                - generic [ref=e586]: Sketch 5
+                - generic [ref=e599]:
+                  - generic [ref=e600]: Wa
+                  - generic [ref=e602]: Wrap and Loft 1
+                - generic [ref=e607]: Derive_Pucks
+                - generic [ref=e620]: Replace face 1
+                - generic [ref=e628]: Replace face 2
+                - generic [ref=e636]: toCurve
+                - generic [ref=e644]: Trim curve 1
+                - generic [ref=e652]: Trim curve 2
+                - generic [ref=e660]: CopyFromCurve
+                - generic [ref=e668]: CreateToCurve
+                - generic [ref=e679]:
+                  - generic [ref=e680]: De
+                  - generic [ref=e682]: Deform 1
+                - generic [ref=e683]: "#TransformedFaces"
+                - generic [ref=e694]:
+                  - generic [ref=e695]: WC
+                  - generic [ref=e697]: Wrap Curve 3
+                - generic [ref=e698]: 3D fit spline 1
+                - generic [ref=e706]: Transform 1
+                - generic [ref=e717]:
+                  - generic [ref=e718]: WC
+                  - generic [ref=e720]: Wrap Curve 2
+              - list
+          - generic [ref=e163]:
+            - generic [ref=e165]:
+              - generic [ref=e167] [cursor=pointer]
+              - generic [ref=e170]: Parts (0)
+            - generic [ref=e722]:
+              - generic [ref=e724] [cursor=pointer]
+              - generic [ref=e727]: Surfaces (1)
+            - generic [ref=e732]:
+              - generic [ref=e734] [cursor=pointer]
+              - generic [ref=e737]: Curves (2)
+        - generic [ref=e174]:
+          - generic [ref=e176] [cursor=pointer]
+          - generic [ref=e180]:
+            - generic [ref=e181]:
+              - button [ref=e742] [cursor=pointer]
+              - button [ref=e746] [cursor=pointer]
+              - button [ref=e750] [cursor=pointer]
+            - generic [ref=e754] [cursor=pointer]
+          - generic [ref=e194]:
+            - generic [ref=e759] [cursor=pointer]
+            - generic [ref=e195] [cursor=pointer]
+            - generic [ref=e199] [cursor=pointer]
+            - generic [ref=e203] [cursor=pointer]
+            - generic [ref=e763] [cursor=pointer]
+            - generic [ref=e767] [cursor=pointer]
+            - generic [ref=e207] [cursor=pointer]
+            - generic [ref=e210] [cursor=pointer]
+      - generic [ref=e214]:
+        - img [ref=e217] [cursor=pointer]
+        - generic [ref=e220]:
+          - generic [ref=e221]: Test
+          - generic [ref=e227] [cursor=pointer]: SKH_Test
+          - generic [ref=e235] [cursor=pointer]: Test2
+          - generic [ref=e243] [cursor=pointer]: ONE Testing
+          - generic [ref=e251] [cursor=pointer]: deform
+          - generic [ref=e257] [cursor=pointer]: wrapAndLoft_i
+          - generic [ref=e263] [cursor=pointer]: wrapCurve
+          - generic [ref=e269] [cursor=pointer]: Utils
+          - generic [ref=e275] [cursor=pointer]: curveMappingCore

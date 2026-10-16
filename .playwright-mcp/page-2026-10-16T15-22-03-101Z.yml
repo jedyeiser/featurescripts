@@ -1,0 +1,82 @@
+- generic [ref=e4]:
+  - navigation [ref=e5]:
+    - generic [ref=e6]:
+      - link [ref=e9] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=e10]
+      - generic [ref=e12] [cursor=pointer]
+    - generic [ref=e15]:
+      - generic [ref=e17]:
+        - generic [ref=e18]: CurveWrapping_Full
+        - generic [ref=e19]: Main
+      - generic [ref=e21] [cursor=pointer]
+      - link "Curve Features" [ref=e25] [cursor=pointer]:
+        - /url: /documents?nodeId=51ee18495de21143dcea6ac7&resourceType=folder
+    - generic [ref=e29]:
+      - generic [ref=e32] [cursor=pointer]
+      - generic [ref=e38] [cursor=pointer]
+      - button "Notifications" [ref=e43] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=e51]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=e54] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=e59] [cursor=pointer]
+      - button "Share" [ref=e63] [cursor=pointer]
+      - generic "Help menu" [ref=e65] [cursor=pointer]
+      - button "Jed Yeiser" [ref=e69] [cursor=pointer]
+  - generic [ref=e79]:
+    - generic [ref=e81]:
+      - generic [ref=e82]:
+        - generic [ref=e83]:
+          - generic [ref=e84] [cursor=pointer]
+          - generic [ref=e87] [cursor=pointer]
+          - generic [ref=e90] [cursor=pointer]
+          - generic [ref=e93] [cursor=pointer]
+          - generic [ref=e96] [cursor=pointer]
+          - generic [ref=e99] [cursor=pointer]
+          - generic [ref=e102] [cursor=pointer]
+          - generic [ref=e107] [cursor=pointer]
+        - generic [ref=e111] [cursor=pointer]
+      - generic [ref=e115] [cursor=pointer]
+    - generic [ref=e122]:
+      - generic [ref=e123]:
+        - paragraph [ref=e129]: Loading studio data…
+        - generic [ref=e130]:
+          - generic [ref=e133]:
+            - generic [ref=e135]:
+              - generic [ref=e136]:
+                - generic [ref=e138]:
+                  - button [ref=e140] [cursor=pointer]
+                  - textbox "Filter by name or type" [ref=e145]
+                - generic [ref=e146]:
+                  - generic [ref=e147]: Features (0)
+                  - button [disabled] [ref=e148]
+                  - button [ref=e151] [cursor=pointer]
+                  - button [ref=e154] [cursor=pointer]
+              - generic [ref=e158]:
+                - list
+            - generic [ref=e165]:
+              - generic [ref=e167] [cursor=pointer]
+              - generic [ref=e170]: Parts (0)
+          - generic [ref=e174]:
+            - generic [ref=e176] [cursor=pointer]
+            - generic [ref=e181]:
+              - button [ref=e182] [cursor=pointer]
+              - button [ref=e186] [cursor=pointer]
+              - button [ref=e190] [cursor=pointer]
+            - generic [ref=e194]:
+              - generic [ref=e195] [cursor=pointer]
+              - generic [ref=e199] [cursor=pointer]
+              - generic [ref=e203] [cursor=pointer]
+              - generic [ref=e207] [cursor=pointer]
+              - generic [ref=e210] [cursor=pointer]
+      - generic [ref=e214]:
+        - img [ref=e217] [cursor=pointer]
+        - generic [ref=e220]:
+          - generic [ref=e221]: Test
+          - generic [ref=e227] [cursor=pointer]: SKH_Test
+          - generic [ref=e235] [cursor=pointer]: Test2
+          - generic [ref=e243] [cursor=pointer]: ONE Testing
+          - generic [ref=e251] [cursor=pointer]: deform
+          - generic [ref=e257] [cursor=pointer]: wrapAndLoft_i
+          - generic [ref=e263] [cursor=pointer]: wrapCurve
+          - generic [ref=e269] [cursor=pointer]: Utils
+          - generic [ref=e275] [cursor=pointer]: curveMappingCore
