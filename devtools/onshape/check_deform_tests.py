@@ -10,13 +10,16 @@ usage (repo root): PYTHONPATH=. python devtools/onshape/check_deform_tests.py
 """
 import json
 import math
+import os
 import re
 
 from sync.core.client import OnshapeClient
 
 c = OnshapeClient()
-D, W = "08e8748f2ef24eea16072b75", "e24fbbae7712ef62dd256c89"
-E = [e["id"] for e in c.list_elements(D, W) if e["name"] == "Deform tests"][0]
+D, W = "08e8748f2ef24eea16072b75", "e24fbbae7712ef62dd256c89"   # curveMapping
+if os.environ.get("DEFORM_DOC") == "public":                       # curveMapping_public
+    D, W = "d12583277c42b00c63a9b7b7", "430e0dff82a5ed23ba89b7aa"
+E =[e["id"] for e in c.list_elements(D, W) if e["name"] == "Deform tests"][0]
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 R = 300.0
 

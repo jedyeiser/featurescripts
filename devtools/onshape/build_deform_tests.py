@@ -22,6 +22,8 @@ from devtools.onshape.fsapi import write_feature, delete_feature, cached_tree  #
 
 c = OnshapeClient()
 D, W = "08e8748f2ef24eea16072b75", "e24fbbae7712ef62dd256c89"   # curveMapping (featurescriptSettings.json)
+if os.environ.get("DEFORM_DOC") == "public":                       # curveMapping_public
+    D, W = "d12583277c42b00c63a9b7b7", "430e0dff82a5ed23ba89b7aa"
 STUDIO = "Deform tests"
 ELEMENTS = c.list_elements(D, W)
 studios = {e["name"]: e["id"] for e in ELEMENTS if e["elementType"] == "PARTSTUDIO"}
