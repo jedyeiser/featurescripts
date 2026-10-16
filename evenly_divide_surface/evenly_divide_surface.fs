@@ -279,27 +279,6 @@ function chordLengthParameters(points is array) returns array
     return mapArray(cumulative, function(c) { return c / total; });
 }
 
-/** The largest distance from `samples` evenly spaced points of the wire edge(s) to the surface faces. */
-function deviationFromSurface(context is Context, wireEdge is Query, surfaceFaces is Query, samples is number) returns map
-{
-    var worst = 0 * meter;
-    var at = vector(0, 0, 0) * meter;
-    for (var edge in evaluateQuery(context, wireEdge))
-    {
-        for (var l in evEdgeTangentLines(context, { "edge" : edge, "parameters" : range(0, 1, samples + 1) }))
-        {
-            const d = evDistance(context, { "side0" : l.origin, "side1" : surfaceFaces }).distance;
-            if (d > worst)
-            {
-                worst = d;
-                at = l.origin;
-            }
-        }
-    }
-    return { "value" : worst, "at" : at };
-}
-
-
 // ============================================================================
 // Cutting sections
 // ============================================================================
