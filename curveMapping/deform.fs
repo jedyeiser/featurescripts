@@ -24,10 +24,33 @@ export import(path : "683d867c35fdab9c98d47556", version : "");
 
 export const FaceControlMultiplierBounds = {(unitless) : [2, 3, 10]} as IntegerBoundSpec;
 
-/** `base` alone when there is one item, else `base 1`, `base 2`, ... (idx is 0-based). */
-function numberedName(base is string, idx is number, count is number) returns string
+const NAME_SEPARATOR = "\n"; // also used as a regexp by splitByRegexp
+
+function splitNames(joined is string) returns array
 {
-    return count > 1 ? base ~ " " ~ (idx + 1) : base;
+    return joined == "" ? [] : splitByRegexp(joined, NAME_SEPARATOR);
+}
+
+/**
+ * Editing logic: record the source bodies' names (getProperty works here, not in the feature
+ * body) so the feature can name each deformed result "<source name><suffix>".
+ */
+export function deformEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
+    specifiedParameters is map, hiddenBodies is Query) returns map
+{
+    if (definition.deformMode == DeformMode.FACES)
+    {
+        definition.sourceNames = "";
+        return definition;
+    }
+    var names = [];
+    for (var body in evaluateQuery(context, definition.sourceBody))
+    {
+        var name = getProperty(context, { "entity" : body, "propertyType" : PropertyType.NAME });
+        names = append(names, (name is string && name != "") ? name : "Part");
+    }
+    definition.sourceNames = (size(names) == 0) ? "" : join(names, NAME_SEPARATOR);
+    return definition;
 }
 
 /** Whether to deform a whole body or a user-selected set of faces. */
@@ -40,7 +63,7 @@ export enum DeformMode
 }
 
 
-annotation { "Feature Type Name" : "Deform", "Feature Type Description" : "Takes a solid or surface body, from edges and to edges as input. Wraps the body from the from edges to the to edges" }
+annotation { "Feature Type Name" : "Deform", "Editing Logic Function" : "deformEditLogic","Feature Type Description" : "Takes a solid or surface body, from edges and to edges as input. Wraps the body from the from edges to the to edges" }
 export const deform = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -166,11 +189,12 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
         annotation { "Group Name" : "Naming", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Part name", "Description" : "Name for the deformed bodies (numbered when there are several). Blank leaves them unnamed. The source name cannot be read inside a feature." }
-            definition.bodyName is string;
+            annotation { "Name" : "Name suffix", "Default" : " (deformed)", "Description" : "Appended to each source body's name to name its deformed result. Blank leaves results unnamed." }
+            definition.nameSuffix is string;
 
-            annotation { "Name" : "Mate connector name", "Description" : "Name for the deformed mate connectors (numbered when there are several). Blank leaves them unnamed." }
-            definition.mateConnectorName is string;
+            // Filled by deformEditLogic: source body names, in selection order, joined by NAME_SEPARATOR.
+            annotation { "Name" : "Source names", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            definition.sourceNames is string;
         }
 
         annotation { "Name" : "Debug", "Default" : false }
@@ -669,14 +693,17 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                          qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET)]);
                 unitResults[toString(unitBody)] = unitResult;
 
-                if (definition.bodyName != "" && !isQueryEmpty(context, unitResult))
+                // Names come from deformEditLogic (getProperty is not allowed in a feature body);
+                // only trust them when the count still matches the selection.
+                var sourceNameList = splitNames(definition.sourceNames);
+                if (definition.nameSuffix != "" && size(sourceNameList) == size(unitBodies) && !isQueryEmpty(context, unitResult))
                 {
                     try silent
                     {
                         setProperty(context, {
                             "entities"     : unitResult,
                             "propertyType" : PropertyType.NAME,
-                            "value"        : numberedName(definition.bodyName, unitIdx, size(unitBodies))
+                            "value"        : sourceNameList[unitIdx] ~ definition.nameSuffix
                         });
                     }
                 }
@@ -711,18 +738,6 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 }
 
                 opMateConnector(context, mcId, mcDef);
-
-                if (definition.mateConnectorName != "")
-                {
-                    try silent
-                    {
-                        setProperty(context, {
-                            "entities"     : qCreatedBy(mcId, EntityType.BODY),
-                            "propertyType" : PropertyType.NAME,
-                            "value"        : numberedName(definition.mateConnectorName, mcIdx, size(mcQueries))
-                        });
-                    }
-                }
             }
         }
 
