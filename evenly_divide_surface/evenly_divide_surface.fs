@@ -44,7 +44,7 @@ const SEAM_REACH = 2e-3 * meter;
 const STRIP_SEED_SAMPLES = 9;
 const STRIP_FLOOD_LIMIT = 40;
 /** Strip-edge tracks are refined to this multiple of the surface tolerance (they are projected onto the faces by the split anyway). */
-const STRIP_EDGE_TOLERANCE_FACTOR = 10;
+const STRIP_EDGE_TOLERANCE_FACTOR = 1;
 /** A non-cut edge shorter than STRIP_GAP_LENGTH whose first sample is within STRIP_GAP_REACH of a cut is a gap in the cut. */
 const STRIP_GAP_LENGTH = 1.5e-3 * meter;
 const STRIP_GAP_REACH = 1e-3 * meter;
