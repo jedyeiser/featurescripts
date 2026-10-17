@@ -43,6 +43,8 @@ const SEAM_REACH = 2e-3 * meter;
 /** Samples along a wire used to find the faces a strip starts from, and the most flood steps across edges. */
 const STRIP_SEED_SAMPLES = 9;
 const STRIP_FLOOD_LIMIT = 40;
+/** An edge of the split copy within this of a strip-edge wire (at 3 points) is a cut. */
+const STRIP_CUT_TOLERANCE = 2e-5 * meter;
 /** Most pieces a weak interval is split into in one round. */
 const MAX_SPLIT = 5;
 /** Strip width: 0.1 mm min, 10 mm default, 1 m max. */
@@ -682,11 +684,29 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
         var blocked = qNothing();
         if (size(toolEdges) > 0)
         {
-            const split = opSplitFace(context, stripId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
-                                                                    "edgeTools" : qUnion(toolEdges),
-                                                                    "projectionType" : ProjectionType.NORMAL_TO_TARGET,
-                                                                    "extendToCompletion" : true });
-            blocked = qUnion(split.splittingEdges);
+            opSplitFace(context, stripId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
+                                                      "edgeTools" : qUnion(toolEdges),
+                                                      "projectionType" : ProjectionType.NORMAL_TO_TARGET,
+                                                      "extendToCompletion" : true });
+            // The cut edges: edges of the copy that lie on the strip-edge wires. (The edges opSplitFace reports are not
+            // reliably the copy's own, so they are found by position.)
+            const tools = qUnion(toolEdges);
+            var cuts = [];
+            for (var edge in evaluateQuery(context, qOwnedByBody(copyBody, EntityType.EDGE)))
+            {
+                var onTool = true;
+                for (var l in evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0.25, 0.5, 0.75] }))
+                {
+                    if (evDistance(context, { "side0" : l.origin, "side1" : tools }).distance > STRIP_CUT_TOLERANCE)
+                    {
+                        onTool = false;
+                        break;
+                    }
+                }
+                if (onTool)
+                    cuts = append(cuts, edge);
+            }
+            blocked = qUnion(cuts);
         }
         const copyFaces = qOwnedByBody(copyBody, EntityType.FACE);
         const faceArray = evaluateQuery(context, copyFaces);
