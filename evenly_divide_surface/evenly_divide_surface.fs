@@ -43,6 +43,8 @@ const SEAM_REACH = 2e-3 * meter;
 /** Samples along a wire used to find the faces a strip starts from, and the most flood steps across edges. */
 const STRIP_SEED_SAMPLES = 9;
 const STRIP_FLOOD_LIMIT = 40;
+/** The strip edges are continued straight by this much at both ends so the cut reaches the surface boundary. */
+const STRIP_EXTENSION = 6e-3 * meter;
 /** An edge of the split copy within this of a strip-edge wire (at 3 points) is a cut. */
 const STRIP_CUT_TOLERANCE = 2e-5 * meter;
 /** Most pieces a weak interval is split into in one round. */
@@ -451,6 +453,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         //    sections (not refined separately) and built like wires. A track that lies entirely on the surface boundary
         //    (the strip is clipped there) needs no cut.
         var boundaryWireIds = [];
+        var boundaryExtensions = [];     // per track: ids of the two extension lines (or [])
         for (var j = 0; j < size(tracks); j += 1)
         {
             var allClamped = true;
@@ -460,6 +463,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             if (allClamped)
             {
                 boundaryWireIds = append(boundaryWireIds, undefined);
+                boundaryExtensions = append(boundaryExtensions, []);
                 continue;
             }
             var boundaryRuns = buildRuns(context, sections, wireCount + j, faceList);
@@ -472,6 +476,22 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             const boundaryMade = finishWire(context, id + ("bwire" ~ j), id + ("bproject" ~ j ~ "_"), boundaryRuns, definition.projectWires, faceList);
             scratch = concatenateArrays([scratch, boundaryMade.scratch]);
             boundaryWireIds = append(boundaryWireIds, id + ("bwire" ~ j));
+            // The strip edge stops short of the surface ends (the last complete section): continue it straight along its end
+            // tangents so the cut reaches the boundary (the part beyond the surface projects onto nothing).
+            var extensionIds = [];
+            try
+            {
+                const startLine = evEdgeTangentLine(context, { "edge" : qCreatedBy(boundaryRuns[0].fitId, EntityType.EDGE), "parameter" : 0 });
+                const endLine = evEdgeTangentLine(context, { "edge" : qCreatedBy(boundaryRuns[size(boundaryRuns) - 1].fitId, EntityType.EDGE), "parameter" : 1 });
+                opPolyline(context, id + ("bext" ~ j ~ "a"), { "points" : [startLine.origin - startLine.direction * STRIP_EXTENSION, startLine.origin] });
+                opPolyline(context, id + ("bext" ~ j ~ "b"), { "points" : [endLine.origin, endLine.origin + endLine.direction * STRIP_EXTENSION] });
+                extensionIds = [id + ("bext" ~ j ~ "a"), id + ("bext" ~ j ~ "b")];
+            }
+            catch (e)
+            {
+                println("evenlyDivideSurface: strip edge " ~ j ~ " could not be extended: " ~ toString(e));
+            }
+            boundaryExtensions = append(boundaryExtensions, extensionIds);
         }
 
         var stripNote = "";
@@ -489,6 +509,10 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 for (var j = 0; j < size(tracks); j += 1)
                     if (tracks[j].wire == i && boundaryWireIds[j] != undefined)
                         toolEdges = append(toolEdges, qOwnedByBody(qCreatedBy(boundaryWireIds[j], EntityType.BODY), EntityType.EDGE));
+                for (var j = 0; j < size(tracks); j += 1)
+                    if (tracks[j].wire == i && boundaryWireIds[j] != undefined)
+                        for (var extensionId in boundaryExtensions[j])
+                            toolEdges = append(toolEdges, qOwnedByBody(qCreatedBy(extensionId, EntityType.BODY), EntityType.EDGE));
                 const stripId = id + ("strip" ~ i);
                 const sheet = buildStrip(context, stripId, surfaceFaces, toolEdges, qOwnedByBody(qCreatedBy(id + ("wire" ~ i), EntityType.BODY), EntityType.EDGE));
                 if (sheet == undefined)
@@ -558,6 +582,8 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 else
                 {
                     scratch = append(scratch, qCreatedBy(boundaryWireIds[j], EntityType.BODY));
+                    for (var extensionId in boundaryExtensions[j])
+                        scratch = append(scratch, qCreatedBy(extensionId, EntityType.BODY));
                 }
             }
             if (definition.consumeWires)
