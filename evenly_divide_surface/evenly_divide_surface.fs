@@ -47,7 +47,7 @@ const STRIP_FLOOD_LIMIT = 40;
 const STRIP_GAP_LENGTH = 1.5e-3 * meter;
 const STRIP_GAP_REACH = 1e-3 * meter;
 /** Strips share one copy and one split when the widest strip is at most this fraction of the wire spacing (so no strip can overlap another). */
-const STRIP_SHARE_FRACTION = 0.9;
+const STRIP_SHARE_FRACTION = 0;
 /** A strip larger than this times (width x wire length) is rejected: the cut around it did not close. */
 const STRIP_AREA_LIMIT = 1.5;
 /** Faces of a strip smaller than this are slivers and are dropped. */
