@@ -391,10 +391,8 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         println("evenlyDivideSurface: " ~ summary);
         if (worstOff > surfaceTolerance)
             reportFeatureWarning(context, id, summary ~ (definition.refine ? " Increase the number of cross sections." : " Turn on Refine sections or increase the number of cross sections."));
-        else if (definition.projectWires && projectedRuns < totalRuns)
-            reportFeatureWarning(context, id, summary ~ " The other runs (along a seam or the surface boundary, or whose projection strayed) keep their fitted curve.");
         else
-            reportFeatureInfo(context, id, summary);
+            reportFeatureInfo(context, id, summary ~ (definition.projectWires && projectedRuns < totalRuns ? " The others lie along a seam or the surface boundary, or kept their fitted curve (within the tolerance)." : ""));
     });
 
 
