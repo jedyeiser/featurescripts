@@ -43,6 +43,9 @@ const SEAM_REACH = 2e-3 * meter;
 /** Samples along a wire used to find the faces a strip starts from, and the most flood steps across edges. */
 const STRIP_SEED_SAMPLES = 9;
 const STRIP_FLOOD_LIMIT = 40;
+/** A non-cut edge shorter than STRIP_GAP_LENGTH whose first sample is within STRIP_GAP_REACH of a cut is a gap in the cut. */
+const STRIP_GAP_LENGTH = 1.5e-3 * meter;
+const STRIP_GAP_REACH = 1e-3 * meter;
 /** A strip larger than this times (width x wire length) is rejected: the cut around it did not close. */
 const STRIP_AREA_LIMIT = 1.5;
 /** Faces of a strip smaller than this are slivers and are dropped. */
@@ -743,12 +746,17 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
             // edges opSplitFace reports also include every existing edge the faces share, which would over-block the flood.)
             const tools = qUnion(toolEdges);
             var cuts = [];
+            var gaps = [];
             for (var edge in evaluateQuery(context, qOwnedByBody(copyBody, EntityType.EDGE)))
             {
                 var onTool = true;
+                var nearest = undefined;
                 for (var l in evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0.25, 0.5, 0.75] }))
                 {
-                    if (evDistance(context, { "side0" : l.origin, "side1" : tools }).distance > STRIP_CUT_TOLERANCE)
+                    const distance = evDistance(context, { "side0" : l.origin, "side1" : tools }).distance;
+                    if (nearest == undefined)
+                        nearest = distance;
+                    if (distance > STRIP_CUT_TOLERANCE)
                     {
                         onTool = false;
                         break;
@@ -756,8 +764,12 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
                 }
                 if (onTool)
                     cuts = append(cuts, edge);
+                else if (nearest < STRIP_GAP_REACH && evLength(context, { "entities" : edge }) < STRIP_GAP_LENGTH)
+                    gaps = append(gaps, edge);     // a sliver edge right beside a cut: the cut did not quite cross it
             }
-            blocked = qUnion(alsoReportedEdges ? concatenateArrays([cuts, split.splittingEdges]) : cuts);
+            // Cut edges and the gaps beside them stop the flood. (The edges opSplitFace reports also include every existing
+            // shared edge, which over-blocks on a closed surface; they are only a second-attempt fallback.)
+            blocked = qUnion(concatenateArrays([cuts, gaps, alsoReportedEdges ? split.splittingEdges : []]));
         }
         const copyFaces = qOwnedByBody(copyBody, EntityType.FACE);
         const faceArray = evaluateQuery(context, copyFaces);

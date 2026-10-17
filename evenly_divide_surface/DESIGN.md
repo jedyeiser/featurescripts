@@ -79,3 +79,30 @@ Breakdown at 5 wires: end probes ~3.6 s (fixed), 0.063 s per section (~3.9 s for
 - Tools: compile notices for the Feature Studio can be read WITHOUT the sync login: Playwright -> open the Feature Studio tab ->
   click `.notice-pane-toggle-button` -> read `.notices-container table.feature-script-notice-table` (the sync tool's own check needs
   `! python -m sync.main login`, which expires within hours). Feature banners: double-click the feature and read the dialog banner.
+## Strips (2026-10-17, built)
+User decisions: width measured along the surface perpendicular to the wire; strips run to the surface boundary; an edge wire on a
+half surface is clipped (strip = half width); overlapping strips stay SEPARATE bodies; "Consume wires" (default on) and
+"Consume surface" (default off); thicken optional (mid-plane / opposite direction / second direction thickness).
+- Strip edges = two more "tracks" per strip, computed in every section: the wire's division point +/- width/2 of ARC LENGTH along
+  the section curve (open sections: clamped at the surface boundary; a track entirely clamped needs no cut). They go through the same
+  per-face run builder, refinement and projection as the wires (refined with them: a strip edge fitted from sections refined only for the
+  wire strayed 0.9 mm on the ridge).
+- Per strip: `opExtractSurface` copy of the surface -> `opSplitFace` along the two strip-edge wires (each continued 6 mm straight
+  beyond both ends so the cut reaches the surface boundary) -> cut edges found BY POSITION (edges of the copy lying on the strip-edge
+  wires, 0.05 mm) -> flood from the faces the wire runs on across every edge that is not a cut (explicit face-by-face BFS; query-algebra
+  flooding leaked) -> extract the faces (zero-area slivers dropped) as a sheet -> optional `opThicken` -> name `even_divide_strip_<i>`.
+  A fresh copy per strip keeps overlapping strips apart. Attempt 2 also blocks the edges opSplitFace reports (they include every
+  existing shared edge on the full surface, so they over-block there but rescued S4 strip 1).
+- Guard: a strip whose area is more than 1.5 x (width x wire length) is rejected (an incomplete cut let the flood escape).
+- Measured (devtools/onshape/build_evenly_divide_tests.py, DIVIDE_PHASE2=1; strips_eval-style area/volume checks): S3 half 12 mm
+  sheets 5/5 exact (10,550 / 21,101 / 21,125 / 21,134 / 10,567 mm2 = width x 1760 mm; edge strips clipped to half); S4 full 10 mm
+  mid-plane 2 mm: 5/5 built, volumes = area x 2; S6 full 30 mm 5/5 exact; S5 full 60 mm overlapping 5/5 separate bodies (strips 2, 3 about 7%
+  under nominal); S1/S2 override arithmetic confirmed by volume (width/thickness overrides, skip, second direction); S8 consume wires +
+  surface verified. Cost: ~30-50 s per 5-strip case at 5 wires.
+- LIMITS: (1) thicken fails ("THICKEN_FAILED") on strips with ~60 degree creases between adjacent faces (S4/S2 strips 1 and 4 on the
+  full surface); per-face thicken + union is non-manifold (slabs only touch along the crease): the strip stays a sheet with a warning.
+  (2) S7 (45 mm on the full surface): strips 2 and 3 (wires on the lower half) rejected: the cut near the tail does not close;
+  diagnosis in flood_eval-style replay: the flood leaves through a big face the cut enters but never fully crosses (per-face
+  opSplitFace calls did NOT fix it). Next ideas: complete the cut with extra projected tool edges across the tail faces, or classify faces
+  by section-arc coordinate instead of flooding.
+- Debug aid: "Keep section curves" also keeps and names the strip edges (`strip_edge_<wire>_a|_b`).
