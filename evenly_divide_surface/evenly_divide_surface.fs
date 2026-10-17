@@ -306,6 +306,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         //    intervals, so no search is needed), each sample is measured against only the faces whose bounding box contains
         //    it, and after the first round only intervals near new sections are re-measured.
         const wireCount = definition.divisions;     // the sections' points also hold the strip-edge tracks after these
+        const trackCount = size(sections[0].points);
         var intervalDev = makeArray(size(sections) - 1, 0 * meter);   // worst deviation seen in each interval
         var dirty = makeArray(size(sections) - 1, true);              // intervals to (re)measure this round
         var wireRuns = [];          // per division: its runs, each with the id and parameters of its fitted curve
@@ -315,7 +316,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         {
             wireRuns = [];
             fitIds = [];
-            for (var i = 0; i < wireCount; i += 1)
+            for (var i = 0; i < trackCount; i += 1)
             {
                 var runs = buildRuns(context, sections, i, faceList);
                 for (var r = 0; r < size(runs); r += 1)
@@ -332,7 +333,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             for (var j = 0; j < size(intervalDev); j += 1)
                 if (dirty[j])
                     intervalDev[j] = 0 * meter;
-            for (var i = 0; i < wireCount; i += 1)
+            for (var i = 0; i < trackCount; i += 1)
             {
                 for (var run in wireRuns[i])
                 {
@@ -464,15 +465,11 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             {
                 boundaryWireIds = append(boundaryWireIds, undefined);
                 boundaryExtensions = append(boundaryExtensions, []);
+                for (var run in wireRuns[wireCount + j])
+                    scratch = append(scratch, qCreatedBy(run.fitId, EntityType.BODY));
                 continue;
             }
-            var boundaryRuns = buildRuns(context, sections, wireCount + j, faceList);
-            for (var r = 0; r < size(boundaryRuns); r += 1)
-            {
-                const boundaryFitId = id + ("bfit" ~ j ~ "_" ~ r);
-                boundaryRuns[r].fitId = boundaryFitId;
-                boundaryRuns[r].params = fitRun(context, boundaryFitId, boundaryRuns[r].pts);
-            }
+            const boundaryRuns = wireRuns[wireCount + j];     // fitted and refined with the wires
             const boundaryMade = finishWire(context, id + ("bwire" ~ j), id + ("bproject" ~ j ~ "_"), boundaryRuns, definition.projectWires, faceList);
             scratch = concatenateArrays([scratch, boundaryMade.scratch]);
             boundaryWireIds = append(boundaryWireIds, id + ("bwire" ~ j));
