@@ -31,8 +31,16 @@ const WIRE_CHECK_SAMPLES = 2;
 const WIRE_CHECK_BOX_INFLATE = 2e-3 * meter;
 /** Most pieces a weak interval is split into in one round. */
 const MAX_SPLIT = 5;
-/** Bounds of the surface tolerance input, in millimeters (a plain number: a length input would show the document unit, e.g. meters). */
-export const SurfaceToleranceBounds = { (unitless) : [0.001, 0.01, 1] } as RealBoundSpec;
+/** Bounds of the surface tolerance input: 1e-3 mm min, 0.01 mm default, 1 mm max (meter entry [min, default, max]; the other units give the default, as std TOLERANCE_BOUND does). */
+export const SurfaceToleranceBounds =
+{
+    (meter)      : [1e-6, 1e-5, 1e-3],
+    (centimeter) : 1e-3,
+    (millimeter) : 1e-2,
+    (inch)       : 4e-4,
+    (foot)       : 3e-5,
+    (yard)       : 1e-5
+} as LengthBoundSpec;
 /** Rounds of adding sections, and the most sections the refinement may reach. */
 const MAX_REFINE_ROUNDS = 5;
 const MAX_SECTIONS = 600;
@@ -77,8 +85,8 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                      "Description" : "On: the first and last wire lie on the symmetry plane. Off: they start a half step away from it." }
         definition.onSymmetryPlane is boolean;
 
-        annotation { "Name" : "Surface tolerance (mm)", "Description" : "How far a wire may stray from the surface between two cross sections, in millimeters. Larger values regenerate faster." }
-        isReal(definition.surfaceToleranceMm, SurfaceToleranceBounds);
+        annotation { "Name" : "Surface tolerance", "Description" : "How far a wire may stray from the surface between two cross sections. Larger values regenerate faster." }
+        isLength(definition.surfaceTolerance, SurfaceToleranceBounds);
 
         annotation { "Name" : "Refine sections", "Default" : true,
                      "Description" : "Add cross sections where a wire would otherwise stray from the surface (the number above is the starting count)." }
@@ -88,7 +96,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         definition.keepSections is boolean;
     }
     {
-        const surfaceTolerance = definition.surfaceToleranceMm * millimeter;
+        const surfaceTolerance = definition.surfaceTolerance;
         const surfaceFaces = qOwnedByBody(definition.surface, EntityType.FACE);
         const wireEdges = qUnion([qEntityFilter(definition.crossWire, EntityType.EDGE),
                                   qOwnedByBody(qEntityFilter(definition.crossWire, EntityType.BODY), EntityType.EDGE)]);
