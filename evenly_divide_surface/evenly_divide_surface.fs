@@ -43,6 +43,8 @@ const SEAM_REACH = 2e-3 * meter;
 /** Samples along a wire used to find the faces a strip starts from, and the most flood steps across edges. */
 const STRIP_SEED_SAMPLES = 9;
 const STRIP_FLOOD_LIMIT = 40;
+/** A strip larger than this times (width x wire length) is rejected: the cut around it did not close. */
+const STRIP_AREA_LIMIT = 1.5;
 /** Faces of a strip smaller than this are slivers and are dropped. */
 const STRIP_MIN_FACE_AREA = 1e-8 * meter ^ 2;
 /** The strip edges are continued straight by this much at both ends so the cut reaches the surface boundary. */
@@ -519,6 +521,19 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                     stripWarnings = append(stripWarnings, "Strip " ~ i ~ " could not be built.");
                     continue;
                 }
+                // A flood that escaped through an incomplete cut makes a strip far larger than width x length: do not keep it.
+                var wireLength = 0 * meter;
+                for (var wireEdge in evaluateQuery(context, qOwnedByBody(qCreatedBy(id + ("wire" ~ i), EntityType.BODY), EntityType.EDGE)))
+                    wireLength += evLength(context, { "entities" : wireEdge });
+                const stripArea = evArea(context, { "entities" : sheet });
+                const expectedArea = stripSettings.plan[i].width * wireLength;
+                if (stripArea > STRIP_AREA_LIMIT * expectedArea)
+                {
+                    println("evenlyDivideSurface: strip " ~ i ~ " area " ~ roundToPrecision(stripArea / (millimeter ^ 2), 0) ~ " mm2 against about " ~ roundToPrecision(expectedArea / (millimeter ^ 2), 0) ~ " mm2");
+                    opDeleteBodies(context, stripId + "reject", { "entities" : sheet });
+                    stripWarnings = append(stripWarnings, "Strip " ~ i ~ " was not built: the cut around it did not close (its area was more than " ~ STRIP_AREA_LIMIT ~ " times width x length). Try a narrower strip.");
+                    continue;
+                }
                 var stripBody = sheet;
                 if (definition.thickenStrips)
                 {
@@ -709,35 +724,10 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
         var blocked = qNothing();
         if (size(toolEdges) > 0)
         {
-            // Split face by face: each tool edge is given only to the face it lies on, so it is projected onto that face and
-            // nothing else (projecting a whole wire onto every face at once leaves incomplete imprints at creases).
-            const copyFaceArray = evaluateQuery(context, qOwnedByBody(copyBody, EntityType.FACE));
-            const copyFaceQuery = qOwnedByBody(copyBody, EntityType.FACE);
-            var edgesOfFace = makeArray(size(copyFaceArray), []);
-            for (var tool in toolEdges)
-            {
-                for (var toolEdge in evaluateQuery(context, tool))
-                {
-                    const middle = evEdgeTangentLine(context, { "edge" : toolEdge, "parameter" : 0.5 }).origin;
-                    const owner = evDistance(context, { "side0" : middle, "side1" : copyFaceQuery }).sides[1].index;
-                    edgesOfFace[owner] = append(edgesOfFace[owner], toolEdge);
-                }
-            }
-            for (var k = 0; k < size(copyFaceArray); k += 1)
-            {
-                if (size(edgesOfFace[k]) == 0)
-                    continue;
-                try
-                {
-                    opSplitFace(context, stripId + ("split" ~ k), { "faceTargets" : copyFaceArray[k], "edgeTools" : qUnion(edgesOfFace[k]),
-                                                                    "projectionType" : ProjectionType.NORMAL_TO_TARGET,
-                                                                    "extendToCompletion" : true });
-                }
-                catch (splitError)
-                {
-                    println("evenlyDivideSurface: a face could not be split for a strip: " ~ toString(splitError));
-                }
-            }
+            opSplitFace(context, stripId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
+                                                      "edgeTools" : qUnion(toolEdges),
+                                                      "projectionType" : ProjectionType.NORMAL_TO_TARGET,
+                                                      "extendToCompletion" : true });
             // The cut edges: edges of the copy that lie on the strip-edge wires or their extensions, found by position. (The
             // edges opSplitFace reports also include every existing edge the faces share, which would over-block the flood.)
             const tools = qUnion(toolEdges);
