@@ -572,16 +572,34 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                             thickness2 = second;
                         }
                     }
-                    try
+                    // Thickening across a sharp fold can fail when both sides are thickened at once (the offsets collide on the
+                    // concave side). Fall back to the whole thickness on one side, front first.
+                    const attempts = [{ "t1" : thickness1, "t2" : thickness2, "note" : "" },
+                                      { "t1" : thickness, "t2" : 0 * meter, "note" : "was thickened to its front side only (the requested thickening failed across a sharp fold)" },
+                                      { "t1" : 0 * meter, "t2" : thickness, "note" : "was thickened to its back side only (the requested thickening failed across a sharp fold)" }];
+                    var thickened = false;
+                    for (var attempt in attempts)
                     {
-                        opThicken(context, stripId + "thicken", { "entities" : sheet, "thickness1" : thickness1, "thickness2" : thickness2, "keepTools" : false });
-                        stripBody = qCreatedBy(stripId + "thicken", EntityType.BODY);
+                        if (thickened)
+                            break;
+                        if (attempt.note != "" && thickness1 == thickness && thickness2 == 0 * meter && attempt.t1 == thickness)
+                            continue;      // that is what was just tried
+                        try
+                        {
+                            opThicken(context, stripId + ("thicken" ~ (attempt.note == "" ? "" : (attempt.t1 > 0 * meter ? "F" : "B"))),
+                                      { "entities" : sheet, "thickness1" : attempt.t1, "thickness2" : attempt.t2, "keepTools" : false });
+                            stripBody = qCreatedBy(stripId + ("thicken" ~ (attempt.note == "" ? "" : (attempt.t1 > 0 * meter ? "F" : "B"))), EntityType.BODY);
+                            thickened = true;
+                            if (attempt.note != "")
+                                stripWarnings = append(stripWarnings, "Strip " ~ i ~ " " ~ attempt.note ~ ".");
+                        }
+                        catch (e)
+                        {
+                            println("evenlyDivideSurface: strip " ~ i ~ " thickening attempt failed: " ~ toString(e));
+                        }
                     }
-                    catch (e)
-                    {
-                        println("evenlyDivideSurface: strip " ~ i ~ " could not be thickened: " ~ toString(e));
+                    if (!thickened)
                         stripWarnings = append(stripWarnings, "Strip " ~ i ~ " could not be thickened and stays a surface.");
-                    }
                 }
                 if (definition.stripPrefix != "")
                 {

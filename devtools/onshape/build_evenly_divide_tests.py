@@ -112,7 +112,7 @@ FRONT = 'qCreatedBy(makeId("Front"), EntityType.FACE)'
 
 
 def divide(name, surface_id, divisions, on_plane, extra=()):
-    if name.split()[0] not in os.environ.get("DIVIDE_CASES", "E1,E2,E3,E4,S1,S2,S3,S4,S5,S6,S7,S8").split(","):
+    if name.split()[0] not in os.environ.get("DIVIDE_CASES", "E1,E2,E3,E4,S1,S2,S3,S4,S5,S6,S7,S8,S9").split(","):
         return None
     given = {p["parameterId"]: p for p in [
         qids("surface", [surface_id]), qids("crossWire", [wire]), q("symmetryPlane", FRONT),
@@ -131,7 +131,7 @@ def divide(name, surface_id, divisions, on_plane, extra=()):
     return write({"btType": "BTMFeature-134", "featureType": "evenlyDivideSurface", "name": name, "namespace": NS, "parameters": params})
 
 
-WANT = os.environ.get("DIVIDE_CASES", "E1,E2,E3,E4,S1,S2,S3,S4,S5,S6,S7,S8").split(",")   # which cases to build (run strip cases one at a time when debugging)
+WANT = os.environ.get("DIVIDE_CASES", "E1,E2,E3,E4,S1,S2,S3,S4,S5,S6,S7,S8,S9").split(",")   # which cases to build (run strip cases one at a time when debugging)
 
 if "E1" in WANT:
     divide("E1 full, 5 divisions, wires on symmetry plane", full, 5, True)
@@ -174,7 +174,7 @@ if os.environ.get("DIVIDE_PHASE2") == "1":
     # S3 half surface, 12 mm SURFACE strips (not thickened), wires kept: 5 sheet strips; the two edge strips (wires on the
     #    symmetry plane) are clipped to the half, so about half the area of the others
     divide("S3 half sheet strips, width 12, wires kept", half, 5, True, [
-        b("createStrips", True), num("stripWidth", "12 mm"), b("thickenStrips", False), b("consumeWires", False), b("keepSections", True)])
+        b("createStrips", True), num("stripWidth", "12 mm"), b("thickenStrips", False), b("consumeWires", False)])
     # S4 full surface, 10 mm strips thickened 2 mm mid-plane: 5 solids of about area x 2 mm
     divide("S4 full solid strips, width 10, thickness 2 mid-plane", full, 5, True, [
         b("createStrips", True), num("stripWidth", "10 mm"), b("thickenStrips", True), num("stripThickness", "2 mm"),
@@ -187,4 +187,8 @@ if os.environ.get("DIVIDE_PHASE2") == "1":
     divide("S7 full sheet strips, width 45", full, 5, True, [
         b("createStrips", True), num("stripWidth", "45 mm"), b("thickenStrips", False), b("consumeWires", False), b("keepSections", os.environ.get("DIVIDE_KEEP") == "1")])    # S8 half surface, 12 mm sheet strips, wires AND the input surface consumed: only the 5 strips remain
     divide("S8 half sheet strips, wires and surface consumed", half, 5, True, [
-        b("createStrips", True), num("stripWidth", "12 mm"), b("thickenStrips", False), b("consumeWires", True), b("consumeSurface", True)])
+        b("createStrips", True), num("stripWidth", "12 mm"), b("thickenStrips", False), b("consumeWires", True), b("consumeSurface", True)])    # S9 the real use: full surface, 16 wires, 5 mm strips 0.5 mm thick (mid-plane), wires consumed
+    #    expected: strip area about 5 x 1760 = 8800 mm2, volume about 4400 mm3 each (strips that cross a 60 degree crease stay sheets)
+    divide("S9 full 16 strips, width 5, thickness 0.5 mid-plane, wires consumed", full, 16, True, [
+        b("createStrips", True), num("stripWidth", "5 mm"), b("thickenStrips", True), num("stripThickness", "0.5 mm"),
+        b("stripMidplane", True), b("consumeWires", True)])

@@ -101,8 +101,9 @@ half surface is clipped (strip = half width); overlapping strips stay SEPARATE b
   surface verified. Cost: ~30-50 s per 5-strip case at 5 wires.
 - LIMITS: (1) thicken fails ("THICKEN_FAILED") on strips with ~60 degree creases between adjacent faces (S4/S2 strips 1 and 4 on the
   full surface); per-face thicken + union is non-manifold (slabs only touch along the crease): the strip stays a sheet with a warning.
-  (2) S7 (45 mm on the full surface): strips 2 and 3 (wires on the lower half) rejected: the cut near the tail does not close;
-  diagnosis in flood_eval-style replay: the flood leaves through a big face the cut enters but never fully crosses (per-face
-  opSplitFace calls did NOT fix it). Next ideas: complete the cut with extra projected tool edges across the tail faces, or classify faces
-  by section-arc coordinate instead of flooding.
+  (2) FIXED 2026-10-17: wide strips on the full surface (45 mm) leaked at the surface END: the 6 mm extension projects onto only part of
+  the last sliver face, leaving a gap ~0.3 mm from the boundary (found by tracing the flood's parent chain in an eval replay). The
+  flood now also stops at "gap" edges: non-cut edges shorter than 1.5 mm whose first sample is within 1 mm of a cut. S7 45 mm: 5/5
+  exact (79.1-79.3k mm2); per-face opSplitFace calls did not help and were reverted. Remaining: S5 (60 mm) strips 2, 3 are ~7% under
+  nominal area (98.5k vs 105.5k), cause not found.
 - Debug aid: "Keep section curves" also keeps and names the strip edges (`strip_edge_<wire>_a|_b`).
