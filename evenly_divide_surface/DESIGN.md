@@ -38,7 +38,23 @@ Feature file: `evenly_divide_surface.fs` (feature `evenlyDivideSurface`, FS 3083
 ## Open / next
 - Phase 2: strip width, thickness (mid-plane / second direction), overrides array, "consume wires" boolean (default true) --
   not built; with no strips the wires are the output.
-- Performance: ~30 s regen per case (~400 ops: probes + sections). Ideas: fewer bisection probes, cheaper initial count, keep
-  planes between refinement rounds, derive section points without building every intersection wire.
+- Performance: see "Performance" below; remaining ideas: cheaper end probes, keep planes between refinement rounds, derive
+  section points without building every intersection wire, 1 opFitSpline per round for all wires.
 - Wire numbering / direction and naming of the output wires are not decided.
 - The first/last section stops ~1.3 mm short of the surface end (complete-section margin).
+
+## Performance (2026-10-17, `devtools/onshape/bench_evenly_divide.py`, full surface, seconds per regen)
+Two reviewers (op count; evaluation cost) were briefed read-only; their lists overlapped and were merged. Done, in order:
+1. Refinement re-checks: 2 samples inside each interval placed with the spline's own parameters (no nearest-point search),
+   `arcLengthParameterization:false`, face-local `evDistance` (bounding boxes, exact within the inflation), only intervals
+   next to new sections re-measured after round 0, weak intervals split by sqrt(error/tol) (square law: near a face seam the
+   error only halves per round; rounds cost far more than sections).
+2. Local path evaluator (`pathEvaluator`/`evaluatePath`): edge lengths once per section, one `evEdgeTangentLines` per edge touched
+   (std `evPathTangentLines` recomputes lengths every call and does one kernel call per parameter), plus regula-falsi early exit.
+| case | before | after |
+|---|---|---|
+| 5 wires, 60 sections, refine, 0.01 mm | 17.4 | ~10 (12.4 off-plane) |
+| 16 wires, same | 46.1 | ~15 |
+| 16 wires, 0.1 mm tolerance | | 10.3 (8.7 with 30 sections, 6.3 without refine) |
+Breakdown at 5 wires: end probes ~3.6 s (fixed), 0.063 s per section (~3.9 s for 60), refinement ~5 s. Not done: reviewer item
+"cheaper probe completeness test / fewer bisection steps" (~0.5-1 s), incremental final verification pass.

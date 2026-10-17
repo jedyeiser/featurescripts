@@ -70,7 +70,7 @@ def feature(name, divisions, sections, refine, tol_mm, on_plane=True):
     given = {p["parameterId"]: p for p in [
         qids("surface", [full]), qids("crossWire", [wire]), q("symmetryPlane", 'qCreatedBy(makeId("Front"), EntityType.FACE)'),
         num("divisions", str(divisions), True), num("sections", str(sections), True), boolean("onSymmetryPlane", on_plane),
-        boolean("refine", refine), num("surfaceTolerance", "%g mm" % tol_mm)]}
+        boolean("refine", refine), num("surfaceToleranceMm", "%g" % tol_mm)]}
     params = []
     for p in SPEC["parameters"]:
         pid = p["parameterId"]

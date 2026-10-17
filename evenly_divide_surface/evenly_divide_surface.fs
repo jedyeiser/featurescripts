@@ -29,8 +29,8 @@ const WIRE_CHECK_SAMPLES = 2;
 const WIRE_CHECK_BOX_INFLATE = 2e-3 * meter;
 /** Most pieces a weak interval is split into in one round. */
 const MAX_SPLIT = 5;
-/** Bounds of the surface tolerance input: 0.001 - 0.01 (default) - 1 mm. */
-export const SurfaceToleranceBounds = { (meter) : [1e-6, 1e-5, 1e-3], (millimeter) : 0.001, (centimeter) : 0.0001, (inch) : 0.00004 } as LengthBoundSpec;
+/** Bounds of the surface tolerance input, in millimeters (a plain number: a length input would show the document unit, e.g. meters). */
+export const SurfaceToleranceBounds = { (unitless) : [0.001, 0.01, 1] } as RealBoundSpec;
 /** Rounds of adding sections, and the most sections the refinement may reach. */
 const MAX_REFINE_ROUNDS = 5;
 const MAX_SECTIONS = 600;
@@ -75,8 +75,8 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                      "Description" : "On: the first and last wire lie on the symmetry plane. Off: they start a half step away from it." }
         definition.onSymmetryPlane is boolean;
 
-        annotation { "Name" : "Surface tolerance", "Description" : "How far a wire may stray from the surface between two cross sections. Larger values regenerate faster." }
-        isLength(definition.surfaceTolerance, SurfaceToleranceBounds);
+        annotation { "Name" : "Surface tolerance (mm)", "Description" : "How far a wire may stray from the surface between two cross sections, in millimeters. Larger values regenerate faster." }
+        isReal(definition.surfaceToleranceMm, SurfaceToleranceBounds);
 
         annotation { "Name" : "Refine sections", "Default" : true,
                      "Description" : "Add cross sections where a wire would otherwise stray from the surface (the number above is the starting count)." }
@@ -86,6 +86,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         definition.keepSections is boolean;
     }
     {
+        const surfaceTolerance = definition.surfaceToleranceMm * millimeter;
         const surfaceFaces = qOwnedByBody(definition.surface, EntityType.FACE);
         const wireEdges = qUnion([qEntityFilter(definition.crossWire, EntityType.EDGE),
                                   qOwnedByBody(qEntityFilter(definition.crossWire, EntityType.BODY), EntityType.EDGE)]);
@@ -138,7 +139,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         //    section points delimit the intervals, so no search is needed), each sample is measured against only the faces
         //    whose bounding box contains it, and after the first round only intervals near new sections are re-measured.
         const wireCount = size(sections[0].points);
-        const faceBoxes = surfaceFaceBoxes(context, surfaceFaces, max(2 * definition.surfaceTolerance, WIRE_CHECK_BOX_INFLATE));
+        const faceBoxes = surfaceFaceBoxes(context, surfaceFaces, max(2 * surfaceTolerance, WIRE_CHECK_BOX_INFLATE));
         var wireIds = [];
         var intervalDev = makeArray(size(sections) - 1, 0 * meter);   // worst deviation seen in each interval
         var dirty = makeArray(size(sections) - 1, true);              // intervals to (re)measure this round
@@ -191,7 +192,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             for (var j = 0; j < size(intervalDev); j += 1)
             {
                 roundWorst = max(roundWorst, intervalDev[j]);
-                if (intervalDev[j] > definition.surfaceTolerance)
+                if (intervalDev[j] > surfaceTolerance)
                     weakCount += 1;
             }
             println("evenlyDivideSurface: round " ~ rounds ~ ": " ~ size(sections) ~ " sections, " ~ weakCount ~ " weak intervals, worst " ~
@@ -212,9 +213,9 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 if (j == size(sections) - 1)
                     break;
                 var added = 0;
-                if (intervalDev[j] > definition.surfaceTolerance)
+                if (intervalDev[j] > surfaceTolerance)
                 {
-                    const pieces = min(MAX_SPLIT, max(2, ceil(sqrt(intervalDev[j] / definition.surfaceTolerance) * 1.1)));
+                    const pieces = min(MAX_SPLIT, max(2, ceil(sqrt(intervalDev[j] / surfaceTolerance) * 1.1)));
                     for (var p = 1; p < pieces; p += 1)
                     {
                         const u = sections[j].u + (sections[j + 1].u - sections[j].u) * p / pieces;
@@ -281,7 +282,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                         (closedCount > 0 ? ", closed sections" : ", open sections") ~
                         "; widest gap to the surface " ~ roundToPrecision(worstOff / millimeter, 4) ~ " mm.";
         println("evenlyDivideSurface: " ~ summary);
-        if (worstOff > definition.surfaceTolerance)
+        if (worstOff > surfaceTolerance)
             reportFeatureWarning(context, id, summary ~ (definition.refine ? " Increase the number of cross sections." : " Turn on Refine sections or increase the number of cross sections."));
         else
             reportFeatureInfo(context, id, summary);
