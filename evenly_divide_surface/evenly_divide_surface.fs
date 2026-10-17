@@ -470,7 +470,6 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             const boundaryMade = finishWire(context, id + ("bwire" ~ j), id + ("bproject" ~ j ~ "_"), boundaryRuns, definition.projectWires, faceList);
             scratch = concatenateArrays([scratch, boundaryMade.scratch]);
             boundaryWireIds = append(boundaryWireIds, id + ("bwire" ~ j));
-            scratch = append(scratch, qCreatedBy(id + ("bwire" ~ j), EntityType.BODY));
         }
 
         var stripNote = "";
@@ -542,8 +541,23 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             }
             // The strip edges are construction geometry; the wires go too when asked (only those whose strip was built).
             for (var j = 0; j < size(boundaryWireIds); j += 1)
-                if (boundaryWireIds[j] != undefined)
+            {
+                if (boundaryWireIds[j] == undefined)
+                    continue;
+                if (definition.keepSections)
+                {
+                    // Debug aid: the strip edges are kept and named too.
+                    try silent
+                    {
+                        setProperty(context, { "entities" : qCreatedBy(boundaryWireIds[j], EntityType.BODY), "propertyType" : PropertyType.NAME,
+                                               "value" : "strip_edge_" ~ tracks[j].wire ~ (tracks[j].side < 0 ? "_a" : "_b") });
+                    }
+                }
+                else
+                {
                     scratch = append(scratch, qCreatedBy(boundaryWireIds[j], EntityType.BODY));
+                }
+            }
             if (definition.consumeWires)
                 for (var i in consumed)
                     scratch = append(scratch, qCreatedBy(id + ("wire" ~ i), EntityType.BODY));

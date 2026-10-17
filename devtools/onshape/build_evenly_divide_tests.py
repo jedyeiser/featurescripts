@@ -162,3 +162,15 @@ if os.environ.get("DIVIDE_PHASE2") == "1":
         b("createStrips", True), num("stripWidth", "10 mm"), num("stripThickness", "1 mm"), b("stripMidplane", False), b("stripFlip", True),
         b("stripSecondDirection", True), num("stripThickness2", "0.5 mm"), b("consumeWires", False),
         overrides(override(0, thickness="3 mm"), override(0, width="15 mm"))])
+    # ---- strip geometry ----
+    # S3 half surface, 12 mm SURFACE strips (not thickened), wires kept: 5 sheet strips; the two edge strips (wires on the
+    #    symmetry plane) are clipped to the half, so about half the area of the others
+    divide("S3 half sheet strips, width 12, wires kept", half, 5, True, [
+        b("createStrips", True), num("stripWidth", "12 mm"), b("thickenStrips", False), b("consumeWires", False), b("keepSections", True)])
+    # S4 full surface, 10 mm strips thickened 2 mm mid-plane: 5 solids of about area x 2 mm
+    divide("S4 full solid strips, width 10, thickness 2 mid-plane", full, 5, True, [
+        b("createStrips", True), num("stripWidth", "10 mm"), b("thickenStrips", True), num("stripThickness", "2 mm"),
+        b("stripMidplane", True), b("consumeWires", False)])
+    # S5 full surface, 60 mm strips (wire spacing is about 44 mm): the strips overlap and stay separate bodies
+    divide("S5 full overlapping sheet strips, width 60", full, 5, True, [
+        b("createStrips", True), num("stripWidth", "60 mm"), b("thickenStrips", False), b("consumeWires", False)])
