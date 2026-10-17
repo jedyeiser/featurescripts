@@ -152,6 +152,9 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                      "Description" : "Wires are named prefix + index, 0 at the start point (the uppermost crossing of the symmetry plane). Blank leaves them unnamed." }
         definition.wirePrefix is string;
 
+        annotation { "Name" : "Debug stage", "Default" : 99, "UIHint" : UIHint.ALWAYS_HIDDEN }
+        isInteger(definition.debugStage, { (unitless) : [0, 99, 99] } as IntegerBoundSpec);
+
         annotation { "Name" : "Keep section curves", "Default" : false }
         definition.keepSections is boolean;
 
@@ -466,6 +469,14 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         var boundaryExtensions = [];     // per track: ids of the two extension lines (or [])
         for (var j = 0; j < size(tracks); j += 1)
         {
+            if (definition.debugStage < 2)
+            {
+                boundaryWireIds = append(boundaryWireIds, undefined);
+                boundaryExtensions = append(boundaryExtensions, []);
+                for (var run in wireRuns[wireCount + j])
+                    scratch = append(scratch, qCreatedBy(run.fitId, EntityType.BODY));
+                continue;
+            }
             var allClamped = true;
             for (var s in sections)
                 if (!s.clamped[j])
@@ -503,7 +514,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         var stripNote = "";
         var stripWarnings = [];
         var builtStrips = 0;
-        if (definition.createStrips)
+        if (definition.createStrips && definition.debugStage >= 3)
         {
             stripWarnings = stripSettings.warnings;
             var consumed = [];
@@ -572,7 +583,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                     if (attempt == 0 && sharedCopy != undefined)
                         candidate = stripFromSharedCopy(context, stripId + "trySheet", sharedCopy, toolEdges, wireEdgesQuery);
                     else
-                        candidate = buildStrip(context, stripId + ("try" ~ attempt), surfaceFaces, toolEdges, wireEdgesQuery, attempt == 1);
+                        candidate = buildStrip(context, stripId + ("try" ~ attempt), surfaceFaces, toolEdges, wireEdgesQuery, attempt == 1, definition.debugStage);
                     if (candidate == undefined)
                         continue;
                     const stripArea = evArea(context, { "entities" : candidate });
@@ -836,7 +847,7 @@ function edgeBlocksFlood(context is Context, edge is Query, tools is Query) retu
  * @param useReported {boolean} also treat the edges opSplitFace reported as cuts (over-blocks on a closed surface; a fallback)
  * @returns Query of the strip sheet (throws when the wire is not on the surface)
  */
-function stripFromCopy(context is Context, sheetId is Id, copy is map, tools is Query, useReported is boolean, wireEdges is Query) returns Query
+function stripFromCopy(context is Context, sheetId is Id, copy is map, tools is Query, useReported is boolean, wireEdges is Query, stage is number) returns Query
 {
     const faceArray = copy.faceArray;
     var inStrip = makeArray(size(faceArray), false);
@@ -898,6 +909,8 @@ function stripFromCopy(context is Context, sheetId is Id, copy is map, tools is 
     for (var n = 0; n < size(faceArray); n += 1)
         if (inStrip[n] && evArea(context, { "entities" : faceArray[n] }) > STRIP_MIN_FACE_AREA)
             chosen = append(chosen, faceArray[n]);
+    if (stage < 5)
+        throw regenError("debug stage: stop after the flood");
     opExtractSurface(context, sheetId, { "faces" : qUnion(chosen) });
     return qCreatedBy(sheetId, EntityType.BODY);
 }
@@ -907,7 +920,7 @@ function stripFromSharedCopy(context is Context, sheetId is Id, copy is map, too
 {
     try
     {
-        return stripFromCopy(context, sheetId, copy, qUnion(toolEdges), false, wireEdges);
+        return stripFromCopy(context, sheetId, copy, qUnion(toolEdges), false, wireEdges, 99);
     }
     catch (e)
     {
@@ -921,12 +934,17 @@ function stripFromSharedCopy(context is Context, sheetId is Id, copy is map, too
  *
  * @returns Query of the strip sheet, or `undefined` when it could not be built
  */
-function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, toolEdges is array, wireEdges is Query, alsoReportedEdges is boolean)
+function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, toolEdges is array, wireEdges is Query, alsoReportedEdges is boolean, stage is number)
 {
     try
     {
         const copy = splitStripCopy(context, stripId, surfaceFaces, toolEdges);
-        const sheet = stripFromCopy(context, stripId + "sheet", copy, qUnion(toolEdges), alsoReportedEdges, wireEdges);
+        if (stage < 4)
+        {
+            opDeleteBodies(context, stripId + "dropCopyStage", { "entities" : copy.copyBody });
+            return undefined;
+        }
+        const sheet = stripFromCopy(context, stripId + "sheet", copy, qUnion(toolEdges), alsoReportedEdges, wireEdges, stage);
         opDeleteBodies(context, stripId + "dropCopy", { "entities" : copy.copyBody });
         return sheet;
     }
