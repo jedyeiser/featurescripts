@@ -515,23 +515,34 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                         for (var extensionId in boundaryExtensions[j])
                             toolEdges = append(toolEdges, qOwnedByBody(qCreatedBy(extensionId, EntityType.BODY), EntityType.EDGE));
                 const stripId = id + ("strip" ~ i);
-                const sheet = buildStrip(context, stripId, surfaceFaces, toolEdges, qOwnedByBody(qCreatedBy(id + ("wire" ~ i), EntityType.BODY), EntityType.EDGE));
+                const wireEdgesQuery = qOwnedByBody(qCreatedBy(id + ("wire" ~ i), EntityType.BODY), EntityType.EDGE);
+                var wireLength = 0 * meter;
+                for (var wireEdge in evaluateQuery(context, wireEdgesQuery))
+                    wireLength += evLength(context, { "entities" : wireEdge });
+                const expectedArea = stripSettings.plan[i].width * wireLength;
+
+                // Two attempts: first the cut edges found by position block the flood; if that strip is too large (a flood that
+                // escaped through an incomplete cut), the edges opSplitFace reports are blocked as well. A strip that is still
+                // far larger than width x length is not kept.
+                var sheet = undefined;
+                for (var attempt = 0; attempt < 2 && sheet == undefined; attempt += 1)
+                {
+                    const candidate = buildStrip(context, stripId + ("try" ~ attempt), surfaceFaces, toolEdges, wireEdgesQuery, attempt == 1);
+                    if (candidate == undefined)
+                        continue;
+                    const stripArea = evArea(context, { "entities" : candidate });
+                    if (stripArea > STRIP_AREA_LIMIT * expectedArea)
+                    {
+                        println("evenlyDivideSurface: strip " ~ i ~ " attempt " ~ attempt ~ ": area " ~ roundToPrecision(stripArea / (millimeter ^ 2), 0) ~
+                                " mm2 against about " ~ roundToPrecision(expectedArea / (millimeter ^ 2), 0) ~ " mm2");
+                        opDeleteBodies(context, stripId + ("reject" ~ attempt), { "entities" : candidate });
+                        continue;
+                    }
+                    sheet = candidate;
+                }
                 if (sheet == undefined)
                 {
-                    stripWarnings = append(stripWarnings, "Strip " ~ i ~ " could not be built.");
-                    continue;
-                }
-                // A flood that escaped through an incomplete cut makes a strip far larger than width x length: do not keep it.
-                var wireLength = 0 * meter;
-                for (var wireEdge in evaluateQuery(context, qOwnedByBody(qCreatedBy(id + ("wire" ~ i), EntityType.BODY), EntityType.EDGE)))
-                    wireLength += evLength(context, { "entities" : wireEdge });
-                const stripArea = evArea(context, { "entities" : sheet });
-                const expectedArea = stripSettings.plan[i].width * wireLength;
-                if (stripArea > STRIP_AREA_LIMIT * expectedArea)
-                {
-                    println("evenlyDivideSurface: strip " ~ i ~ " area " ~ roundToPrecision(stripArea / (millimeter ^ 2), 0) ~ " mm2 against about " ~ roundToPrecision(expectedArea / (millimeter ^ 2), 0) ~ " mm2");
-                    opDeleteBodies(context, stripId + "reject", { "entities" : sheet });
-                    stripWarnings = append(stripWarnings, "Strip " ~ i ~ " was not built: the cut around it did not close (its area was more than " ~ STRIP_AREA_LIMIT ~ " times width x length). Try a narrower strip.");
+                    stripWarnings = append(stripWarnings, "Strip " ~ i ~ " was not built: the cut around it did not close. Try a narrower strip.");
                     continue;
                 }
                 var stripBody = sheet;
@@ -715,7 +726,7 @@ function finishWire(context is Context, wireId is Id, projectPrefix is Id, runs 
  *
  * @returns Query of the strip sheet, or `undefined` when it could not be built
  */
-function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, toolEdges is array, wireEdges is Query)
+function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, toolEdges is array, wireEdges is Query, alsoReportedEdges is boolean)
 {
     try
     {
@@ -724,7 +735,7 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
         var blocked = qNothing();
         if (size(toolEdges) > 0)
         {
-            opSplitFace(context, stripId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
+            const split = opSplitFace(context, stripId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
                                                       "edgeTools" : qUnion(toolEdges),
                                                       "projectionType" : ProjectionType.NORMAL_TO_TARGET,
                                                       "extendToCompletion" : true });
@@ -746,7 +757,7 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
                 if (onTool)
                     cuts = append(cuts, edge);
             }
-            blocked = qUnion(cuts);
+            blocked = qUnion(alsoReportedEdges ? concatenateArrays([cuts, split.splittingEdges]) : cuts);
         }
         const copyFaces = qOwnedByBody(copyBody, EntityType.FACE);
         const faceArray = evaluateQuery(context, copyFaces);
