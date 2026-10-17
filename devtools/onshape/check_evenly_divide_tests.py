@@ -98,7 +98,7 @@ for ln in lines:
     by.setdefault(t[1], []).append(t)
 
 fails = 0
-for case in sorted(c for c in cases if c in EXPECT):
+for case in sorted(k for k in cases if k in ("E1", "E2", "E3", "E4")):
     name = [n for n in status if n.startswith(case + " ")][0]
     wires = [t for t in by.get(case, []) if t[0] == "W"]
     notes, ok = [], status[name] in ("OK", "INFO")

@@ -58,3 +58,24 @@ Two reviewers (op count; evaluation cost) were briefed read-only; their lists ov
 | 16 wires, 0.1 mm tolerance | | 10.3 (8.7 with 30 sections, 6.3 without refine) |
 Breakdown at 5 wires: end probes ~3.6 s (fixed), 0.063 s per section (~3.9 s for 60), refinement ~5 s. Not done: reviewer item
 "cheaper probe completeness test / fewer bisection steps" (~0.5-1 s), incremental final verification pass.
+## Per-face wires, naming, phase 2 UI (2026-10-17, later)
+- A wire is ONE BODY OF SEVERAL EDGES, one curve per face run (user's point: one smooth curve cannot follow faces that meet at
+  creases). Each division point records its face (`nearestFaceIndex`). `buildRuns` cuts a wire into runs of consecutive sections
+  on the same face; at a face change `seamPoint` finds the crossing (closest point between the faces' shared edge and the chord
+  through the two section points; a wire running ALONG the seam is not split; non-adjacent faces / no usable seam keep one run
+  over both faces). Each run: `opFitSpline` (`opPolyline` for 2 points) through its points + seam points, projected with
+  `opDropCurve` onto its ONE face (multi-face runs are not projected: a projection onto both faces of a seam crashed
+  regeneration), accepted only if its length is within 1% of the fitted curve, then `opExtractWires` joins the pieces.
+  Refinement now measures the per-run curves (no creases to bridge). Result: exactly on the faces (0.00000 mm) for projected runs.
+- Section points within 0.2 x spacing of a seam point are dropped (a curve through two nearly coincident points kinks): worst
+  turning rate on E2 fell 2823 -> ~215 /m (typical wire ~5-35 /m). A residual spike ~215 /m near x = -871 (tail) remains on the
+  full surface; may be real surface curvature at the severe creases there.
+- Wires are named "<prefix><i>" (prefix default `even_divide_curve_`), i = 0 at the start point; overrides use the same numbers.
+- Phase 2 UI (no geometry yet): "Create strips" (driving boolean, group inside the `if`), strip width, strip thickness,
+  mid-plane / opposite direction / second direction + second thickness, "Consume wires" (default on), overrides array
+  (wire number, skip, override width + width, override thickness + thickness). `stripPlan` resolves the per-wire settings and
+  warns about out-of-range or duplicate overrides; the banner reports it ("Strips: 4 of 5 wires, ...").
+  Test cases S1/S2 (build with DIVIDE_PHASE2=1) check the arithmetic; messages were verified in the UI banner.
+- Tools: compile notices for the Feature Studio can be read WITHOUT the sync login: Playwright -> open the Feature Studio tab ->
+  click `.notice-pane-toggle-button` -> read `.notices-container table.feature-script-notice-table` (the sync tool's own check needs
+  `! python -m sync.main login`, which expires within hours). Feature banners: double-click the feature and read the dialog banner.
