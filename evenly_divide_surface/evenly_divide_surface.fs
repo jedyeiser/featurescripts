@@ -710,7 +710,7 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
         var blocked = qNothing();
         if (size(toolEdges) > 0)
         {
-            opSplitFace(context, stripId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
+            const split = opSplitFace(context, stripId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
                                                       "edgeTools" : qUnion(toolEdges),
                                                       "projectionType" : ProjectionType.NORMAL_TO_TARGET,
                                                       "extendToCompletion" : true });
@@ -732,7 +732,7 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
                 if (onTool)
                     cuts = append(cuts, edge);
             }
-            blocked = qUnion(cuts);
+            blocked = qUnion(concatenateArrays([cuts, split.splittingEdges]));
         }
         const copyFaces = qOwnedByBody(copyBody, EntityType.FACE);
         const faceArray = evaluateQuery(context, copyFaces);
