@@ -40,6 +40,31 @@ const SEAM_ALONG = 1e-5 * meter;
 const SEAM_REACH = 2e-3 * meter;
 /** Most pieces a weak interval is split into in one round. */
 const MAX_SPLIT = 5;
+/** Strip width: 0.1 mm min, 10 mm default, 1 m max. */
+export const StripWidthBounds =
+{
+    (meter)      : [1e-4, 1e-2, 1],
+    (centimeter) : 1,
+    (millimeter) : 10,
+    (inch)       : 0.4,
+    (foot)       : 0.03,
+    (yard)       : 0.01
+} as LengthBoundSpec;
+
+/** Strip thickness: 0.01 mm min, 1 mm default, 0.1 m max. */
+export const StripThicknessBounds =
+{
+    (meter)      : [1e-5, 1e-3, 0.1],
+    (centimeter) : 0.1,
+    (millimeter) : 1,
+    (inch)       : 0.04,
+    (foot)       : 0.003,
+    (yard)       : 0.001
+} as LengthBoundSpec;
+
+/** Wire numbers in the overrides list: 0 is the start wire. */
+export const WireIndexBounds = { (unitless) : [0, 0, 999] } as IntegerBoundSpec;
+
 /** Bounds of the surface tolerance input: 1e-3 mm min, 0.01 mm default, 1 mm max (meter entry [min, default, max]; the other units give the default, as std TOLERANCE_BOUND does). */
 export const SurfaceToleranceBounds =
 {
@@ -111,6 +136,78 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
 
         annotation { "Name" : "Keep section curves", "Default" : false }
         definition.keepSections is boolean;
+
+        annotation { "Group Name" : "Strips", "Collapsed By Default" : true, "Driving Parameter" : "createStrips" }
+        {
+            annotation { "Name" : "Create strips", "Default" : false,
+                         "Description" : "Make a strip of the surface, centred on each wire, with the width and thickness below. (Phase 2: the settings are validated and reported, the strip geometry is not built yet.)" }
+            definition.createStrips is boolean;
+
+            if (definition.createStrips)
+            {
+                annotation { "Name" : "Strip width", "Description" : "Width of each strip, centred on its wire." }
+                isLength(definition.stripWidth, StripWidthBounds);
+
+                annotation { "Name" : "Strip thickness", "Description" : "Thicken each strip by this much." }
+                isLength(definition.stripThickness, StripThicknessBounds);
+
+                annotation { "Name" : "Mid-plane", "Default" : false, "Description" : "Thicken equally to both sides of the surface." }
+                definition.stripMidplane is boolean;
+
+                if (!definition.stripMidplane)
+                {
+                    annotation { "Name" : "Opposite direction", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false,
+                                 "Description" : "Thicken against the surface normal." }
+                    definition.stripFlip is boolean;
+
+                    annotation { "Name" : "Second direction", "Default" : false,
+                                 "Description" : "Also thicken to the other side by a second thickness." }
+                    definition.stripSecondDirection is boolean;
+
+                    if (definition.stripSecondDirection)
+                    {
+                        annotation { "Name" : "Second thickness" }
+                        isLength(definition.stripThickness2, StripThicknessBounds);
+                    }
+                }
+
+                annotation { "Name" : "Consume wires", "Default" : true, "Description" : "Remove the wires once the strips are made." }
+                definition.consumeWires is boolean;
+
+                annotation { "Name" : "Strip overrides", "Item name" : "override", "Item label template" : "Wire #wireIndex",
+                             "Description" : "Change the width or thickness of single wires, or skip them. Wires are numbered from 0 at the start point." }
+                definition.overrides is array;
+                for (var override in definition.overrides)
+                {
+                    annotation { "Name" : "Wire number" }
+                    isInteger(override.wireIndex, WireIndexBounds);
+
+                    annotation { "Name" : "Skip wire", "Default" : false }
+                    override.skip is boolean;
+
+                    if (!override.skip)
+                    {
+                        annotation { "Name" : "Override width", "Default" : false }
+                        override.overrideWidth is boolean;
+
+                        if (override.overrideWidth)
+                        {
+                            annotation { "Name" : "Width" }
+                            isLength(override.width, StripWidthBounds);
+                        }
+
+                        annotation { "Name" : "Override thickness", "Default" : false }
+                        override.overrideThickness is boolean;
+
+                        if (override.overrideThickness)
+                        {
+                            annotation { "Name" : "Thickness" }
+                            isLength(override.thickness, StripThicknessBounds);
+                        }
+                    }
+                }
+            }
+        }
     }
     {
         const surfaceTolerance = definition.surfaceTolerance;
@@ -389,10 +486,21 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                         (definition.projectWires ? "; " ~ projectedRuns ~ " of " ~ totalRuns ~ " face runs projected onto their face" : "") ~
                         "; widest gap before projection " ~ roundToPrecision(worstOff / millimeter, 4) ~ " mm.";
         println("evenlyDivideSurface: " ~ summary);
-        if (worstOff > surfaceTolerance)
-            reportFeatureWarning(context, id, summary ~ (definition.refine ? " Increase the number of cross sections." : " Turn on Refine sections or increase the number of cross sections."));
+        var stripNote = "";
+        var stripWarnings = [];
+        if (definition.createStrips)
+        {
+            const strips = stripPlan(definition, wireCount);
+            stripWarnings = strips.warnings;
+            stripNote = " " ~ strips.summary ~ " (strip geometry is not built yet).";
+            println("evenlyDivideSurface: " ~ strips.summary);
+        }
+        if (size(stripWarnings) > 0)
+            reportFeatureWarning(context, id, summary ~ stripNote ~ " " ~ join(stripWarnings, " "));
+        else if (worstOff > surfaceTolerance)
+            reportFeatureWarning(context, id, summary ~ stripNote ~ (definition.refine ? " Increase the number of cross sections." : " Turn on Refine sections or increase the number of cross sections."));
         else
-            reportFeatureInfo(context, id, summary ~ (definition.projectWires && projectedRuns < totalRuns ? " The others lie along a seam or the surface boundary, or kept their fitted curve (within the tolerance)." : ""));
+            reportFeatureInfo(context, id, summary ~ (definition.projectWires && projectedRuns < totalRuns ? " The others lie along a seam or the surface boundary, or kept their fitted curve (within the tolerance)." : "") ~ stripNote);
     });
 
 
@@ -618,6 +726,65 @@ function fitRun(context is Context, fitId is Id, pts is array) returns array
     else
         opFitSpline(context, fitId, { "points" : pts, "parameters" : params });
     return params;
+}
+
+/**
+ * The strip settings per wire (what phase 2 will build from): the default width and thickness, changed by the overrides.
+ *
+ * @returns {{ plan : array of { skip, width, thickness, overridden } (one per wire, index 0 = start wire),
+ *             warnings : array of string, summary : string }}
+ */
+function stripPlan(definition is map, wireCount is number) returns map
+{
+    var plan = [];
+    for (var w = 0; w < wireCount; w += 1)
+        plan = append(plan, { "skip" : false, "width" : definition.stripWidth, "thickness" : definition.stripThickness, "overridden" : false });
+
+    var warnings = [];
+    for (var o in definition.overrides)
+    {
+        if (o.wireIndex >= wireCount)
+        {
+            warnings = append(warnings, "Override for wire " ~ o.wireIndex ~ " ignored: there are only " ~ wireCount ~ " wires (0 to " ~ (wireCount - 1) ~ ").");
+            continue;
+        }
+        var entry = plan[o.wireIndex];
+        if (entry.overridden)
+            warnings = append(warnings, "Wire " ~ o.wireIndex ~ " has more than one override; the last one is used.");
+        entry.overridden = true;
+        entry.skip = o.skip;
+        if (!o.skip)
+        {
+            if (o.overrideWidth)
+                entry.width = o.width;
+            if (o.overrideThickness)
+                entry.thickness = o.thickness;
+        }
+        plan[o.wireIndex] = entry;
+    }
+
+    var skipped = 0;
+    var widthChanged = 0;
+    var thicknessChanged = 0;
+    for (var entry in plan)
+    {
+        if (entry.skip)
+            skipped += 1;
+        else
+        {
+            if (abs(entry.width - definition.stripWidth) > 1e-12 * meter)
+                widthChanged += 1;
+            if (abs(entry.thickness - definition.stripThickness) > 1e-12 * meter)
+                thicknessChanged += 1;
+        }
+    }
+    const summary = "Strips: " ~ (wireCount - skipped) ~ " of " ~ wireCount ~ " wires, width " ~ roundToPrecision(definition.stripWidth / millimeter, 3) ~
+                    " mm (" ~ widthChanged ~ " overridden), thickness " ~ roundToPrecision(definition.stripThickness / millimeter, 3) ~ " mm (" ~
+                    thicknessChanged ~ " overridden), " ~ skipped ~ " skipped" ~
+                    (definition.stripMidplane ? ", mid-plane" : (definition.stripFlip ? ", opposite direction" : "")) ~
+                    (!definition.stripMidplane && definition.stripSecondDirection ? ", second direction " ~ roundToPrecision(definition.stripThickness2 / millimeter, 3) ~ " mm" : "") ~
+                    (definition.consumeWires ? ", wires consumed" : ", wires kept") ~ ".";
+    return { "plan" : plan, "warnings" : warnings, "summary" : summary };
 }
 
 /** Chord-length parameters (0..1) for a spline through `points`: far fewer wiggles than evenly spaced parameters on unevenly spaced points. */
