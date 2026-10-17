@@ -177,32 +177,32 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 annotation { "Name" : "Strip overrides", "Item name" : "override", "Item label template" : "Wire #wireIndex",
                              "Description" : "Change the width or thickness of single wires, or skip them. Wires are numbered from 0 at the start point." }
                 definition.overrides is array;
-                for (var override in definition.overrides)
+                for (var ov in definition.overrides)
                 {
                     annotation { "Name" : "Wire number" }
-                    isInteger(override.wireIndex, WireIndexBounds);
+                    isInteger(ov.wireIndex, WireIndexBounds);
 
                     annotation { "Name" : "Skip wire", "Default" : false }
-                    override.skip is boolean;
+                    ov.skip is boolean;
 
-                    if (!override.skip)
+                    if (!ov.skip)
                     {
                         annotation { "Name" : "Override width", "Default" : false }
-                        override.overrideWidth is boolean;
+                        ov.overrideWidth is boolean;
 
-                        if (override.overrideWidth)
+                        if (ov.overrideWidth)
                         {
                             annotation { "Name" : "Width" }
-                            isLength(override.width, StripWidthBounds);
+                            isLength(ov.width, StripWidthBounds);
                         }
 
                         annotation { "Name" : "Override thickness", "Default" : false }
-                        override.overrideThickness is boolean;
+                        ov.overrideThickness is boolean;
 
-                        if (override.overrideThickness)
+                        if (ov.overrideThickness)
                         {
                             annotation { "Name" : "Thickness" }
-                            isLength(override.thickness, StripThicknessBounds);
+                            isLength(ov.thickness, StripThicknessBounds);
                         }
                     }
                 }
