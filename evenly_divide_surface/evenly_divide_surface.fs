@@ -709,10 +709,35 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
         var blocked = qNothing();
         if (size(toolEdges) > 0)
         {
-            opSplitFace(context, stripId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
-                                                      "edgeTools" : qUnion(toolEdges),
-                                                      "projectionType" : ProjectionType.NORMAL_TO_TARGET,
-                                                      "extendToCompletion" : true });
+            // Split face by face: each tool edge is given only to the face it lies on, so it is projected onto that face and
+            // nothing else (projecting a whole wire onto every face at once leaves incomplete imprints at creases).
+            const copyFaceArray = evaluateQuery(context, qOwnedByBody(copyBody, EntityType.FACE));
+            const copyFaceQuery = qOwnedByBody(copyBody, EntityType.FACE);
+            var edgesOfFace = makeArray(size(copyFaceArray), []);
+            for (var tool in toolEdges)
+            {
+                for (var toolEdge in evaluateQuery(context, tool))
+                {
+                    const middle = evEdgeTangentLine(context, { "edge" : toolEdge, "parameter" : 0.5 }).origin;
+                    const owner = evDistance(context, { "side0" : middle, "side1" : copyFaceQuery }).sides[1].index;
+                    edgesOfFace[owner] = append(edgesOfFace[owner], toolEdge);
+                }
+            }
+            for (var k = 0; k < size(copyFaceArray); k += 1)
+            {
+                if (size(edgesOfFace[k]) == 0)
+                    continue;
+                try
+                {
+                    opSplitFace(context, stripId + ("split" ~ k), { "faceTargets" : copyFaceArray[k], "edgeTools" : qUnion(edgesOfFace[k]),
+                                                                    "projectionType" : ProjectionType.NORMAL_TO_TARGET,
+                                                                    "extendToCompletion" : true });
+                }
+                catch (splitError)
+                {
+                    println("evenlyDivideSurface: a face could not be split for a strip: " ~ toString(splitError));
+                }
+            }
             // The cut edges: edges of the copy that lie on the strip-edge wires or their extensions, found by position. (The
             // edges opSplitFace reports also include every existing edge the faces share, which would over-block the flood.)
             const tools = qUnion(toolEdges);
