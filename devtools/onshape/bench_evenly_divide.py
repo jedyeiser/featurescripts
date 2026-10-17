@@ -66,11 +66,15 @@ def boolean(pid, v):
     return {"btType": "BTMParameterBoolean-144", "parameterId": pid, "value": v}
 
 
-def feature(name, divisions, sections, refine, tol_mm, on_plane=True):
+def feature(name, divisions, sections, refine, tol_mm, on_plane=True, strips=0):
     given = {p["parameterId"]: p for p in [
         qids("surface", [full]), qids("crossWire", [wire]), q("symmetryPlane", 'qCreatedBy(makeId("Front"), EntityType.FACE)'),
         num("divisions", str(divisions), True), num("sections", str(sections), True), boolean("onSymmetryPlane", on_plane),
         boolean("refine", refine), num("surfaceTolerance", "%g mm" % tol_mm)]}
+    if strips:      # 1 = 5 mm sheet strips, 2 = 5 mm strips thickened 0.5 mm mid-plane (wires consumed)
+        for p in [boolean("createStrips", True), num("stripWidth", "5 mm"), boolean("thickenStrips", strips >= 2), num("stripThickness", "0.5 mm"),
+                  boolean("stripMidplane", strips != 3), boolean("consumeWires", True)]:
+            given[p["parameterId"]] = p
     params = []
     for p in SPEC["parameters"]:
         pid = p["parameterId"]
@@ -85,13 +89,13 @@ def feature(name, divisions, sections, refine, tol_mm, on_plane=True):
 cases = []
 for item in os.environ.get("BENCH", "5:60:1,5:60:0,16:60:1,16:60:0,5:4:0").split(","):
     t = item.split(":")
-    cases.append((int(t[0]), int(t[1]), t[2] == "1", float(t[3]) if len(t) > 3 else 0.01, (t[4] == "1") if len(t) > 4 else True))
+    cases.append((int(t[0]), int(t[1]), t[2] == "1", float(t[3]) if len(t) > 3 else 0.01, (t[4] == "1") if len(t) > 4 else True, int(t[5]) if len(t) > 5 else 0))
 
 print("%-34s %8s  %s" % ("case (divisions:sections:refine:tol)", "seconds", "status"))
-for n, s, refine, tol, on_plane in cases:
-    name = "BENCH %d:%d:%d:%g:%d" % (n, s, refine, tol, on_plane)
+for n, s, refine, tol, on_plane, strips in cases:
+    name = "BENCH %d:%d:%d:%g:%d:%d" % (n, s, refine, tol, on_plane, strips)
     t0 = time.perf_counter()
-    resp = write_feature(BASE, feature(name, n, s, refine, tol, on_plane), _TREE, client=c)
+    resp = write_feature(BASE, feature(name, n, s, refine, tol, on_plane, strips), _TREE, client=c)
     dt = time.perf_counter() - t0
-    print("%-34s %8.1f  %s" % ("%d:%d:%d:%g:%d" % (n, s, refine, tol, on_plane), dt, resp.get("featureState", {}).get("featureStatus")))
+    print("%-34s %8.1f  %s" % ("%d:%d:%d:%g:%d:%d" % (n, s, refine, tol, on_plane, strips), dt, resp.get("featureState", {}).get("featureStatus")))
     delete_feature(BASE, resp["feature"]["featureId"], _TREE, client=c)

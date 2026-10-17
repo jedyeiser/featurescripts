@@ -112,7 +112,7 @@ FRONT = 'qCreatedBy(makeId("Front"), EntityType.FACE)'
 
 
 def divide(name, surface_id, divisions, on_plane, extra=()):
-    if name.split()[0] not in os.environ.get("DIVIDE_CASES", "E1,E2,E3,E4,S1,S2,S3,S4,S5,S6,S7,S8,S9").split(","):
+    if name.split()[0] not in os.environ.get("DIVIDE_CASES", "E1,E2,E3,E4,S1,S2,S3,S4,S5,S6,S7,S8,S9,S10").split(","):
         return None
     given = {p["parameterId"]: p for p in [
         qids("surface", [surface_id]), qids("crossWire", [wire]), q("symmetryPlane", FRONT),
@@ -131,7 +131,7 @@ def divide(name, surface_id, divisions, on_plane, extra=()):
     return write({"btType": "BTMFeature-134", "featureType": "evenlyDivideSurface", "name": name, "namespace": NS, "parameters": params})
 
 
-WANT = os.environ.get("DIVIDE_CASES", "E1,E2,E3,E4,S1,S2,S3,S4,S5,S6,S7,S8,S9").split(",")   # which cases to build (run strip cases one at a time when debugging)
+WANT = os.environ.get("DIVIDE_CASES", "E1,E2,E3,E4,S1,S2,S3,S4,S5,S6,S7,S8,S9,S10").split(",")   # which cases to build (run strip cases one at a time when debugging)
 
 if "E1" in WANT:
     divide("E1 full, 5 divisions, wires on symmetry plane", full, 5, True)
@@ -191,4 +191,6 @@ if os.environ.get("DIVIDE_PHASE2") == "1":
     #    expected: strip area about 5 x 1760 = 8800 mm2, volume about 4400 mm3 each (strips that cross a 60 degree crease stay sheets)
     divide("S9 full 16 strips, width 5, thickness 0.5 mid-plane, wires consumed", full, 16, True, [
         b("createStrips", True), num("stripWidth", "5 mm"), b("thickenStrips", True), num("stripThickness", "0.5 mm"),
-        b("stripMidplane", True), b("consumeWires", True)])
+        b("stripMidplane", True), b("consumeWires", True)])    # S10 the same as S9 but SHEET strips (not thickened), wires kept: for timing individual thickens
+    divide("S10 full 16 sheet strips, width 5, wires kept", full, 16, True, [
+        b("createStrips", True), num("stripWidth", "5 mm"), b("thickenStrips", False), b("consumeWires", False)])

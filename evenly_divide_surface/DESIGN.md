@@ -99,8 +99,11 @@ half surface is clipped (strip = half width); overlapping strips stay SEPARATE b
   mid-plane 2 mm: 5/5 built, volumes = area x 2; S6 full 30 mm 5/5 exact; S5 full 60 mm overlapping 5/5 separate bodies (strips 2, 3 about 7%
   under nominal); S1/S2 override arithmetic confirmed by volume (width/thickness overrides, skip, second direction); S8 consume wires +
   surface verified. Cost: ~30-50 s per 5-strip case at 5 wires.
-- LIMITS: (1) thicken fails ("THICKEN_FAILED") on strips with ~60 degree creases between adjacent faces (S4/S2 strips 1 and 4 on the
-  full surface); per-face thicken + union is non-manifold (slabs only touch along the crease): the strip stays a sheet with a warning.
+- LIMITS: (1) UPDATED: strips crossing the 60/120 degree folds (S9: 4 of 16 at 5 mm / 0.5 mm) fail a TWO-sided thicken (the offsets collide on
+  the concave side) but thicken fine to the FRONT side only; the feature falls back to the whole thickness on the front side, then the back,
+  then leaves a sheet, and says so in the banner. Those strips are offset by half the thickness instead of centred, and carry extra volume at the
+  folds (S9: 4,483-5,031 mm3 against 4,405). Per-face thicken + union is non-manifold/inexact. Test (S9): full surface, 16 wires, 5 mm, 0.5 mm
+  mid-plane, wires consumed -> 16 solids, ~4,400 mm3 each, no curves left. "Keep section curves" (debug) was left on in test S3 and kept ~550 section curves: off by default.
   (2) FIXED 2026-10-17: wide strips on the full surface (45 mm) leaked at the surface END: the 6 mm extension projects onto only part of
   the last sliver face, leaving a gap ~0.3 mm from the boundary (found by tracing the flood's parent chain in an eval replay). The
   flood now also stops at "gap" edges: non-cut edges shorter than 1.5 mm whose first sample is within 1 mm of a cut. S7 45 mm: 5/5

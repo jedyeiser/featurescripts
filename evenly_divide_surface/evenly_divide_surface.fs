@@ -587,7 +587,8 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                         try
                         {
                             opThicken(context, stripId + ("thicken" ~ (attempt.note == "" ? "" : (attempt.t1 > 0 * meter ? "F" : "B"))),
-                                      { "entities" : sheet, "thickness1" : attempt.t1, "thickness2" : attempt.t2, "keepTools" : false });
+                                      { "entities" : sheet, "thickness1" : attempt.t1, "thickness2" : attempt.t2, "keepTools" : true });
+                            opDeleteBodies(context, stripId + "dropSheet", { "entities" : sheet });     // keepTools:false makes a failing attempt very slow
                             stripBody = qCreatedBy(stripId + ("thicken" ~ (attempt.note == "" ? "" : (attempt.t1 > 0 * meter ? "F" : "B"))), EntityType.BODY);
                             thickened = true;
                             if (attempt.note != "")
