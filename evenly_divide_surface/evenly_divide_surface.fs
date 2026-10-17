@@ -48,7 +48,7 @@ const STRIP_MIN_FACE_AREA = 1e-8 * meter ^ 2;
 /** The strip edges are continued straight by this much at both ends so the cut reaches the surface boundary. */
 const STRIP_EXTENSION = 6e-3 * meter;
 /** An edge of the split copy within this of a strip-edge wire (at 3 points) is a cut. */
-const STRIP_CUT_TOLERANCE = 2e-5 * meter;
+const STRIP_CUT_TOLERANCE = 5e-5 * meter;
 /** Most pieces a weak interval is split into in one round. */
 const MAX_SPLIT = 5;
 /** Strip width: 0.1 mm min, 10 mm default, 1 m max. */
@@ -709,12 +709,12 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
         var blocked = qNothing();
         if (size(toolEdges) > 0)
         {
-            const split = opSplitFace(context, stripId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
+            opSplitFace(context, stripId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
                                                       "edgeTools" : qUnion(toolEdges),
                                                       "projectionType" : ProjectionType.NORMAL_TO_TARGET,
                                                       "extendToCompletion" : true });
-            // The cut edges: edges of the copy that lie on the strip-edge wires. (The edges opSplitFace reports are not
-            // reliably the copy's own, so they are found by position.)
+            // The cut edges: edges of the copy that lie on the strip-edge wires or their extensions, found by position. (The
+            // edges opSplitFace reports also include every existing edge the faces share, which would over-block the flood.)
             const tools = qUnion(toolEdges);
             var cuts = [];
             for (var edge in evaluateQuery(context, qOwnedByBody(copyBody, EntityType.EDGE)))
@@ -731,7 +731,7 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
                 if (onTool)
                     cuts = append(cuts, edge);
             }
-            blocked = qUnion(concatenateArrays([cuts, split.splittingEdges]));
+            blocked = qUnion(cuts);
         }
         const copyFaces = qOwnedByBody(copyBody, EntityType.FACE);
         const faceArray = evaluateQuery(context, copyFaces);

@@ -112,7 +112,7 @@ FRONT = 'qCreatedBy(makeId("Front"), EntityType.FACE)'
 
 
 def divide(name, surface_id, divisions, on_plane, extra=()):
-    if name.split()[0] not in os.environ.get("DIVIDE_CASES", "E1,E2,E3,E4,S1,S2,S3,S4,S5").split(","):
+    if name.split()[0] not in os.environ.get("DIVIDE_CASES", "E1,E2,E3,E4,S1,S2,S3,S4,S5,S6,S7").split(","):
         return None
     given = {p["parameterId"]: p for p in [
         qids("surface", [surface_id]), qids("crossWire", [wire]), q("symmetryPlane", FRONT),
@@ -131,7 +131,7 @@ def divide(name, surface_id, divisions, on_plane, extra=()):
     return write({"btType": "BTMFeature-134", "featureType": "evenlyDivideSurface", "name": name, "namespace": NS, "parameters": params})
 
 
-WANT = os.environ.get("DIVIDE_CASES", "E1,E2,E3,E4,S1,S2,S3,S4,S5").split(",")   # which cases to build (run strip cases one at a time when debugging)
+WANT = os.environ.get("DIVIDE_CASES", "E1,E2,E3,E4,S1,S2,S3,S4,S5,S6,S7").split(",")   # which cases to build (run strip cases one at a time when debugging)
 
 if "E1" in WANT:
     divide("E1 full, 5 divisions, wires on symmetry plane", full, 5, True)
@@ -181,4 +181,8 @@ if os.environ.get("DIVIDE_PHASE2") == "1":
         b("stripMidplane", True), b("consumeWires", False)])
     # S5 full surface, 60 mm strips (wire spacing is about 44 mm): the strips overlap and stay separate bodies
     divide("S5 full overlapping sheet strips, width 60", full, 5, True, [
-        b("createStrips", True), num("stripWidth", "60 mm"), b("thickenStrips", False), b("consumeWires", False)])
+        b("createStrips", True), num("stripWidth", "60 mm"), b("thickenStrips", False), b("consumeWires", False)])    # S6 / S7: the same on the full surface at 30 and 45 mm (is a wide strip narrower than specified?)
+    divide("S6 full sheet strips, width 30", full, 5, True, [
+        b("createStrips", True), num("stripWidth", "30 mm"), b("thickenStrips", False), b("consumeWires", False)])
+    divide("S7 full sheet strips, width 45", full, 5, True, [
+        b("createStrips", True), num("stripWidth", "45 mm"), b("thickenStrips", False), b("consumeWires", False), b("keepSections", os.environ.get("DIVIDE_KEEP") == "1")])
