@@ -43,6 +43,8 @@ const SEAM_REACH = 2e-3 * meter;
 /** Samples along a wire used to find the faces a strip starts from, and the most flood steps across edges. */
 const STRIP_SEED_SAMPLES = 9;
 const STRIP_FLOOD_LIMIT = 40;
+/** Strip-edge tracks are refined to this multiple of the surface tolerance (they are projected onto the faces by the split anyway). */
+const STRIP_EDGE_TOLERANCE_FACTOR = 10;
 /** A non-cut edge shorter than STRIP_GAP_LENGTH whose first sample is within STRIP_GAP_REACH of a cut is a gap in the cut. */
 const STRIP_GAP_LENGTH = 1.5e-3 * meter;
 const STRIP_GAP_REACH = 1e-3 * meter;
@@ -365,8 +367,10 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                         continue;
                     const lines = evEdgeTangentLines(context, { "edge" : qCreatedBy(run.fitId, EntityType.EDGE), "parameters" : sampleParams,
                                                                 "arcLengthParameterization" : false });
+                    // A strip edge is only a cut tool that opSplitFace projects onto the faces: it need not meet the wire tolerance.
+                    const scale = (i >= wireCount) ? STRIP_EDGE_TOLERANCE_FACTOR : 1;
                     for (var m = 0; m < size(lines); m += 1)
-                        intervalDev[sampleInterval[m]] = max(intervalDev[sampleInterval[m]], distanceToSurface(context, faceBoxes, surfaceFaces, lines[m].origin));
+                        intervalDev[sampleInterval[m]] = max(intervalDev[sampleInterval[m]], distanceToSurface(context, faceBoxes, surfaceFaces, lines[m].origin) / scale);
                 }
             }
 
@@ -567,6 +571,21 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                     continue;
                 const toolEdges = stripTools[i];
                 const stripId = id + ("strip" ~ i);
+                // Only the faces the wire and its two edges run on, and their neighbours, are copied (not all of the surface).
+                var touched = makeArray(size(faceList), false);
+                for (var run in wireRuns[i])
+                    for (var f in run.faces)
+                        touched[f] = true;
+                for (var j = 0; j < size(tracks); j += 1)
+                    if (tracks[j].wire == i)
+                        for (var run in wireRuns[wireCount + j])
+                            for (var f in run.faces)
+                                touched[f] = true;
+                var touchedFaces = [];
+                for (var f = 0; f < size(faceList); f += 1)
+                    if (touched[f])
+                        touchedFaces = append(touchedFaces, faceList[f]);
+                const copyFrom = qUnion([qUnion(touchedFaces), qIntersection([qAdjacent(qUnion(touchedFaces), AdjacencyType.EDGE, EntityType.FACE), surfaceFaces])]);
                 const wireEdgesQuery = qOwnedByBody(qCreatedBy(id + ("wire" ~ i), EntityType.BODY), EntityType.EDGE);
                 var wireLength = 0 * meter;
                 for (var wireEdge in evaluateQuery(context, wireEdgesQuery))
@@ -583,7 +602,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                     if (attempt == 0 && sharedCopy != undefined)
                         candidate = stripFromSharedCopy(context, stripId + "trySheet", sharedCopy, toolEdges, wireEdgesQuery);
                     else
-                        candidate = buildStrip(context, stripId + ("try" ~ attempt), surfaceFaces, toolEdges, wireEdgesQuery, attempt == 1, definition.debugStage);
+                        candidate = buildStrip(context, stripId + ("try" ~ attempt), (attempt == 0 ? copyFrom : surfaceFaces), toolEdges, wireEdgesQuery, attempt == 1, definition.debugStage);
                     if (candidate == undefined)
                         continue;
                     const stripArea = evArea(context, { "entities" : candidate });

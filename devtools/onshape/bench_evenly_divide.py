@@ -71,7 +71,9 @@ def feature(name, divisions, sections, refine, tol_mm, on_plane=True, strips=0):
         qids("surface", [full]), qids("crossWire", [wire]), q("symmetryPlane", 'qCreatedBy(makeId("Front"), EntityType.FACE)'),
         num("divisions", str(divisions), True), num("sections", str(sections), True), boolean("onSymmetryPlane", on_plane),
         boolean("refine", refine), num("surfaceTolerance", "%g mm" % tol_mm)]}
-    if os.environ.get("BENCH_STAGE"):\n        given["debugStage"] = num("debugStage", os.environ["BENCH_STAGE"], True)\n    if strips:      # 1 = 5 mm sheet strips, 2 = 5 mm strips thickened 0.5 mm mid-plane (wires consumed)
+    if os.environ.get("BENCH_STAGE"):
+        given["debugStage"] = num("debugStage", os.environ["BENCH_STAGE"], True)
+    if strips:      # 1 = 5 mm sheet strips, 2 = 5 mm strips thickened 0.5 mm mid-plane (wires consumed)
         for p in [boolean("createStrips", True), num("stripWidth", "5 mm"), boolean("thickenStrips", strips >= 2), num("stripThickness", "0.5 mm"),
                   boolean("stripMidplane", strips != 3), boolean("consumeWires", True)]:
             given[p["parameterId"]] = p
