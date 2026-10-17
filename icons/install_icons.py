@@ -11,7 +11,7 @@ The document comes from the project's .document.json or, when a project has none
 file's entry in .sync-state.json. Targets may use subfolder paths ("features/xSect").
 Pushing is done separately (pushproject --check or devtools/onshape/repin.py push) so each document is checked.
 
-usage (repo root): PYTHONPATH=. python icons/install_icons.py [--dry-run]
+usage (repo root): PYTHONPATH=. python icons/install_icons.py [--dry-run] [--only <feature file name>]
 """
 import json
 import os
@@ -28,6 +28,7 @@ c = OnshapeClient()
 AUTH = (c.auth.access_key, c.auth.secret_key)
 BASE = c.auth.base_url
 DRY = "--dry-run" in sys.argv
+ONLY = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None   # a feature file name from icon_targets.py
 
 
 def document_of(proj, path):
@@ -80,6 +81,8 @@ def wired_source(src, tab_id, microversion, filename):
 
 def main():
     for proj, fs, icon in TARGETS:
+        if ONLY and fs != ONLY:
+            continue
         path = os.path.join(proj, fs + ".fs")
         filename = "%s_icon.svg" % icon
         if not os.path.exists(os.path.join("icons", "final", filename)):

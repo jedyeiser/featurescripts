@@ -1,6 +1,8 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/path.fs", version : "3083.0");
+// IMPORT: evenly_divide_surface_icon.svg (feature icon)
+IconNamespace::import(path : "3a855693361d30ac881a44d2", version : "7386e241f35293c7b09eba6f");
 
 /**
  * Evenly divide surface (phase 1: the division wires).
@@ -47,7 +49,7 @@ const CROSSING_TOLERANCE = 1e-8;
 /** A section point this close to the symmetry plane is on it. */
 const SYMMETRY_TOLERANCE = 1e-5 * meter;
 
-annotation { "Feature Type Name" : "Evenly divide surface",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Evenly divide surface",
              "Feature Type Description" : "Divides a surface into evenly spaced wires around its cross sections" }
 export const evenlyDivideSurface = defineFeature(function(context is Context, id is Id, definition is map)
     precondition

@@ -33,6 +33,7 @@ TARGETS = [
     ("example_1", "extrudeEdge", "extrude_edge"),
     ("example_1", "refSurfCreation/offsetEdges", "offset_edges"),
     ("bodyRename", "Simple_Rename", "simple_body_rename"),
+    ("evenly_divide_surface", "evenly_divide_surface", "evenly_divide_surface"),  # 2026-10-17 (concept A2, agent draft)
     # RESTYLES: these files already carry an (off-style) icon, so install_icons.py leaves them alone. Swap by hand:
     # replace the IconNamespace::import tab id/version with a NEW tab (the script matches tabs by name).
     ("footprint", "analyzeFootprint", "analyze_footprint"),
