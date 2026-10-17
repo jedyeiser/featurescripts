@@ -1,6 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/path.fs", version : "3083.0");
+import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 // IMPORT: evenly_divide_surface_icon.svg (feature icon)
 IconNamespace::import(path : "3a855693361d30ac881a44d2", version : "7386e241f35293c7b09eba6f");
 
@@ -318,8 +319,9 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                             scratch = append(scratch, qCreatedBy(projectId, EntityType.BODY));
                         }
                     }
-                    catch
+                    catch (e)
                     {
+                        println("evenlyDivideSurface: wire " ~ i ~ " run " ~ r ~ " not projected: " ~ toString(e));
                     }
                 }
                 pieceEdges = append(pieceEdges, useEdges);
