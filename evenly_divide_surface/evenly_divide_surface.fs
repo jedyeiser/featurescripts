@@ -46,6 +46,8 @@ const STRIP_FLOOD_LIMIT = 40;
 /** A non-cut edge shorter than STRIP_GAP_LENGTH whose first sample is within STRIP_GAP_REACH of a cut is a gap in the cut. */
 const STRIP_GAP_LENGTH = 1.5e-3 * meter;
 const STRIP_GAP_REACH = 1e-3 * meter;
+/** Strips share one copy and one split when the widest strip is at most this fraction of the wire spacing (so no strip can overlap another). */
+const STRIP_SHARE_FRACTION = 0.9;
 /** A strip larger than this times (width x wire length) is rejected: the cut around it did not close. */
 const STRIP_AREA_LIMIT = 1.5;
 /** Faces of a strip smaller than this are slivers and are dropped. */
@@ -505,6 +507,12 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         {
             stripWarnings = stripSettings.warnings;
             var consumed = [];
+
+            // The tools of every strip: its two edge wires and their extensions.
+            var stripTools = makeArray(wireCount, []);
+            var allTools = [];
+            var plannedStrips = 0;
+            var maxWidth = 0 * meter;
             for (var i = 0; i < wireCount; i += 1)
             {
                 if (stripSettings.plan[i].skip)
@@ -517,6 +525,36 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                     if (tracks[j].wire == i && boundaryWireIds[j] != undefined)
                         for (var extensionId in boundaryExtensions[j])
                             toolEdges = append(toolEdges, qOwnedByBody(qCreatedBy(extensionId, EntityType.BODY), EntityType.EDGE));
+                stripTools[i] = toolEdges;
+                allTools = concatenateArrays([allTools, toolEdges]);
+                plannedStrips += 1;
+                maxWidth = max(maxWidth, stripSettings.plan[i].width);
+            }
+
+            // Strips that cannot overlap share ONE copy of the surface and ONE split (the copy, the split and the edge tests
+            // dominate the cost of a strip); overlapping strips each get a copy of their own.
+            var minPerimeter = inf * meter;
+            for (var s in sections)
+                minPerimeter = min(minPerimeter, s.perimeter);
+            const spacing = minPerimeter / (sections[0].closed ? definition.divisions : (definition.onSymmetryPlane ? max(definition.divisions - 1, 1) : definition.divisions));
+            var sharedCopy = undefined;
+            if (plannedStrips > 1 && maxWidth <= STRIP_SHARE_FRACTION * spacing)
+            {
+                try
+                {
+                    sharedCopy = splitStripCopy(context, id + "shared", surfaceFaces, allTools);
+                }
+                catch (e)
+                {
+                    println("evenlyDivideSurface: the shared strip split failed (" ~ toString(e) ~ "); strips are cut one by one");
+                }
+            }
+
+            for (var i = 0; i < wireCount; i += 1)
+            {
+                if (stripSettings.plan[i].skip)
+                    continue;
+                const toolEdges = stripTools[i];
                 const stripId = id + ("strip" ~ i);
                 const wireEdgesQuery = qOwnedByBody(qCreatedBy(id + ("wire" ~ i), EntityType.BODY), EntityType.EDGE);
                 var wireLength = 0 * meter;
@@ -530,7 +568,11 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 var sheet = undefined;
                 for (var attempt = 0; attempt < 2 && sheet == undefined; attempt += 1)
                 {
-                    const candidate = buildStrip(context, stripId + ("try" ~ attempt), surfaceFaces, toolEdges, wireEdgesQuery, attempt == 1);
+                    var candidate = undefined;
+                    if (attempt == 0 && sharedCopy != undefined)
+                        candidate = stripFromSharedCopy(context, stripId + "trySheet", sharedCopy, toolEdges, wireEdgesQuery);
+                    else
+                        candidate = buildStrip(context, stripId + ("try" ~ attempt), surfaceFaces, toolEdges, wireEdgesQuery, attempt == 1);
                     if (candidate == undefined)
                         continue;
                     const stripArea = evArea(context, { "entities" : candidate });
@@ -612,6 +654,8 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 builtStrips += 1;
                 consumed = append(consumed, i);
             }
+            if (sharedCopy != undefined)
+                opDeleteBodies(context, id + "dropShared", { "entities" : sharedCopy.copyBody });
             // The strip edges are construction geometry; the wires go too when asked (only those whose strip was built).
             for (var j = 0; j < size(boundaryWireIds); j += 1)
             {
@@ -741,10 +785,139 @@ function finishWire(context is Context, wireId is Id, projectPrefix is Id, runs 
 }
 
 /**
- * One strip of the surface: a copy of the surface is split along the strip's edge wires (`toolEdges`, which lie on the surface;
- * the split is extended to complete the cut), the faces of the copy that lie between them are found by flooding from the
- * faces the wire runs on across every edge that is not a cut, and those faces are extracted as a new sheet body. A fresh copy
- * per strip keeps overlapping strips apart.
+ * The surface copied (`opExtractSurface`) and split along `toolEdges` (which lie on the surface; the split is extended to
+ * complete the cut). Several strips can share one copy when they cannot overlap.
+ *
+ * @returns {{ copyBody, copyFaces, faceArray, faceIndex, reported }} (reported: the edges opSplitFace reports)
+ */
+function splitStripCopy(context is Context, copyId is Id, surfaceFaces is Query, toolEdges is array) returns map
+{
+    opExtractSurface(context, copyId + "copy", { "faces" : surfaceFaces });
+    const copyBody = qCreatedBy(copyId + "copy", EntityType.BODY);
+    var reported = [];
+    if (size(toolEdges) > 0)
+    {
+        reported = opSplitFace(context, copyId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
+                                                            "edgeTools" : qUnion(toolEdges),
+                                                            "projectionType" : ProjectionType.NORMAL_TO_TARGET,
+                                                            "extendToCompletion" : true }).splittingEdges;
+    }
+    const copyFaces = qOwnedByBody(copyBody, EntityType.FACE);
+    const faceArray = evaluateQuery(context, copyFaces);
+    var faceIndex = {};
+    for (var n = 0; n < size(faceArray); n += 1)
+        faceIndex[toString(faceArray[n])] = n;
+    return { "copyBody" : copyBody, "copyFaces" : copyFaces, "faceArray" : faceArray, "faceIndex" : faceIndex, "reported" : reported };
+}
+
+/**
+ * Does this edge of a split copy stop the flood: it lies on the strip's own edge wires (a cut), or it is a sliver edge right
+ * beside one (the cut did not quite cross it)? Tested only for the edges the flood actually meets.
+ */
+function edgeBlocksFlood(context is Context, edge is Query, tools is Query) returns boolean
+{
+    var nearest = undefined;
+    for (var l in evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0.25, 0.5, 0.75] }))
+    {
+        const distance = evDistance(context, { "side0" : l.origin, "side1" : tools }).distance;
+        if (nearest == undefined)
+            nearest = distance;
+        if (distance > STRIP_CUT_TOLERANCE)
+            return nearest < STRIP_GAP_REACH && evLength(context, { "entities" : edge }) < STRIP_GAP_LENGTH;
+    }
+    return true;
+}
+
+/**
+ * One strip taken out of a split copy: flood from the faces the wire runs on across every edge that is not a cut, then extract
+ * those faces as a new sheet body `sheetId`. Does not delete the copy.
+ *
+ * @param tools {Query} the strip's own edge wires (and their extensions)
+ * @param useReported {boolean} also treat the edges opSplitFace reported as cuts (over-blocks on a closed surface; a fallback)
+ * @returns Query of the strip sheet (throws when the wire is not on the surface)
+ */
+function stripFromCopy(context is Context, sheetId is Id, copy is map, tools is Query, useReported is boolean, wireEdges is Query) returns Query
+{
+    const faceArray = copy.faceArray;
+    var inStrip = makeArray(size(faceArray), false);
+    var frontier = [];
+    for (var edge in evaluateQuery(context, wireEdges))
+    {
+        for (var l in evEdgeTangentLines(context, { "edge" : edge, "parameters" : range(0, 1, STRIP_SEED_SAMPLES) }))
+        {
+            const index = evDistance(context, { "side0" : l.origin, "side1" : copy.copyFaces }).sides[1].index;
+            if (!inStrip[index])
+            {
+                inStrip[index] = true;
+                frontier = append(frontier, index);
+            }
+        }
+    }
+    if (size(frontier) == 0)
+        throw regenError("The strip's wire is not on the surface.");
+
+    // Flood: a neighbouring face joins the strip when it shares at least one edge with the face that is NOT a cut.
+    var edgeBlocked = {};
+    const reportedQuery = useReported ? qUnion(copy.reported) : qNothing();
+    for (var iteration = 0; iteration < STRIP_FLOOD_LIMIT && size(frontier) > 0; iteration += 1)
+    {
+        var next = [];
+        for (var fi in frontier)
+        {
+            const edgesOfFace = qAdjacent(faceArray[fi], AdjacencyType.EDGE, EntityType.EDGE);
+            for (var neighbour in evaluateQuery(context, qAdjacent(faceArray[fi], AdjacencyType.EDGE, EntityType.FACE)))
+            {
+                const ni = copy.faceIndex[toString(neighbour)];
+                if (ni == undefined || inStrip[ni])
+                    continue;
+                const shared = qIntersection([edgesOfFace, qAdjacent(neighbour, AdjacencyType.EDGE, EntityType.EDGE)]);
+                var passes = false;
+                for (var sharedEdge in evaluateQuery(context, shared))
+                {
+                    const key = toString(sharedEdge);
+                    if (edgeBlocked[key] == undefined)
+                        edgeBlocked[key] = edgeBlocksFlood(context, sharedEdge, tools) ||
+                                           (useReported && !isQueryEmpty(context, qIntersection([sharedEdge, reportedQuery])));
+                    if (!edgeBlocked[key])
+                    {
+                        passes = true;
+                        break;
+                    }
+                }
+                if (passes)
+                {
+                    inStrip[ni] = true;
+                    next = append(next, ni);
+                }
+            }
+        }
+        frontier = next;
+    }
+    // Zero-area sliver faces (the cut passing through a vertex or seam) add no surface and stop the sheet from thickening.
+    var chosen = [];
+    for (var n = 0; n < size(faceArray); n += 1)
+        if (inStrip[n] && evArea(context, { "entities" : faceArray[n] }) > STRIP_MIN_FACE_AREA)
+            chosen = append(chosen, faceArray[n]);
+    opExtractSurface(context, sheetId, { "faces" : qUnion(chosen) });
+    return qCreatedBy(sheetId, EntityType.BODY);
+}
+
+/** `stripFromCopy` on a copy shared by several strips: `undefined` instead of an error. */
+function stripFromSharedCopy(context is Context, sheetId is Id, copy is map, toolEdges is array, wireEdges is Query)
+{
+    try
+    {
+        return stripFromCopy(context, sheetId, copy, qUnion(toolEdges), false, wireEdges);
+    }
+    catch (e)
+    {
+        println("evenlyDivideSurface: a strip could not be taken from the shared split: " ~ toString(e));
+        return undefined;
+    }
+}
+
+/**
+ * One strip of the surface from a copy of its own (a fresh copy per strip keeps overlapping strips apart).
  *
  * @returns Query of the strip sheet, or `undefined` when it could not be built
  */
@@ -752,99 +925,10 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
 {
     try
     {
-        opExtractSurface(context, stripId + "copy", { "faces" : surfaceFaces });
-        const copyBody = qCreatedBy(stripId + "copy", EntityType.BODY);
-        var blocked = qNothing();
-        if (size(toolEdges) > 0)
-        {
-            const split = opSplitFace(context, stripId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
-                                                      "edgeTools" : qUnion(toolEdges),
-                                                      "projectionType" : ProjectionType.NORMAL_TO_TARGET,
-                                                      "extendToCompletion" : true });
-            // The cut edges: edges of the copy that lie on the strip-edge wires or their extensions, found by position. (The
-            // edges opSplitFace reports also include every existing edge the faces share, which would over-block the flood.)
-            const tools = qUnion(toolEdges);
-            var cuts = [];
-            var gaps = [];
-            for (var edge in evaluateQuery(context, qOwnedByBody(copyBody, EntityType.EDGE)))
-            {
-                var onTool = true;
-                var nearest = undefined;
-                for (var l in evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0.25, 0.5, 0.75] }))
-                {
-                    const distance = evDistance(context, { "side0" : l.origin, "side1" : tools }).distance;
-                    if (nearest == undefined)
-                        nearest = distance;
-                    if (distance > STRIP_CUT_TOLERANCE)
-                    {
-                        onTool = false;
-                        break;
-                    }
-                }
-                if (onTool)
-                    cuts = append(cuts, edge);
-                else if (nearest < STRIP_GAP_REACH && evLength(context, { "entities" : edge }) < STRIP_GAP_LENGTH)
-                    gaps = append(gaps, edge);     // a sliver edge right beside a cut: the cut did not quite cross it
-            }
-            // Cut edges and the gaps beside them stop the flood. (The edges opSplitFace reports also include every existing
-            // shared edge, which over-blocks on a closed surface; they are only a second-attempt fallback.)
-            blocked = qUnion(concatenateArrays([cuts, gaps, alsoReportedEdges ? split.splittingEdges : []]));
-        }
-        const copyFaces = qOwnedByBody(copyBody, EntityType.FACE);
-        const faceArray = evaluateQuery(context, copyFaces);
-
-        // Seeds: the faces the wire runs on.
-        var faceIndex = {};
-        for (var n = 0; n < size(faceArray); n += 1)
-            faceIndex[toString(faceArray[n])] = n;
-        var inStrip = makeArray(size(faceArray), false);
-        var frontier = [];
-        for (var edge in evaluateQuery(context, wireEdges))
-        {
-            for (var l in evEdgeTangentLines(context, { "edge" : edge, "parameters" : range(0, 1, STRIP_SEED_SAMPLES) }))
-            {
-                const index = evDistance(context, { "side0" : l.origin, "side1" : copyFaces }).sides[1].index;
-                if (!inStrip[index])
-                {
-                    inStrip[index] = true;
-                    frontier = append(frontier, index);
-                }
-            }
-        }
-        if (size(frontier) == 0)
-            throw regenError("The strip's wire is not on the surface.");
-
-        // Flood: a neighbouring face joins the strip when it shares at least one edge with the face that is NOT a cut.
-        for (var iteration = 0; iteration < STRIP_FLOOD_LIMIT && size(frontier) > 0; iteration += 1)
-        {
-            var next = [];
-            for (var fi in frontier)
-            {
-                const edgesOfFace = qAdjacent(faceArray[fi], AdjacencyType.EDGE, EntityType.EDGE);
-                for (var neighbour in evaluateQuery(context, qAdjacent(faceArray[fi], AdjacencyType.EDGE, EntityType.FACE)))
-                {
-                    const ni = faceIndex[toString(neighbour)];
-                    if (ni == undefined || inStrip[ni])
-                        continue;
-                    const shared = qIntersection([edgesOfFace, qAdjacent(neighbour, AdjacencyType.EDGE, EntityType.EDGE)]);
-                    if (!isQueryEmpty(context, qSubtraction(shared, blocked)))
-                    {
-                        inStrip[ni] = true;
-                        next = append(next, ni);
-                    }
-                }
-            }
-            frontier = next;
-        }
-        // Zero-area sliver faces (the cut passing through a vertex or seam) add no surface and stop the sheet from thickening.
-        var chosen = [];
-        for (var n = 0; n < size(faceArray); n += 1)
-            if (inStrip[n] && evArea(context, { "entities" : faceArray[n] }) > STRIP_MIN_FACE_AREA)
-                chosen = append(chosen, faceArray[n]);
-        const stripFaces = qUnion(chosen);
-        opExtractSurface(context, stripId + "sheet", { "faces" : stripFaces });
-        opDeleteBodies(context, stripId + "dropCopy", { "entities" : copyBody });
-        return qCreatedBy(stripId + "sheet", EntityType.BODY);
+        const copy = splitStripCopy(context, stripId, surfaceFaces, toolEdges);
+        const sheet = stripFromCopy(context, stripId + "sheet", copy, qUnion(toolEdges), alsoReportedEdges, wireEdges);
+        opDeleteBodies(context, stripId + "dropCopy", { "entities" : copy.copyBody });
+        return sheet;
     }
     catch (e)
     {
@@ -897,7 +981,7 @@ function makeSection(context is Context, id is Id, crossPath is Path, u is numbe
             points = concatenateArrays([points, mapArray(evaluatePath(context, pe, us), function(l) { return l.origin; })]);
         }
         const faces = mapArray(points, function(point) { return nearestFaceIndex(context, faceBoxes, surfaceFaces, point); });
-        return { "u" : u, "points" : points, "closed" : divided.closed, "faces" : faces, "clamped" : clamped };
+        return { "u" : u, "points" : points, "closed" : divided.closed, "faces" : faces, "clamped" : clamped, "perimeter" : divided.perimeter };
     }
     catch (e)
     {
