@@ -40,6 +40,9 @@ const SEAM_MERGE = 1e-6 * meter;
 const SEAM_ALONG = 1e-5 * meter;
 /** The shared edge of two faces must pass this close to the wire's chord to count as the seam the wire crosses. */
 const SEAM_REACH = 2e-3 * meter;
+/** Samples along a wire used to find the faces a strip starts from, and the most flood steps across edges. */
+const STRIP_SEED_SAMPLES = 9;
+const STRIP_FLOOD_LIMIT = 40;
 /** Most pieces a weak interval is split into in one round. */
 const MAX_SPLIT = 5;
 /** Strip width: 0.1 mm min, 10 mm default, 1 m max. */
@@ -140,7 +143,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         definition.keepSections is boolean;
 
         annotation { "Name" : "Create strips", "Default" : false,
-                     "Description" : "Make a strip of the surface, centred on each wire, with the width and thickness below. (Phase 2: the settings are validated and reported, the strip geometry is not built yet.)" }
+                     "Description" : "Make a strip of the surface, centred on each wire (width measured along the surface, perpendicular to the wire), optionally thickened. Overlapping strips stay separate bodies." }
         definition.createStrips is boolean;
 
         if (definition.createStrips)
@@ -150,6 +153,11 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 annotation { "Name" : "Strip width", "Description" : "Width of each strip, centred on its wire." }
                 isLength(definition.stripWidth, StripWidthBounds);
 
+                annotation { "Name" : "Thicken strips", "Default" : true, "Description" : "Thicken each strip into a solid. Off leaves surface strips." }
+                definition.thickenStrips is boolean;
+
+                if (definition.thickenStrips)
+                {
                 annotation { "Name" : "Strip thickness", "Description" : "Thicken each strip by this much." }
                 isLength(definition.stripThickness, StripThicknessBounds);
 
@@ -173,8 +181,17 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                     }
                 }
 
-                annotation { "Name" : "Consume wires", "Default" : true, "Description" : "Remove the wires once the strips are made." }
+                }
+
+                annotation { "Name" : "Consume wires", "Default" : true, "Description" : "Remove the wires once their strips are made." }
                 definition.consumeWires is boolean;
+
+                annotation { "Name" : "Consume surface", "Default" : false, "Description" : "Delete the input surface once the strips are made." }
+                definition.consumeSurface is boolean;
+
+                annotation { "Name" : "Strip name prefix", "Default" : "even_divide_strip_",
+                             "Description" : "Strips are named prefix + wire number. Blank leaves them unnamed." }
+                definition.stripPrefix is string;
 
                 annotation { "Name" : "Strip overrides", "Item name" : "override", "Item label template" : "Wire #wireIndex",
                              "Description" : "Change the width or thickness of single wires, or skip them. Wires are numbered from 0 at the start point." }
@@ -238,6 +255,22 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
 
         // 2. Section planes at even arc length over that range, and the curves they cut in the surface. Each division point
         //    also records the face it lies on, so a wire can later be built one face at a time.
+        // Strip settings, and the "boundary tracks": for every strip two more division points per section, half the strip width
+        // either side of the wire along the section curve.
+        const stripSettings = definition.createStrips ? stripPlan(definition, definition.divisions) : undefined;
+        var tracks = [];
+        if (stripSettings != undefined)
+        {
+            for (var i = 0; i < definition.divisions; i += 1)
+            {
+                if (stripSettings.plan[i].skip)
+                    continue;
+                const halfWidth = stripSettings.plan[i].width / 2;
+                tracks = append(tracks, { "wire" : i, "side" : -1, "halfWidth" : halfWidth });
+                tracks = append(tracks, { "wire" : i, "side" : 1, "halfWidth" : halfWidth });
+            }
+        }
+
         const faceList = evaluateQuery(context, surfaceFaces);
         const faceBoxes = surfaceFaceBoxes(context, surfaceFaces, max(2 * surfaceTolerance, WIRE_CHECK_BOX_INFLATE));
         var sections = [];
@@ -246,7 +279,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         {
             const u = firstU + (lastU - firstU) * k / (definition.sections - 1);
             const section = makeSection(context, id + ("section" ~ sectionCount), crossPath, u, surfaceFaces, planeSize, symPlane,
-                                         definition.divisions, definition.onSymmetryPlane, faceBoxes);
+                                         definition.divisions, definition.onSymmetryPlane, faceBoxes, tracks);
             sectionCount += 1;
             if (section == undefined)
                 println("evenlyDivideSurface: the section at " ~ roundToPrecision(u, 4) ~ " could not be divided and was skipped");
@@ -268,7 +301,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         //    Cost control: a curve's deviation is sampled INSIDE each section interval (its own parameters delimit the
         //    intervals, so no search is needed), each sample is measured against only the faces whose bounding box contains
         //    it, and after the first round only intervals near new sections are re-measured.
-        const wireCount = size(sections[0].points);
+        const wireCount = definition.divisions;     // the sections' points also hold the strip-edge tracks after these
         var intervalDev = makeArray(size(sections) - 1, 0 * meter);   // worst deviation seen in each interval
         var dirty = makeArray(size(sections) - 1, true);              // intervals to (re)measure this round
         var wireRuns = [];          // per division: its runs, each with the id and parameters of its fitted curve
@@ -353,7 +386,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                     {
                         const u = sections[j].u + (sections[j + 1].u - sections[j].u) * p / pieces;
                         const section = makeSection(context, id + ("section" ~ sectionCount), crossPath, u, surfaceFaces, planeSize, symPlane,
-                                                    definition.divisions, definition.onSymmetryPlane, faceBoxes);
+                                                    definition.divisions, definition.onSymmetryPlane, faceBoxes, tracks);
                         sectionCount += 1;
                         if (section != undefined)
                         {
@@ -389,80 +422,137 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         for (var dev in intervalDev)
             worstOff = max(worstOff, dev);
 
-        // 4. Project each run's curve onto its own face (the fitted curve stays when the projection fails), join the runs of a
-        //    wire into ONE wire body and name it.
+        // 4. The wire bodies: each run's curve is projected onto its own face (the fitted curve stays when the projection fails)
+        //    and the runs of a wire are joined into ONE wire body, which is named.
         var scratch = [];
         var edgeTotal = 0;
         var projectedRuns = 0;
         var totalRuns = 0;
         for (var i = 0; i < wireCount; i += 1)
         {
-            var pieceEdges = [];
-            for (var r = 0; r < size(wireRuns[i]); r += 1)
-            {
-                const run = wireRuns[i][r];
-                const fitEdge = qCreatedBy(run.fitId, EntityType.EDGE);
-                var useEdges = fitEdge;
-                totalRuns += 1;
-                // Only a run on ONE face is projected: a run over several faces lies along a seam (or its seam could not be
-                // found), where it is already on both faces and a projection onto both is unreliable.
-                if (definition.projectWires && size(run.faces) == 1)
-                {
-                    const projectId = id + ("project" ~ i ~ "_" ~ r);
-                    try
-                    {
-                        opDropCurve(context, projectId, { "tools" : fitEdge, "targets" : faceList[run.faces[0]],
-                                                          "projectionType" : ProjectionType.NORMAL_TO_TARGET });
-                        const projected = qCreatedBy(projectId, EntityType.EDGE);
-                        scratch = append(scratch, qCreatedBy(projectId, EntityType.BODY));
-                        if (!isQueryEmpty(context, projected))
-                        {
-                            // A projection that wanders (much longer or shorter than the curve it came from) is rejected.
-                            const projectedLength = evLength(context, { "entities" : projected });
-                            const fittedLength = evLength(context, { "entities" : fitEdge });
-                            if (abs(projectedLength - fittedLength) <= PROJECT_LENGTH_TOLERANCE * fittedLength)
-                            {
-                                useEdges = projected;
-                                projectedRuns += 1;
-                            }
-                            else
-                            {
-                                println("evenlyDivideSurface: wire " ~ i ~ " run " ~ r ~ " projection strayed (" ~ roundToPrecision(projectedLength / millimeter, 2) ~
-                                        " mm against " ~ roundToPrecision(fittedLength / millimeter, 2) ~ " mm); the fitted curve is kept");
-                            }
-                        }
-                    }
-                    catch (e)
-                    {
-                        println("evenlyDivideSurface: wire " ~ i ~ " run " ~ r ~ " not projected: " ~ toString(e));
-                    }
-                }
-                pieceEdges = append(pieceEdges, useEdges);
-                scratch = append(scratch, qCreatedBy(run.fitId, EntityType.BODY));
-            }
-            const wireId = id + ("wire" ~ i);
-            try
-            {
-                opExtractWires(context, wireId, { "edges" : qUnion(pieceEdges) });
-            }
-            catch
-            {
-                // Projected pieces that overlap cannot be joined: join the fitted curves instead.
-                println("evenlyDivideSurface: wire " ~ i ~ " could not be joined after projection; using the fitted curves");
-                opExtractWires(context, wireId, { "edges" : qUnion(mapArray(wireRuns[i], function(run) { return qCreatedBy(run.fitId, EntityType.EDGE); })) });
-            }
-            edgeTotal += size(evaluateQuery(context, qCreatedBy(wireId, EntityType.EDGE)));
+            const made = finishWire(context, id + ("wire" ~ i), id + ("project" ~ i ~ "_"), wireRuns[i], definition.projectWires, faceList);
+            scratch = concatenateArrays([scratch, made.scratch]);
+            edgeTotal += made.edges;
+            projectedRuns += made.projectedRuns;
+            totalRuns += made.runs;
             if (definition.wirePrefix != "")
             {
                 try silent
                 {
-                    setProperty(context, { "entities" : qCreatedBy(wireId, EntityType.BODY), "propertyType" : PropertyType.NAME,
+                    setProperty(context, { "entities" : qCreatedBy(id + ("wire" ~ i), EntityType.BODY), "propertyType" : PropertyType.NAME,
                                            "value" : definition.wirePrefix ~ i });
                 }
             }
         }
 
-        // 5. Clean up the construction geometry.
+        // 5. Strips. The strip edges are the "boundary tracks" computed with the sections; they are fitted from the final
+        //    sections (not refined separately) and built like wires. A track that lies entirely on the surface boundary
+        //    (the strip is clipped there) needs no cut.
+        var boundaryWireIds = [];
+        for (var j = 0; j < size(tracks); j += 1)
+        {
+            var allClamped = true;
+            for (var s in sections)
+                if (!s.clamped[j])
+                    allClamped = false;
+            if (allClamped)
+            {
+                boundaryWireIds = append(boundaryWireIds, undefined);
+                continue;
+            }
+            var boundaryRuns = buildRuns(context, sections, wireCount + j, faceList);
+            for (var r = 0; r < size(boundaryRuns); r += 1)
+            {
+                const boundaryFitId = id + ("bfit" ~ j ~ "_" ~ r);
+                boundaryRuns[r].fitId = boundaryFitId;
+                boundaryRuns[r].params = fitRun(context, boundaryFitId, boundaryRuns[r].pts);
+            }
+            const boundaryMade = finishWire(context, id + ("bwire" ~ j), id + ("bproject" ~ j ~ "_"), boundaryRuns, definition.projectWires, faceList);
+            scratch = concatenateArrays([scratch, boundaryMade.scratch]);
+            boundaryWireIds = append(boundaryWireIds, id + ("bwire" ~ j));
+            scratch = append(scratch, qCreatedBy(id + ("bwire" ~ j), EntityType.BODY));
+        }
+
+        var stripNote = "";
+        var stripWarnings = [];
+        var builtStrips = 0;
+        if (definition.createStrips)
+        {
+            stripWarnings = stripSettings.warnings;
+            var consumed = [];
+            for (var i = 0; i < wireCount; i += 1)
+            {
+                if (stripSettings.plan[i].skip)
+                    continue;
+                var toolEdges = [];
+                for (var j = 0; j < size(tracks); j += 1)
+                    if (tracks[j].wire == i && boundaryWireIds[j] != undefined)
+                        toolEdges = append(toolEdges, qOwnedByBody(qCreatedBy(boundaryWireIds[j], EntityType.BODY), EntityType.EDGE));
+                const stripId = id + ("strip" ~ i);
+                const sheet = buildStrip(context, stripId, surfaceFaces, toolEdges, qOwnedByBody(qCreatedBy(id + ("wire" ~ i), EntityType.BODY), EntityType.EDGE));
+                if (sheet == undefined)
+                {
+                    stripWarnings = append(stripWarnings, "Strip " ~ i ~ " could not be built.");
+                    continue;
+                }
+                var stripBody = sheet;
+                if (definition.thickenStrips)
+                {
+                    const thickness = stripSettings.plan[i].thickness;
+                    var thickness1 = thickness;      // along the surface normal
+                    var thickness2 = 0 * meter;      // against it
+                    if (definition.stripMidplane)
+                    {
+                        thickness1 = thickness / 2;
+                        thickness2 = thickness / 2;
+                    }
+                    else
+                    {
+                        const second = definition.stripSecondDirection ? definition.stripThickness2 : 0 * meter;
+                        if (definition.stripFlip)
+                        {
+                            thickness1 = second;
+                            thickness2 = thickness;
+                        }
+                        else
+                        {
+                            thickness2 = second;
+                        }
+                    }
+                    try
+                    {
+                        opThicken(context, stripId + "thicken", { "entities" : sheet, "thickness1" : thickness1, "thickness2" : thickness2, "keepTools" : false });
+                        stripBody = qCreatedBy(stripId + "thicken", EntityType.BODY);
+                    }
+                    catch (e)
+                    {
+                        println("evenlyDivideSurface: strip " ~ i ~ " could not be thickened: " ~ toString(e));
+                        stripWarnings = append(stripWarnings, "Strip " ~ i ~ " could not be thickened and stays a surface.");
+                    }
+                }
+                if (definition.stripPrefix != "")
+                {
+                    try silent
+                    {
+                        setProperty(context, { "entities" : stripBody, "propertyType" : PropertyType.NAME, "value" : definition.stripPrefix ~ i });
+                    }
+                }
+                builtStrips += 1;
+                consumed = append(consumed, i);
+            }
+            // The strip edges are construction geometry; the wires go too when asked (only those whose strip was built).
+            for (var j = 0; j < size(boundaryWireIds); j += 1)
+                if (boundaryWireIds[j] != undefined)
+                    scratch = append(scratch, qCreatedBy(boundaryWireIds[j], EntityType.BODY));
+            if (definition.consumeWires)
+                for (var i in consumed)
+                    scratch = append(scratch, qCreatedBy(id + ("wire" ~ i), EntityType.BODY));
+            if (definition.consumeSurface && builtStrips > 0)
+                opDeleteBodies(context, id + "consumeSurface", { "entities" : definition.surface });
+            stripNote = " " ~ stripSettings.summary ~ " " ~ builtStrips ~ " strips built" ~ (definition.thickenStrips ? " and thickened" : " as surfaces") ~ ".";
+        }
+
+        // 6. Clean up the construction geometry.
         for (var k = 0; k < sectionCount; k += 1)
         {
             if (definition.keepSections)
@@ -487,16 +577,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                         (closedCount > 0 ? ", closed sections" : ", open sections") ~
                         (definition.projectWires ? "; " ~ projectedRuns ~ " of " ~ totalRuns ~ " face runs projected onto their face" : "") ~
                         "; widest gap before projection " ~ roundToPrecision(worstOff / millimeter, 4) ~ " mm.";
-        println("evenlyDivideSurface: " ~ summary);
-        var stripNote = "";
-        var stripWarnings = [];
-        if (definition.createStrips)
-        {
-            const strips = stripPlan(definition, wireCount);
-            stripWarnings = strips.warnings;
-            stripNote = " " ~ strips.summary ~ " (strip geometry is not built yet).";
-            println("evenlyDivideSurface: " ~ strips.summary);
-        }
+        println("evenlyDivideSurface: " ~ summary ~ stripNote);
         if (size(stripWarnings) > 0)
             reportFeatureWarning(context, id, summary ~ stripNote ~ " " ~ join(stripWarnings, " "));
         else if (worstOff > surfaceTolerance)
@@ -507,21 +588,180 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
 
 
 /**
+ * Project each run's curve of one wire onto its own face and join the runs into ONE wire body `wireId`.
+ *
+ * @returns {{ edges : number of edges of the wire, projectedRuns, runs, scratch : array of queries to delete }}
+ */
+function finishWire(context is Context, wireId is Id, projectPrefix is Id, runs is array, projectWires is boolean, faceList is array) returns map
+{
+    var pieceEdges = [];
+    var scratch = [];
+    var projectedRuns = 0;
+    for (var r = 0; r < size(runs); r += 1)
+    {
+        const run = runs[r];
+        const fitEdge = qCreatedBy(run.fitId, EntityType.EDGE);
+        var useEdges = fitEdge;
+        // Only a run on ONE face is projected: a run over several faces lies along a seam (or its seam could not be
+        // found), where it is already on both faces and a projection onto both is unreliable.
+        if (projectWires && size(run.faces) == 1)
+        {
+            const projectId = projectPrefix + toString(r);
+            try
+            {
+                opDropCurve(context, projectId, { "tools" : fitEdge, "targets" : faceList[run.faces[0]],
+                                                  "projectionType" : ProjectionType.NORMAL_TO_TARGET });
+                const projected = qCreatedBy(projectId, EntityType.EDGE);
+                scratch = append(scratch, qCreatedBy(projectId, EntityType.BODY));
+                if (!isQueryEmpty(context, projected))
+                {
+                    // A projection that wanders (much longer or shorter than the curve it came from) is rejected.
+                    const projectedLength = evLength(context, { "entities" : projected });
+                    const fittedLength = evLength(context, { "entities" : fitEdge });
+                    if (abs(projectedLength - fittedLength) <= PROJECT_LENGTH_TOLERANCE * fittedLength)
+                    {
+                        useEdges = projected;
+                        projectedRuns += 1;
+                    }
+                    else
+                    {
+                        println("evenlyDivideSurface: run " ~ r ~ " projection strayed (" ~ roundToPrecision(projectedLength / millimeter, 2) ~
+                                " mm against " ~ roundToPrecision(fittedLength / millimeter, 2) ~ " mm); the fitted curve is kept");
+                    }
+                }
+            }
+            catch (e)
+            {
+                println("evenlyDivideSurface: run " ~ r ~ " not projected: " ~ toString(e));
+            }
+        }
+        pieceEdges = append(pieceEdges, useEdges);
+        scratch = append(scratch, qCreatedBy(run.fitId, EntityType.BODY));
+    }
+    try
+    {
+        opExtractWires(context, wireId, { "edges" : qUnion(pieceEdges) });
+    }
+    catch
+    {
+        // Projected pieces that overlap cannot be joined: join the fitted curves instead.
+        println("evenlyDivideSurface: a wire could not be joined after projection; using the fitted curves");
+        opExtractWires(context, wireId, { "edges" : qUnion(mapArray(runs, function(run) { return qCreatedBy(run.fitId, EntityType.EDGE); })) });
+    }
+    return { "edges" : size(evaluateQuery(context, qCreatedBy(wireId, EntityType.EDGE))), "projectedRuns" : projectedRuns, "runs" : size(runs), "scratch" : scratch };
+}
+
+/**
+ * One strip of the surface: a copy of the surface is split along the strip's edge wires (`toolEdges`, which lie on the surface;
+ * the split is extended to complete the cut), the faces of the copy that lie between them are found by flooding from the
+ * faces the wire runs on across every edge that is not a cut, and those faces are extracted as a new sheet body. A fresh copy
+ * per strip keeps overlapping strips apart.
+ *
+ * @returns Query of the strip sheet, or `undefined` when it could not be built
+ */
+function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, toolEdges is array, wireEdges is Query)
+{
+    try
+    {
+        opExtractSurface(context, stripId + "copy", { "faces" : surfaceFaces });
+        const copyBody = qCreatedBy(stripId + "copy", EntityType.BODY);
+        var blocked = qNothing();
+        if (size(toolEdges) > 0)
+        {
+            const split = opSplitFace(context, stripId + "split", { "faceTargets" : qOwnedByBody(copyBody, EntityType.FACE),
+                                                                    "edgeTools" : qUnion(toolEdges),
+                                                                    "projectionType" : ProjectionType.NORMAL_TO_TARGET,
+                                                                    "extendToCompletion" : true });
+            blocked = qUnion(split.splittingEdges);
+        }
+        const copyFaces = qOwnedByBody(copyBody, EntityType.FACE);
+        const faceArray = evaluateQuery(context, copyFaces);
+
+        // Seeds: the faces the wire runs on.
+        var seeds = [];
+        var seen = makeArray(size(faceArray), false);
+        for (var edge in evaluateQuery(context, wireEdges))
+        {
+            for (var l in evEdgeTangentLines(context, { "edge" : edge, "parameters" : range(0, 1, STRIP_SEED_SAMPLES) }))
+            {
+                const index = evDistance(context, { "side0" : l.origin, "side1" : copyFaces }).sides[1].index;
+                if (!seen[index])
+                {
+                    seen[index] = true;
+                    seeds = append(seeds, faceArray[index]);
+                }
+            }
+        }
+        if (size(seeds) == 0)
+            throw regenError("The strip's wire is not on the surface.");
+
+        // Flood across every edge that is not a cut.
+        var stripFaces = qUnion(seeds);
+        for (var iteration = 0; iteration < STRIP_FLOOD_LIMIT; iteration += 1)
+        {
+            const allowed = qSubtraction(qAdjacent(stripFaces, AdjacencyType.EDGE, EntityType.EDGE), blocked);
+            const next = qSubtraction(qIntersection([qAdjacent(allowed, AdjacencyType.EDGE, EntityType.FACE), copyFaces]), stripFaces);
+            if (isQueryEmpty(context, next))
+                break;
+            stripFaces = qUnion([stripFaces, next]);
+        }
+
+        opExtractSurface(context, stripId + "sheet", { "faces" : stripFaces });
+        opDeleteBodies(context, stripId + "dropCopy", { "entities" : copyBody });
+        return qCreatedBy(stripId + "sheet", EntityType.BODY);
+    }
+    catch (e)
+    {
+        println("evenlyDivideSurface: strip could not be built: " ~ toString(e));
+        try silent
+        {
+            opDeleteBodies(context, stripId + "dropCopyAfterError", { "entities" : qCreatedBy(stripId + "copy", EntityType.BODY) });
+        }
+        return undefined;
+    }
+}
+
+
+/**
  * Cut the surface at parameter `u` of the wire and divide the section. Everything made is created under `id`.
  *
  * @returns {{ u, points, closed, faces }} (faces: index of the face each division point lies on) or `undefined` when the plane cuts nothing usable
  */
 function makeSection(context is Context, id is Id, crossPath is Path, u is number, surfaceFaces is Query, planeSize is ValueWithUnits,
-        symPlane is Plane, divisions is number, onSymmetryPlane is boolean, faceBoxes is array)
+        symPlane is Plane, divisions is number, onSymmetryPlane is boolean, faceBoxes is array, tracks is array)
 {
     const cut = cutSection(context, id, crossPath, u, surfaceFaces, planeSize);
     if (cut.path == undefined)
         return undefined;
     try
     {
-        const divided = divideSection(context, pathEvaluator(context, cut.path), symPlane, divisions, onSymmetryPlane);
-        const faces = mapArray(divided.points, function(point) { return nearestFaceIndex(context, faceBoxes, surfaceFaces, point); });
-        return { "u" : u, "points" : divided.points, "closed" : divided.closed, "faces" : faces };
+        const pe = pathEvaluator(context, cut.path);
+        const divided = divideSection(context, pe, symPlane, divisions, onSymmetryPlane);
+        var points = divided.points;
+        var clamped = [];
+        if (size(tracks) > 0)
+        {
+            // Strip edges: half a strip width either side of the wire's division point, along this section curve. On an
+            // open section the curve ends at the surface boundary: the point is clamped there (and marked).
+            var us = [];
+            for (var track in tracks)
+            {
+                const raw = divided.startU + divided.direction * (divided.fractions[track.wire] + track.side * track.halfWidth / divided.perimeter);
+                if (divided.closed)
+                {
+                    us = append(us, wrapUnit(raw));
+                    clamped = append(clamped, false);
+                }
+                else
+                {
+                    us = append(us, clamp(raw, 0, 1));
+                    clamped = append(clamped, raw < 0 || raw > 1);
+                }
+            }
+            points = concatenateArrays([points, mapArray(evaluatePath(context, pe, us), function(l) { return l.origin; })]);
+        }
+        const faces = mapArray(points, function(point) { return nearestFaceIndex(context, faceBoxes, surfaceFaces, point); });
+        return { "u" : u, "points" : points, "closed" : divided.closed, "faces" : faces, "clamped" : clamped };
     }
     catch (e)
     {
@@ -580,7 +820,7 @@ function pathEvaluator(context is Context, path is Path) returns map
         run += len;
         cum = append(cum, run / total);
     }
-    return { "path" : path, "cum" : cum };
+    return { "path" : path, "cum" : cum, "total" : total };
 }
 
 /**
@@ -753,7 +993,7 @@ function stripPlan(definition is map, wireCount is number) returns map
 {
     var plan = [];
     for (var w = 0; w < wireCount; w += 1)
-        plan = append(plan, { "skip" : false, "width" : definition.stripWidth, "thickness" : definition.stripThickness, "overridden" : false });
+        plan = append(plan, { "skip" : false, "width" : definition.stripWidth, "thickness" : definition.thickenStrips ? definition.stripThickness : 0 * meter, "overridden" : false });
 
     var warnings = [];
     for (var o in definition.overrides)
@@ -772,7 +1012,7 @@ function stripPlan(definition is map, wireCount is number) returns map
         {
             if (o.overrideWidth)
                 entry.width = o.width;
-            if (o.overrideThickness)
+            if (o.overrideThickness && definition.thickenStrips)
                 entry.thickness = o.thickness;
         }
         plan[o.wireIndex] = entry;
@@ -789,16 +1029,17 @@ function stripPlan(definition is map, wireCount is number) returns map
         {
             if (abs(entry.width - definition.stripWidth) > 1e-12 * meter)
                 widthChanged += 1;
-            if (abs(entry.thickness - definition.stripThickness) > 1e-12 * meter)
+            if (definition.thickenStrips && abs(entry.thickness - definition.stripThickness) > 1e-12 * meter)
                 thicknessChanged += 1;
         }
     }
     const summary = "Strips: " ~ (wireCount - skipped) ~ " of " ~ wireCount ~ " wires, width " ~ roundToPrecision(definition.stripWidth / millimeter, 3) ~
-                    " mm (" ~ widthChanged ~ " overridden), thickness " ~ roundToPrecision(definition.stripThickness / millimeter, 3) ~ " mm (" ~
-                    thicknessChanged ~ " overridden), " ~ skipped ~ " skipped" ~
-                    (definition.stripMidplane ? ", mid-plane" : (definition.stripFlip ? ", opposite direction" : "")) ~
-                    (!definition.stripMidplane && definition.stripSecondDirection ? ", second direction " ~ roundToPrecision(definition.stripThickness2 / millimeter, 3) ~ " mm" : "") ~
-                    (definition.consumeWires ? ", wires consumed" : ", wires kept") ~ ".";
+                    " mm (" ~ widthChanged ~ " overridden), " ~
+                    (definition.thickenStrips ? "thickness " ~ roundToPrecision(definition.stripThickness / millimeter, 3) ~ " mm (" ~ thicknessChanged ~ " overridden), " : "not thickened, ") ~
+                    skipped ~ " skipped" ~
+                    (definition.thickenStrips && definition.stripMidplane ? ", mid-plane" : (definition.thickenStrips && definition.stripFlip ? ", opposite direction" : "")) ~
+                    (definition.thickenStrips && !definition.stripMidplane && definition.stripSecondDirection ? ", second direction " ~ roundToPrecision(definition.stripThickness2 / millimeter, 3) ~ " mm" : "") ~
+                    (definition.consumeWires ? ", wires consumed" : ", wires kept") ~ (definition.consumeSurface ? ", surface consumed" : "") ~ ".";
     return { "plan" : plan, "warnings" : warnings, "summary" : summary };
 }
 
@@ -1046,7 +1287,7 @@ function divideSection(context is Context, pe is map, symPlane is Plane, divisio
 
     const lines = evaluatePath(context, pe, params);
     return { "points" : mapArray(lines, function(l) { return l.origin; }), "closed" : closed,
-             "crossings" : size(crossings), "startU" : start.u };
+             "crossings" : size(crossings), "startU" : start.u, "direction" : direction, "fractions" : fractions, "perimeter" : pe.total };
 }
 
 /** Wrap a path parameter into [0, 1). */
