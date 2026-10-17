@@ -1,0 +1,153 @@
+- generic [ref=f22e5]:
+  - navigation [ref=f22e6]:
+    - generic [ref=f22e7]:
+      - link [ref=f22e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f22e11]
+      - generic [ref=f22e13] [cursor=pointer]
+    - generic [ref=f22e16]:
+      - generic [ref=f22e18]:
+        - generic [ref=f22e19]: evenly_divide_surface
+        - generic [ref=f22e20]: Main
+      - generic [ref=f22e22] [cursor=pointer]
+      - link "Ski/Snowboard" [ref=f22e26] [cursor=pointer]:
+        - /url: /documents?nodeId=a4031dd13e6b49409dda5f9c&resourceType=folder
+    - generic [ref=f22e30]:
+      - generic [ref=f22e38] [cursor=pointer]
+      - generic [ref=f22e44] [cursor=pointer]
+      - button "Notifications" [ref=f22e49] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f22e57]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f22e60] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f22e65] [cursor=pointer]
+      - button "Share" [ref=f22e69] [cursor=pointer]
+      - generic "Help menu" [ref=f22e71] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f22e75] [cursor=pointer]
+  - generic [ref=f22e85]:
+    - generic [ref=f22e87]:
+      - generic [ref=f22e88]:
+        - generic [ref=f22e89]:
+          - generic [ref=f22e90] [cursor=pointer]
+          - generic [ref=f22e93] [cursor=pointer]
+          - generic [ref=f22e96] [cursor=pointer]
+          - generic [ref=f22e99] [cursor=pointer]
+          - generic [ref=f22e102] [cursor=pointer]
+          - generic [ref=f22e105] [cursor=pointer]
+          - generic [ref=f22e108] [cursor=pointer]
+          - generic [ref=f22e111] [cursor=pointer]
+        - generic [ref=f22e115] [cursor=pointer]
+      - generic [ref=f22e119] [cursor=pointer]
+    - generic [ref=f22e126]:
+      - generic [ref=f22e133]:
+        - generic [ref=f22e145]:
+          - generic [ref=f22e146]: Sketch
+          - generic [ref=f22e158]:
+            - generic [ref=f22e159] [cursor=pointer]
+            - generic [ref=f22e163] [cursor=pointer]
+            - generic [ref=f22e167] [cursor=pointer]
+            - generic [ref=f22e171] [cursor=pointer]
+            - generic [ref=f22e176]:
+              - generic [ref=f22e177] [cursor=pointer]
+              - generic [ref=f22e181] [cursor=pointer]
+          - generic [ref=f22e187]:
+            - generic [ref=f22e189]:
+              - generic [ref=f22e190] [cursor=pointer]
+              - generic [ref=f22e194] [cursor=pointer]
+            - generic [ref=f22e197] [cursor=pointer]
+            - generic [ref=f22e202]:
+              - generic [ref=f22e203] [cursor=pointer]
+              - generic [ref=f22e207] [cursor=pointer]
+            - generic [ref=f22e210] [cursor=pointer]
+            - generic [ref=f22e214] [cursor=pointer]
+            - generic [ref=f22e218] [cursor=pointer]
+            - generic [ref=f22e222] [cursor=pointer]
+          - generic [ref=f22e229]:
+            - generic [ref=f22e231]:
+              - generic [ref=f22e232] [cursor=pointer]
+              - generic [ref=f22e236] [cursor=pointer]
+            - generic [ref=f22e239] [cursor=pointer]
+          - generic [ref=f22e246]:
+            - generic [ref=f22e247] [cursor=pointer]
+            - generic [ref=f22e251] [cursor=pointer]
+            - generic [ref=f22e256]:
+              - generic [ref=f22e257] [cursor=pointer]
+              - generic [ref=f22e261] [cursor=pointer]
+            - generic [ref=f22e264] [cursor=pointer]
+          - generic [ref=f22e271]:
+            - generic [ref=f22e272] [cursor=pointer]
+            - generic [ref=f22e276] [cursor=pointer]
+            - generic [ref=f22e280] [cursor=pointer]
+            - generic [ref=f22e284] [cursor=pointer]
+          - generic [ref=f22e292]:
+            - generic [ref=f22e293] [cursor=pointer]
+            - generic [ref=f22e297] [cursor=pointer]
+          - generic [ref=f22e304]:
+            - generic [ref=f22e305] [cursor=pointer]: SA
+            - generic [ref=f22e308] [cursor=pointer]
+          - generic [ref=f22e315] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f22e322] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f22e323]:
+            - generic [ref=f22e324]: alt/⌥
+            - generic [ref=f22e325]: c
+      - generic [ref=f22e329]:
+        - generic [ref=f22e332]:
+          - generic [ref=f22e334]:
+            - generic [ref=f22e335]:
+              - generic [ref=f22e337]:
+                - button [ref=f22e339] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f22e344]
+              - generic [ref=f22e345]:
+                - button [ref=f22e346] [cursor=pointer]
+                - generic [ref=f22e349]: Features (9)
+                - button [ref=f22e350] [cursor=pointer]
+                - button [ref=f22e353] [cursor=pointer]
+                - button [ref=f22e356] [cursor=pointer]
+            - generic [ref=f22e360]:
+              - generic [ref=f22e361]:
+                - generic [ref=f22e363]:
+                  - generic [ref=f22e364] [cursor=pointer]
+                  - generic [ref=f22e367]: Default geometry
+                - generic [ref=f22e369]: Origin
+                - generic [ref=f22e379]: Top
+                - generic [ref=f22e389]: Front
+                - generic [ref=f22e399]: Right
+                - generic [ref=f22e409]: Derived from Part Studio 1
+                - generic [ref=f22e417]: E1 full, 5 divisions, wires on symmetry plane
+                - generic [ref=f22e424]: E2 full, 5 divisions, half step off symmetry plane
+                - generic [ref=f22e431]: E3 half, 5 divisions, wires on symmetry plane
+                - generic [ref=f22e438]: E4 half, 5 divisions, half step off symmetry plane
+              - list
+          - generic [ref=f22e453]:
+            - generic [ref=f22e455]:
+              - generic [ref=f22e457] [cursor=pointer]
+              - generic [ref=f22e460]: Parts (0)
+            - generic [ref=f22e464]:
+              - generic [ref=f22e466] [cursor=pointer]
+              - generic [ref=f22e469]: Surfaces (2)
+            - generic [ref=f22e474]:
+              - generic [ref=f22e476] [cursor=pointer]
+              - generic [ref=f22e479]: Curves (16)
+        - generic [ref=f22e484]:
+          - generic [ref=f22e486] [cursor=pointer]
+          - generic [ref=f22e490]:
+            - generic [ref=f22e492]:
+              - button [ref=f22e493] [cursor=pointer]
+              - button [ref=f22e497] [cursor=pointer]
+              - button [ref=f22e501] [cursor=pointer]
+            - generic [ref=f22e505] [cursor=pointer]
+          - generic [ref=f22e510]:
+            - generic [ref=f22e511] [cursor=pointer]
+            - generic [ref=f22e515] [cursor=pointer]
+            - generic [ref=f22e519] [cursor=pointer]
+            - generic [ref=f22e523] [cursor=pointer]
+            - generic [ref=f22e527] [cursor=pointer]
+            - generic [ref=f22e531] [cursor=pointer]
+            - generic [ref=f22e534] [cursor=pointer]
+      - generic [ref=f22e538]:
+        - img [ref=f22e541] [cursor=pointer]
+        - generic [ref=f22e544]:
+          - generic [ref=f22e545] [cursor=pointer]: Part Studio 1
+          - generic [ref=f22e551] [cursor=pointer]: Assembly 1
+          - generic [ref=f22e557] [cursor=pointer]: evenly_divide_surface
+          - generic [ref=f22e563]: Divide tests
+          - generic [ref=f22e574] [cursor=pointer]: evenly_divide_surface_icon.svg

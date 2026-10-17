@@ -30,6 +30,8 @@ const SECTION_END_MARGIN = 1e-3 * meter;
 const WIRE_CHECK_SAMPLES = 2;
 /** A face is a candidate for a distance check when the point is within its bounding box inflated by at least this much. */
 const WIRE_CHECK_BOX_INFLATE = 2e-3 * meter;
+/** A projected run must be within this fraction of the length of the curve it was projected from. */
+const PROJECT_LENGTH_TOLERANCE = 0.01;
 /** Points closer than this are one point (joining a run to its seam point). */
 const SEAM_MERGE = 1e-6 * meter;
 /** Both points of a wire segment within this of the faces' shared edge: the wire runs along the seam. */
@@ -303,20 +305,32 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 const fitEdge = qCreatedBy(run.fitId, EntityType.EDGE);
                 var useEdges = fitEdge;
                 totalRuns += 1;
-                if (definition.projectWires)
+                // Only a run on ONE face is projected: a run over several faces lies along a seam (or its seam could not be
+                // found), where it is already on both faces and a projection onto both is unreliable.
+                if (definition.projectWires && size(run.faces) == 1)
                 {
                     const projectId = id + ("project" ~ i ~ "_" ~ r);
                     try
                     {
-                        opDropCurve(context, projectId, { "tools" : fitEdge,
-                                                          "targets" : qUnion(mapArray(run.faces, function(f) { return faceList[f]; })),
+                        opDropCurve(context, projectId, { "tools" : fitEdge, "targets" : faceList[run.faces[0]],
                                                           "projectionType" : ProjectionType.NORMAL_TO_TARGET });
                         const projected = qCreatedBy(projectId, EntityType.EDGE);
+                        scratch = append(scratch, qCreatedBy(projectId, EntityType.BODY));
                         if (!isQueryEmpty(context, projected))
                         {
-                            useEdges = projected;
-                            projectedRuns += 1;
-                            scratch = append(scratch, qCreatedBy(projectId, EntityType.BODY));
+                            // A projection that wanders (much longer or shorter than the curve it came from) is rejected.
+                            const projectedLength = evLength(context, { "entities" : projected });
+                            const fittedLength = evLength(context, { "entities" : fitEdge });
+                            if (abs(projectedLength - fittedLength) <= PROJECT_LENGTH_TOLERANCE * fittedLength)
+                            {
+                                useEdges = projected;
+                                projectedRuns += 1;
+                            }
+                            else
+                            {
+                                println("evenlyDivideSurface: wire " ~ i ~ " run " ~ r ~ " projection strayed (" ~ roundToPrecision(projectedLength / millimeter, 2) ~
+                                        " mm against " ~ roundToPrecision(fittedLength / millimeter, 2) ~ " mm); the fitted curve is kept");
+                            }
                         }
                     }
                     catch (e)
@@ -378,7 +392,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         if (worstOff > surfaceTolerance)
             reportFeatureWarning(context, id, summary ~ (definition.refine ? " Increase the number of cross sections." : " Turn on Refine sections or increase the number of cross sections."));
         else if (definition.projectWires && projectedRuns < totalRuns)
-            reportFeatureWarning(context, id, summary ~ " Runs along the surface boundary cannot be projected and keep their fitted curve.");
+            reportFeatureWarning(context, id, summary ~ " The other runs (along a seam or the surface boundary, or whose projection strayed) keep their fitted curve.");
         else
             reportFeatureInfo(context, id, summary);
     });
