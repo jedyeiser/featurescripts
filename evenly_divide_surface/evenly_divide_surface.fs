@@ -137,13 +137,13 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         annotation { "Name" : "Keep section curves", "Default" : false }
         definition.keepSections is boolean;
 
-        annotation { "Group Name" : "Strips", "Collapsed By Default" : true, "Driving Parameter" : "createStrips" }
-        {
-            annotation { "Name" : "Create strips", "Default" : false,
-                         "Description" : "Make a strip of the surface, centred on each wire, with the width and thickness below. (Phase 2: the settings are validated and reported, the strip geometry is not built yet.)" }
-            definition.createStrips is boolean;
+        annotation { "Name" : "Create strips", "Default" : false,
+                     "Description" : "Make a strip of the surface, centred on each wire, with the width and thickness below. (Phase 2: the settings are validated and reported, the strip geometry is not built yet.)" }
+        definition.createStrips is boolean;
 
-            if (definition.createStrips)
+        if (definition.createStrips)
+        {
+            annotation { "Group Name" : "Strips", "Collapsed By Default" : false, "Driving Parameter" : "createStrips" }
             {
                 annotation { "Name" : "Strip width", "Description" : "Width of each strip, centred on its wire." }
                 isLength(definition.stripWidth, StripWidthBounds);
