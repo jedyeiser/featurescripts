@@ -115,7 +115,7 @@ def divide(name, surface_id, divisions, on_plane):
     given = {p["parameterId"]: p for p in [
         qids("surface", [surface_id]), qids("crossWire", [wire]), q("symmetryPlane", FRONT),
         num("divisions", str(divisions), True), num("sections", str(SECTIONS), True), b("onSymmetryPlane", on_plane),
-        b("projectWires", os.environ.get("DIVIDE_PROJECT") == "1")]}
+        b("projectWires", os.environ.get("DIVIDE_PROJECT", "1") == "1"), num("surfaceTolerance", "0.01 mm")]}
     params = []
     for p in SPEC["parameters"]:
         pid = p["parameterId"]
