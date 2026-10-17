@@ -43,6 +43,8 @@ const SEAM_REACH = 2e-3 * meter;
 /** Samples along a wire used to find the faces a strip starts from, and the most flood steps across edges. */
 const STRIP_SEED_SAMPLES = 9;
 const STRIP_FLOOD_LIMIT = 40;
+/** Faces of a strip smaller than this are slivers and are dropped. */
+const STRIP_MIN_FACE_AREA = 1e-8 * meter ^ 2;
 /** The strip edges are continued straight by this much at both ends so the cut reaches the surface boundary. */
 const STRIP_EXTENSION = 6e-3 * meter;
 /** An edge of the split copy within this of a strip-edge wire (at 3 points) is a cut. */
@@ -777,9 +779,10 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
             }
             frontier = next;
         }
+        // Zero-area sliver faces (the cut passing through a vertex or seam) add no surface and stop the sheet from thickening.
         var chosen = [];
         for (var n = 0; n < size(faceArray); n += 1)
-            if (inStrip[n])
+            if (inStrip[n] && evArea(context, { "entities" : faceArray[n] }) > STRIP_MIN_FACE_AREA)
                 chosen = append(chosen, faceArray[n]);
         const stripFaces = qUnion(chosen);
         opExtractSurface(context, stripId + "sheet", { "faces" : stripFaces });
