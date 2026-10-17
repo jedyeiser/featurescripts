@@ -750,7 +750,7 @@ function stripPlan(definition is map, wireCount is number) returns map
         }
         var entry = plan[o.wireIndex];
         if (entry.overridden)
-            warnings = append(warnings, "Wire " ~ o.wireIndex ~ " has more than one override; the last one is used.");
+            warnings = append(warnings, "Wire " ~ o.wireIndex ~ " has more than one override; they are applied in order.");
         entry.overridden = true;
         entry.skip = o.skip;
         if (!o.skip)

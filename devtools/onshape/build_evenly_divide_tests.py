@@ -111,17 +111,19 @@ wire = [i for i, k, n in rows if k == "WIRE"][0]
 FRONT = 'qCreatedBy(makeId("Front"), EntityType.FACE)'
 
 
-def divide(name, surface_id, divisions, on_plane):
+def divide(name, surface_id, divisions, on_plane, extra=()):
     given = {p["parameterId"]: p for p in [
         qids("surface", [surface_id]), qids("crossWire", [wire]), q("symmetryPlane", FRONT),
         num("divisions", str(divisions), True), num("sections", str(SECTIONS), True), b("onSymmetryPlane", on_plane),
-        b("projectWires", os.environ.get("DIVIDE_PROJECT", "1") == "1"), num("surfaceTolerance", "0.01 mm")]}
+        b("projectWires", os.environ.get("DIVIDE_PROJECT", "1") == "1"), num("surfaceTolerance", "0.01 mm")] + list(extra)}
     params = []
     for p in SPEC["parameters"]:
         pid = p["parameterId"]
         d = p.get("defaultValue")
         if pid in given:
             params.append(given[pid])
+        elif pid == "overrides":      # array parameter: an empty list when no overrides are given (correction 38)
+            params.append({"btType": "BTMParameterArray-2025", "parameterId": pid, "items": []})
         elif isinstance(d, dict):
             params.append(dict(d, parameterId=pid))
     return write({"btType": "BTMFeature-134", "featureType": "evenlyDivideSurface", "name": name, "namespace": NS, "parameters": params})
@@ -131,3 +133,32 @@ divide("E1 full, 5 divisions, wires on symmetry plane", full, 5, True)
 divide("E2 full, 5 divisions, half step off symmetry plane", full, 5, False)
 divide("E3 half, 5 divisions, wires on symmetry plane", half, 5, True)
 divide("E4 half, 5 divisions, half step off symmetry plane", half, 5, False)
+
+
+# ---- phase 2 settings (strip geometry is not built yet): the feature validates and reports them ----
+def override(index, skip=False, width=None, thickness=None):
+    """One strip-override item: every item parameter is sent, hidden ones with defaults (correction 38)."""
+    return {"btType": "BTMArrayParameterItem-1843", "parameters": [
+        num("wireIndex", str(index), True), b("skip", skip),
+        b("overrideWidth", width is not None), num("width", width or "10 mm"),
+        b("overrideThickness", thickness is not None), num("thickness", thickness or "1 mm")]}
+
+
+def overrides(*items):
+    return {"btType": "BTMParameterArray-2025", "parameterId": "overrides", "items": list(items)}
+
+
+if os.environ.get("DIVIDE_PHASE2") == "1":
+    # S1 half surface: width 12, thickness 2, mid-plane; wire 1 is 20 mm wide, wire 3 skipped, wire 9 does not exist
+    #   expected: "Strips: 4 of 5 wires, width 12 mm (1 overridden), thickness 2 mm (0 overridden), 1 skipped, mid-plane, wires consumed."
+    #             + warning "Override for wire 9 ignored: there are only 5 wires (0 to 4)."
+    divide("S1 half strips: width 12, thickness 2, mid-plane; wire 1 width 20, wire 3 skipped, wire 9 invalid", half, 5, True, [
+        b("createStrips", True), num("stripWidth", "12 mm"), num("stripThickness", "2 mm"), b("stripMidplane", True), b("consumeWires", True),
+        overrides(override(1, width="20 mm"), override(3, skip=True), override(9, thickness="3 mm"))])
+    # S2 full surface: opposite direction + second direction 0.5, wires kept; wire 0 overridden twice (thickness 3, then width 15)
+    #   expected: "Strips: 5 of 5 wires, width 10 mm (1 overridden), thickness 1 mm (1 overridden), 0 skipped, second direction 0.5 mm, wires kept."
+    #             + warning "Wire 0 has more than one override; they are applied in order."   (both apply: thickness 3 from the first, width 15 from the second)
+    divide("S2 full strips: opposite + second direction 0.5, wires kept; wire 0 overridden twice", full, 5, True, [
+        b("createStrips", True), num("stripWidth", "10 mm"), num("stripThickness", "1 mm"), b("stripMidplane", False), b("stripFlip", True),
+        b("stripSecondDirection", True), num("stripThickness2", "0.5 mm"), b("consumeWires", False),
+        overrides(override(0, thickness="3 mm"), override(0, width="15 mm"))])
