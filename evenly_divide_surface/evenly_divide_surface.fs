@@ -29,6 +29,8 @@ const SECTION_END_MARGIN = 1e-3 * meter;
 const WIRE_CHECK_SAMPLES = 2;
 /** A face is a candidate for a distance check when the point is within its bounding box inflated by at least this much. */
 const WIRE_CHECK_BOX_INFLATE = 2e-3 * meter;
+/** Samples per section interval used to find which faces a wire crosses. */
+const PROJECT_FACE_SAMPLES_PER_SPAN = 3;
 /** Most pieces a weak interval is split into in one round. */
 const MAX_SPLIT = 5;
 /** Bounds of the surface tolerance input: 1e-3 mm min, 0.01 mm default, 1 mm max (meter entry [min, default, max]; the other units give the default, as std TOLERANCE_BOUND does). */
@@ -91,6 +93,10 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         annotation { "Name" : "Refine sections", "Default" : true,
                      "Description" : "Add cross sections where a wire would otherwise stray from the surface (the number above is the starting count)." }
         definition.refine is boolean;
+
+        annotation { "Name" : "Project wires onto faces (experimental)", "Default" : false,
+                     "Description" : "Project each wire onto only the faces it crosses and join the pieces into one wire of several edges, so every edge lies exactly on its face." }
+        definition.projectWires is boolean;
 
         annotation { "Name" : "Keep section curves", "Default" : false }
         definition.keepSections is boolean;
@@ -266,6 +272,38 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
         for (var dev in intervalDev)
             worstOff = max(worstOff, dev);
 
+        // 3b. Optionally replace each fitted spline by a wire of one edge per face run, exactly on the faces.
+        var projected = 0;
+        if (definition.projectWires)
+        {
+            const surfaceFaceList = evaluateQuery(context, surfaceFaces);
+            for (var i = 0; i < wireCount; i += 1)
+            {
+                const fitEdge = qCreatedBy(wireIds[i], EntityType.EDGE);
+                const probe = evEdgeTangentLines(context, { "edge" : fitEdge, "parameters" : range(0, 1, PROJECT_FACE_SAMPLES_PER_SPAN * (size(sections) - 1) + 1) });
+                var used = makeArray(size(surfaceFaceList), false);
+                for (var l in probe)
+                    used[nearestFaceIndex(context, faceBoxes, surfaceFaces, l.origin)] = true;
+                var targets = [];
+                for (var k = 0; k < size(used); k += 1)
+                    if (used[k])
+                        targets = append(targets, surfaceFaceList[k]);
+                try
+                {
+                    opDropCurve(context, id + ("project" ~ i), { "tools" : fitEdge, "targets" : qUnion(targets),
+                                                                 "projectionType" : ProjectionType.NORMAL_TO_TARGET });
+                    const pieces = qCreatedBy(id + ("project" ~ i), EntityType.EDGE);
+                    println("evenlyDivideSurface: wire " ~ i ~ " projected onto " ~ size(targets) ~ " faces into " ~ size(evaluateQuery(context, pieces)) ~ " edges");
+                    opExtractWires(context, id + ("join" ~ i), { "edges" : pieces });
+                    opDeleteBodies(context, id + ("dropPieces" ~ i), { "entities" : qUnion([qCreatedBy(id + ("project" ~ i), EntityType.BODY), qCreatedBy(wireIds[i], EntityType.BODY)]) });
+                    projected += 1;
+                }
+                catch (e)
+                {
+                    println("evenlyDivideSurface: wire " ~ i ~ " could not be projected: " ~ toString(e));
+                }
+            }
+        }
         // 4. Clean up the construction geometry.
         var scratch = [];
         for (var k = 0; k < sectionCount; k += 1)
@@ -412,6 +450,21 @@ function evaluatePath(context is Context, pe is map, params is array) returns ar
     return result;
 }
 
+/** Index (into `boxes`, i.e. the surface's face list) of the face nearest `p`; only faces whose box contains `p` are measured. */
+function nearestFaceIndex(context is Context, boxes is array, surfaceFaces is Query, p is Vector) returns number
+{
+    const q = p / meter;
+    var near = [];
+    for (var j = 0; j < size(boxes); j += 1)
+    {
+        const b = boxes[j];
+        if (q[0] >= b.lo[0] && q[0] <= b.hi[0] && q[1] >= b.lo[1] && q[1] <= b.hi[1] && q[2] >= b.lo[2] && q[2] <= b.hi[2])
+            near = append(near, j);
+    }
+    if (size(near) == 0)
+        return evDistance(context, { "side0" : p, "side1" : surfaceFaces }).sides[1].index;
+    return near[evDistance(context, { "side0" : p, "side1" : qUnion(mapArray(near, function(j) { return boxes[j].face; })) }).sides[1].index];
+}
 /** Chord-length parameters (0..1) for a spline through `points`: far fewer wiggles than evenly spaced parameters on unevenly spaced points. */
 function chordLengthParameters(points is array) returns array
 {

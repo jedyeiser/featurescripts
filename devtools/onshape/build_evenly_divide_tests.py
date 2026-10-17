@@ -114,7 +114,8 @@ FRONT = 'qCreatedBy(makeId("Front"), EntityType.FACE)'
 def divide(name, surface_id, divisions, on_plane):
     given = {p["parameterId"]: p for p in [
         qids("surface", [surface_id]), qids("crossWire", [wire]), q("symmetryPlane", FRONT),
-        num("divisions", str(divisions), True), num("sections", str(SECTIONS), True), b("onSymmetryPlane", on_plane)]}
+        num("divisions", str(divisions), True), num("sections", str(SECTIONS), True), b("onSymmetryPlane", on_plane),
+        b("projectWires", os.environ.get("DIVIDE_PROJECT") == "1")]}
     params = []
     for p in SPEC["parameters"]:
         pid = p["parameterId"]
