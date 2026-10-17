@@ -32,6 +32,8 @@ const WIRE_CHECK_SAMPLES = 2;
 const WIRE_CHECK_BOX_INFLATE = 2e-3 * meter;
 /** A projected run must be within this fraction of the length of the curve it was projected from. */
 const PROJECT_LENGTH_TOLERANCE = 0.01;
+/** A section point closer to a seam point than this fraction of the section spacing is dropped (it would make a kink). */
+const SEAM_CLOSE = 0.2;
 /** Points closer than this are one point (joining a run to its seam point). */
 const SEAM_MERGE = 1e-6 * meter;
 /** Both points of a wire segment within this of the faces' shared edge: the wire runs along the seam. */
@@ -645,6 +647,7 @@ function buildRuns(context is Context, sections is array, i is number, faceList 
 {
     var runs = [];
     var current = { "faces" : [sections[0].faces[i]], "pts" : [sections[0].points[i]], "ivals" : [], "last" : sections[0].faces[i] };
+    var skipPoint = false;
     for (var k = 1; k < size(sections); k += 1)
     {
         const p = sections[k].points[i];
@@ -659,14 +662,26 @@ function buildRuns(context is Context, sections is array, i is number, faceList 
             }
             else
             {
+                // A section point very close to the seam would force the curve through two nearly coincident points (a kink):
+                // the seam point is on the surface right beside it, so the section point is left out.
+                const spacing = norm(p - sections[k - 1].points[i]);
+                if (size(current.pts) >= 2 && norm(seam - current.pts[size(current.pts) - 1]) < SEAM_CLOSE * spacing)
+                {
+                    current.pts = subArray(current.pts, 0, size(current.pts) - 1);
+                    current.ivals = subArray(current.ivals, 0, size(current.ivals) - 1);
+                }
                 current = addPoint(current, seam, k - 1);
                 if (size(current.pts) >= 2)
                     runs = append(runs, current);
                 current = { "faces" : [f], "pts" : [seam], "ivals" : [], "last" : f };
+                skipPoint = norm(seam - p) < SEAM_CLOSE * spacing;
             }
             current.last = f;
         }
-        current = addPoint(current, p, k - 1);
+        if (skipPoint)
+            skipPoint = false;
+        else
+            current = addPoint(current, p, k - 1);
     }
     if (size(current.pts) >= 2)
         runs = append(runs, current);

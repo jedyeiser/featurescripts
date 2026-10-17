@@ -52,8 +52,27 @@ SCRIPT = """function(context is Context, queries)
                     worst = max(worst, dd);
                 }
             }
-            out = append(out, "W " ~ pair[0] ~ " edges " ~ size(edges) ~ " len " ~ (evLength(context, { "entities" : qOwnedByBody(w, EntityType.EDGE) }) / millimeter)
-                ~ " x " ~ (bb.minCorner[0] / millimeter) ~ " " ~ (bb.maxCorner[0] / millimeter) ~ " absY " ~ minAbsY ~ " " ~ maxAbsY ~ " off " ~ worst);
+            // turning rate (1/m) along each edge: angle between neighbouring tangents / arc length between them
+            var kmax = 0;
+            var kmaxAt = 0;
+            for (var e in edges)
+            {
+                var ls = evEdgeTangentLines(context, { "edge" : e, "parameters" : range(0, 1, 120) });
+                for (var n = 1; n < size(ls); n += 1)
+                {
+                    var ds = norm(ls[n].origin - ls[n - 1].origin) / meter;
+                    if (ds < 1e-9)
+                        continue;
+                    var ang = acos(clamp(dot(ls[n].direction, ls[n - 1].direction), -1, 1));
+                    var k = (ang / radian) / ds;
+                    if (k > kmax)
+                    {
+                        kmax = k;
+                        kmaxAt = ls[n].origin[0] / millimeter;
+                    }
+                }
+            }            out = append(out, "W " ~ pair[0] ~ " edges " ~ size(edges) ~ " len " ~ (evLength(context, { "entities" : qOwnedByBody(w, EntityType.EDGE) }) / millimeter)
+                ~ " x " ~ (bb.minCorner[0] / millimeter) ~ " " ~ (bb.maxCorner[0] / millimeter) ~ " absY " ~ minAbsY ~ " " ~ maxAbsY ~ " off " ~ worst ~ " kmax " ~ kmax ~ " at " ~ kmaxAt);
         }
     }
     return out;
@@ -79,7 +98,7 @@ for ln in lines:
     by.setdefault(t[1], []).append(t)
 
 fails = 0
-for case in sorted(cases):
+for case in sorted(c for c in cases if c in EXPECT):
     name = [n for n in status if n.startswith(case + " ")][0]
     wires = [t for t in by.get(case, []) if t[0] == "W"]
     notes, ok = [], status[name] in ("OK", "INFO")
@@ -87,12 +106,13 @@ for case in sorted(cases):
     on_plane = 0
     for t in wires:
         edges, length, x0, x1, ymin, ymax, off = int(t[3]), float(t[5]), float(t[7]), float(t[8]), float(t[10]), float(t[11]), float(t[13])
+        kmax, kat = float(t[15]), float(t[17])
         if ymax < 0.05:
             on_plane += 1
         good = off < 0.1
         ok = ok and good
-        notes.append("  wire: %2d edges, len %8.2f mm, x %8.1f .. %8.1f, |y| %7.3f .. %7.3f, off-surface %.5f mm%s" % (
-            edges, length, x0, x1, ymin, ymax, off, "" if good else "   <-- FAIL"))
+        notes.append("  wire: %2d edges, len %8.2f mm, x %8.1f .. %8.1f, |y| %7.3f .. %7.3f, off-surface %.5f mm, max turning %7.1f /m at x=%.0f%s" % (
+            edges, length, x0, x1, ymin, ymax, off, kmax, kat, "" if good else "   <-- FAIL"))
     want_plane = {"E1": 1, "E2": 1, "E3": 2, "E4": 0}[case]
     ok = ok and on_plane == want_plane and len(wires) >= 5
     notes.append("  wires on y=0: %d (expected %d)" % (on_plane, want_plane))
