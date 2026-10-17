@@ -712,34 +712,53 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
         const faceArray = evaluateQuery(context, copyFaces);
 
         // Seeds: the faces the wire runs on.
-        var seeds = [];
-        var seen = makeArray(size(faceArray), false);
+        var faceIndex = {};
+        for (var n = 0; n < size(faceArray); n += 1)
+            faceIndex[toString(faceArray[n])] = n;
+        var inStrip = makeArray(size(faceArray), false);
+        var frontier = [];
         for (var edge in evaluateQuery(context, wireEdges))
         {
             for (var l in evEdgeTangentLines(context, { "edge" : edge, "parameters" : range(0, 1, STRIP_SEED_SAMPLES) }))
             {
                 const index = evDistance(context, { "side0" : l.origin, "side1" : copyFaces }).sides[1].index;
-                if (!seen[index])
+                if (!inStrip[index])
                 {
-                    seen[index] = true;
-                    seeds = append(seeds, faceArray[index]);
+                    inStrip[index] = true;
+                    frontier = append(frontier, index);
                 }
             }
         }
-        if (size(seeds) == 0)
+        if (size(frontier) == 0)
             throw regenError("The strip's wire is not on the surface.");
 
-        // Flood across every edge that is not a cut.
-        var stripFaces = qUnion(seeds);
-        for (var iteration = 0; iteration < STRIP_FLOOD_LIMIT; iteration += 1)
+        // Flood: a neighbouring face joins the strip when it shares at least one edge with the face that is NOT a cut.
+        for (var iteration = 0; iteration < STRIP_FLOOD_LIMIT && size(frontier) > 0; iteration += 1)
         {
-            const allowed = qSubtraction(qAdjacent(stripFaces, AdjacencyType.EDGE, EntityType.EDGE), blocked);
-            const next = qSubtraction(qIntersection([qAdjacent(allowed, AdjacencyType.EDGE, EntityType.FACE), copyFaces]), stripFaces);
-            if (isQueryEmpty(context, next))
-                break;
-            stripFaces = qUnion([stripFaces, next]);
+            var next = [];
+            for (var fi in frontier)
+            {
+                const edgesOfFace = qAdjacent(faceArray[fi], AdjacencyType.EDGE, EntityType.EDGE);
+                for (var neighbour in evaluateQuery(context, qAdjacent(faceArray[fi], AdjacencyType.EDGE, EntityType.FACE)))
+                {
+                    const ni = faceIndex[toString(neighbour)];
+                    if (ni == undefined || inStrip[ni])
+                        continue;
+                    const shared = qIntersection([edgesOfFace, qAdjacent(neighbour, AdjacencyType.EDGE, EntityType.EDGE)]);
+                    if (!isQueryEmpty(context, qSubtraction(shared, blocked)))
+                    {
+                        inStrip[ni] = true;
+                        next = append(next, ni);
+                    }
+                }
+            }
+            frontier = next;
         }
-
+        var chosen = [];
+        for (var n = 0; n < size(faceArray); n += 1)
+            if (inStrip[n])
+                chosen = append(chosen, faceArray[n]);
+        const stripFaces = qUnion(chosen);
         opExtractSurface(context, stripId + "sheet", { "faces" : stripFaces });
         opDeleteBodies(context, stripId + "dropCopy", { "entities" : copyBody });
         return qCreatedBy(stripId + "sheet", EntityType.BODY);
