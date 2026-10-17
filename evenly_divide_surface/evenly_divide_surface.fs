@@ -31,6 +31,8 @@ const WIRE_CHECK_SAMPLES = 2;
 const WIRE_CHECK_BOX_INFLATE = 2e-3 * meter;
 /** Points closer than this are one point (joining a run to its seam point). */
 const SEAM_MERGE = 1e-6 * meter;
+/** Both points of a wire segment within this of the faces' shared edge: the wire runs along the seam. */
+const SEAM_ALONG = 1e-5 * meter;
 /** The shared edge of two faces must pass this close to the wire's chord to count as the seam the wire crosses. */
 const SEAM_REACH = 2e-3 * meter;
 /** Most pieces a weak interval is split into in one round. */
@@ -324,7 +326,16 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 scratch = append(scratch, qCreatedBy(run.fitId, EntityType.BODY));
             }
             const wireId = id + ("wire" ~ i);
-            opExtractWires(context, wireId, { "edges" : qUnion(pieceEdges) });
+            try
+            {
+                opExtractWires(context, wireId, { "edges" : qUnion(pieceEdges) });
+            }
+            catch
+            {
+                // Projected pieces that overlap cannot be joined: join the fitted curves instead.
+                println("evenlyDivideSurface: wire " ~ i ~ " could not be joined after projection; using the fitted curves");
+                opExtractWires(context, wireId, { "edges" : qUnion(mapArray(wireRuns[i], function(run) { return qCreatedBy(run.fitId, EntityType.EDGE); })) });
+            }
             edgeTotal += size(evaluateQuery(context, qCreatedBy(wireId, EntityType.EDGE)));
             if (definition.wirePrefix != "")
             {
@@ -567,6 +578,9 @@ function seamPoint(context is Context, faceA is Query, faceB is Query, pA is Vec
 {
     const shared = qIntersection([qAdjacent(faceA, AdjacencyType.EDGE, EntityType.EDGE), qAdjacent(faceB, AdjacencyType.EDGE, EntityType.EDGE)]);
     if (isQueryEmpty(context, shared))
+        return undefined;
+    // A wire running ALONG the seam (both points on the shared edge) has no crossing to find: it stays one run.
+    if (evDistance(context, { "side0" : pA, "side1" : shared }).distance < SEAM_ALONG && evDistance(context, { "side0" : pB, "side1" : shared }).distance < SEAM_ALONG)
         return undefined;
     const chord = pB - pA;
     const length = norm(chord);
