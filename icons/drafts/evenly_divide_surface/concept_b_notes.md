@@ -1,0 +1,3 @@
+- concept_b_1: flat surface sheet (outline #333) cut by a slanted plane (grey #999 outline, drawn see-through); blue intersection curve across the sheet with 3 blue division dots. Closest to Onshape intersection-curve composition.
+- concept_b_2: plane seen face-on (white, grey outline) with a blue cross-section arc and 3 blue dots; a short dark baseline hints at the surface. More abstract, reads as "section".
+- Risks at 20 px: b1 dots (r=1, 2.5 px apart) sit on a 1.2 px curve and may blur into a beaded line; plane outline is 1 px grey over the sheet and may look cluttered. b2 has little surface cue (only the baseline), and 3 dots are 2.5 px apart.

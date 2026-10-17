@@ -1,0 +1,4 @@
+- concept_c_1: end-on tube (front ellipse = cross-section, back arc, two silhouette lines) with 4 blue dots on the front rim and 3 short blue lines running back along the tube (the lengthwise wires).
+- concept_c_2: flat elliptical section with 5 evenly spaced blue dots on the rim and one blue dashed line trailing away from the right dot (the wire running along the part); gray dotted stubs on 3 other dots hint at the other wires.
+- Risks at 20 px: c_1 lines are short (~3.5 px) and lie close to the tube silhouette, so the lower line may merge with the outline; c_2 gray dotted stubs (1 on / 2 off) may vanish and could be deleted; 5 dots r=1.4 on a 4 px-radius ellipse are tight but spaced ~5 px apart.
+- Not rendered; coordinates all within 1..19.
