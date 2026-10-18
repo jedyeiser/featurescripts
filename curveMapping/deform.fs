@@ -96,10 +96,12 @@ const SPLIT_MIN_SPAN = 1e-3 * meter;
 const SPLIT_MIN_GAP = 2e-3 * meter;
 /** A face is long and thin enough to be worth measuring when (diagonal of its box)^2 / area exceeds this. */
 const THIN_FACE_ASPECT = 80;
+/** At most this many thin faces of one body are measured (each measurement maps interior points; the interpreter has a step limit). */
+const MAX_MEASURED_FACES = 4;
 /** A thin face whose fill is too far from the mapped shape is recut into pieces about this long (cross cuts on a grid along the from path). */
 const REFINE_PIECE_LENGTH = 0.1 * meter;
-/** Face accuracy (default 0.05 mm = 50 microns): lengths in meter [min, default, max] and the other units. */
-const FACE_ACCURACY_BOUND = { (meter) : [0, 5e-5, 1e-3], (centimeter) : 5e-3, (millimeter) : 0.05, (inch) : 2e-3, (foot) : 1.6e-4, (yard) : 5.5e-5 } as LengthBoundSpec;
+/** Face accuracy (default 0 = off until the cost is tuned; 0.05 mm is the intended value): lengths in meter [min, default, max] and the other units. */
+const FACE_ACCURACY_BOUND = { (meter) : [0, 0, 1e-3], (centimeter) : 0, (millimeter) : 0, (inch) : 0, (foot) : 0, (yard) : 0 } as LengthBoundSpec;
 /** At most this many cuts are made across one face. */
 const SPLIT_MAX_CUTS = 40;
 
@@ -586,7 +588,7 @@ function faceMaxDeviation(context is Context, id is Id, face is Query, filled is
     fromFrenetPath is map, toFrenetPath is map, settings is map) returns ValueWithUnits
 {
     var worst = 0 * meter;
-    for (var p in transformFacepoints(context, id, face, 3, 3, fromFrenetPath, toFrenetPath, settings))
+    for (var p in transformFacepoints(context, id, face, 2, 2, fromFrenetPath, toFrenetPath, settings))
         worst = max(worst, evDistance(context, { "side0" : p, "side1" : filled }).distance);
     return worst;
 }
@@ -864,6 +866,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             var joinId      = uid;       // ids of the final join (step 3); differs from uid when work ops had to run in between
             var failedFaces = [];
             var poorFaces   = [];        // thin faces whose fill is too far from the mapped shape (rebuilt in pieces)
+            var measuredFaces = 0;
             const workId    = id + ("work" ~ unitIdx);
             const workId2   = id + ("work" ~ unitIdx ~ "b");
             var unionFailed  = false;    // the final union of this attempt was refused
@@ -874,6 +877,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             {
                 failedFaces = [];
                 poorFaces   = [];
+                measuredFaces = 0;
                 unionFailed = false;
                 if (attempt >= 1)
                     uid = id + ("unit" ~ unitIdx ~ "retry" ~ (attempt > 1 ? toString(attempt) : ""));
@@ -1160,8 +1164,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                 reportFaceAccuracy(context, uid + ("accuracy" ~ fIdx), face, qOwnedByBody(qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET), EntityType.FACE),
                                     "face " ~ fIdx ~ (attempt == 1 ? " (piece)" : "") ~ " [" ~ builder ~ "]", fromFrenetPath, toFrenetPath, settings);
                             }
-                            if (attempt == 0 && !isFacesMode && definition.faceAccuracy > 0 * meter && isThinAndLong(context, face))
+                            if (attempt == 0 && !isFacesMode && definition.faceAccuracy > 0 * meter && measuredFaces < MAX_MEASURED_FACES && isThinAndLong(context, face))
                             {
+                                measuredFaces += 1;
                                 const deviation = faceMaxDeviation(context, uid + ("poor" ~ fIdx), face,
                                     qOwnedByBody(qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET), EntityType.FACE), fromFrenetPath, toFrenetPath, settings);
                                 if (deviation > definition.faceAccuracy)
@@ -1460,7 +1465,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         "mateConnectors" : qNothing(),
         "reportAccuracy" : false,
         "edgeAccuracy" : 0 * meter,
-        "faceAccuracy" : 5e-5 * meter,
+        "faceAccuracy" : 0 * meter,
         "useBoundarySurface" : false,
         "nameSuffix"     : "",
         "sourceNames"    : ""
