@@ -1,0 +1,56 @@
+"""Experiment runner for the CNT Testing studio (curveMapping document): set parameters on the `test_Deform` feature,
+regenerate, then report the deformed body's face count / area against the source's.
+
+  PYTHONPATH=. python devtools/onshape/exp_deform_lid.py approximationMaxCPs=50 useFacePoints=true
+  PYTHONPATH=. python devtools/onshape/exp_deform_lid.py            # no overrides: just measure
+
+Values: true/false -> boolean; a number (optionally with a unit, e.g. "0.01 mm") -> quantity/expression; anything else -> enum value.
+API budget: 1 features GET + 1 POST + 1 eval per run.
+"""
+import json
+import re
+import sys
+
+from sync.core.client import OnshapeClient
+from devtools.onshape.fsapi import write_feature
+
+c = OnshapeClient()
+D, W, E = "08e8748f2ef24eea16072b75", "e24fbbae7712ef62dd256c89", "d643cd8a21dfa72cb2ff26f8"
+BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
+FEATURE = "test_Deform"
+SOURCE, RESULT = "filleted_top_surf", "filleted_top_surf (deformed)"
+
+tree = {}
+f = c.get(f"{BASE}/features")
+tree["tree"] = f
+feature = [x for x in f["features"] if x["name"] == FEATURE][0]
+for arg in sys.argv[1:]:
+    k, v = arg.split("=", 1)
+    p = [x for x in feature["parameters"] if x["parameterId"] == k][0]
+    if "value" in p and isinstance(p["value"], bool):
+        p["value"] = v.lower() == "true"
+    elif "expression" in p:
+        p["expression"] = v
+    else:
+        p["value"] = v
+r = write_feature(BASE, feature, tree, client=c)
+print("status:", r.get("featureState", {}).get("featureStatus"))
+
+SCRIPT = """function(context is Context, queries)
+{
+    var out = [];
+    for (var b in evaluateQuery(context, qBodyType(qEverything(EntityType.BODY), BodyType.SHEET)))
+    {
+        var nm = "?";
+        try silent { nm = getProperty(context, { "entity" : b, "propertyType" : PropertyType.NAME }); }
+        if (nm != "%s" && nm != "%s")
+            continue;
+        var faces = evaluateQuery(context, qOwnedByBody(b, EntityType.FACE));
+        out = append(out, "R " ~ nm ~ " | faces " ~ size(faces) ~ " | area " ~ roundToPrecision(evArea(context, { "entities" : qOwnedByBody(b, EntityType.FACE) }) / (millimeter ^ 2), 0));
+    }
+    return out;
+}""" % (SOURCE, RESULT)
+res = c.post(f"{BASE}/featurescript", json_data={"script": SCRIPT})
+for v in re.findall(r'"value":\s*"((?:[^"\\]|\\.)*)"', json.dumps(res.get("result"))):
+    if v.startswith("R "):
+        print(v)
