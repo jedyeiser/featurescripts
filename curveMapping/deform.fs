@@ -802,9 +802,13 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     const cutBody = splitFacesBetweenVertices(context, workId, fromFrenetPath, unitBody, failedFaces);
                     if (cutBody != undefined)
                     {
-                        try silent
+                        try
                         {
                             opDeleteBodies(context, uid + "discard", { "entities" : qCreatedBy(uid, EntityType.BODY) });
+                        }
+                        catch (discardErr)
+                        {
+                            println("WARNING: could not discard the first attempt: " ~ toString(discardErr));
                         }
                         geomBody = cutBody;
                         continue;
