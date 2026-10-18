@@ -96,7 +96,7 @@ function pathArcOf(context is Context, path is map, point is Vector) returns Val
  * The cuts that divide a face into pieces, found from its own vertices.
  *
  * Vertices that lie in one cross-section (within SPLIT_CLUSTER_GAP of each other along the from path) are joined by a
- * curve across the face: it starts and ends exactly on existing vertices, so the cut can never leave an edge a few
+ * curve across the face (from one side of the face to the other, never along an edge it already has): it starts and ends exactly on existing vertices, so the cut can never leave an edge a few
  * microns long beside a vertex (a plane through one vertex does, and slivers that small make a later union invalid).
  * The two clusters at the ends of the face are not cut. A face with no cluster in between is cut by a plane in the
  * middle of its widest gap instead.
@@ -121,27 +121,57 @@ function faceCuts(context is Context, fromFrenetPath is map, face is Query) retu
         lastArc = item.arc;
     }
 
+    // Vertices already joined by an edge of the face (a short edge between two vertices of one cross-section) belong
+    // together; a cut must not run along such an edge, or it would duplicate it.
+    var edgeEnds = [];
+    for (var e in evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE)))
+        edgeEnds = append(edgeEnds, mapArray(evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 1] }), function(l) { return l.origin; }));
+
     var cuts = [];
     for (var c = 1; c < size(clusters) - 1 && size(cuts) < SPLIT_MAX_CUTS; c += 1)
     {
         const cluster = clusters[c];
-        // The curve runs through the cluster's vertices in order along its longest extent.
-        var far = cluster[0].point;
-        for (var item in cluster)
-            if (norm(item.point - cluster[0].point) > norm(far - cluster[0].point))
-                far = item.point;
-        const axis = far - cluster[0].point;
-        if (norm(axis) >= SPLIT_MIN_SPAN)
+        // Group the cluster's vertices: two are in one group when an edge of the face joins them.
+        var group = [];
+        for (var i = 0; i < size(cluster); i += 1)
+            group = append(group, i);
+        for (var ends in edgeEnds)
         {
-            const ordered = sort(cluster, function(a, b) { return dot(a.point - cluster[0].point, axis) / (meter ^ 2) - dot(b.point - cluster[0].point, axis) / (meter ^ 2); });
-            cuts = append(cuts, { "points" : mapArray(ordered, function(i) { return i.point; }) });
+            var first = undefined;
+            var second = undefined;
+            for (var i = 0; i < size(cluster); i += 1)
+            {
+                if (norm(cluster[i].point - ends[0]) < 1e-6 * meter)
+                    first = i;
+                if (norm(cluster[i].point - ends[1]) < 1e-6 * meter)
+                    second = i;
+            }
+            if (first != undefined && second != undefined && group[first] != group[second])
+            {
+                const from = group[second];
+                for (var i = 0; i < size(cluster); i += 1)
+                    if (group[i] == from)
+                        group[i] = group[first];
+            }
         }
-        else
-        {
+        // The cut joins the nearest pair of vertices from two different groups (a single plane cut when there is only one group).
+        var bestPair = undefined;
+        var bestDistance = undefined;
+        for (var i = 0; i < size(cluster); i += 1)
+            for (var j = i + 1; j < size(cluster); j += 1)
+            {
+                const distance = norm(cluster[i].point - cluster[j].point);
+                if (group[i] != group[j] && distance >= SPLIT_MIN_SPAN && (bestDistance == undefined || distance < bestDistance))
+                {
+                    bestPair = [cluster[i].point, cluster[j].point];
+                    bestDistance = distance;
+                }
+            }
+        if (bestPair != undefined)
+            cuts = append(cuts, { "points" : bestPair });
+        else if (size(cluster) == 1)
             cuts = append(cuts, { "point" : cluster[0].point, "arc" : cluster[0].arc });
-        }
-    }
-    if (size(cuts) == 0 && size(clusters) >= 2)
+    }    if (size(cuts) == 0 && size(clusters) >= 2)
     {
         var widest = 0;
         for (var c = 1; c < size(clusters); c += 1)
