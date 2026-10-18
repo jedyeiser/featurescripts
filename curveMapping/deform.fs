@@ -66,14 +66,12 @@ export enum DeformMode
 }
 
 
-/** A cut across a face goes in the middle of a gap between two of its vertices along the from path, and only when the gap is at least this wide (so no edge it makes is shorter than half of it). */
+/** Vertices of a face closer than this along the from path lie in one cross-section; the cut across the face runs through them. */
+const SPLIT_CLUSTER_GAP = 1e-3 * meter;
+/** A cluster of vertices must span at least this much to cut across the face (two vertices a hair apart on one side do not). */
+const SPLIT_MIN_SPAN = 1e-3 * meter;
+/** A face with no vertex clusters to cut at (only its two ends) is cut in the middle of the gap, when the gap is at least this wide. */
 const SPLIT_MIN_GAP = 2e-3 * meter;
-/** Cuts of different faces closer than this are moved to one shared position (see splitFacesBetweenVertices). */
-const SPLIT_MERGE = 1.5e-3 * meter;
-/** A shared cut position must stay at least this far from every vertex of the face it cuts. */
-const SPLIT_CLEARANCE = 4e-4 * meter;
-/** Longest piece a cut face is left with, roughly: cuts are also made on a grid of this spacing along the from path. */
-const SPLIT_PIECE_LENGTH = 0.25 * meter;
 /** At most this many cuts are made across one face. */
 const SPLIT_MAX_CUTS = 40;
 
@@ -93,95 +91,92 @@ function pathArcOf(context is Context, path is map, point is Vector) returns Val
     return endArc + dot(point - endFrame.origin, endFrame.zAxis);
 }
 
-/** Arc lengths along the path of a face's vertices, ascending. */
-function faceVertexArcs(context is Context, fromFrenetPath is map, face is Query) returns array
+/**
+ * The cuts that divide a face into pieces, found from its own vertices.
+ *
+ * Vertices that lie in one cross-section (within SPLIT_CLUSTER_GAP of each other along the from path) are joined by a
+ * curve across the face: it starts and ends exactly on existing vertices, so the cut can never leave an edge a few
+ * microns long beside a vertex (a plane through one vertex does, and slivers that small make a later union invalid).
+ * The two clusters at the ends of the face are not cut. A face with no cluster in between is cut by a plane in the
+ * middle of its widest gap instead.
+ *
+ * @returns {array} of { "points" : array of Vector } (a curve through these vertices) or { "point" : Vector, "arc" : ValueWithUnits } (a plane there)
+ */
+function faceCuts(context is Context, fromFrenetPath is map, face is Query) returns array
 {
     const points = mapArray(evaluateQuery(context, qAdjacent(face, AdjacencyType.VERTEX, EntityType.VERTEX)),
         function(v) { return evVertexPoint(context, { "vertex" : v }); });
-    return sort(mapArray(points, function(p) { return pathArcOf(context, fromFrenetPath, p); }),
-        function(a, b) { return (a - b) / meter; });
-}
+    var items = mapArray(points, function(p) { return { "arc" : pathArcOf(context, fromFrenetPath, p), "point" : p }; });
+    items = sort(items, function(a, b) { return (a.arc - b.arc) / meter; });
 
-/**
- * Where to cut a face into pieces: the middle of each wide gap between two of its vertices along the path. A cut
- * through a vertex leaves a sliver of an edge (microns long) beside every vertex that is not exactly on the cut, and
- * slivers that small make a later union of the pieces invalid.
- */
-function gapCuts(arcs is array) returns array
-{
-    var cuts = [];
-    for (var k = 1; k < size(arcs); k += 1)
+    var clusters = [];
+    var lastArc = undefined;
+    for (var item in items)
     {
-        const lo = arcs[k - 1];
-        const hi = arcs[k];
-        if (hi - lo < SPLIT_MIN_GAP)
-            continue;
-        // Cuts on a fixed grid along the path keep the pieces short (a fill of a very long, thin piece can fold) and, being
-        // the same for every face, line up from face to face; a gap with no grid line in it is cut in the middle.
-        const margin = SPLIT_MIN_GAP / 2;
-        var found = false;
-        for (var g = ceil((lo + margin) / SPLIT_PIECE_LENGTH) * SPLIT_PIECE_LENGTH; g < hi - margin && size(cuts) < SPLIT_MAX_CUTS; g += SPLIT_PIECE_LENGTH)
+        if (lastArc == undefined || item.arc - lastArc >= SPLIT_CLUSTER_GAP)
+            clusters = append(clusters, [item]);
+        else
+            clusters[size(clusters) - 1] = append(clusters[size(clusters) - 1], item);
+        lastArc = item.arc;
+    }
+
+    var cuts = [];
+    for (var c = 1; c < size(clusters) - 1 && size(cuts) < SPLIT_MAX_CUTS; c += 1)
+    {
+        const cluster = clusters[c];
+        // The curve runs through the cluster's vertices in order along its longest extent.
+        var far = cluster[0].point;
+        for (var item in cluster)
+            if (norm(item.point - cluster[0].point) > norm(far - cluster[0].point))
+                far = item.point;
+        const axis = far - cluster[0].point;
+        if (norm(axis) >= SPLIT_MIN_SPAN)
         {
-            cuts = append(cuts, g);
-            found = true;
+            const ordered = sort(cluster, function(a, b) { return dot(a.point - cluster[0].point, axis) / (meter ^ 2) - dot(b.point - cluster[0].point, axis) / (meter ^ 2); });
+            cuts = append(cuts, { "points" : mapArray(ordered, function(i) { return i.point; }) });
         }
-        if (!found && size(cuts) < SPLIT_MAX_CUTS)
-            cuts = append(cuts, (lo + hi) / 2);
+        else
+        {
+            cuts = append(cuts, { "point" : cluster[0].point, "arc" : cluster[0].arc });
+        }
+    }
+    if (size(cuts) == 0 && size(clusters) >= 2)
+    {
+        var widest = 0;
+        for (var c = 1; c < size(clusters); c += 1)
+            if (clusters[c][0].arc - clusters[c - 1][size(clusters[c - 1]) - 1].arc > clusters[widest + 1][0].arc - clusters[widest][size(clusters[widest]) - 1].arc)
+                widest = c - 1;
+        const before = clusters[widest][size(clusters[widest]) - 1].arc;
+        const after = clusters[widest + 1][0].arc;
+        if (after - before >= SPLIT_MIN_GAP)
+        {
+            const arc = (before + after) / 2;
+            cuts = append(cuts, { "point" : getFrameAtArcLength(context, fromFrenetPath, arc).frame.origin, "arc" : arc });
+        }
     }
     return cuts;
 }
+
 /**
- * A work copy of `body` in which each face in `faces` is cut across the from path, between its vertices. A face with
- * a long, many-edged outline (a band running the length of the part, say) can defeat opFillSurface; the pieces between
- * two such cuts are short and have few edges, and fill well.
- *
- * Neighbouring faces that share a long edge each put a cut on it, so their cuts must land on the SAME point there:
- * cuts of different faces that lie within SPLIT_MERGE of each other are moved to one shared position (when it still
- * clears the vertices of the face), else the edge would get two vertices a few microns apart.
+ * A work copy of `body` in which each face in `faces` is cut across (see faceCuts). A face with a long, many-edged
+ * outline (a band running the length of the part, say) can defeat opFillSurface; the pieces between two such cuts
+ * are short and have few edges, and fill well.
  *
  * @returns {Query} the copy (a sheet body made from all of `body`'s faces), or `undefined` when there was nothing to cut
  */
 function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath is map, body is Query, faces is array)
 {
-    var arcsOfFace = [];
     var cutsOfFace = [];
-    var shared = [];
+    var anyCut = false;
     for (var face in faces)
     {
-        const arcs = faceVertexArcs(context, fromFrenetPath, face);
-        const cuts = gapCuts(arcs);
-        arcsOfFace = append(arcsOfFace, arcs);
+        const cuts = faceCuts(context, fromFrenetPath, face);
         cutsOfFace = append(cutsOfFace, cuts);
-        for (var c in cuts)
-        {
-            var known = false;
-            for (var s in shared)
-                if (abs(c - s) < SPLIT_MERGE)
-                    known = true;
-            if (!known)
-                shared = append(shared, c);
-        }
-    }
-    // Every face gets every shared cut position that lies inside its own range along the path and clears its vertices,
-    // so the pieces of neighbouring faces line up (a piece ending in the middle of its neighbour's edge makes a T-junction).
-    var anyCut = false;
-    for (var f = 0; f < size(faces); f += 1)
-    {
-        const arcs = arcsOfFace[f];
-        var cuts = [];
-        for (var s in shared)
-        {
-            var usable = s > arcs[0] + SPLIT_MIN_GAP / 2 && s < arcs[size(arcs) - 1] - SPLIT_MIN_GAP / 2;
-            for (var a in arcs)
-                if (abs(a - s) < SPLIT_CLEARANCE)
-                    usable = false;
-            if (usable && size(cuts) < SPLIT_MAX_CUTS)
-                cuts = append(cuts, s);
-        }
-        cutsOfFace[f] = cuts;
         anyCut = anyCut || size(cuts) > 0;
-    }    if (!anyCut)
+    }
+    if (!anyCut)
         return undefined;
+
     opExtractSurface(context, id + "copy", { "faces" : qOwnedByBody(body, EntityType.FACE) });
     const copy = qCreatedBy(id + "copy", EntityType.BODY);
 
@@ -212,25 +207,47 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
             println("WARNING: a face that failed to fill was not found on the work copy; it is not cut");
             continue;
         }
-        // One plane per cut, perpendicular to the path there; planeTools treats a plane as infinite. Each face is cut by its own planes only.
+
+        // The tools: a curve through each cluster of vertices (projected onto the face, so it ends exactly on them), or a plane.
+        var curveBodies = [];
         var planeFaces = [];
         for (var k = 0; k < size(cutsOfFace[f]); k += 1)
         {
-            const frame = getFrameAtArcLength(context, fromFrenetPath, cutsOfFace[f][k]).frame;
-            opPlane(context, id + ("plane" ~ f ~ "_" ~ k), { "plane" : plane(frame.origin, frame.zAxis) });
-            planeFaces = append(planeFaces, qCreatedBy(id + ("plane" ~ f ~ "_" ~ k), EntityType.FACE));
+            const cut = cutsOfFace[f][k];
+            const toolId = id + ("tool" ~ f ~ "_" ~ k);
+            if (cut.points != undefined)
+            {
+                opPolyline(context, toolId, { "points" : cut.points });
+                curveBodies = append(curveBodies, qCreatedBy(toolId, EntityType.BODY));
+            }
+            else
+            {
+                const frame = getFrameAtArcLength(context, fromFrenetPath, cut.arc).frame;
+                opPlane(context, toolId, { "plane" : plane(cut.point, frame.zAxis) });
+                planeFaces = append(planeFaces, qCreatedBy(toolId, EntityType.FACE));
+            }
         }
         try
         {
-            opSplitFace(context, id + ("split" ~ f), { "faceTargets" : target, "planeTools" : qUnion(planeFaces), "keepToolSurfaces" : false });
+            opSplitFace(context, id + ("split" ~ f), {
+                    "faceTargets" : target,
+                    "edgeTools" : size(curveBodies) == 0 ? qNothing() : qOwnedByBody(qUnion(curveBodies), EntityType.EDGE),
+                    "planeTools" : size(planeFaces) == 0 ? qNothing() : qUnion(planeFaces),
+                    "projectionType" : ProjectionType.NORMAL_TO_TARGET,
+                    "extendToCompletion" : true,
+                    "keepToolSurfaces" : false
+                });
             totalCuts += size(cutsOfFace[f]);
         }
         catch (splitErr)
         {
             println("WARNING: could not cut a face that failed to fill: " ~ toString(splitErr));
+        }
+        if (size(curveBodies) > 0 || size(planeFaces) > 0)
+        {
             try silent
             {
-                opDeleteBodies(context, id + ("dropPlanes" ~ f), { "entities" : qUnion(planeFaces) });
+                opDeleteBodies(context, id + ("dropTools" ~ f), { "entities" : qUnion([qUnion(curveBodies), qOwnerBody(qUnion(planeFaces))]) });
             }
         }
     }

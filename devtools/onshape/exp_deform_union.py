@@ -50,40 +50,37 @@ SCRIPT = """function(context is Context, queries)
     {
         out = append(out, "U all-at-once: FAIL " ~ toString(e));
     }
-    // every touching pair: does it union? (report failures with position, areas and the shared-edge deviation)
-    var tested = 0;
-    var bad = 0;
+    var total = 0 * meter ^ 2;
     for (var i = 0; i < size(pieces); i += 1)
+        total += evArea(context, { "entities" : pieces[i] });
+    out = append(out, "U sum of piece areas: " ~ roundToPrecision(total / (millimeter ^ 2), 0) ~ " mm2 over " ~ size(pieces) ~ " pieces");
+    // two-piece unions of all touching pairs were fine; try the unions of every window of 3 consecutive (x-sorted) pieces
+    var bodiesByX = [];
+    for (var i = 0; i < size(pieces); i += 1)
+        bodiesByX = append(bodiesByX, { "i" : i, "x" : evBox3d(context, { "topology" : pieces[i] }).minCorner[0] / meter });
+    bodiesByX = sort(bodiesByX, function(a, b) { return a.x - b.x; });
+    var windowFails = [];
+    for (var w = 0; w + 8 <= size(bodiesByX); w += 4)
     {
-        var bi = evBox3d(context, { "topology" : pieces[i] });
-        for (var j = i + 1; j < size(pieces); j += 1)
+        var q = [];
+        for (var m = w; m < w + 8; m += 1)
+            q = append(q, pieces[bodiesByX[m].i]);
+        try
         {
-            var bj = evBox3d(context, { "topology" : pieces[j] });
-            var tol = 1e-4 * meter;
-            var overlap = true;
-            for (var k = 0; k < 3; k += 1)
-                if (bi.maxCorner[k] < bj.minCorner[k] - tol || bj.maxCorner[k] < bi.minCorner[k] - tol)
-                    overlap = false;
-            if (!overlap) continue;
-            if (size(evCollision(context, { "tools" : pieces[i], "targets" : pieces[j] })) == 0) continue;
-            tested += 1;
-            var ok = true;
-            try
-            {
-                opBoolean(context, makeId("pair" ~ i ~ "_" ~ j), { "tools" : qUnion([pieces[i], pieces[j]]), "operationType" : BooleanOperationType.UNION, "keepTools" : true });
-            }
-            catch (e)
-            {
-                ok = false;
-            }
-            if (!ok)
-            {
-                bad += 1;
-                out = append(out, "U pair " ~ i ~ "," ~ j ~ " FAILS; areas " ~ roundToPrecision(evArea(context, { "entities" : pieces[i] }) / (millimeter ^ 2), 1) ~ " / " ~ roundToPrecision(evArea(context, { "entities" : pieces[j] }) / (millimeter ^ 2), 1) ~ " | x " ~ roundToPrecision(bi.minCorner[0] / millimeter, 1) ~ ".." ~ roundToPrecision(bi.maxCorner[0] / millimeter, 1) ~ " and " ~ roundToPrecision(bj.minCorner[0] / millimeter, 1) ~ ".." ~ roundToPrecision(bj.maxCorner[0] / millimeter, 1));
-            }
+            opBoolean(context, makeId("win" ~ w), { "tools" : qUnion(q), "operationType" : BooleanOperationType.UNION, "keepTools" : true });
+            opDeleteBodies(context, makeId("windel" ~ w), { "entities" : qCreatedBy(makeId("win" ~ w), EntityType.BODY) });
+        }
+        catch (e)
+        {
+            var ids = [];
+            for (var m = w; m < w + 8; m += 1)
+                ids = append(ids, bodiesByX[m].i);
+            windowFails = append(windowFails, "window at x " ~ roundToPrecision(bodiesByX[w].x * 1000, 0) ~ " pieces " ~ toString(ids) ~ ": " ~ toString(e));
         }
     }
-    out = append(out, "U touching pairs " ~ tested ~ ", failing " ~ bad);    // short edges of the pieces
+    out = append(out, "U 8-piece windows failing: " ~ size(windowFails));
+    for (var s in windowFails)
+        out = append(out, "U   " ~ s);    // short edges of the pieces
     var shorts = [];
     for (var i = 0; i < size(pieces); i += 1)
         for (var e in evaluateQuery(context, qOwnedByBody(pieces[i], EntityType.EDGE)))
