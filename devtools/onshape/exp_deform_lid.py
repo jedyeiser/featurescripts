@@ -8,6 +8,7 @@ Values: true/false -> boolean; a number (optionally with a unit, e.g. "0.01 mm")
 API budget: 1 features GET + 1 POST + 1 eval per run.
 """
 import json
+import os
 import re
 import sys
 
@@ -15,9 +16,10 @@ from sync.core.client import OnshapeClient
 from devtools.onshape.fsapi import write_feature
 
 c = OnshapeClient()
-D, W, E = "08e8748f2ef24eea16072b75", "e24fbbae7712ef62dd256c89", "d643cd8a21dfa72cb2ff26f8"
+D, W = "08e8748f2ef24eea16072b75", "e24fbbae7712ef62dd256c89"
+E = os.environ.get("EXP_STUDIO", "d643cd8a21dfa72cb2ff26f8")   # EXP_STUDIO=3bc0438ef2ad392db2577808: CNT Testing Copy 1 (dev sandbox)
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
-FEATURE = "test_Deform"
+FEATURE = os.environ.get("EXP_FEATURE", "test_Deform")
 SOURCE, RESULT = "filleted_top_surf", "filleted_top_surf (deformed)"
 
 tree = {}

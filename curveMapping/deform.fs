@@ -66,9 +66,9 @@ export enum DeformMode
 }
 
 
-/** A face that failed to fill is cut across the from path at the positions of its own vertices; positions closer than this share one cut. */
-const SPLIT_CUT_SEPARATION = 3e-4 * meter;
-/** At most this many cuts are made for the failed faces of one body. */
+/** A cut across a face goes in the middle of a gap between two of its vertices along the from path, and only when the gap is at least this wide (so no edge it makes is shorter than half of it). */
+const SPLIT_MIN_GAP = 2e-3 * meter;
+/** At most this many cuts are made across one face. */
 const SPLIT_MAX_CUTS = 24;
 
 /**
@@ -88,92 +88,103 @@ function pathArcOf(context is Context, path is map, point is Vector) returns Val
 }
 
 /**
- * A work copy of `body` in which the faces in `faces` are cut across the from path at the arc positions of their own
+ * The arc lengths along the path at which to cut a face into pieces: the middle of each wide gap between two of
+ * the face's vertices. A cut through a vertex cluster leaves a sliver of an edge (microns long) beside every vertex
+ * that is not exactly on the cut, and slivers that small make a later union of the pieces invalid.
+ */
+function faceCutArcs(context is Context, fromFrenetPath is map, face is Query) returns array
+{
+    const points = mapArray(evaluateQuery(context, qAdjacent(face, AdjacencyType.VERTEX, EntityType.VERTEX)),
+        function(v) { return evVertexPoint(context, { "vertex" : v }); });
+    const arcs = sort(mapArray(points, function(p) { return pathArcOf(context, fromFrenetPath, p); }),
+        function(a, b) { return (a - b) / meter; });
+    var cuts = [];
+    for (var k = 1; k < size(arcs); k += 1)
+    {
+        if (arcs[k] - arcs[k - 1] >= SPLIT_MIN_GAP && size(cuts) < SPLIT_MAX_CUTS)
+            cuts = append(cuts, (arcs[k] + arcs[k - 1]) / 2);
+    }
+    return cuts;
+}
+
+/**
+ * A work copy of `body` in which each face in `faces` is cut across the from path, between the clusters of its own
  * vertices. A face with a long, many-edged outline (a band running the length of the part, say) can defeat
- * opFillSurface; the pieces between two such cuts are short and nearly four-sided, and fill well.
+ * opFillSurface; the pieces between two such cuts are short and have few edges, and fill well.
  *
  * @returns {Query} the copy (a sheet body made from all of `body`'s faces), or `undefined` when there was nothing to cut
  */
-function splitFacesAtVertices(context is Context, id is Id, fromFrenetPath is map, body is Query, faces is array)
+function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath is map, body is Query, faces is array)
 {
-    // 1. Where to cut: every vertex strictly inside its face's range along the path.
-    var cutArcs = [];
-    var cutPoints = [];
+    var cutsOfFace = [];
+    var anyCut = false;
     for (var face in faces)
     {
-        const points = mapArray(evaluateQuery(context, qAdjacent(face, AdjacencyType.VERTEX, EntityType.VERTEX)),
-            function(v) { return evVertexPoint(context, { "vertex" : v }); });
-        const arcs = mapArray(points, function(p) { return pathArcOf(context, fromFrenetPath, p); });
-        var lo = arcs[0];
-        var hi = arcs[0];
-        for (var a in arcs)
-        {
-            lo = min(lo, a);
-            hi = max(hi, a);
-        }
-        for (var k = 0; k < size(arcs); k += 1)
-        {
-            if (arcs[k] <= lo + SPLIT_CUT_SEPARATION || arcs[k] >= hi - SPLIT_CUT_SEPARATION)
-                continue;
-            var known = false;
-            for (var c in cutArcs)
-                if (abs(c - arcs[k]) < SPLIT_CUT_SEPARATION)
-                    known = true;
-            if (!known && size(cutArcs) < SPLIT_MAX_CUTS)
-            {
-                cutArcs = append(cutArcs, arcs[k]);
-                cutPoints = append(cutPoints, points[k]);
-            }
-        }
+        const cuts = faceCutArcs(context, fromFrenetPath, face);
+        cutsOfFace = append(cutsOfFace, cuts);
+        anyCut = anyCut || size(cuts) > 0;
     }
-    if (size(cutArcs) == 0)
+    if (!anyCut)
         return undefined;
 
-    // 2. The copy, and the failed faces on it (the same face index when the copy keeps the order, else by area).
     opExtractSurface(context, id + "copy", { "faces" : qOwnedByBody(body, EntityType.FACE) });
     const copy = qCreatedBy(id + "copy", EntityType.BODY);
     const sourceFaces = evaluateQuery(context, qOwnedByBody(body, EntityType.FACE));
     const copyFaces = evaluateQuery(context, qOwnedByBody(copy, EntityType.FACE));
-    var targets = [];
-    for (var face in faces)
+
+    var totalCuts = 0;
+    for (var f = 0; f < size(faces); f += 1)
     {
+        if (size(cutsOfFace[f]) == 0)
+            continue;
+
+        // The face on the copy: the same position in the face list when the copy keeps the order, else the one with the same area and corner.
+        const face = faces[f];
         const area = evArea(context, { "entities" : face });
         const corner = evBox3d(context, { "topology" : face }).minCorner;
-        var match = undefined;
-        for (var k = 0; k < size(sourceFaces) && match == undefined; k += 1)
+        var target = undefined;
+        for (var k = 0; k < size(sourceFaces) && target == undefined; k += 1)
             if (toString(sourceFaces[k]) == toString(face) && k < size(copyFaces) &&
                 abs(evArea(context, { "entities" : copyFaces[k] }) - area) < 1e-6 * area)
-                match = copyFaces[k];
-        for (var k = 0; k < size(copyFaces) && match == undefined; k += 1)
+                target = copyFaces[k];
+        for (var k = 0; k < size(copyFaces) && target == undefined; k += 1)
             if (abs(evArea(context, { "entities" : copyFaces[k] }) - area) < 1e-6 * area &&
                 norm(evBox3d(context, { "topology" : copyFaces[k] }).minCorner - corner) < 1e-6 * meter)
-                match = copyFaces[k];
-        if (match != undefined)
-            targets = append(targets, match);
-    }
+                target = copyFaces[k];
+        if (target == undefined)
+            continue;
 
-    // 3. Cut with one plane per position, perpendicular to the path there (planes cut infinitely: planeTools).
-    var planeFaces = [];
-    for (var k = 0; k < size(cutArcs); k += 1)
-    {
-        const tangent = getFrameAtArcLength(context, fromFrenetPath, cutArcs[k]).frame.zAxis;
-        opPlane(context, id + ("plane" ~ k), { "plane" : plane(cutPoints[k], tangent) });
-        planeFaces = append(planeFaces, qCreatedBy(id + ("plane" ~ k), EntityType.FACE));
+        // One plane per cut, perpendicular to the path there; planeTools treats a plane as infinite. Each face is cut by its own planes only.
+        var planeFaces = [];
+        for (var k = 0; k < size(cutsOfFace[f]); k += 1)
+        {
+            const frame = getFrameAtArcLength(context, fromFrenetPath, cutsOfFace[f][k]).frame;
+            opPlane(context, id + ("plane" ~ f ~ "_" ~ k), { "plane" : plane(frame.origin, frame.zAxis) });
+            planeFaces = append(planeFaces, qCreatedBy(id + ("plane" ~ f ~ "_" ~ k), EntityType.FACE));
+        }
+        try
+        {
+            opSplitFace(context, id + ("split" ~ f), { "faceTargets" : target, "planeTools" : qUnion(planeFaces), "keepToolSurfaces" : false });
+            totalCuts += size(cutsOfFace[f]);
+        }
+        catch (splitErr)
+        {
+            println("WARNING: could not cut a face that failed to fill: " ~ toString(splitErr));
+            try silent
+            {
+                opDeleteBodies(context, id + ("dropPlanes" ~ f), { "entities" : qUnion(planeFaces) });
+            }
+        }
     }
-    try
+    if (totalCuts == 0)
     {
-        opSplitFace(context, id + "split", { "faceTargets" : qUnion(targets), "planeTools" : qUnion(planeFaces), "keepToolSurfaces" : false });
-    }
-    catch (splitErr)
-    {
-        println("WARNING: could not cut the faces that failed to fill: " ~ toString(splitErr));
         try silent
         {
-            opDeleteBodies(context, id + "dropWork", { "entities" : qUnion([copy, qCreatedBy(id, EntityType.BODY)]) });
+            opDeleteBodies(context, id + "dropWork", { "entities" : copy });
         }
         return undefined;
     }
-    println("Deform: " ~ size(faces) ~ " face(s) failed to fill; retrying with " ~ size(cutArcs) ~ " cut(s) across them");
+    println("Deform: " ~ size(faces) ~ " face(s) failed to fill; retrying with " ~ totalCuts ~ " cut(s) across them");
     return copy;
 }
 
@@ -742,7 +753,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 // (otherwise keep what this attempt built).
                 if (attempt == 0 && size(failedFaces) > 0 && !isFacesMode)
                 {
-                    const cutBody = splitFacesAtVertices(context, workId, fromFrenetPath, unitBody, failedFaces);
+                    const cutBody = splitFacesBetweenVertices(context, workId, fromFrenetPath, unitBody, failedFaces);
                     if (cutBody != undefined)
                     {
                         try silent

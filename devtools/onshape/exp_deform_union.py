@@ -1,10 +1,15 @@
-"""Union experiment on the "CNT Testing Copy 1" studio: set Deform_after_Splitting_faces to debug (faces only, no union),
-then try the union of its face bodies in a throwaway eval (one body at a time, so the failing body is named).
+"""Union experiment on a deform feature in a test studio: put the feature in debug mode (faces only, no union), then in a
+throwaway eval try to union the face bodies it made, and report (a) which single pieces, when left out, let the rest union
+(b) the edges of those pieces shorter than 0.3 mm.
 
+  EXP_STUDIO=<element id> EXP_FEATURE=<feature name> EXP_FEATURE_ID=<feature id> \
   PYTHONPATH=. python devtools/onshape/exp_deform_union.py [debug|normal]
-Budget: 1 features GET + 1 POST + 1 eval.
+
+Defaults: "CNT Testing Copy 1", Deform_after_Splitting_faces. Budget: 1 features GET + 1 POST + 1 eval (mode 'normal' puts the
+feature back to a full run and still evaluates).
 """
 import json
+import os
 import re
 import sys
 
@@ -12,9 +17,11 @@ from sync.core.client import OnshapeClient
 from devtools.onshape.fsapi import write_feature
 
 c = OnshapeClient()
-D, W, E = "08e8748f2ef24eea16072b75", "e24fbbae7712ef62dd256c89", "3bc0438ef2ad392db2577808"   # CNT Testing Copy 1
+D, W = "08e8748f2ef24eea16072b75", "e24fbbae7712ef62dd256c89"
+E = os.environ.get("EXP_STUDIO", "3bc0438ef2ad392db2577808")   # CNT Testing Copy 1
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
-FEATURE = "Deform_after_Splitting_faces"
+FEATURE = os.environ.get("EXP_FEATURE", "Deform_after_Splitting_faces")
+FEATURE_ID = os.environ.get("EXP_FEATURE_ID", "F2ZUuqGKma6pMPa_2")
 mode = sys.argv[1] if len(sys.argv) > 1 else "debug"
 
 tree = {}
@@ -32,30 +39,55 @@ print("status:", r.get("featureState", {}).get("featureStatus"))
 SCRIPT = """function(context is Context, queries)
 {
     var out = [];
-    var pieces = evaluateQuery(context, qBodyType(qCreatedBy(makeId("F2ZUuqGKma6pMPa_2"), EntityType.BODY), BodyType.SHEET));
+    var pieces = evaluateQuery(context, qBodyType(qCreatedBy(makeId("FEATURE_ID"), EntityType.BODY), BodyType.SHEET));
     out = append(out, "U pieces " ~ size(pieces));
-    // collisions between pieces whose boxes overlap: report the kind for pairs that are not a clean edge contact
+    try
+    {
+        opBoolean(context, makeId("all"), { "tools" : qUnion(pieces), "operationType" : BooleanOperationType.UNION, "keepTools" : true });
+        out = append(out, "U all-at-once: OK");
+    }
+    catch (e)
+    {
+        out = append(out, "U all-at-once: FAIL " ~ toString(e));
+    }
+    // leave-one-out: which single piece, when removed, lets the union of the rest succeed?
+    var fixes = [];
     for (var i = 0; i < size(pieces); i += 1)
     {
-        for (var j = i + 1; j < size(pieces); j += 1)
+        var rest = [];
+        for (var j = 0; j < size(pieces); j += 1)
+            if (j != i)
+                rest = append(rest, pieces[j]);
+        try
         {
-            var bi = evBox3d(context, { "topology" : pieces[i] });
-            var bj = evBox3d(context, { "topology" : pieces[j] });
-            var tol = 1e-4 * meter;
-            var overlap = true;
-            for (var k = 0; k < 3; k += 1)
-                if (bi.maxCorner[k] < bj.minCorner[k] - tol || bj.maxCorner[k] < bi.minCorner[k] - tol)
-                    overlap = false;
-            if (!overlap) continue;
-            var cs = evCollision(context, { "tools" : pieces[i], "targets" : pieces[j] });
-            var kinds = [];
-            for (var cc in cs)
-                kinds = append(kinds, toString(cc["type"]));
-            if (i == 35 || j == 35 || i == 43 || j == 43)
-                out = append(out, "U pair " ~ i ~ "," ~ j ~ " : " ~ toString(kinds));
+            opBoolean(context, makeId("loo" ~ i), { "tools" : qUnion(rest), "operationType" : BooleanOperationType.UNION, "keepTools" : true });
+            var bb = evBox3d(context, { "topology" : pieces[i] });
+            fixes = append(fixes, i);
+            out = append(out, "U without piece " ~ i ~ ": union OK  (area " ~ roundToPrecision(evArea(context, { "entities" : pieces[i] }) / (millimeter ^ 2), 2) ~ " x " ~ roundToPrecision(bb.minCorner[0] / millimeter, 2) ~ ".." ~ roundToPrecision(bb.maxCorner[0] / millimeter, 2) ~ " y " ~ roundToPrecision(bb.minCorner[1] / millimeter, 1) ~ ".." ~ roundToPrecision(bb.maxCorner[1] / millimeter, 1) ~ ")");
+            opDeleteBodies(context, makeId("loodel" ~ i), { "entities" : qCreatedBy(makeId("loo" ~ i), EntityType.BODY) });
         }
-    }    return out;
-}"""
+        catch (e)
+        {
+        }
+    }
+    out = append(out, "U pieces whose removal fixes the union: " ~ toString(fixes));
+    // short edges of the pieces
+    var shorts = [];
+    for (var i = 0; i < size(pieces); i += 1)
+        for (var e in evaluateQuery(context, qOwnedByBody(pieces[i], EntityType.EDGE)))
+        {
+            var len = evLength(context, { "entities" : e }) / millimeter;
+            if (len < 0.3)
+            {
+                var p = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin / millimeter;
+                shorts = append(shorts, "piece " ~ i ~ " edge " ~ roundToPrecision(len * 1000, 1) ~ " um at x " ~ roundToPrecision(p[0], 2) ~ " y " ~ roundToPrecision(p[1], 1));
+            }
+        }
+    out = append(out, "U short edges (<0.3 mm): " ~ size(shorts));
+    for (var s in shorts)
+        out = append(out, "U   " ~ s);
+    return out;
+}""".replace("FEATURE_ID", FEATURE_ID)
 res = c.post(f"{BASE}/featurescript", json_data={"script": SCRIPT})
 for n in res.get("notices") or []:
     if n.get("level") == "ERROR":
