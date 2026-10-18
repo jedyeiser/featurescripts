@@ -28,7 +28,11 @@ tree["tree"] = f
 feature = [x for x in f["features"] if x["name"] == FEATURE][0]
 for arg in sys.argv[1:]:
     k, v = arg.split("=", 1)
-    p = [x for x in feature["parameters"] if x["parameterId"] == k][0]
+    found = [x for x in feature["parameters"] if x["parameterId"] == k]
+    if not found and v.lower() in ("true", "false"):      # a parameter the saved feature predates: add it
+        feature["parameters"].append({"btType": "BTMParameterBoolean-144", "parameterId": k, "value": v.lower() == "true"})
+        continue
+    p = found[0]
     if "value" in p and isinstance(p["value"], bool):
         p["value"] = v.lower() == "true"
     elif "expression" in p:

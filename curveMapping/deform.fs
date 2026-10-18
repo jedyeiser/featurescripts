@@ -298,6 +298,74 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
     return { "body" : copy, "ranOps" : true };
 }
 
+/**
+ * Debug: how well each wrapped edge follows the exact image of its source edge. The source edge is sampled, every sample
+ * is mapped exactly, and the distance to the wrapped (approximating) edge is measured. Prints a summary and the worst edges.
+ */
+function reportEdgeFit(context is Context, edgeMapping is array, fromFrenetPath is map, toFrenetPath is map, settings is map)
+{
+    try
+    {
+        var rows = [];
+        for (var m in edgeMapping)
+        {
+            const lines = evEdgeTangentLines(context, { "edge" : m.sourceEdge, "parameters" : range(0, 1, 13) });
+            const mapped = mapWorldPoints(context, fromFrenetPath, toFrenetPath, settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
+                mapArray(lines, function(l) { return l.origin; }));
+            var worst = 0 * meter;
+            for (var p in mapped)
+                worst = max(worst, evDistance(context, { "side0" : p, "side1" : m.wrappedEdge }).distance);
+            rows = append(rows, { "dev" : worst / meter * 1e6, "length" : evLength(context, { "entities" : m.wrappedEdge }) / meter * 1e3 });
+        }
+        rows = sort(rows, function(a, b) { return b.dev - a.dev; });
+        var over1 = 0;
+        var over10 = 0;
+        var shortest = 1e9;
+        for (var r in rows)
+        {
+            if (r.dev > 1) over1 += 1;
+            if (r.dev > 10) over10 += 1;
+            shortest = min(shortest, r.length);
+        }
+        println("EDGEFIT " ~ size(rows) ~ " edges: " ~ over1 ~ " over 1 um, " ~ over10 ~ " over 10 um, shortest " ~ roundToPrecision(shortest * 1000, 1) ~ " um, worst " ~ (size(rows) > 0 ? roundToPrecision(rows[0].dev, 1) : 0) ~ " um");
+        for (var k = 0; k < min(size(rows), 8); k += 1)
+            println("EDGEFIT   worst #" ~ k ~ ": " ~ roundToPrecision(rows[k].dev, 1) ~ " um deviation on an edge " ~ roundToPrecision(rows[k].length, 2) ~ " mm long");
+    }
+    catch (fitErr)
+    {
+        println("EDGEFIT could not be measured (" ~ toString(fitErr) ~ ")");
+    }
+}
+
+/**
+ * Debug: how far a rebuilt face lies from where the wrap says it should be. Interior points of the source face are
+ * mapped exactly (as the guide points are), and the distance from each to the rebuilt face is printed.
+ */
+function reportFaceAccuracy(context is Context, id is Id, face is Query, filled is Query, label is string,
+    fromFrenetPath is map, toFrenetPath is map, settings is map)
+{
+    try
+    {
+        const points = transformFacepoints(context, id, face, 3, 3, fromFrenetPath, toFrenetPath, settings);
+        var worst = 0 * meter;
+        var sum = 0 * meter;
+        for (var p in points)
+        {
+            const d = evDistance(context, { "side0" : p, "side1" : filled }).distance;
+            worst = max(worst, d);
+            sum += d;
+        }
+        const type = evSurfaceDefinition(context, { "face" : face }).surfaceType;
+        println("ACCURACY " ~ label ~ " " ~ toString(type) ~ ": " ~ size(points) ~ " pts, max " ~ roundToPrecision(worst / meter * 1e6, 1) ~ " um, mean "
+            ~ roundToPrecision(size(points) == 0 ? 0 : sum / size(points) / meter * 1e6, 1) ~ " um, area "
+            ~ roundToPrecision(evArea(context, { "entities" : face }) / (meter ^ 2) * 1e6, 1) ~ " mm2");
+    }
+    catch (accuracyErr)
+    {
+        println("ACCURACY " ~ label ~ ": could not be measured (" ~ toString(accuracyErr) ~ ")");
+    }
+}
+
 annotation { "Feature Type Name" : "Deform", "Editing Logic Function" : "deformEditLogic","Feature Type Description" : "Takes a solid or surface body, from edges and to edges as input. Wraps the body from the from edges to the to edges" }
 export const deform = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -448,6 +516,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 annotation { "Name" : "Create bodies", "Default" : false }
                 definition.createBodies is boolean;
     
+                annotation { "Name" : "Report face accuracy", "Description" : "Print, for every rebuilt face, how far it lies from the mapped interior points of its source face (notices console)", "Default" : false }
+                definition.reportAccuracy is boolean;
+
                 annotation { "Name" : "Show from frames", "Description" : "Draw Frenet frame axes along the from reference path", "Default" : false }
                 definition.debugShowFromFrames is boolean;
     
@@ -586,6 +657,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         ? qAdjacent(definition.sourceFaces, AdjacencyType.EDGE, EntityType.EDGE)
                         : qOwnedByBody(geomBody, EntityType.EDGE));
                     edgeMapping  = transformEdges(context, uid + "wires", allEdges, fromFrenetPath, toFrenetPath, settings);
+                if (definition.reportAccuracy)
+                    reportEdgeFit(context, edgeMapping, fromFrenetPath, toFrenetPath, settings);
                 }
 
                 // --- Step 2: Reconstruct faces ---
@@ -801,6 +874,11 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                 "edgesG2"      : qNothing(),
                                 "guideVertices": guideVerticesQuery
                             });
+                            if (definition.reportAccuracy)
+                            {
+                                reportFaceAccuracy(context, uid + ("accuracy" ~ fIdx), face, qOwnedByBody(qCreatedBy(fillId, EntityType.BODY), EntityType.FACE),
+                                    "face " ~ fIdx ~ (attempt == 1 ? " (piece)" : ""), fromFrenetPath, toFrenetPath, settings);
+                            }
                             // Fill succeeded — cleanup intermediates
                             opDeleteBodies(context, uid + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
                             if (guideVtxDeleteId != undefined)
@@ -1049,6 +1127,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
     }, {
         // Saved features predate these parameters: keep their behaviour (no connectors, no naming).
         "mateConnectors" : qNothing(),
+        "reportAccuracy" : false,
         "nameSuffix"     : "",
         "sourceNames"    : ""
     });
