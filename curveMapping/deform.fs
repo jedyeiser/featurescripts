@@ -121,7 +121,6 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
     for (var face in faces)
     {
         const cuts = faceCutArcs(context, fromFrenetPath, face);
-        println("DEBUGSPLIT face cuts: " ~ size(cuts) ~ " " ~ toString(cuts));
         cutsOfFace = append(cutsOfFace, cuts);
         anyCut = anyCut || size(cuts) > 0;
     }
@@ -130,8 +129,6 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
 
     opExtractSurface(context, id + "copy", { "faces" : qOwnedByBody(body, EntityType.FACE) });
     const copy = qCreatedBy(id + "copy", EntityType.BODY);
-    const sourceFaces = evaluateQuery(context, qOwnedByBody(body, EntityType.FACE));
-    const copyFaces = evaluateQuery(context, qOwnedByBody(copy, EntityType.FACE));
 
     var totalCuts = 0;
     for (var f = 0; f < size(faces); f += 1)
@@ -139,23 +136,23 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
         if (size(cutsOfFace[f]) == 0)
             continue;
 
-        // The face on the copy: the same position in the face list when the copy keeps the order, else the one with the same area and corner.
+        // The face on the copy: the one with the same area and corner. Looked up afresh for every face, because cutting
+        // one face changes the edges (and so the handles) of the faces beside it.
         const face = faces[f];
         const area = evArea(context, { "entities" : face });
         const corner = evBox3d(context, { "topology" : face }).minCorner;
         var target = undefined;
-        for (var k = 0; k < size(sourceFaces) && target == undefined; k += 1)
-            if (toString(sourceFaces[k]) == toString(face) && k < size(copyFaces) &&
-                abs(evArea(context, { "entities" : copyFaces[k] }) - area) < 1e-6 * area)
-                target = copyFaces[k];
-        for (var k = 0; k < size(copyFaces) && target == undefined; k += 1)
-            if (abs(evArea(context, { "entities" : copyFaces[k] }) - area) < 1e-6 * area &&
-                norm(evBox3d(context, { "topology" : copyFaces[k] }).minCorner - corner) < 1e-6 * meter)
-                target = copyFaces[k];
-        println("DEBUGSPLIT target found: " ~ (target != undefined));
+        for (var candidate in evaluateQuery(context, qOwnedByBody(copy, EntityType.FACE)))
+        {
+            if (target == undefined && abs(evArea(context, { "entities" : candidate }) - area) < 1e-6 * area &&
+                norm(evBox3d(context, { "topology" : candidate }).minCorner - corner) < 1e-6 * meter)
+                target = candidate;
+        }
         if (target == undefined)
+        {
+            println("WARNING: a face that failed to fill was not found on the work copy; it is not cut");
             continue;
-
+        }
         // One plane per cut, perpendicular to the path there; planeTools treats a plane as infinite. Each face is cut by its own planes only.
         var planeFaces = [];
         for (var k = 0; k < size(cutsOfFace[f]); k += 1)
