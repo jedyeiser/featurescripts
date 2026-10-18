@@ -1230,8 +1230,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 if (attempt == 0 && (size(failedFaces) > 0 || size(poorFaces) > 0) && !isFacesMode)
                 {
                     var refine = [];
+                    // A failed face that is long and thin is cut across on the grid as well: its fill would be flat across the width.
                     for (var failed in failedFaces)
-                        refine = append(refine, false);
+                        refine = append(refine, definition.faceAccuracy > 0 * meter && isThinAndLong(context, failed));
                     for (var poor in poorFaces)
                         refine = append(refine, true);
                     const cut = splitFacesBetweenVertices(context, workId, fromFrenetPath, unitBody, concatenateArrays([failedFaces, poorFaces]), refine);
