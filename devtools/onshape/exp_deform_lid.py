@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sys
+import time
 
 from sync.core.client import OnshapeClient
 from devtools.onshape.fsapi import write_feature
@@ -33,6 +34,9 @@ if os.environ.get("EXP_REBIND"):
 for arg in sys.argv[1:]:
     k, v = arg.split("=", 1)
     found = [x for x in feature["parameters"] if x["parameterId"] == k]
+    if not found and v.lower() not in ("true", "false") and any(ch.isdigit() for ch in v) and " " in v:      # a quantity the saved feature predates ("0.005 mm")
+        feature["parameters"].append({"btType": "BTMParameterQuantity-147", "parameterId": k, "expression": v, "isInteger": False})
+        continue
     if not found and v.lower() in ("true", "false"):      # a parameter the saved feature predates: add it
         feature["parameters"].append({"btType": "BTMParameterBoolean-144", "parameterId": k, "value": v.lower() == "true"})
         continue
@@ -43,7 +47,9 @@ for arg in sys.argv[1:]:
         p["expression"] = v
     else:
         p["value"] = v
+_t0 = time.perf_counter()
 r = write_feature(BASE, feature, tree, client=c)
+print("write+regen seconds: %.1f" % (time.perf_counter() - _t0))
 print("status:", r.get("featureState", {}).get("featureStatus"))
 
 SCRIPT = """function(context is Context, queries)

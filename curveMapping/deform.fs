@@ -94,6 +94,12 @@ const SPLIT_CLUSTER_GAP = 1e-3 * meter;
 const SPLIT_MIN_SPAN = 1e-3 * meter;
 /** A face with no vertex clusters to cut at (only its two ends) is cut in the middle of the gap, when the gap is at least this wide. */
 const SPLIT_MIN_GAP = 2e-3 * meter;
+/** A face is long and thin enough to be worth measuring when (diagonal of its box)^2 / area exceeds this. */
+const THIN_FACE_ASPECT = 80;
+/** A thin face whose fill is too far from the mapped shape is recut into pieces about this long (cross cuts on a grid along the from path). */
+const REFINE_PIECE_LENGTH = 0.1 * meter;
+/** Face accuracy (default 0.05 mm = 50 microns): lengths in meter [min, default, max] and the other units. */
+const FACE_ACCURACY_BOUND = { (meter) : [0, 5e-5, 1e-3], (centimeter) : 5e-3, (millimeter) : 0.05, (inch) : 2e-3, (foot) : 1.6e-4, (yard) : 5.5e-5 } as LengthBoundSpec;
 /** At most this many cuts are made across one face. */
 const SPLIT_MAX_CUTS = 40;
 
@@ -124,7 +130,7 @@ function pathArcOf(context is Context, path is map, point is Vector) returns Val
  *
  * @returns {array} of { "points" : array of Vector } (a curve through these vertices) or { "point" : Vector, "arc" : ValueWithUnits } (a plane there)
  */
-function faceCuts(context is Context, fromFrenetPath is map, face is Query) returns array
+function faceCuts(context is Context, fromFrenetPath is map, face is Query, refine is boolean) returns array
 {
     const points = mapArray(evaluateQuery(context, qAdjacent(face, AdjacencyType.VERTEX, EntityType.VERTEX)),
         function(v) { return evVertexPoint(context, { "vertex" : v }); });
@@ -192,7 +198,26 @@ function faceCuts(context is Context, fromFrenetPath is map, face is Query) retu
             cuts = append(cuts, { "points" : bestPair });
         else if (size(cluster) == 1)
             cuts = append(cuts, { "point" : cluster[0].point, "arc" : cluster[0].arc });
-    }    if (size(cuts) == 0 && size(clusters) >= 2)
+    }
+    // A face that is being refined (its fill was too far from the mapped shape) also gets cross cuts on a grid along the
+    // path, away from its vertices, so that no piece is longer than about REFINE_PIECE_LENGTH: the fill of each piece is then
+    // held by the cut curves at both ends, which carry the cross-section of the face.
+    if (refine && size(items) > 1)
+    {
+        const lowest = items[0].arc;
+        const highest = items[size(items) - 1].arc;
+        const margin = SPLIT_MIN_GAP;
+        for (var g = ceil((lowest + margin) / REFINE_PIECE_LENGTH) * REFINE_PIECE_LENGTH; g < highest - margin && size(cuts) < SPLIT_MAX_CUTS; g += REFINE_PIECE_LENGTH)
+        {
+            var clear = true;
+            for (var item in items)
+                if (abs(item.arc - g) < SPLIT_MIN_GAP)
+                    clear = false;
+            if (clear)
+                cuts = append(cuts, { "point" : getFrameAtArcLength(context, fromFrenetPath, g).frame.origin, "arc" : g });
+        }
+    }
+    if (size(cuts) == 0 && size(clusters) >= 2)
     {
         var widest = 0;
         for (var c = 1; c < size(clusters); c += 1)
@@ -217,13 +242,13 @@ function faceCuts(context is Context, fromFrenetPath is map, face is Query) retu
  * @returns {map} { "body" : the copy (a sheet body made from all of `body`'s faces), or `undefined` when there was nothing to
  *          cut, "ranOps" : whether any modelling operation was run (a failed cut leaves some behind) }
  */
-function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath is map, body is Query, faces is array)
+function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath is map, body is Query, faces is array, refine is array)
 {
     var cutsOfFace = [];
     var anyCut = false;
-    for (var face in faces)
+    for (var f = 0; f < size(faces); f += 1)
     {
-        const cuts = faceCuts(context, fromFrenetPath, face);
+        const cuts = faceCuts(context, fromFrenetPath, faces[f], refine[f]);
         cutsOfFace = append(cutsOfFace, cuts);
         anyCut = anyCut || size(cuts) > 0;
     }
@@ -548,6 +573,24 @@ function reportEdgeFit(edgeMapping is array)
         println("EDGEFIT   worst #" ~ k ~ ": " ~ roundToPrecision(rows[k].dev, 2) ~ " um with " ~ rows[k].cps ~ " control points after " ~ rows[k].passes ~ " fit(s)");
 }
 
+/** Whether a face is long and thin enough that a fill of its outline may flatten it (see THIN_FACE_ASPECT). */
+function isThinAndLong(context is Context, face is Query) returns boolean
+{
+    const faceBox = evBox3d(context, { "topology" : face });
+    const diagonal = norm(faceBox.maxCorner - faceBox.minCorner);
+    return diagonal * diagonal > THIN_FACE_ASPECT * evArea(context, { "entities" : face });
+}
+
+/** The largest distance from the exactly mapped interior points of a source face to the rebuilt face. */
+function faceMaxDeviation(context is Context, id is Id, face is Query, filled is Query,
+    fromFrenetPath is map, toFrenetPath is map, settings is map) returns ValueWithUnits
+{
+    var worst = 0 * meter;
+    for (var p in transformFacepoints(context, id, face, 3, 3, fromFrenetPath, toFrenetPath, settings))
+        worst = max(worst, evDistance(context, { "side0" : p, "side1" : filled }).distance);
+    return worst;
+}
+
 /**
  * Debug: how far a rebuilt face lies from where the wrap says it should be. Interior points of the source face are
  * mapped exactly (as the guide points are), and the distance from each to the rebuilt face is printed.
@@ -685,6 +728,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Tolerance" }
             isLength(definition.approximationTolerance, TOLERANCE_BOUND);
 
+            annotation { "Name" : "Face accuracy", "Description" : "A long thin face whose rebuilt surface lies farther than this from the exactly mapped shape of the source face (a fill flattens such faces) is cut into shorter pieces and rebuilt. 0 turns the check off." }
+            isLength(definition.faceAccuracy, FACE_ACCURACY_BOUND);
+
             annotation { "Name" : "Edge accuracy", "Description" : "Each wrapped edge is checked against the exact image of its source edge and refitted with more samples and control points until it follows it this closely. The maximum control points is where the fitting starts. 0 turns the check off (a single fit)." }
             isLength(definition.edgeAccuracy, EDGE_ACCURACY_BOUND);
 
@@ -817,11 +863,13 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             var geomBody    = unitBody;
             var joinId      = uid;       // ids of the final join (step 3); differs from uid when work ops had to run in between
             var failedFaces = [];
+            var poorFaces   = [];        // thin faces whose fill is too far from the mapped shape (rebuilt in pieces)
             const workId    = id + ("work" ~ unitIdx);
 
             for (var attempt = 0; attempt < 2; attempt += 1)
             {
                 failedFaces = [];
+                poorFaces   = [];
                 if (attempt == 1)
                     uid = id + ("unit" ~ unitIdx ~ "retry");
                 joinId = uid;
@@ -1107,6 +1155,16 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                 reportFaceAccuracy(context, uid + ("accuracy" ~ fIdx), face, qOwnedByBody(qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET), EntityType.FACE),
                                     "face " ~ fIdx ~ (attempt == 1 ? " (piece)" : "") ~ " [" ~ builder ~ "]", fromFrenetPath, toFrenetPath, settings);
                             }
+                            if (attempt == 0 && !isFacesMode && definition.faceAccuracy > 0 * meter && isThinAndLong(context, face))
+                            {
+                                const deviation = faceMaxDeviation(context, uid + ("poor" ~ fIdx), face,
+                                    qOwnedByBody(qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET), EntityType.FACE), fromFrenetPath, toFrenetPath, settings);
+                                if (deviation > definition.faceAccuracy)
+                                {
+                                    poorFaces = append(poorFaces, face);
+                                    println("Deform: face " ~ fIdx ~ " is " ~ roundToPrecision(deviation / meter * 1e6, 0) ~ " um from the mapped shape; it will be rebuilt in shorter pieces");
+                                }
+                            }
                             // Fill succeeded — cleanup intermediates
                             opDeleteBodies(context, uid + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
                             if (guideVtxDeleteId != undefined)
@@ -1169,9 +1227,14 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
                 // Faces that would not fill: rebuild them from pieces, but only when there is something to cut
                 // (otherwise keep what this attempt built).
-                if (attempt == 0 && size(failedFaces) > 0 && !isFacesMode)
+                if (attempt == 0 && (size(failedFaces) > 0 || size(poorFaces) > 0) && !isFacesMode)
                 {
-                    const cut = splitFacesBetweenVertices(context, workId, fromFrenetPath, unitBody, failedFaces);
+                    var refine = [];
+                    for (var failed in failedFaces)
+                        refine = append(refine, false);
+                    for (var poor in poorFaces)
+                        refine = append(refine, true);
+                    const cut = splitFacesBetweenVertices(context, workId, fromFrenetPath, unitBody, concatenateArrays([failedFaces, poorFaces]), refine);
                     const cutBody = cut.body;
                     if (cutBody == undefined && cut.ranOps)
                     {
@@ -1359,6 +1422,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         "mateConnectors" : qNothing(),
         "reportAccuracy" : false,
         "edgeAccuracy" : 0 * meter,
+        "faceAccuracy" : 5e-5 * meter,
         "useBoundarySurface" : false,
         "nameSuffix"     : "",
         "sourceNames"    : ""
