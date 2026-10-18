@@ -436,7 +436,7 @@ function planeAngleAt(context is Context, faceA is Query, faceB is Query, point 
  * is measured, and edges that were smooth in the source but are not in the result are listed. The wrap is smooth, so a
  * source edge that is tangent must stay tangent.
  */
-function reportContinuity(context is Context, source is Query, result is Query, fromFrenetPath is map, toFrenetPath is map, settings is map)
+function reportContinuity(context is Context, source is Query, result is Query, fromFrenetPath is map, toFrenetPath is map, fromRefArc, toRefArc, flipToNormal is boolean)
 {
     try
     {
@@ -454,7 +454,7 @@ function reportContinuity(context is Context, source is Query, result is Query, 
             var sourceAngle = 0;
             for (var l in lines)
                 sourceAngle = max(sourceAngle, planeAngleAt(context, faces[0], faces[1], l.origin));
-            const mapped = mapWorldPoints(context, fromFrenetPath, toFrenetPath, settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
+            const mapped = mapWorldPoints(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal,
                 mapArray(lines, function(l) { return l.origin; }));
             var resultAngle = 0;
             var matched = true;
@@ -1286,7 +1286,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                          qBodyType(qCreatedBy(joinId, EntityType.BODY), BodyType.SHEET)]);
                 unitResults[toString(unitBody)] = unitResult;
                 if (definition.reportAccuracy && !isQueryEmpty(context, unitResult))
-                    reportContinuity(context, unitBody, unitResult, fromFrenetPath, toFrenetPath, settings);
+                    reportContinuity(context, unitBody, unitResult, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal);
 
                 // Names come from deformEditLogic (getProperty is not allowed in a feature body);
                 // only trust them when the count still matches the selection.
