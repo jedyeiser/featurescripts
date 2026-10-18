@@ -506,6 +506,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 failedFaces = [];
                 if (attempt == 1)
                     uid = id + ("unit" ~ unitIdx ~ "retry");
+                joinId = uid;
 
 
                 // Pre-transform all body vertices in one batch so every edge uses the same
