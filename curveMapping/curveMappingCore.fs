@@ -2276,6 +2276,119 @@ export function debugDrawFrames(context is Context, frenetPath is map, numSample
 // transformEdges
 // ============================================================================
 
+/** Fit passes per wrapped edge when an edge accuracy is set (each doubles the samples and the control-point limit). */
+const CM_EDGE_FIT_PASSES = 3;
+/** Most samples taken along one edge when refitting. */
+const CM_EDGE_MAX_SAMPLES = 400;
+/** Most control points a wrapped edge may get when refitting. */
+const CM_EDGE_MAX_CPS = 200;
+/** Points on the exact image of an edge that a fit is checked against. */
+const CM_EDGE_CHECK_POINTS = 32;
+/** Dense points evaluated on a fitted edge for the check. */
+const CM_EDGE_CHECK_DENSITY = 400;
+
+/** Length of the polyline through the points. */
+function polylineLength(points is array) returns ValueWithUnits
+{
+    var total = 0 * meter;
+    for (var k = 1; k < size(points); k += 1)
+        total += norm(points[k] - points[k - 1]);
+    return total;
+}
+
+/**
+ * The exact image of `samples` points evenly spaced along a source edge, in order. The ends are snapped to the
+ * pre-computed mapped positions of the edge's vertices so that all edges sharing a source vertex get bit-identical ends.
+ */
+function sampleMappedEdge(context is Context, edge is Query, samples is number, fromMap is map, toMap is map, settings is map) returns array
+{
+    var srcPoints = mapArray(evEdgeTangentLines(context, {
+        "edge"       : edge,
+        "parameters" : range(0, 1, samples)
+    }), function(x) { return x.origin; });
+
+    // Ordered samples: each projection is seeded from the previous one.
+    var mappedPoints = mapWorldPointChain(context, fromMap, toMap,
+        settings.fromRefArc, settings.toRefArc, settings.flipToNormal, srcPoints);
+
+    if (settings.vertexMap != undefined)
+    {
+        var edgeVerts = evaluateQuery(context, qAdjacent(edge, AdjacencyType.VERTEX, EntityType.VERTEX));
+        var nv = size(edgeVerts);
+        if (nv == 2)
+        {
+            var vm0 = settings.vertexMap[toString(edgeVerts[0])];
+            var vm1 = settings.vertexMap[toString(edgeVerts[1])];
+            if (vm0 != undefined && vm1 != undefined)
+            {
+                // Determine which pre-mapped vertex aligns with mappedPoints[0]
+                if (norm(mappedPoints[0] - vm0) <= norm(mappedPoints[0] - vm1))
+                {
+                    mappedPoints[0]                      = vm0;
+                    mappedPoints[size(mappedPoints) - 1] = vm1;
+                }
+                else
+                {
+                    mappedPoints[0]                      = vm1;
+                    mappedPoints[size(mappedPoints) - 1] = vm0;
+                }
+            }
+        }
+        else if (nv == 1)
+        {
+            // Closed edge (full circle etc.) -- same vertex at both ends
+            var vm = settings.vertexMap[toString(edgeVerts[0])];
+            if (vm != undefined)
+            {
+                mappedPoints[0]                      = vm;
+                mappedPoints[size(mappedPoints) - 1] = vm;
+            }
+        }
+        // nv == 0: degenerate edge, leave endpoints as-is
+    }
+    return mappedPoints;
+}
+
+/** Distance from a point to the segment a-b. */
+function distanceToSegment(point is Vector, a is Vector, b is Vector) returns ValueWithUnits
+{
+    const ab = b - a;
+    const lengthSquared = dot(ab, ab);
+    if (lengthSquared < 1e-30 * meter ^ 2)
+        return norm(point - a);
+    const t = clamp(dot(point - a, ab) / lengthSquared, 0, 1);
+    return norm(point - (a + t * ab));
+}
+
+/**
+ * How far a fitted wrapped edge lies from the EXACT image of its source edge: the worst distance, over
+ * CM_EDGE_CHECK_POINTS points between the fitted samples, from an exactly mapped point to the fitted curve (evaluated
+ * densely, and compared with the dense segments near where the point should be). One evaluator call and one mapping
+ * per edge, no modelling operation.
+ */
+function edgeFitDeviation(context is Context, edge is Query, curve is BSplineCurve, fromMap is map, toMap is map, settings is map) returns ValueWithUnits
+{
+    var checkParameters = [];
+    for (var k = 0; k < CM_EDGE_CHECK_POINTS; k += 1)
+        checkParameters = append(checkParameters, (k + 0.5) / CM_EDGE_CHECK_POINTS);
+    const exact = mapWorldPointChain(context, fromMap, toMap, settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
+        mapArray(evEdgeTangentLines(context, { "edge" : edge, "parameters" : checkParameters }), function(x) { return x.origin; }));
+
+    const knots = curve.knots;
+    const dense = evaluateSpline({ "spline" : curve, "parameters" : range(knots[0], knots[size(knots) - 1], CM_EDGE_CHECK_DENSITY) })[0];
+    const window = CM_EDGE_CHECK_DENSITY / 6;
+    var worst = 0 * meter;
+    for (var k = 0; k < size(exact); k += 1)
+    {
+        const expected = floor(checkParameters[k] * (CM_EDGE_CHECK_DENSITY - 1));
+        var best = inf * meter;
+        for (var j = max(0, expected - window); j < min(CM_EDGE_CHECK_DENSITY - 1, expected + window); j += 1)
+            best = min(best, distanceToSegment(exact[k], dense[j], dense[j + 1]));
+        worst = max(worst, best);
+    }
+    return worst;
+}
+
 /**
  * Transforms an array of edges from one Frenet path to another.
  * Returns an array of maps { "sourceEdge": Query, "wrappedEdge": Query, "wrappedBody": Query }.
@@ -2352,53 +2465,6 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
             numSamples = max([5, ceil(edgeLen / settings.samplingDensity) + 1]);
         }
 
-        var srcPoints = mapArray(evEdgeTangentLines(context, {
-            "edge"       : edge,
-            "parameters" : range(0, 1, numSamples)
-        }), function(x) { return x.origin; });
-
-        // Ordered samples: each projection is seeded from the previous one.
-        var mappedPoints = mapWorldPointChain(context, fromMap, toMap,
-            settings.fromRefArc, settings.toRefArc, settings.flipToNormal, srcPoints);
-
-        // Snap endpoints to pre-computed vertex-mapped positions so that all edges
-        // sharing a source vertex produce BSplines with bit-identical endpoints.
-        if (settings.vertexMap != undefined)
-        {
-            var edgeVerts = evaluateQuery(context, qAdjacent(edge, AdjacencyType.VERTEX, EntityType.VERTEX));
-            var nv = size(edgeVerts);
-            if (nv == 2)
-            {
-                var vm0 = settings.vertexMap[toString(edgeVerts[0])];
-                var vm1 = settings.vertexMap[toString(edgeVerts[1])];
-                if (vm0 != undefined && vm1 != undefined)
-                {
-                    // Determine which pre-mapped vertex aligns with mappedPoints[0]
-                    if (norm(mappedPoints[0] - vm0) <= norm(mappedPoints[0] - vm1))
-                    {
-                        mappedPoints[0]                    = vm0;
-                        mappedPoints[size(mappedPoints) - 1] = vm1;
-                    }
-                    else
-                    {
-                        mappedPoints[0]                    = vm1;
-                        mappedPoints[size(mappedPoints) - 1] = vm0;
-                    }
-                }
-            }
-            else if (nv == 1)
-            {
-                // Closed edge (full circle etc.) — same vertex at both ends
-                var vm = settings.vertexMap[toString(edgeVerts[0])];
-                if (vm != undefined)
-                {
-                    mappedPoints[0]                    = vm;
-                    mappedPoints[size(mappedPoints) - 1] = vm;
-                }
-            }
-            // nv == 0: degenerate edge, leave endpoints as-is
-        }
-
         var approxDegree = (settings.keepDegree && edgeBSpline != undefined)
             ? max([settings.approximationDegree, edgeBSpline.degree])
             : settings.approximationDegree;
@@ -2406,15 +2472,45 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
         // Fit freely, then put the clamped spline's end control points -- which ARE its end
         // points -- on the mapped ends. Same bit-identical shared endpoints as before, without
         // interpolateIndices, which makes the fitter far slower (lessons-learned: ~36 s).
-        var approxDef = {
-            "targets"            : [approximationTarget({ "positions": mappedPoints })],
-            "tolerance"          : settings.approximationTolerance,
-            "maxControlPoints"   : settings.approximationMaxCPs,
-            "degree"             : approxDegree,
-            "isPeriodic"         : false
-        };
-        var wrappedCurve = snapEndControlPoints(approximateSpline(context, approxDef)[0],
-            mappedPoints[0], mappedPoints[size(mappedPoints) - 1]);
+        //
+        // With an edge accuracy set, the fit is checked against the EXACT image of the source edge
+        // (sampled between the fitted samples) and redone with twice the samples and control points
+        // until it follows it within that distance (or the limits are reached): short, gentle edges
+        // keep few control points, long or sharply wrapped ones get as many as they need.
+        var samples = numSamples;
+        var cap = settings.approximationMaxCPs;
+        var mappedPoints = sampleMappedEdge(context, edge, samples, fromMap, toMap, settings);
+
+        // An edge that the vertex merge has collapsed to a point has nothing to wrap.
+        if (settings.vertexMergeTolerance != undefined && polylineLength(mappedPoints) < 10 * settings.vertexMergeTolerance
+            && norm(mappedPoints[0] - mappedPoints[size(mappedPoints) - 1]) < settings.vertexMergeTolerance)
+        {
+            continue;
+        }
+
+        var wrappedCurve;
+        const accuracy = settings.edgeAccuracy;
+        for (var pass = 0; pass < CM_EDGE_FIT_PASSES; pass += 1)
+        {
+            var approxDef = {
+                "targets"            : [approximationTarget({ "positions": mappedPoints })],
+                "tolerance"          : settings.approximationTolerance,
+                "maxControlPoints"   : cap,
+                "degree"             : approxDegree,
+                "isPeriodic"         : false
+            };
+            wrappedCurve = snapEndControlPoints(approximateSpline(context, approxDef)[0],
+                mappedPoints[0], mappedPoints[size(mappedPoints) - 1]);
+            if (accuracy == undefined || accuracy <= 0 * meter || pass == CM_EDGE_FIT_PASSES - 1)
+                break;
+            if (edgeFitDeviation(context, edge, wrappedCurve, fromMap, toMap, settings) <= accuracy)
+                break;
+            if (samples >= CM_EDGE_MAX_SAMPLES && cap >= CM_EDGE_MAX_CPS)
+                break;
+            samples = min(samples * 2, CM_EDGE_MAX_SAMPLES);
+            cap = min(cap * 2, CM_EDGE_MAX_CPS);
+            mappedPoints = sampleMappedEdge(context, edge, samples, fromMap, toMap, settings);
+        }
 
         var wrappedId = id + (toString(i) ~ "edge");
         try

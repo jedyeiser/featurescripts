@@ -7,7 +7,8 @@ import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 // BinormalSource) come from it. wrapCurve is not imported: nothing here uses it, and its own
 // export-import of the core could bring a second version of the core into this scope.
 // Pinned to the core at curveMapping V28 (adds mapCoordSystems).
-export import(path : "683d867c35fdab9c98d47556", version : "87e3a5183c3a065393776f5c");
+// DEVELOPMENT: follows the core tab (adaptive edge fit). Re-pin to the next core version once the user creates it.
+export import(path : "683d867c35fdab9c98d47556", version : "");
 
 
 
@@ -24,6 +25,26 @@ export import(path : "683d867c35fdab9c98d47556", version : "87e3a5183c3a06539377
  */
 
 export const FaceControlMultiplierBounds = {(unitless) : [2, 3, 10]} as IntegerBoundSpec;
+
+/** Mapped vertices closer than this are one vertex: edges ending at them then share exact end points. */
+const VERTEX_MERGE_TOLERANCE = 5e-6 * meter;
+
+/** Maximum wrapped-edge deviation (default 2 microns): lengths in meter [min, default, max] and the other units. */
+const EDGE_ACCURACY_BOUND = { (meter) : [0, 2e-6, 1e-4], (centimeter) : 2e-4, (millimeter) : 2e-3, (inch) : 8e-5, (foot) : 6.6e-6, (yard) : 2.2e-6 } as LengthBoundSpec;
+
+/** Mapped positions with the ones that fall within VERTEX_MERGE_TOLERANCE of an earlier one moved onto it. */
+function mergeCloseVertices(positions is array) returns array
+{
+    var merged = positions;
+    for (var i = 1; i < size(merged); i += 1)
+        for (var j = 0; j < i; j += 1)
+            if (norm(merged[i] - merged[j]) < VERTEX_MERGE_TOLERANCE && norm(merged[i] - merged[j]) > 0 * meter)
+            {
+                merged[i] = merged[j];
+                break;
+            }
+    return merged;
+}
 
 /** A mate connector within this distance of a deformed source body is attached to that body's result. */
 const MC_ON_BODY_TOLERANCE = 1e-5 * meter;
@@ -675,6 +696,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Tolerance" }
             isLength(definition.approximationTolerance, TOLERANCE_BOUND);
 
+            annotation { "Name" : "Edge accuracy", "Description" : "Each wrapped edge is checked against the exact image of its source edge and refitted with more samples and control points until it follows it this closely. The maximum control points is where the fitting starts. 0 turns the check off (a single fit)." }
+            isLength(definition.edgeAccuracy, EDGE_ACCURACY_BOUND);
+
             annotation { "Name" : "Use face guide points", "Default" : false, "Description" : "Sample interior points from each face and map them as guide vertices for opFillSurface. Improves shape accuracy on curved faces at the cost of extra computation." }
             definition.useFacePoints is boolean;
             
@@ -826,6 +850,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 });
                 var vertMappedPositions = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
                     fromRefArc, toRefArc, definition.flipToNormal, vertSrcPositions);
+                vertMappedPositions = mergeCloseVertices(vertMappedPositions);
                 var vertexMap = {};
                 for (var vIdx = 0; vIdx < size(allVerts); vIdx += 1)
                 {
@@ -843,6 +868,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     "approximationDegree"    : definition.approximationDegree,
                     "approximationMaxCPs"    : definition.approximationMaxCPs,
                     "approximationTolerance" : definition.approximationTolerance,
+                    "edgeAccuracy"           : definition.edgeAccuracy,
+                    "vertexMergeTolerance"   : VERTEX_MERGE_TOLERANCE,
                     "vertexMap"              : vertexMap
                 };
 
@@ -1342,6 +1369,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // Saved features predate these parameters: keep their behaviour (no connectors, no naming).
         "mateConnectors" : qNothing(),
         "reportAccuracy" : false,
+        "edgeAccuracy" : 2e-6 * meter,
         "useBoundarySurface" : false,
         "nameSuffix"     : "",
         "sourceNames"    : ""
