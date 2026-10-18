@@ -2284,8 +2284,6 @@ const CM_EDGE_MAX_SAMPLES = 400;
 const CM_EDGE_MAX_CPS = 200;
 /** Points on the exact image of an edge that a fit is checked against. */
 const CM_EDGE_CHECK_POINTS = 32;
-/** Dense points evaluated on a fitted edge for the check. */
-const CM_EDGE_CHECK_DENSITY = 400;
 
 /** Length of the polyline through the points. */
 function polylineLength(points is array) returns ValueWithUnits
@@ -2349,22 +2347,14 @@ function sampleMappedEdge(context is Context, edge is Query, samples is number, 
     return mappedPoints;
 }
 
-/** Distance from a point to the segment a-b. */
-function distanceToSegment(point is Vector, a is Vector, b is Vector) returns ValueWithUnits
-{
-    const ab = b - a;
-    const lengthSquared = dot(ab, ab);
-    if (lengthSquared < 1e-30 * meter ^ 2)
-        return norm(point - a);
-    const t = clamp(dot(point - a, ab) / lengthSquared, 0, 1);
-    return norm(point - (a + t * ab));
-}
-
 /**
  * How far a fitted wrapped edge lies from the EXACT image of its source edge: the worst distance, over
- * CM_EDGE_CHECK_POINTS points between the fitted samples, from an exactly mapped point to the fitted curve (evaluated
- * densely, and compared with the dense segments near where the point should be). One evaluator call and one mapping
- * per edge, no modelling operation.
+ * CM_EDGE_CHECK_POINTS points between the fitted samples, from an exactly mapped point to the fitted curve.
+ *
+ * Constant work per point (the interpreter has a step limit, so no search over a dense polyline): each exact point is
+ * first paired with the curve parameter its chord-length fraction suggests, then two Newton steps along the curve's
+ * tangent move that parameter to the nearest point, and the distance from there is measured. One evaluator call per
+ * step and one mapping per edge, no modelling operation.
  */
 function edgeFitDeviation(context is Context, edge is Query, curve is BSplineCurve, fromMap is map, toMap is map, settings is map) returns ValueWithUnits
 {
@@ -2374,18 +2364,35 @@ function edgeFitDeviation(context is Context, edge is Query, curve is BSplineCur
     const exact = mapWorldPointChain(context, fromMap, toMap, settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
         mapArray(evEdgeTangentLines(context, { "edge" : edge, "parameters" : checkParameters }), function(x) { return x.origin; }));
 
+    // Chord-length fraction of every exact point along first -> exact points -> last.
+    const first = curve.controlPoints[0];
+    const last = curve.controlPoints[size(curve.controlPoints) - 1];
+    const chain = concatenateArrays([[first], exact, [last]]);
+    var along = [0 * meter];
+    for (var k = 1; k < size(chain); k += 1)
+        along = append(along, along[k - 1] + norm(chain[k] - chain[k - 1]));
     const knots = curve.knots;
-    const dense = evaluateSpline({ "spline" : curve, "parameters" : range(knots[0], knots[size(knots) - 1], CM_EDGE_CHECK_DENSITY) })[0];
-    const window = floor(CM_EDGE_CHECK_DENSITY / 6);
+    const low = knots[0];
+    const high = knots[size(knots) - 1];
+    var parameters = [];
+    for (var k = 0; k < size(exact); k += 1)
+        parameters = append(parameters, low + (high - low) * along[k + 1] / along[size(along) - 1]);
+
+    for (var step = 0; step < 2; step += 1)
+    {
+        const evaluated = evaluateSpline({ "spline" : curve, "parameters" : parameters, "nDerivatives" : 1 });
+        for (var k = 0; k < size(exact); k += 1)
+        {
+            const tangent = evaluated[1][k];
+            const speed2 = dot(tangent, tangent);
+            if (speed2 > 1e-30 * meter ^ 2)
+                parameters[k] = clamp(parameters[k] + dot(exact[k] - evaluated[0][k], tangent) / speed2, low, high);
+        }
+    }
+    const nearest = evaluateSpline({ "spline" : curve, "parameters" : parameters })[0];
     var worst = 0 * meter;
     for (var k = 0; k < size(exact); k += 1)
-    {
-        const expected = floor(checkParameters[k] * (CM_EDGE_CHECK_DENSITY - 1));
-        var best = inf * meter;
-        for (var j = max(0, expected - window); j < min(CM_EDGE_CHECK_DENSITY - 1, expected + window); j += 1)
-            best = min(best, distanceToSegment(exact[k], dense[j], dense[j + 1]));
-        worst = max(worst, best);
-    }
+        worst = max(worst, norm(exact[k] - nearest[k]));
     return worst;
 }
 
