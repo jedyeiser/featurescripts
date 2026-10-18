@@ -575,6 +575,40 @@ function reportEdgeFit(edgeMapping is array)
         println("EDGEFIT   worst #" ~ k ~ ": " ~ roundToPrecision(rows[k].dev, 2) ~ " um with " ~ rows[k].cps ~ " control points after " ~ rows[k].passes ~ " fit(s)");
 }
 
+/** The edge of `edges` nearest to a point, and how far it is. */
+function nearestEdgeTo(context is Context, point is Vector, edges is Query) returns map
+{
+    const nearest = evDistance(context, { "side0" : point, "side1" : edges });
+    return { "edge" : evaluateQuery(context, edges)[nearest.sides[1].index], "distance" : nearest.distance };
+}
+
+/**
+ * The edge matches for the union of the rebuilt faces. Every source edge between two faces became one wrapped edge, and each
+ * of the two rebuilt faces has an edge that follows it; those two edges are meant to coincide but, being the boundaries of
+ * two separately built surfaces, can be a fraction of a micron apart, which the kernel will not weld on its own. Telling it
+ * which edges belong together (the way the standard Fill feature joins its surface) lets it weld them.
+ */
+function weldMatches(context is Context, edgeMapping is array, fillBodies is map) returns array
+{
+    var matches = [];
+    for (var m in edgeMapping)
+    {
+        const adjacent = evaluateQuery(context, qAdjacent(m.sourceEdge, AdjacencyType.EDGE, EntityType.FACE));
+        if (size(adjacent) != 2)
+            continue;
+        const bodyA = fillBodies[toString(adjacent[0])];
+        const bodyB = fillBodies[toString(adjacent[1])];
+        if (bodyA == undefined || bodyB == undefined)
+            continue;
+        const middle = evEdgeTangentLine(context, { "edge" : m.wrappedEdge, "parameter" : 0.5 }).origin;
+        const a = nearestEdgeTo(context, middle, qOwnedByBody(bodyA, EntityType.EDGE));
+        const b = nearestEdgeTo(context, middle, qOwnedByBody(bodyB, EntityType.EDGE));
+        if (a.distance < 5e-5 * meter && b.distance < 5e-5 * meter)
+            matches = append(matches, { "topology1" : a.edge, "topology2" : b.edge, "matchType" : TopologyMatchType.COINCIDENT });
+    }
+    return matches;
+}
+
 /** Whether a face is long and thin enough that a fill of its outline may flatten it (see THIN_FACE_ASPECT). */
 function isThinAndLong(context is Context, face is Query) returns boolean
 {
@@ -921,6 +955,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
 
                 // Accumulators declared before conditional blocks so all steps share scope
                 var edgeMapping = [];
+                var fillBodies = {};         // toString(source face) -> the sheet that was built for it
 
                 // Cumulative debug conditions: each step implies all prior steps ran
                 var runWires  = !definition.debug || definition.createWires  || definition.createFaces || definition.createBodies;
@@ -1159,6 +1194,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                     "guideVertices": guideVerticesQuery
                                 });
                             }
+                            fillBodies[toString(face)] = qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET);
                             if (definition.reportAccuracy)
                             {
                                 reportFaceAccuracy(context, uid + ("accuracy" ~ fIdx), face, qOwnedByBody(qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET), EntityType.FACE),
@@ -1275,6 +1311,16 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 // --- Step 3: Combine into one body, clean up intermediates ---
                 if (runBodies)
                 {
+                    // The edges that must weld, found while the wrapped edges still exist.
+                    var matches = [];
+                    try
+                    {
+                        matches = weldMatches(context, edgeMapping, fillBodies);
+                    }
+                    catch (matchesErr)
+                    {
+                        println("WARNING: the edge matches for the union could not be found: " ~ toString(matchesErr));
+                    }
                     // Wire cleanup first — so qCreatedBy(uid) only sees face surface bodies
                     // by the time we boolean.
                     if (size(edgeMapping) > 0)
@@ -1322,13 +1368,37 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     var surfaceBodiesList = evaluateQuery(context, surfaceBodies);
                     if (size(surfaceBodiesList) > 1)
                     {
+                        var joined = false;
+                        if (size(matches) > 0)
+                        {
+                            try
+                            {
+                                opBoolean(context, joinId + "unionMatched", {
+                                    "tools"               : surfaceBodies,
+                                    "operationType"       : BooleanOperationType.UNION,
+                                    "makeSolid"           : inputIsSolid,
+                                    "allowSheets"         : true,
+                                    "eraseImprintedEdges" : true,
+                                    "matches"             : matches,
+                                    "recomputeMatches"    : true
+                                });
+                                joined = true;
+                            }
+                            catch (matchedErr)
+                            {
+                                println("WARNING: the union with edge matches was refused (" ~ toString(matchedErr) ~ "); trying a plain union");
+                            }
+                        }
                         try
                         {
-                            opBoolean(context, joinId + "unionFaces", {
-                                "tools"        : surfaceBodies,
-                                "operationType": BooleanOperationType.UNION,
-                                "makeSolid"    : inputIsSolid,
-                            });
+                            if (!joined)
+                            {
+                                opBoolean(context, joinId + "unionFaces", {
+                                    "tools"        : surfaceBodies,
+                                    "operationType": BooleanOperationType.UNION,
+                                    "makeSolid"    : inputIsSolid,
+                                });
+                            }
                         }
                         catch (unionErr)
                         {
