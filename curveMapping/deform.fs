@@ -422,6 +422,83 @@ function boundarySurfaceFace(context is Context, id is Id, outline is Query) ret
     return made;
 }
 
+/** Angle (degrees) between the tangent planes of two faces at a point where they meet (orientation ignored). */
+function planeAngleAt(context is Context, faceA is Query, faceB is Query, point is Vector) returns number
+{
+    const nA = evFaceTangentPlane(context, { "face" : faceA, "parameter" : evDistance(context, { "side0" : point, "side1" : faceA }).sides[1].parameter }).normal;
+    const nB = evFaceTangentPlane(context, { "face" : faceB, "parameter" : evDistance(context, { "side0" : point, "side1" : faceB }).sides[1].parameter }).normal;
+    return acos(min(1, abs(dot(nA, nB)))) / degree;
+}
+
+/**
+ * Debug: continuity between faces. Every edge of the source body that joins two faces is classified by the angle between
+ * the faces along it (smooth when under 1 degree, as a fillet is to its neighbours); the same place on the deformed result
+ * is measured, and edges that were smooth in the source but are not in the result are listed. The wrap is smooth, so a
+ * source edge that is tangent must stay tangent.
+ */
+function reportContinuity(context is Context, source is Query, result is Query, fromFrenetPath is map, toFrenetPath is map, settings is map)
+{
+    try
+    {
+        const resultEdges = qOwnedByBody(result, EntityType.EDGE);
+        const resultEdgeList = evaluateQuery(context, resultEdges);
+        var rows = [];
+        var smooth = 0;
+        var unmatched = 0;
+        for (var e in evaluateQuery(context, qOwnedByBody(source, EntityType.EDGE)))
+        {
+            const faces = evaluateQuery(context, qAdjacent(e, AdjacencyType.EDGE, EntityType.FACE));
+            if (size(faces) != 2)
+                continue;
+            const lines = evEdgeTangentLines(context, { "edge" : e, "parameters" : [0.2, 0.5, 0.8] });
+            var sourceAngle = 0;
+            for (var l in lines)
+                sourceAngle = max(sourceAngle, planeAngleAt(context, faces[0], faces[1], l.origin));
+            const mapped = mapWorldPoints(context, fromFrenetPath, toFrenetPath, settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
+                mapArray(lines, function(l) { return l.origin; }));
+            var resultAngle = 0;
+            var matched = true;
+            for (var p in mapped)
+            {
+                const nearest = evDistance(context, { "side0" : p, "side1" : resultEdges });
+                const resultFaces = nearest.distance < 5e-5 * meter ? evaluateQuery(context, qAdjacent(resultEdgeList[nearest.sides[1].index], AdjacencyType.EDGE, EntityType.FACE)) : [];
+                if (size(resultFaces) != 2)
+                {
+                    matched = false;
+                    continue;
+                }
+                resultAngle = max(resultAngle, planeAngleAt(context, resultFaces[0], resultFaces[1], p));
+            }
+            if (sourceAngle < 1)
+                smooth += 1;
+            if (!matched)
+                unmatched += 1;
+            else
+                rows = append(rows, { "source" : sourceAngle, "result" : resultAngle, "length" : evLength(context, { "entities" : e }) / meter * 1e3,
+                                      "x" : mapped[1][0] / meter * 1e3, "y" : mapped[1][1] / meter * 1e3, "z" : mapped[1][2] / meter * 1e3 });
+        }
+        var lost = [];
+        for (var r in rows)
+            if (r.source < 1 && r.result > 1)
+                lost = append(lost, r);
+        lost = sort(lost, function(a, b) { return b.result - a.result; });
+        println("CONTINUITY " ~ size(rows) ~ " two-face source edges measured (" ~ smooth ~ " smooth in the source, " ~ unmatched ~ " not found in the result): "
+            ~ size(lost) ~ " smooth edges are NOT smooth after the deform (over 1 degree)");
+        for (var k = 0; k < min(size(lost), 12); k += 1)
+            println("CONTINUITY   lost #" ~ k ~ ": " ~ roundToPrecision(lost[k].source, 2) ~ " deg -> " ~ roundToPrecision(lost[k].result, 2) ~ " deg, edge "
+                ~ roundToPrecision(lost[k].length, 1) ~ " mm long at (" ~ roundToPrecision(lost[k].x, 0) ~ ", " ~ roundToPrecision(lost[k].y, 0) ~ ", " ~ roundToPrecision(lost[k].z, 0) ~ ") mm");
+        var worstSharp = [];
+        for (var r in rows)
+            if (r.source >= 1 && abs(r.result - r.source) > 2)
+                worstSharp = append(worstSharp, r);
+        println("CONTINUITY " ~ size(worstSharp) ~ " creased source edges changed their angle by more than 2 degrees");
+    }
+    catch (continuityErr)
+    {
+        println("CONTINUITY could not be measured (" ~ toString(continuityErr) ~ ")");
+    }
+}
+
 /**
  * Debug: how well each wrapped edge follows the exact image of its source edge. The source edge is sampled, every sample
  * is mapped exactly, and the distance to the wrapped (approximating) edge is measured. Prints a summary and the worst edges.
@@ -1208,6 +1285,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                          qBodyType(qCreatedBy(joinId, EntityType.BODY), BodyType.SOLID),
                                          qBodyType(qCreatedBy(joinId, EntityType.BODY), BodyType.SHEET)]);
                 unitResults[toString(unitBody)] = unitResult;
+                if (definition.reportAccuracy && !isQueryEmpty(context, unitResult))
+                    reportContinuity(context, unitBody, unitResult, fromFrenetPath, toFrenetPath, settings);
 
                 // Names come from deformEditLogic (getProperty is not allowed in a feature body);
                 // only trust them when the count still matches the selection.
