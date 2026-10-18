@@ -804,7 +804,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     {
                         try
                         {
-                            opDeleteBodies(context, uid + "discard", { "entities" : qCreatedBy(uid, EntityType.BODY) });
+                            opDeleteBodies(context, id + ("discard" ~ unitIdx), { "entities" : qCreatedBy(uid, EntityType.BODY) });
                         }
                         catch (discardErr)
                         {
