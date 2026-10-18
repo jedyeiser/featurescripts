@@ -2376,7 +2376,7 @@ function edgeFitDeviation(context is Context, edge is Query, curve is BSplineCur
 
     const knots = curve.knots;
     const dense = evaluateSpline({ "spline" : curve, "parameters" : range(knots[0], knots[size(knots) - 1], CM_EDGE_CHECK_DENSITY) })[0];
-    const window = CM_EDGE_CHECK_DENSITY / 6;
+    const window = floor(CM_EDGE_CHECK_DENSITY / 6);
     var worst = 0 * meter;
     for (var k = 0; k < size(exact); k += 1)
     {
