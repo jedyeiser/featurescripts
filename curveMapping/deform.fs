@@ -121,6 +121,7 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
     for (var face in faces)
     {
         const cuts = faceCutArcs(context, fromFrenetPath, face);
+        println("DEBUGSPLIT face cuts: " ~ size(cuts) ~ " " ~ toString(cuts));
         cutsOfFace = append(cutsOfFace, cuts);
         anyCut = anyCut || size(cuts) > 0;
     }
@@ -151,6 +152,7 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
             if (abs(evArea(context, { "entities" : copyFaces[k] }) - area) < 1e-6 * area &&
                 norm(evBox3d(context, { "topology" : copyFaces[k] }).minCorner - corner) < 1e-6 * meter)
                 target = copyFaces[k];
+        println("DEBUGSPLIT target found: " ~ (target != undefined));
         if (target == undefined)
             continue;
 
