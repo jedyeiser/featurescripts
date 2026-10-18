@@ -1,6 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/approximationUtils.fs", version : "3083.0");
+import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 
 // curveMappingCore, EXPORT-imported: the dialog's enums (SamplingMode, FrameNormalMode,
 // BinormalSource) come from it. wrapCurve is not imported: nothing here uses it, and its own
