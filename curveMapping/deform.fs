@@ -148,27 +148,25 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
                 shared = append(shared, c);
         }
     }
+    // Every face gets every shared cut position that lies inside its own range along the path and clears its vertices,
+    // so the pieces of neighbouring faces line up (a piece ending in the middle of its neighbour's edge makes a T-junction).
     var anyCut = false;
     for (var f = 0; f < size(faces); f += 1)
     {
-        for (var k = 0; k < size(cutsOfFace[f]); k += 1)
+        const arcs = arcsOfFace[f];
+        var cuts = [];
+        for (var s in shared)
         {
-            for (var s in shared)
-            {
-                if (abs(cutsOfFace[f][k] - s) >= SPLIT_MERGE)
-                    continue;
-                var clear = true;
-                for (var a in arcsOfFace[f])
-                    if (abs(a - s) < SPLIT_CLEARANCE)
-                        clear = false;
-                if (clear)
-                    cutsOfFace[f][k] = s;
-                break;
-            }
+            var usable = s > arcs[0] + SPLIT_MIN_GAP / 2 && s < arcs[size(arcs) - 1] - SPLIT_MIN_GAP / 2;
+            for (var a in arcs)
+                if (abs(a - s) < SPLIT_CLEARANCE)
+                    usable = false;
+            if (usable && size(cuts) < SPLIT_MAX_CUTS)
+                cuts = append(cuts, s);
         }
-        anyCut = anyCut || size(cutsOfFace[f]) > 0;
-    }
-    if (!anyCut)
+        cutsOfFace[f] = cuts;
+        anyCut = anyCut || size(cuts) > 0;
+    }    if (!anyCut)
         return undefined;
     opExtractSurface(context, id + "copy", { "faces" : qOwnedByBody(body, EntityType.FACE) });
     const copy = qCreatedBy(id + "copy", EntityType.BODY);
