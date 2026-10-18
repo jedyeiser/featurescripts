@@ -29,8 +29,8 @@ export const FaceControlMultiplierBounds = {(unitless) : [2, 3, 10]} as IntegerB
 /** Mapped vertices closer than this are one vertex: edges ending at them then share exact end points. */
 const VERTEX_MERGE_TOLERANCE = 5e-6 * meter;
 
-/** Maximum wrapped-edge deviation (default 2 microns): lengths in meter [min, default, max] and the other units. */
-const EDGE_ACCURACY_BOUND = { (meter) : [0, 2e-6, 1e-4], (centimeter) : 2e-4, (millimeter) : 2e-3, (inch) : 8e-5, (foot) : 6.6e-6, (yard) : 2.2e-6 } as LengthBoundSpec;
+/** Maximum wrapped-edge deviation (default 0 = off while the refit cost is tuned; 2 microns is the target): lengths in meter [min, default, max] and the other units. */
+const EDGE_ACCURACY_BOUND = { (meter) : [0, 0, 1e-4], (centimeter) : 0, (millimeter) : 0, (inch) : 0, (foot) : 0, (yard) : 0 } as LengthBoundSpec;
 
 /** Mapped positions with the ones that fall within VERTEX_MERGE_TOLERANCE of an earlier one moved onto it. */
 function mergeCloseVertices(positions is array) returns array
@@ -1358,7 +1358,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // Saved features predate these parameters: keep their behaviour (no connectors, no naming).
         "mateConnectors" : qNothing(),
         "reportAccuracy" : false,
-        "edgeAccuracy" : 2e-6 * meter,
+        "edgeAccuracy" : 0 * meter,
         "useBoundarySurface" : false,
         "nameSuffix"     : "",
         "sourceNames"    : ""
