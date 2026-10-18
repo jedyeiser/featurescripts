@@ -521,42 +521,31 @@ function reportContinuity(context is Context, source is Query, result is Query, 
 }
 
 /**
- * Debug: how well each wrapped edge follows the exact image of its source edge. The source edge is sampled, every sample
- * is mapped exactly, and the distance to the wrapped (approximating) edge is measured. Prints a summary and the worst edges.
+ * Debug: how the wrapped edges were fitted: control points per edge, how many needed a refit, and (when an edge accuracy is
+ * set) the measured deviation from the exact image of the source edge. Read from what the fit stored: nothing is re-measured.
  */
-function reportEdgeFit(context is Context, edgeMapping is array, fromFrenetPath is map, toFrenetPath is map, settings is map)
+function reportEdgeFit(edgeMapping is array)
 {
-    try
+    var counts = [];
+    var refit = 0;
+    var rows = [];
+    for (var m in edgeMapping)
     {
-        var rows = [];
-        for (var m in edgeMapping)
-        {
-            const lines = evEdgeTangentLines(context, { "edge" : m.sourceEdge, "parameters" : range(0, 1, 13) });
-            const mapped = mapWorldPoints(context, fromFrenetPath, toFrenetPath, settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
-                mapArray(lines, function(l) { return l.origin; }));
-            var worst = 0 * meter;
-            for (var p in mapped)
-                worst = max(worst, evDistance(context, { "side0" : p, "side1" : m.wrappedEdge }).distance);
-            rows = append(rows, { "dev" : worst / meter * 1e6, "length" : evLength(context, { "entities" : m.wrappedEdge }) / meter * 1e3 });
-        }
-        rows = sort(rows, function(a, b) { return b.dev - a.dev; });
-        var over1 = 0;
-        var over10 = 0;
-        var shortest = 1e9;
-        for (var r in rows)
-        {
-            if (r.dev > 1) over1 += 1;
-            if (r.dev > 10) over10 += 1;
-            shortest = min(shortest, r.length);
-        }
-        println("EDGEFIT " ~ size(rows) ~ " edges: " ~ over1 ~ " over 1 um, " ~ over10 ~ " over 10 um, shortest " ~ roundToPrecision(shortest * 1000, 1) ~ " um, worst " ~ (size(rows) > 0 ? roundToPrecision(rows[0].dev, 1) : 0) ~ " um");
-        for (var k = 0; k < min(size(rows), 8); k += 1)
-            println("EDGEFIT   worst #" ~ k ~ ": " ~ roundToPrecision(rows[k].dev, 1) ~ " um deviation on an edge " ~ roundToPrecision(rows[k].length, 2) ~ " mm long");
+        if (m.controlPoints == undefined)
+            continue;
+        counts = append(counts, m.controlPoints);
+        if (m.fitPasses > 1)
+            refit += 1;
+        if (m.deviation != undefined)
+            rows = append(rows, { "dev" : m.deviation / meter * 1e6, "cps" : m.controlPoints, "passes" : m.fitPasses });
     }
-    catch (fitErr)
-    {
-        println("EDGEFIT could not be measured (" ~ toString(fitErr) ~ ")");
-    }
+    counts = sort(counts, function(a, b) { return a - b; });
+    rows = sort(rows, function(a, b) { return b.dev - a.dev; });
+    println("EDGEFIT " ~ size(counts) ~ " fitted edges, control points min " ~ (size(counts) > 0 ? counts[0] : 0) ~ " median " ~ (size(counts) > 0 ? counts[floor(size(counts) / 2)] : 0)
+        ~ " max " ~ (size(counts) > 0 ? counts[size(counts) - 1] : 0) ~ ", " ~ refit ~ " refitted with a higher limit"
+        ~ (size(rows) > 0 ? ", worst measured deviation " ~ roundToPrecision(rows[0].dev, 2) ~ " um" : ""));
+    for (var k = 0; k < min(size(rows), 6); k += 1)
+        println("EDGEFIT   worst #" ~ k ~ ": " ~ roundToPrecision(rows[k].dev, 2) ~ " um with " ~ rows[k].cps ~ " control points after " ~ rows[k].passes ~ " fit(s)");
 }
 
 /**
@@ -889,7 +878,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         : qOwnedByBody(geomBody, EntityType.EDGE));
                     edgeMapping  = transformEdges(context, uid + "wires", allEdges, fromFrenetPath, toFrenetPath, settings);
                 if (definition.reportAccuracy)
-                    reportEdgeFit(context, edgeMapping, fromFrenetPath, toFrenetPath, settings);
+                    reportEdgeFit(edgeMapping);
                 }
 
                 // --- Step 2: Reconstruct faces ---

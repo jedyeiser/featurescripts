@@ -2279,11 +2279,11 @@ export function debugDrawFrames(context is Context, frenetPath is map, numSample
 /** Fit passes per wrapped edge when an edge accuracy is set (each doubles the samples and the control-point limit). */
 const CM_EDGE_FIT_PASSES = 3;
 /** Most samples taken along one edge when refitting. */
-const CM_EDGE_MAX_SAMPLES = 400;
+const CM_EDGE_MAX_SAMPLES = 300;
 /** Most control points a wrapped edge may get when refitting. */
 const CM_EDGE_MAX_CPS = 200;
 /** Points on the exact image of an edge that a fit is checked against. */
-const CM_EDGE_CHECK_POINTS = 32;
+const CM_EDGE_CHECK_POINTS = 16;
 
 /** Length of the polyline through the points. */
 function polylineLength(points is array) returns ValueWithUnits
@@ -2495,28 +2495,39 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
             continue;
         }
 
-        var wrappedCurve;
+        // With an accuracy set the fitter works to HALF of it (the other half is left for the curve between the samples),
+        // and when it runs out of control points the limit is doubled (the mapped samples are kept: the interpreter has
+        // a step limit and every sample costs a projection).
         const accuracy = settings.edgeAccuracy;
+        const adaptive = accuracy != undefined && accuracy > 0 * meter;
+        const fitTolerance = adaptive ? min(settings.approximationTolerance, accuracy / 2) : settings.approximationTolerance;
+        var wrappedCurve;
+        var deviation = undefined;
+        var passes = 0;
         for (var pass = 0; pass < CM_EDGE_FIT_PASSES; pass += 1)
         {
             var approxDef = {
                 "targets"            : [approximationTarget({ "positions": mappedPoints })],
-                "tolerance"          : settings.approximationTolerance,
+                "tolerance"          : fitTolerance,
                 "maxControlPoints"   : cap,
                 "degree"             : approxDegree,
                 "isPeriodic"         : false
             };
             wrappedCurve = snapEndControlPoints(approximateSpline(context, approxDef)[0],
                 mappedPoints[0], mappedPoints[size(mappedPoints) - 1]);
-            if (accuracy == undefined || accuracy <= 0 * meter || pass == CM_EDGE_FIT_PASSES - 1)
+            passes = pass + 1;
+            if (!adaptive)
                 break;
-            if (edgeFitDeviation(context, edge, wrappedCurve, fromMap, toMap, settings) <= accuracy)
+            deviation = edgeFitDeviation(context, edge, wrappedCurve, fromMap, toMap, settings);
+            if (deviation <= accuracy || pass == CM_EDGE_FIT_PASSES - 1 || cap >= CM_EDGE_MAX_CPS)
                 break;
-            if (samples >= CM_EDGE_MAX_SAMPLES && cap >= CM_EDGE_MAX_CPS)
-                break;
-            samples = min(samples * 2, CM_EDGE_MAX_SAMPLES);
             cap = min(cap * 2, CM_EDGE_MAX_CPS);
-            mappedPoints = sampleMappedEdge(context, edge, samples, fromMap, toMap, settings);
+            // A fit cannot use more control points than it has samples to be fitted to.
+            if (samples < 2 * cap && samples < CM_EDGE_MAX_SAMPLES)
+            {
+                samples = min(2 * cap, CM_EDGE_MAX_SAMPLES);
+                mappedPoints = sampleMappedEdge(context, edge, samples, fromMap, toMap, settings);
+            }
         }
 
         var wrappedId = id + (toString(i) ~ "edge");
@@ -2526,7 +2537,10 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
             result = append(result, {
                 "sourceEdge" : edge,
                 "wrappedEdge": qCreatedBy(wrappedId, EntityType.EDGE),
-                "wrappedBody": qCreatedBy(wrappedId, EntityType.BODY)
+                "wrappedBody": qCreatedBy(wrappedId, EntityType.BODY),
+                "controlPoints" : size(wrappedCurve.controlPoints),
+                "fitPasses"  : passes,
+                "deviation"  : deviation
             });
         }
         catch (e) { println("ERROR transformEdge " ~ i ~ ": " ~ toString(e)); }
