@@ -865,13 +865,18 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             var failedFaces = [];
             var poorFaces   = [];        // thin faces whose fill is too far from the mapped shape (rebuilt in pieces)
             const workId    = id + ("work" ~ unitIdx);
+            const workId2   = id + ("work" ~ unitIdx ~ "b");
+            var unionFailed  = false;    // the final union of this attempt was refused
+            var refinedUsed  = false;    // this attempt's pieces include grid cuts (a plain recut is the fallback)
+            var firstCutFaces = [];      // the faces the first attempt cut, for the plain recut
 
-            for (var attempt = 0; attempt < 2; attempt += 1)
+            for (var attempt = 0; attempt < 3; attempt += 1)
             {
                 failedFaces = [];
                 poorFaces   = [];
-                if (attempt == 1)
-                    uid = id + ("unit" ~ unitIdx ~ "retry");
+                unionFailed = false;
+                if (attempt >= 1)
+                    uid = id + ("unit" ~ unitIdx ~ "retry" ~ (attempt > 1 ? toString(attempt) : ""));
                 joinId = uid;
 
 
@@ -1245,6 +1250,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     }
                     if (cutBody != undefined)
                     {
+                        firstCutFaces = concatenateArrays([failedFaces, poorFaces]);
+                        for (var flag in refine)
+                            if (flag)
+                                refinedUsed = true;
                         try
                         {
                             opDeleteBodies(context, id + ("discard" ~ unitIdx), { "entities" : qCreatedBy(uid, EntityType.BODY) });
@@ -1322,7 +1331,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             // do not agree closely enough, which a higher control-point limit usually cures).
                             // Keep the faces as separate sheets rather than losing the whole result.
                             println("WARNING: the " ~ size(surfaceBodiesList) ~ " rebuilt faces could not be joined: " ~ toString(unionErr));
-                            reportFeatureWarning(context, id, "The rebuilt faces of a body could not be joined into one body and are left as separate sheets. Raising the maximum control points usually fixes this.");
+                            unionFailed = true;
                         }
                     }
                     else if (size(surfaceBodiesList) == 1 && inputIsSolid)
@@ -1342,13 +1351,41 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         }
                     }
                 }
+                // The pieces with grid cuts would not join: redo the cuts without the grid (the variant that joined), keeping
+                // these pieces until the new copy exists.
+                if (attempt == 1 && unionFailed && refinedUsed)
+                {
+                    var plain = [];
+                    for (var cutFace in firstCutFaces)
+                        plain = append(plain, false);
+                    const second = splitFacesBetweenVertices(context, workId2, fromFrenetPath, unitBody, firstCutFaces, plain);
+                    if (second.body != undefined)
+                    {
+                        println("Deform: the refined pieces could not be joined; recutting without the grid");
+                        try silent
+                        {
+                            opDeleteBodies(context, id + ("dropRefined" ~ unitIdx), { "entities" : qCreatedBy(uid, EntityType.BODY) });
+                        }
+                        try silent
+                        {
+                            opDeleteBodies(context, id + ("dropFirstWork" ~ unitIdx), { "entities" : geomBody });
+                        }
+                        geomBody = second.body;
+                        refinedUsed = false;
+                        continue;
+                    }
+                }
                 break;
+            }
+            if (unionFailed)
+            {
+                reportFeatureWarning(context, id, "The rebuilt faces of a body could not be joined into one body and are left as separate sheets. Raising the maximum control points usually fixes this.");
             }
             if (geomBody != unitBody)
             {
                 try silent
                 {
-                    opDeleteBodies(context, workId + "drop", { "entities" : geomBody });
+                    opDeleteBodies(context, id + ("dropWork" ~ unitIdx), { "entities" : geomBody });
                 }
             }
             if (size(failedFaces) > 0)
