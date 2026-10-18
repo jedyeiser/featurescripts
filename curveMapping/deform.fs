@@ -938,11 +938,22 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     var surfaceBodiesList = evaluateQuery(context, surfaceBodies);
                     if (size(surfaceBodiesList) > 1)
                     {
-                        opBoolean(context, joinId + "unionFaces", {
-                            "tools"        : surfaceBodies,
-                            "operationType": BooleanOperationType.UNION,
-                            "makeSolid"    : inputIsSolid,
-                        });
+                        try
+                        {
+                            opBoolean(context, joinId + "unionFaces", {
+                                "tools"        : surfaceBodies,
+                                "operationType": BooleanOperationType.UNION,
+                                "makeSolid"    : inputIsSolid,
+                            });
+                        }
+                        catch (unionErr)
+                        {
+                            // Every face was rebuilt; the kernel would not join them (the edges of neighbouring faces
+                            // do not agree closely enough, which a higher control-point limit usually cures).
+                            // Keep the faces as separate sheets rather than losing the whole result.
+                            println("WARNING: the " ~ size(surfaceBodiesList) ~ " rebuilt faces could not be joined: " ~ toString(unionErr));
+                            reportFeatureWarning(context, id, "The rebuilt faces of a body could not be joined into one body and are left as separate sheets. Raising the maximum control points usually fixes this.");
+                        }
                     }
                     else if (size(surfaceBodiesList) == 1 && inputIsSolid)
                     {
