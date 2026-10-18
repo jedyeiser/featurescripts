@@ -68,6 +68,10 @@ export enum DeformMode
 
 /** A cut across a face goes in the middle of a gap between two of its vertices along the from path, and only when the gap is at least this wide (so no edge it makes is shorter than half of it). */
 const SPLIT_MIN_GAP = 2e-3 * meter;
+/** Cuts of different faces closer than this are moved to one shared position (see splitFacesBetweenVertices). */
+const SPLIT_MERGE = 1.5e-3 * meter;
+/** A shared cut position must stay at least this far from every vertex of the face it cuts. */
+const SPLIT_CLEARANCE = 4e-4 * meter;
 /** At most this many cuts are made across one face. */
 const SPLIT_MAX_CUTS = 24;
 
@@ -87,17 +91,22 @@ function pathArcOf(context is Context, path is map, point is Vector) returns Val
     return endArc + dot(point - endFrame.origin, endFrame.zAxis);
 }
 
-/**
- * The arc lengths along the path at which to cut a face into pieces: the middle of each wide gap between two of
- * the face's vertices. A cut through a vertex cluster leaves a sliver of an edge (microns long) beside every vertex
- * that is not exactly on the cut, and slivers that small make a later union of the pieces invalid.
- */
-function faceCutArcs(context is Context, fromFrenetPath is map, face is Query) returns array
+/** Arc lengths along the path of a face's vertices, ascending. */
+function faceVertexArcs(context is Context, fromFrenetPath is map, face is Query) returns array
 {
     const points = mapArray(evaluateQuery(context, qAdjacent(face, AdjacencyType.VERTEX, EntityType.VERTEX)),
         function(v) { return evVertexPoint(context, { "vertex" : v }); });
-    const arcs = sort(mapArray(points, function(p) { return pathArcOf(context, fromFrenetPath, p); }),
+    return sort(mapArray(points, function(p) { return pathArcOf(context, fromFrenetPath, p); }),
         function(a, b) { return (a - b) / meter; });
+}
+
+/**
+ * Where to cut a face into pieces: the middle of each wide gap between two of its vertices along the path. A cut
+ * through a vertex leaves a sliver of an edge (microns long) beside every vertex that is not exactly on the cut, and
+ * slivers that small make a later union of the pieces invalid.
+ */
+function gapCuts(arcs is array) returns array
+{
     var cuts = [];
     for (var k = 1; k < size(arcs); k += 1)
     {
@@ -108,25 +117,59 @@ function faceCutArcs(context is Context, fromFrenetPath is map, face is Query) r
 }
 
 /**
- * A work copy of `body` in which each face in `faces` is cut across the from path, between the clusters of its own
- * vertices. A face with a long, many-edged outline (a band running the length of the part, say) can defeat
- * opFillSurface; the pieces between two such cuts are short and have few edges, and fill well.
+ * A work copy of `body` in which each face in `faces` is cut across the from path, between its vertices. A face with
+ * a long, many-edged outline (a band running the length of the part, say) can defeat opFillSurface; the pieces between
+ * two such cuts are short and have few edges, and fill well.
+ *
+ * Neighbouring faces that share a long edge each put a cut on it, so their cuts must land on the SAME point there:
+ * cuts of different faces that lie within SPLIT_MERGE of each other are moved to one shared position (when it still
+ * clears the vertices of the face), else the edge would get two vertices a few microns apart.
  *
  * @returns {Query} the copy (a sheet body made from all of `body`'s faces), or `undefined` when there was nothing to cut
  */
 function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath is map, body is Query, faces is array)
 {
+    var arcsOfFace = [];
     var cutsOfFace = [];
-    var anyCut = false;
+    var shared = [];
     for (var face in faces)
     {
-        const cuts = faceCutArcs(context, fromFrenetPath, face);
+        const arcs = faceVertexArcs(context, fromFrenetPath, face);
+        const cuts = gapCuts(arcs);
+        arcsOfFace = append(arcsOfFace, arcs);
         cutsOfFace = append(cutsOfFace, cuts);
-        anyCut = anyCut || size(cuts) > 0;
+        for (var c in cuts)
+        {
+            var known = false;
+            for (var s in shared)
+                if (abs(c - s) < SPLIT_MERGE)
+                    known = true;
+            if (!known)
+                shared = append(shared, c);
+        }
+    }
+    var anyCut = false;
+    for (var f = 0; f < size(faces); f += 1)
+    {
+        for (var k = 0; k < size(cutsOfFace[f]); k += 1)
+        {
+            for (var s in shared)
+            {
+                if (abs(cutsOfFace[f][k] - s) >= SPLIT_MERGE)
+                    continue;
+                var clear = true;
+                for (var a in arcsOfFace[f])
+                    if (abs(a - s) < SPLIT_CLEARANCE)
+                        clear = false;
+                if (clear)
+                    cutsOfFace[f][k] = s;
+                break;
+            }
+        }
+        anyCut = anyCut || size(cutsOfFace[f]) > 0;
     }
     if (!anyCut)
         return undefined;
-
     opExtractSurface(context, id + "copy", { "faces" : qOwnedByBody(body, EntityType.FACE) });
     const copy = qCreatedBy(id + "copy", EntityType.BODY);
 
