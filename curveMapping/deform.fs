@@ -72,8 +72,10 @@ const SPLIT_MIN_GAP = 2e-3 * meter;
 const SPLIT_MERGE = 1.5e-3 * meter;
 /** A shared cut position must stay at least this far from every vertex of the face it cuts. */
 const SPLIT_CLEARANCE = 4e-4 * meter;
+/** Longest piece a cut face is left with, roughly: cuts are also made on a grid of this spacing along the from path. */
+const SPLIT_PIECE_LENGTH = 0.25 * meter;
 /** At most this many cuts are made across one face. */
-const SPLIT_MAX_CUTS = 24;
+const SPLIT_MAX_CUTS = 40;
 
 /**
  * Arc length along a path of a point, extended past either end along the end tangent (projectOntoFrenetPath clamps
@@ -110,12 +112,24 @@ function gapCuts(arcs is array) returns array
     var cuts = [];
     for (var k = 1; k < size(arcs); k += 1)
     {
-        if (arcs[k] - arcs[k - 1] >= SPLIT_MIN_GAP && size(cuts) < SPLIT_MAX_CUTS)
-            cuts = append(cuts, (arcs[k] + arcs[k - 1]) / 2);
+        const lo = arcs[k - 1];
+        const hi = arcs[k];
+        if (hi - lo < SPLIT_MIN_GAP)
+            continue;
+        // Cuts on a fixed grid along the path keep the pieces short (a fill of a very long, thin piece can fold) and, being
+        // the same for every face, line up from face to face; a gap with no grid line in it is cut in the middle.
+        const margin = SPLIT_MIN_GAP / 2;
+        var found = false;
+        for (var g = ceil((lo + margin) / SPLIT_PIECE_LENGTH) * SPLIT_PIECE_LENGTH; g < hi - margin && size(cuts) < SPLIT_MAX_CUTS; g += SPLIT_PIECE_LENGTH)
+        {
+            cuts = append(cuts, g);
+            found = true;
+        }
+        if (!found && size(cuts) < SPLIT_MAX_CUTS)
+            cuts = append(cuts, (lo + hi) / 2);
     }
     return cuts;
 }
-
 /**
  * A work copy of `body` in which each face in `faces` is cut across the from path, between its vertices. A face with
  * a long, many-edged outline (a band running the length of the part, say) can defeat opFillSurface; the pieces between

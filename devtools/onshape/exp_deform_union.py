@@ -50,8 +50,9 @@ SCRIPT = """function(context is Context, queries)
     {
         out = append(out, "U all-at-once: FAIL " ~ toString(e));
     }
-    // for every touching pair: the worst deviation between the shared boundary edges, and whether the pair unions
-    var rows = [];
+    // every touching pair: does it union? (report failures with position, areas and the shared-edge deviation)
+    var tested = 0;
+    var bad = 0;
     for (var i = 0; i < size(pieces); i += 1)
     {
         var bi = evBox3d(context, { "topology" : pieces[i] });
@@ -65,20 +66,7 @@ SCRIPT = """function(context is Context, queries)
                     overlap = false;
             if (!overlap) continue;
             if (size(evCollision(context, { "tools" : pieces[i], "targets" : pieces[j] })) == 0) continue;
-            // worst deviation over the edges of i that lie on j (distance < 1 mm at every sample: a shared edge)
-            var worst = 0 * meter;
-            for (var e in evaluateQuery(context, qOwnedByBody(pieces[i], EntityType.EDGE)))
-            {
-                var edgeWorst = 0 * meter;
-                var onOther = true;
-                for (var l in evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 0.25, 0.5, 0.75, 1] }))
-                {
-                    var d = evDistance(context, { "side0" : l.origin, "side1" : pieces[j] }).distance;
-                    if (d > 1e-5 * meter) onOther = false;
-                    edgeWorst = max(edgeWorst, d);
-                }
-                if (onOther) worst = max(worst, edgeWorst);
-            }
+            tested += 1;
             var ok = true;
             try
             {
@@ -88,12 +76,14 @@ SCRIPT = """function(context is Context, queries)
             {
                 ok = false;
             }
-            rows = append(rows, { "dev" : worst / meter * 1e6, "text" : "U pair " ~ i ~ "," ~ j ~ " shared-edge deviation " ~ roundToPrecision(worst / meter * 1e6, 3) ~ " um, union " ~ (ok ? "ok" : "FAILS") });
+            if (!ok)
+            {
+                bad += 1;
+                out = append(out, "U pair " ~ i ~ "," ~ j ~ " FAILS; areas " ~ roundToPrecision(evArea(context, { "entities" : pieces[i] }) / (millimeter ^ 2), 1) ~ " / " ~ roundToPrecision(evArea(context, { "entities" : pieces[j] }) / (millimeter ^ 2), 1) ~ " | x " ~ roundToPrecision(bi.minCorner[0] / millimeter, 1) ~ ".." ~ roundToPrecision(bi.maxCorner[0] / millimeter, 1) ~ " and " ~ roundToPrecision(bj.minCorner[0] / millimeter, 1) ~ ".." ~ roundToPrecision(bj.maxCorner[0] / millimeter, 1));
+            }
         }
     }
-    rows = sort(rows, function(a, b) { return b.dev - a.dev; });
-    for (var r = 0; r < min(size(rows), 14); r += 1)
-        out = append(out, rows[r].text);    // short edges of the pieces
+    out = append(out, "U touching pairs " ~ tested ~ ", failing " ~ bad);    // short edges of the pieces
     var shorts = [];
     for (var i = 0; i < size(pieces); i += 1)
         for (var e in evaluateQuery(context, qOwnedByBody(pieces[i], EntityType.EDGE)))
