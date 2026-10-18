@@ -26,6 +26,10 @@ tree = {}
 f = c.get(f"{BASE}/features")
 tree["tree"] = f
 feature = [x for x in f["features"] if x["name"] == FEATURE][0]
+# a feature is bound to the microversion of the deform tab it was last written with; a pushed tab changes it
+_tab = [e for e in c.list_elements(D, W) if e["name"] == "deform" and e["elementType"] == "FEATURESTUDIO"][0]
+if os.environ.get("EXP_REBIND"):
+    feature["namespace"] = "e%s::m%s" % (_tab["id"], _tab["microversionId"])
 for arg in sys.argv[1:]:
     k, v = arg.split("=", 1)
     found = [x for x in feature["parameters"] if x["parameterId"] == k]

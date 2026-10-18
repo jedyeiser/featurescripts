@@ -355,8 +355,8 @@ function reportFaceAccuracy(context is Context, id is Id, face is Query, filled 
             worst = max(worst, d);
             sum += d;
         }
-        const type = evSurfaceDefinition(context, { "face" : face }).surfaceType;
-        println("ACCURACY " ~ label ~ " " ~ toString(type) ~ ": " ~ size(points) ~ " pts, max " ~ roundToPrecision(worst / meter * 1e6, 1) ~ " um, mean "
+        const surfaceKind = evSurfaceDefinition(context, { "face" : face }).surfaceType;
+        println("ACCURACY " ~ label ~ " " ~ toString(surfaceKind) ~ ": " ~ size(points) ~ " pts, max " ~ roundToPrecision(worst / meter * 1e6, 1) ~ " um, mean "
             ~ roundToPrecision(size(points) == 0 ? 0 : sum / size(points) / meter * 1e6, 1) ~ " um, area "
             ~ roundToPrecision(evArea(context, { "entities" : face }) / (meter ^ 2) * 1e6, 1) ~ " mm2");
     }
