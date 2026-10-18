@@ -298,6 +298,130 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
     return { "body" : copy, "ranOps" : true };
 }
 
+/** Two points of a face outline closer than this are the same vertex. */
+const OUTLINE_VERTEX_TOLERANCE = 1e-6 * meter;
+/** A junction of two outline edges turns by more than this for it to be a corner of the face. */
+const OUTLINE_CORNER_ANGLE = 30 * degree;
+
+/**
+ * Build a face from its wrapped outline with opBoundarySurface when the outline is four-sided: the outline edges are
+ * walked in order, the junctions that turn by more than OUTLINE_CORNER_ANGLE are the four corners, and the two pairs of
+ * opposite sides are the profiles. Unlike a fill, the surface takes its shape from all four sides, so the cross-section
+ * of a long thin band (carried by its two ends) is kept. Creates the surface as a body under `id`.
+ *
+ * @returns {boolean} whether the surface was made (false when the outline does not have exactly four corners or the
+ *          kernel refused: the caller then fills the outline instead)
+ */
+function boundarySurfaceFace(context is Context, id is Id, outline is Query) returns boolean
+{
+    const edges = evaluateQuery(context, outline);
+    const n = size(edges);
+    if (n < 4)
+        return false;
+    var ends = [];
+    for (var e in edges)
+    {
+        const l = evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 1] });
+        ends = append(ends, { "p0" : l[0].origin, "d0" : l[0].direction, "p1" : l[1].origin, "d1" : l[1].direction });
+    }
+
+    // Walk the outline: order[k] is the k-th edge, forward[k] whether it is traversed from its start.
+    var order = [0];
+    var forward = [true];
+    var used = makeArray(n, false);
+    used[0] = true;
+    var tail = ends[0].p1;
+    for (var step = 1; step < n; step += 1)
+    {
+        var next = -1;
+        var nextForward = true;
+        for (var k = 0; k < n && next < 0; k += 1)
+        {
+            if (used[k])
+                continue;
+            if (norm(ends[k].p0 - tail) < OUTLINE_VERTEX_TOLERANCE)
+            {
+                next = k;
+                nextForward = true;
+            }
+            else if (norm(ends[k].p1 - tail) < OUTLINE_VERTEX_TOLERANCE)
+            {
+                next = k;
+                nextForward = false;
+            }
+        }
+        if (next < 0)
+            return false;
+        used[next] = true;
+        order = append(order, next);
+        forward = append(forward, nextForward);
+        tail = nextForward ? ends[next].p1 : ends[next].p0;
+    }
+    if (norm(tail - ends[0].p0) > OUTLINE_VERTEX_TOLERANCE)
+        return false;
+
+    // Corners: the junction at the start of the i-th edge turns sharply.
+    var corners = [];
+    for (var i = 0; i < n; i += 1)
+    {
+        const prev = (i + n - 1) % n;
+        const dirIn = forward[prev] ? ends[order[prev]].d1 : -ends[order[prev]].d0;
+        const dirOut = forward[i] ? ends[order[i]].d0 : -ends[order[i]].d1;
+        if (dot(normalize(dirIn), normalize(dirOut)) < cos(OUTLINE_CORNER_ANGLE))
+            corners = append(corners, i);
+    }
+    if (size(corners) != 4)
+        return false;
+
+    // The four sides, each a run of edges; a side of several edges becomes one wire body.
+    var profiles = [];
+    var sideWires = [];
+    for (var c = 0; c < 4; c += 1)
+    {
+        var side = [];
+        var i = corners[c];
+        const stop = corners[(c + 1) % 4];
+        for (var count = 0; count < n; count += 1)
+        {
+            side = append(side, edges[order[i]]);
+            i = (i + 1) % n;
+            if (i == stop)
+                break;
+        }
+        if (size(side) == 1)
+        {
+            profiles = append(profiles, side[0]);
+        }
+        else
+        {
+            opExtractWires(context, id + ("side" ~ c), { "edges" : qUnion(side) });
+            const wire = qCreatedBy(id + ("side" ~ c), EntityType.BODY);
+            sideWires = append(sideWires, wire);
+            profiles = append(profiles, wire);
+        }
+    }
+
+    var made = true;
+    try
+    {
+        opBoundarySurface(context, id + "bsurf", { "uProfileSubqueries" : [profiles[0], profiles[2]],
+                                                   "vProfileSubqueries" : [profiles[1], profiles[3]] });
+    }
+    catch (bsurfErr)
+    {
+        println("boundary surface refused: " ~ toString(bsurfErr));
+        made = false;
+    }
+    if (size(sideWires) > 0)
+    {
+        try silent
+        {
+            opDeleteBodies(context, id + "dropSides", { "entities" : qUnion(sideWires) });
+        }
+    }
+    return made;
+}
+
 /**
  * Debug: how well each wrapped edge follows the exact image of its source edge. The source edge is sampled, every sample
  * is mapped exactly, and the distance to the wrapped (approximating) edge is measured. Prints a summary and the worst edges.
@@ -516,6 +640,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 annotation { "Name" : "Create bodies", "Default" : false }
                 definition.createBodies is boolean;
     
+                annotation { "Name" : "Boundary surface faces (test)", "Description" : "Build four-sided faces with a boundary surface from their four wrapped sides instead of a fill (keeps the cross-section of long thin faces)", "Default" : false }
+                definition.useBoundarySurface is boolean;
+
                 annotation { "Name" : "Report face accuracy", "Description" : "Print, for every rebuilt face, how far it lies from the mapped interior points of its source face (notices console)", "Default" : false }
                 definition.reportAccuracy is boolean;
 
@@ -866,18 +993,26 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         }
 
                         var fillId = uid + ("fill" ~ fIdx);
+                        var builder = "fill";
                         try
                         {
-                            opFillSurface(context, fillId, {
-                                "edgesG0"      : bdryEdges,
-                                "edgesG1"      : qNothing(),
-                                "edgesG2"      : qNothing(),
-                                "guideVertices": guideVerticesQuery
-                            });
+                            if (definition.useBoundarySurface && boundarySurfaceFace(context, fillId, bdryEdges))
+                            {
+                                builder = "bsurf";
+                            }
+                            else
+                            {
+                                opFillSurface(context, fillId, {
+                                    "edgesG0"      : bdryEdges,
+                                    "edgesG1"      : qNothing(),
+                                    "edgesG2"      : qNothing(),
+                                    "guideVertices": guideVerticesQuery
+                                });
+                            }
                             if (definition.reportAccuracy)
                             {
-                                reportFaceAccuracy(context, uid + ("accuracy" ~ fIdx), face, qOwnedByBody(qCreatedBy(fillId, EntityType.BODY), EntityType.FACE),
-                                    "face " ~ fIdx ~ (attempt == 1 ? " (piece)" : ""), fromFrenetPath, toFrenetPath, settings);
+                                reportFaceAccuracy(context, uid + ("accuracy" ~ fIdx), face, qOwnedByBody(qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET), EntityType.FACE),
+                                    "face " ~ fIdx ~ (attempt == 1 ? " (piece)" : "") ~ " [" ~ builder ~ "]", fromFrenetPath, toFrenetPath, settings);
                             }
                             // Fill succeeded — cleanup intermediates
                             opDeleteBodies(context, uid + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
@@ -1128,6 +1263,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // Saved features predate these parameters: keep their behaviour (no connectors, no naming).
         "mateConnectors" : qNothing(),
         "reportAccuracy" : false,
+        "useBoundarySurface" : false,
         "nameSuffix"     : "",
         "sourceNames"    : ""
     });
