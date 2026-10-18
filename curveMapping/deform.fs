@@ -142,11 +142,15 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
         const area = evArea(context, { "entities" : face });
         const corner = evBox3d(context, { "topology" : face }).minCorner;
         var target = undefined;
+        var targetGap = 1e-4 * meter;      // box corners of the same face agree to far better than this
         for (var candidate in evaluateQuery(context, qOwnedByBody(copy, EntityType.FACE)))
         {
-            if (target == undefined && abs(evArea(context, { "entities" : candidate }) - area) < 1e-6 * area &&
-                norm(evBox3d(context, { "topology" : candidate }).minCorner - corner) < 1e-6 * meter)
+            const gap = norm(evBox3d(context, { "topology" : candidate }).minCorner - corner);
+            if (gap < targetGap && abs(evArea(context, { "entities" : candidate }) - area) < 1e-2 * area)
+            {
                 target = candidate;
+                targetGap = gap;
+            }
         }
         if (target == undefined)
         {
