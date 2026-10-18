@@ -162,7 +162,8 @@ function faceCuts(context is Context, fromFrenetPath is map, face is Query) retu
  * outline (a band running the length of the part, say) can defeat opFillSurface; the pieces between two such cuts
  * are short and have few edges, and fill well.
  *
- * @returns {Query} the copy (a sheet body made from all of `body`'s faces), or `undefined` when there was nothing to cut
+ * @returns {map} { "body" : the copy (a sheet body made from all of `body`'s faces), or `undefined` when there was nothing to
+ *          cut, "ranOps" : whether any modelling operation was run (a failed cut leaves some behind) }
  */
 function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath is map, body is Query, faces is array)
 {
@@ -175,7 +176,7 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
         anyCut = anyCut || size(cuts) > 0;
     }
     if (!anyCut)
-        return undefined;
+        return { "body" : undefined, "ranOps" : false };
 
     opExtractSurface(context, id + "copy", { "faces" : qOwnedByBody(body, EntityType.FACE) });
     const copy = qCreatedBy(id + "copy", EntityType.BODY);
@@ -227,21 +228,24 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
                 planeFaces = append(planeFaces, qCreatedBy(toolId, EntityType.FACE));
             }
         }
+        var splitDefinition = {
+                "faceTargets" : target,
+                "projectionType" : ProjectionType.NORMAL_TO_TARGET,
+                "extendToCompletion" : true,
+                "keepToolSurfaces" : false
+            };
+        if (size(curveBodies) > 0)
+            splitDefinition.edgeTools = qOwnedByBody(qUnion(curveBodies), EntityType.EDGE);
+        if (size(planeFaces) > 0)
+            splitDefinition.planeTools = qUnion(planeFaces);
         try
         {
-            opSplitFace(context, id + ("split" ~ f), {
-                    "faceTargets" : target,
-                    "edgeTools" : size(curveBodies) == 0 ? qNothing() : qOwnedByBody(qUnion(curveBodies), EntityType.EDGE),
-                    "planeTools" : size(planeFaces) == 0 ? qNothing() : qUnion(planeFaces),
-                    "projectionType" : ProjectionType.NORMAL_TO_TARGET,
-                    "extendToCompletion" : true,
-                    "keepToolSurfaces" : false
-                });
+            opSplitFace(context, id + ("split" ~ f), splitDefinition);
             totalCuts += size(cutsOfFace[f]);
         }
         catch (splitErr)
         {
-            println("WARNING: could not cut a face that failed to fill: " ~ toString(splitErr));
+            println("WARNING: could not cut a face that failed to fill: " ~ toString(splitErr) ~ " (" ~ size(curveBodies) ~ " curve cut(s), " ~ size(planeFaces) ~ " plane cut(s))");
         }
         if (size(curveBodies) > 0 || size(planeFaces) > 0)
         {
@@ -257,10 +261,10 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
         {
             opDeleteBodies(context, id + "dropWork", { "entities" : copy });
         }
-        return undefined;
+        return { "body" : undefined, "ranOps" : true };
     }
     println("Deform: " ~ size(faces) ~ " face(s) failed to fill; retrying with " ~ totalCuts ~ " cut(s) across them");
-    return copy;
+    return { "body" : copy, "ranOps" : true };
 }
 
 annotation { "Feature Type Name" : "Deform", "Editing Logic Function" : "deformEditLogic","Feature Type Description" : "Takes a solid or surface body, from edges and to edges as input. Wraps the body from the from edges to the to edges" }
@@ -492,6 +496,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             // The body whose faces are rebuilt: the source itself, or on the second attempt a copy in which the
             // faces that failed to fill are cut into pieces. The faces that failed are listed in failedFaces.
             var geomBody    = unitBody;
+            var joinId      = uid;       // ids of the final join (step 3); differs from uid when work ops had to run in between
             var failedFaces = [];
             const workId    = id + ("work" ~ unitIdx);
 
@@ -828,7 +833,14 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 // (otherwise keep what this attempt built).
                 if (attempt == 0 && size(failedFaces) > 0 && !isFacesMode)
                 {
-                    const cutBody = splitFacesBetweenVertices(context, workId, fromFrenetPath, unitBody, failedFaces);
+                    const cut = splitFacesBetweenVertices(context, workId, fromFrenetPath, unitBody, failedFaces);
+                    const cutBody = cut.body;
+                    if (cutBody == undefined && cut.ranOps)
+                    {
+                        // The failed cut left operations of its own in the history: the ids of this attempt cannot be
+                        // used again (an id prefix must stay contiguous), so the join takes a prefix of its own.
+                        joinId = id + ("join" ~ unitIdx);
+                    }
                     if (cutBody != undefined)
                     {
                         try
@@ -862,16 +874,16 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             // of the raw per-edge wire bodies in that case.
                             try
                             {
-                                opExtractWires(context, uid + "keepWires", { "edges": qUnion(allWrappedEdgeQueries) });
-                                opDeleteBodies(context, uid + "deleteWireIntermediates", { "entities": qUnion(allWrappedBodyQueries) });
-                                opCreateCompositePart(context, uid + "compositePart", {
-                                    "bodies" : qCreatedBy(uid + "keepWires", EntityType.BODY),
+                                opExtractWires(context, joinId + "keepWires", { "edges": qUnion(allWrappedEdgeQueries) });
+                                opDeleteBodies(context, joinId + "deleteWireIntermediates", { "entities": qUnion(allWrappedBodyQueries) });
+                                opCreateCompositePart(context, joinId + "compositePart", {
+                                    "bodies" : qCreatedBy(joinId + "keepWires", EntityType.BODY),
                                     "closed" : true
                                 });
                             }
                             catch
                             {
-                                opCreateCompositePart(context, uid + "compositePart", {
+                                opCreateCompositePart(context, joinId + "compositePart", {
                                     "bodies" : qUnion(allWrappedBodyQueries),
                                     "closed" : true
                                 });
@@ -879,7 +891,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         }
                         else
                         {
-                            opDeleteBodies(context, uid + "deleteWires", { "entities": qUnion(allWrappedBodyQueries) });
+                            opDeleteBodies(context, joinId + "deleteWires", { "entities": qUnion(allWrappedBodyQueries) });
                         }
                     }
 
@@ -894,7 +906,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     var surfaceBodiesList = evaluateQuery(context, surfaceBodies);
                     if (size(surfaceBodiesList) > 1)
                     {
-                        opBoolean(context, uid + "unionFaces", {
+                        opBoolean(context, joinId + "unionFaces", {
                             "tools"        : surfaceBodies,
                             "operationType": BooleanOperationType.UNION,
                             "makeSolid"    : inputIsSolid,
@@ -905,7 +917,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         // Single surface body (all fills already merged) — attempt to close into solid.
                         try
                         {
-                            opBoolean(context, uid + "closeSolid", {
+                            opBoolean(context, joinId + "closeSolid", {
                                 "tools"        : surfaceBodies,
                                 "operationType": BooleanOperationType.UNION,
                                 "makeSolid"    : true,
@@ -936,7 +948,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             if (!isFacesMode)
             {
                 var unitResult = qUnion([qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SOLID),
-                                         qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET)]);
+                                         qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET),
+                                         qBodyType(qCreatedBy(joinId, EntityType.BODY), BodyType.SOLID),
+                                         qBodyType(qCreatedBy(joinId, EntityType.BODY), BodyType.SHEET)]);
                 unitResults[toString(unitBody)] = unitResult;
 
                 // Names come from deformEditLogic (getProperty is not allowed in a feature body);
