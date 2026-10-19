@@ -34,6 +34,14 @@ if os.environ.get("EXP_REBIND"):
 for arg in sys.argv[1:]:
     k, v = arg.split("=", 1)
     found = [x for x in feature["parameters"] if x["parameterId"] == k]
+    if v.startswith("@"):                    # an enum: k=@EnumName:VALUE
+        enum_name, enum_value = v[1:].split(":")
+        if found:
+            found[0]["value"] = enum_value
+        else:
+            feature["parameters"].append({"btType": "BTMParameterEnum-145", "parameterId": k, "enumName": enum_name, "value": enum_value,
+                                          "namespace": feature["namespace"]})
+        continue
     if not found and v.lower() not in ("true", "false") and any(ch.isdigit() for ch in v) and " " in v:      # a quantity the saved feature predates ("0.005 mm")
         feature["parameters"].append({"btType": "BTMParameterQuantity-147", "parameterId": k, "expression": v, "isInteger": False})
         continue
