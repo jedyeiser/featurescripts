@@ -1096,8 +1096,28 @@ function reportFaceAccuracy(context is Context, id is Id, face is Query, filled 
             worst = max(worst, d);
             sum += d;
         }
+        // The boundary: exactly mapped points of every source edge against the rebuilt face's own edges (what a neighbour has to meet).
+        var boundaryWorst = 0 * meter;
+        var boundaryNote = "";
+        const rebuiltEdges = qAdjacent(filled, AdjacencyType.EDGE, EntityType.EDGE);
+        for (var sourceEdge in evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE)))
+        {
+            try silent
+            {
+                const onEdge = mapArray(evEdgeTangentLines(context, { "edge" : sourceEdge, "parameters" : [0.25, 0.5, 0.75] }), function(x) { return x.origin; });
+                const images = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, settings.fromRefArc, settings.toRefArc, settings.flipToNormal, onEdge);
+                var edgeWorst = 0 * meter;
+                for (var image in images)
+                    edgeWorst = max(edgeWorst, evDistance(context, { "side0" : image, "side1" : rebuiltEdges }).distance);
+                if (edgeWorst > boundaryWorst)
+                {
+                    boundaryWorst = edgeWorst;
+                    boundaryNote = " (source edge " ~ roundToPrecision(evLength(context, { "entities" : sourceEdge }) / millimeter, 1) ~ " mm)";
+                }
+            }
+        }
         const surfaceKind = evSurfaceDefinition(context, { "face" : face }).surfaceType;
-        println("ACCURACY " ~ label ~ " " ~ toString(surfaceKind) ~ ": " ~ size(points) ~ " pts, max " ~ roundToPrecision(worst / meter * 1e6, 1) ~ " um, mean "
+        println("ACCURACY " ~ label ~ " " ~ toString(surfaceKind) ~ ": boundary max " ~ roundToPrecision(boundaryWorst / meter * 1e6, 1) ~ " um" ~ boundaryNote ~ "; " ~ size(points) ~ " pts, max " ~ roundToPrecision(worst / meter * 1e6, 1) ~ " um, mean "
             ~ roundToPrecision(size(points) == 0 ? 0 : sum / size(points) / meter * 1e6, 1) ~ " um, area "
             ~ roundToPrecision(evArea(context, { "entities" : face }) / (meter ^ 2) * 1e6, 1) ~ " mm2");
     }
