@@ -12,15 +12,8 @@ export const stressSources = defineFeature(function(context is Context, id is Id
     {
     }
     {
-        var ski = undefined;
-        for (var b in evaluateQuery(context, qEverything(EntityType.BODY)))
-        {
-            var nm = "";
-            try silent { nm = getProperty(context, { "entity" : b, "propertyType" : PropertyType.NAME }); }
-            if (nm == "filleted_top_surf")
-                ski = b;
-        }
-        if (ski == undefined)
+        const ski = getQueryVariable(context, "filleted_top_surf");
+        if (size(evaluateQuery(context, ski)) == 0)
             throw regenError("filleted_top_surf not found");
         const skiBox = evBox3d(context, { "topology" : ski });
         const c = (skiBox.minCorner + skiBox.maxCorner) / 2;
