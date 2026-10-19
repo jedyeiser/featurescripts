@@ -845,7 +845,25 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
     }
     catch (mappedErr)
     {
-        println("mapped surface refused: " ~ toString(mappedErr));
+        var faceNote = "";
+        try silent
+        {
+            const surfaceKind = evSurfaceDefinition(context, { "face" : face }).surfaceType;
+            const outlineEdges = evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE));
+            var closedEdges = 0;
+            var vertexless = 0;
+            for (var oe in outlineEdges)
+            {
+                const ov = size(evaluateQuery(context, qAdjacent(oe, AdjacencyType.VERTEX, EntityType.VERTEX)));
+                if (ov < 2)
+                    closedEdges += 1;
+                if (ov == 0)
+                    vertexless += 1;
+            }
+            faceNote = " | " ~ toString(surfaceKind) ~ ", " ~ size(outlineEdges) ~ " edges (" ~ closedEdges ~ " closed, " ~ vertexless ~ " without a vertex), area "
+                ~ roundToPrecision(evArea(context, { "entities" : face }) / (millimeter ^ 2), 1) ~ " mm2";
+        }
+        println("mapped surface refused: " ~ toString(mappedErr) ~ faceNote);
         try silent
         {
             opDeleteBodies(context, id + "dropMapped", { "entities" : qCreatedBy(id, EntityType.BODY) });
