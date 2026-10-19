@@ -601,7 +601,9 @@ const MAPPED_SAMPLES_MAX_U = 400;
 const MAPPED_SAMPLES_MIN_V = 8;
 const MAPPED_SAMPLES_MAX_V = 40;
 /** Points mapped for mapped surfaces in one feature (each costs interpreter steps; the budget of a whole feature is about 20-30k). */
-const MAPPED_POINT_BUDGET = 12000;
+const MAPPED_POINT_BUDGET = 20000;
+/** Faces that are not long and thin are sampled no more often than this: a fill already reproduces them well, and the budget is for the long thin faces. */
+const MAPPED_COARSE_SPACING = 0.015 * meter;
 /** Sample spacing along a mapped surface (default 6 mm): lengths in meter [min, default, max] and the other units. */
 const MAPPED_SPACING_BOUND = { (meter) : [1e-3, 6e-3, 5e-2], (centimeter) : 0.6, (millimeter) : 6, (inch) : 0.24, (foot) : 0.02, (yard) : 0.0066 } as LengthBoundSpec;
 /** A wrapped edge farther than this from an edge of a built sheet is not matched with it. */
@@ -1585,7 +1587,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             var pointsMapped = 0;
                             if (mapThis)
                                 pointsMapped = mappedSurfaceFace(context, fillId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal,
-                                    definition.mappedSpacing, MAPPED_POINT_BUDGET - mappedPointCount);
+                                    isThinAndLong(context, face) ? definition.mappedSpacing : max(definition.mappedSpacing, MAPPED_COARSE_SPACING), MAPPED_POINT_BUDGET - mappedPointCount);
                             if (pointsMapped > 0)
                             {
                                 builder = "mapped";
