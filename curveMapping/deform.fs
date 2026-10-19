@@ -929,7 +929,7 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
     }
     if (seed == undefined)
         return { "joined" : 0, "left" : 0 };
-    var done = { seed : true };
+    var done = { (seed) : true };
     var refused = {};
     var step = 0;
     var progress = true;
@@ -1296,6 +1296,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             var measuredFaces = 0;
             var mappedFaces   = 0;
             var mappedPointCount = 0;
+            // Steps, not points, are the limit (a feature gets about 20-30k mapped points in all, edges and the rest included): a unit with more faces gets a smaller share.
+            const pointBudget = clamp(MAPPED_POINT_BUDGET * 40 / max(1, size(evaluateQuery(context, qOwnedByBody(unitBody, EntityType.FACE)))), 4000, MAPPED_POINT_BUDGET);
             const workId    = id + ("work" ~ unitIdx);
             const workId2   = id + ("work" ~ unitIdx ~ "b");
             var unionFailed  = false;    // the final union of this attempt was refused
@@ -1587,7 +1589,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             var pointsMapped = 0;
                             if (mapThis)
                                 pointsMapped = mappedSurfaceFace(context, fillId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal,
-                                    isThinAndLong(context, face) ? definition.mappedSpacing : max(definition.mappedSpacing, MAPPED_COARSE_SPACING), MAPPED_POINT_BUDGET - mappedPointCount);
+                                    isThinAndLong(context, face) ? definition.mappedSpacing : max(definition.mappedSpacing, MAPPED_COARSE_SPACING), pointBudget - mappedPointCount);
                             if (pointsMapped > 0)
                             {
                                 builder = "mapped";

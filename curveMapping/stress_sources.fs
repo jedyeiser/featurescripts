@@ -36,7 +36,7 @@ export const stressSources = defineFeature(function(context is Context, id is Id
             opPattern(context, id + "copy", { "entities" : ski, "transforms" : [identityTransform()], "instanceNames" : ["holed"] });
             const copy = qCreatedBy(id + "copy", EntityType.BODY);
             const hole = vector(c[0] - 300 * millimeter, c[1], c[2]);
-            fCylinder(context, id + "holeTool", { "bottomCenter" : hole - vector(0, 0, 100 * millimeter), "topCenter" : hole + vector(0, 0, 100 * millimeter), "radius" : 12 * millimeter });
+            fCylinder(context, id + "holeTool", { "bottomCenter" : hole - vector(0, 0, 100) * millimeter, "topCenter" : hole + vector(0, 0, 100) * millimeter, "radius" : 12 * millimeter });
             opBoolean(context, id + "hole", { "tools" : qCreatedBy(id + "holeTool", EntityType.BODY), "targets" : copy, "operationType" : BooleanOperationType.SUBTRACTION });
             setProperty(context, { "entities" : qBodyType(qCreatedBy(id + "copy", EntityType.BODY), BodyType.SHEET), "propertyType" : PropertyType.NAME, "value" : "stress_holed_sheet" });
         }
@@ -49,7 +49,7 @@ export const stressSources = defineFeature(function(context is Context, id is Id
         const cylinderAt = vector(c[0] + 250 * millimeter, c[1], c[2]);
         try
         {
-            fCylinder(context, id + "cyl", { "bottomCenter" : cylinderAt - vector(0, 0, 25 * millimeter), "topCenter" : cylinderAt + vector(0, 0, 25 * millimeter), "radius" : 15 * millimeter });
+            fCylinder(context, id + "cyl", { "bottomCenter" : cylinderAt - vector(0, 0, 25) * millimeter, "topCenter" : cylinderAt + vector(0, 0, 25) * millimeter, "radius" : 15 * millimeter });
             setProperty(context, { "entities" : qCreatedBy(id + "cyl", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "stress_cylinder_solid" });
         }
         catch (e)
@@ -59,7 +59,7 @@ export const stressSources = defineFeature(function(context is Context, id is Id
         try
         {
             const wallAt = vector(c[0] - 100 * millimeter, c[1], c[2]);
-            fCylinder(context, id + "wallSolid", { "bottomCenter" : wallAt - vector(0, 0, 25 * millimeter), "topCenter" : wallAt + vector(0, 0, 25 * millimeter), "radius" : 15 * millimeter });
+            fCylinder(context, id + "wallSolid", { "bottomCenter" : wallAt - vector(0, 0, 25) * millimeter, "topCenter" : wallAt + vector(0, 0, 25) * millimeter, "radius" : 15 * millimeter });
             opExtractSurface(context, id + "wall", { "faces" : qGeometry(qOwnedByBody(qCreatedBy(id + "wallSolid", EntityType.BODY), EntityType.FACE), GeometryType.CYLINDER) });
             opDeleteBodies(context, id + "dropWall", { "entities" : qCreatedBy(id + "wallSolid", EntityType.BODY) });
             setProperty(context, { "entities" : qCreatedBy(id + "wall", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "stress_cylinder_wall" });
@@ -72,7 +72,7 @@ export const stressSources = defineFeature(function(context is Context, id is Id
         // 5. a sphere and 6. a box
         try
         {
-            fSphere(context, id + "sphere", { "center" : vector(c[0] + 500 * millimeter, c[1], c[2]), "radius" : 20 * millimeter });
+            fEllipsoid(context, id + "sphere", { "center" : vector(c[0] + 500 * millimeter, c[1], c[2]), "radius" : vector(20, 20, 20) * millimeter });
             setProperty(context, { "entities" : qCreatedBy(id + "sphere", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "stress_sphere" });
         }
         catch (e)
