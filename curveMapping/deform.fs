@@ -102,7 +102,7 @@ const GUIDED_FACE_MIN_AREA = 2e-5 * meter ^ 2;     // 20 mm2
 /** At most this many thin faces of one body are measured (each measurement maps interior points; the interpreter has a step limit). */
 const MAX_MEASURED_FACES = 4;
 /** A thin face whose fill is too far from the mapped shape is recut into pieces about this long (cross cuts on a grid along the from path). */
-const REFINE_PIECE_LENGTH = 0.1 * meter;
+const REFINE_PIECE_LENGTH = 100 * meter;
 /** Face accuracy (default 0 = off until the cost is tuned; 0.05 mm is the intended value): lengths in meter [min, default, max] and the other units. */
 const FACE_ACCURACY_BOUND = { (meter) : [0, 0, 1e-3], (centimeter) : 0, (millimeter) : 0, (inch) : 0, (foot) : 0, (yard) : 0 } as LengthBoundSpec;
 /** At most this many cuts are made across one face. */
