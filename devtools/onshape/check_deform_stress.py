@@ -13,6 +13,8 @@ SCRIPT = """function(context is Context, queries)
     {
         var nm = "";
         try silent { nm = getProperty(context, { "entity" : b, "propertyType" : PropertyType.NAME }); }
+        if (!(nm is string))
+            continue;
         if (!(nm == "filleted_top_surf (deformed)" || (nm != "" && match(nm, "^stress_.* \\\\(deformed\\\\)$").hasMatch)))
             continue;
         n += 1;

@@ -22,11 +22,12 @@ BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 args = dict(a.split("=", 1) for a in sys.argv[1:])
 builder = args.get("builder", "MAP_ALL")
 only = args["only"].split(",") if "only" in args else None
+run = args.get("run", "").split(",")      # the stress deforms left active (the studio's regen time is the limit: a write is refused, 409, when it is too long)
 
 # case name -> (sub id under the Stress sources feature, entity filter, body name)
 CASES = {
     "thick":  ("thick",  None,    "stress_thick_solid"),
-    "holed":  ("copy",   "SHEET", "stress_holed_sheet"),
+    "holed":  ("copy",   None,    "stress_holed_sheet"),
     "cyl":    ("cyl",    None,    "stress_cylinder_solid"),
     "wall":   ("wall",   None,    "stress_cylinder_wall"),
     "sphere": ("sphere", None,    "stress_sphere"),
@@ -41,11 +42,20 @@ by_name = {x["name"]: x for x in tree["features"]}
 # 1. clear the sandbox's trailing user features from this duplicate
 for x in list(tree["features"]):
     drop = x["name"] in ("Offset+ 1", "split_faces_before", "Deform_after_Splitting_faces", "Thicken 1")
+    if args.get("fresh") and (x["name"] == "Stress sources" or x["name"].startswith("stress_")):
+        drop = True            # delete-and-add instead of replacing in place (a replace of the sources has returned 409)
     if x["featureType"] == "queryVariable" and any(p.get("value") == "deformed_surfs" for p in x["parameters"]):
         drop = True
     if drop:
         delete_feature(BASE, x["featureId"], cache, client=c)
         print("deleted", x["name"])
+
+# 1b. the baseline test_Deform is suppressed: it costs regen time and the stress cases are what matter
+for x in cache["tree"]["features"]:
+    if x["name"] == "test_Deform" and not x.get("suppressed"):
+        x["suppressed"] = True
+        write_feature(BASE, x, cache, client=c)
+        print("suppressed test_Deform")
 
 # 2. the sources
 ns = namespace_of(D, W, "stress_sources")
@@ -55,13 +65,20 @@ sources_id = r["feature"]["featureId"]
 print("Stress sources:", r.get("featureState", {}).get("featureStatus"), sources_id)
 
 # 3. one deform per body
+deform_ns = namespace_of(D, W, "deform")
 template = [x for x in cache["tree"]["features"] if x["name"] == "test_Deform"][0]
+template = copy.deepcopy(template)
 for key, (sub, kind, body_name) in CASES.items():
     if only and key not in only:
         continue
     f = copy.deepcopy(template)
     f.pop("featureId", None)
     f["name"] = "stress_" + key
+    f["suppressed"] = key not in run
+    f["namespace"] = deform_ns          # bound to the pushed deform tab's current microversion
+    for p in f["parameters"]:
+        if p.get("namespace"):
+            p["namespace"] = deform_ns
     expr = 'qCreatedBy(makeId("%s") + "%s", EntityType.BODY)' % (sources_id, sub)
     if kind:
         expr = "qBodyType(%s, BodyType.%s)" % (expr, kind)

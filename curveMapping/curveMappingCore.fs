@@ -2396,6 +2396,57 @@ function edgeFitDeviation(context is Context, edge is Query, curve is BSplineCur
     return worst;
 }
 
+/** Fewest samples a closed edge is interpolated through (a periodic cubic through them follows a circle to well under a micron). */
+const CM_CLOSED_EDGE_MIN_SAMPLES = 32;
+/** Most samples a closed edge is interpolated through. */
+const CM_CLOSED_EDGE_MAX_SAMPLES = 120;
+
+/**
+ * The closed periodic cubic B-spline that passes exactly through `points` (distinct, in order around the loop, the loop's
+ * start first), at the parameters 0, 1/n, ... of its [0, 1] domain. The curve is C2 across its seam, which no clamped open
+ * spline closed on itself can be (and the kernel refuses such a curve: BAD_GEOMETRY), and its start is `points[0]`.
+ *
+ * The control points solve (C[i-1] + 4 C[i] + C[i+1]) / 6 = P[i] around the loop; the system is diagonally dominant, so
+ * Gauss-Seidel sweeps converge fast. They run on plain numbers (meters), which are cheap in the interpreter.
+ */
+export function closedInterpolatingSpline(points is array) returns BSplineCurve
+{
+    const n = size(points);
+    var control = [[], [], []];
+    for (var d = 0; d < 3; d += 1)
+    {
+        var target = [];
+        for (var i = 0; i < n; i += 1)
+            target = append(target, points[i][d] / meter);
+        var c = target;
+        for (var sweep = 0; sweep < 60; sweep += 1)
+        {
+            var change = 0;
+            for (var i = 0; i < n; i += 1)
+            {
+                const updated = (6 * target[i] - c[(i + n - 1) % n] - c[(i + 1) % n]) / 4;
+                change = max(change, abs(updated - c[i]));
+                c[i] = updated;
+            }
+            if (change < 1e-13)
+                break;
+        }
+        control[d] = c;
+    }
+    // Periodic splines repeat their first `degree` control points; the curve at u = j / n is then
+    // (C[j - 1] + 4 C[j] + C[j + 1]) / 6 with the control points in the order C[n - 1], C[0], C[1], ...
+    var controlPoints = [];
+    for (var j = 0; j < n + 3; j += 1)
+    {
+        const i = (j + n - 1) % n;
+        controlPoints = append(controlPoints, vector(control[0][i], control[1][i], control[2][i]) * meter);
+    }
+    var knots = [];
+    for (var k = 0; k < n + 7; k += 1)
+        knots = append(knots, (k - 3) / n);
+    return bSplineCurve({ "degree" : 3, "isPeriodic" : true, "controlPoints" : controlPoints, "knots" : knotArray(knots) });
+}
+
 /**
  * Transforms an array of edges from one Frenet path to another.
  * Returns an array of maps { "sourceEdge": Query, "wrappedEdge": Query, "wrappedBody": Query }.
@@ -2487,6 +2538,32 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
         var samples = numSamples;
         var cap = settings.approximationMaxCPs;
         var mappedPoints = sampleMappedEdge(context, edge, samples, fromMap, toMap, settings);
+
+        // A closed edge (a full circle: the rim of a cylinder, a tube's section) cannot be a clamped open spline closed on itself
+        // (the kernel refuses it), and fitting it open would leave a kink at its seam. It is interpolated as a periodic spline
+        // through its mapped samples: exactly through the mapped start point, C2 all the way round.
+        if (norm(mappedPoints[0] - mappedPoints[size(mappedPoints) - 1]) < 1e-7 * meter && polylineLength(mappedPoints) > 1e-4 * meter)
+        {
+            const closedSamples = clamp(max(samples, CM_CLOSED_EDGE_MIN_SAMPLES), CM_CLOSED_EDGE_MIN_SAMPLES, CM_CLOSED_EDGE_MAX_SAMPLES);
+            if (closedSamples != samples)
+                mappedPoints = sampleMappedEdge(context, edge, closedSamples, fromMap, toMap, settings);
+            const closedId = id + (toString(i) ~ "edge");
+            try
+            {
+                const periodic = closedInterpolatingSpline(resize(mappedPoints, size(mappedPoints) - 1));
+                opCreateBSplineCurve(context, closedId, { "bSplineCurve" : periodic });
+                result = append(result, {
+                    "sourceEdge" : edge,
+                    "wrappedEdge": qCreatedBy(closedId, EntityType.EDGE),
+                    "wrappedBody": qCreatedBy(closedId, EntityType.BODY),
+                    "controlPoints" : size(periodic.controlPoints) - 3,
+                    "fitPasses"  : 0,
+                    "deviation"  : undefined
+                });
+            }
+            catch (closedErr) { println("ERROR transformEdge " ~ i ~ " (closed): " ~ toString(closedErr)); }
+            continue;
+        }
 
         // An edge that the vertex merge has collapsed to a point has nothing to wrap.
         if (settings.vertexMergeTolerance != undefined && polylineLength(mappedPoints) < 10 * settings.vertexMergeTolerance
