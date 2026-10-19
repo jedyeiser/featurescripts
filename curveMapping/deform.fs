@@ -597,9 +597,15 @@ function reportEdgeFit(edgeMapping is array)
 const MAX_MAPPED_FACES = 6;
 /** Samples per direction of a mapped surface (at least, at most). */
 const MAPPED_SAMPLES_MIN_U = 12;
-const MAPPED_SAMPLES_MAX_U = 120;
+const MAPPED_SAMPLES_MAX_U = 400;
 const MAPPED_SAMPLES_MIN_V = 8;
-const MAPPED_SAMPLES_MAX_V = 24;
+const MAPPED_SAMPLES_MAX_V = 40;
+/** Points mapped for mapped surfaces in one feature (each costs interpreter steps; the budget of a whole feature is about 20-30k). */
+const MAPPED_POINT_BUDGET = 12000;
+/** Sample spacing along a mapped surface (default 6 mm): lengths in meter [min, default, max] and the other units. */
+const MAPPED_SPACING_BOUND = { (meter) : [1e-3, 6e-3, 5e-2], (centimeter) : 0.6, (millimeter) : 6, (inch) : 0.24, (foot) : 0.02, (yard) : 0.0066 } as LengthBoundSpec;
+/** A wrapped edge farther than this from an edge of a built sheet is not matched with it. */
+const JOIN_MATCH_GATE = 2e-5 * meter;
 /** A sample step of this much in the trim loop (meters of edge) between UV samples. */
 const OUTLINE_SAMPLE_SPACING = 0.015 * meter;
 
@@ -752,17 +758,26 @@ function faceUvOutline(context is Context, face is Query)
  * (the surface is mapped, not rebuilt from its boundary); the edge it ends on is the image of the source edge to within the
  * interpolation error, and the union welds it to the neighbours through edge matches.
  *
- * @returns {boolean} whether the sheet was made under `id` (false, having left nothing, when the face does not qualify)
+ * @returns {number} the number of points mapped when the sheet was made under `id`; 0, having left nothing, when the face does not qualify
  */
 function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFrenetPath is map, toFrenetPath is map,
-    fromRefArc, toRefArc, flipToNormal is boolean) returns boolean
+    fromRefArc, toRefArc, flipToNormal is boolean, spacing is ValueWithUnits, pointBudget is number) returns number
 {
     try
     {
         const approximation = evApproximateBSplineSurface(context, { "face" : face, "tolerance" : 1e-6 });
         const net = approximation.bSplineSurface.controlPoints;
-        const nU = clamp(2 * size(net), MAPPED_SAMPLES_MIN_U, MAPPED_SAMPLES_MAX_U);
-        const nV = clamp(2 * size(net[0]), MAPPED_SAMPLES_MIN_V, MAPPED_SAMPLES_MAX_V);
+        // The grid follows the face: at least twice the control net of its own approximation, and a sample every `spacing`
+        // along each direction (the interpolation error of a cubic falls with the fourth power of the spacing).
+        const probe = evFaceTangentPlanes(context, { "face" : face, "parameters" : [vector(0, 0.5), vector(1, 0.5), vector(0.5, 0), vector(0.5, 1)] });
+        const lengthU = norm(probe[1].origin - probe[0].origin);
+        const lengthV = norm(probe[3].origin - probe[2].origin);
+        const nV = clamp(max(2 * size(net[0]), ceil(lengthV / spacing) + 1), MAPPED_SAMPLES_MIN_V, MAPPED_SAMPLES_MAX_V);
+        var nU = clamp(max(2 * size(net), ceil(lengthU / spacing) + 1), MAPPED_SAMPLES_MIN_U, MAPPED_SAMPLES_MAX_U);
+        if (nU * nV > pointBudget)
+            nU = max(MAPPED_SAMPLES_MIN_U, floor(pointBudget / nV));
+        if (nU * nV > pointBudget)
+            return 0;
         var us = [];
         for (var i = 0; i < nU; i += 1)
             us = append(us, i / (nU - 1));
@@ -822,9 +837,9 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
 
         const outline = faceUvOutline(context, face);
         if (outline == undefined)
-            return false;
+            return 0;
         opCreateBSplineSurface(context, id + "mapped", { "bSplineSurface" : surface, "boundaryBSplineCurves" : outline });
-        return true;
+        return nU * nV;
     }
     catch (mappedErr)
     {
@@ -833,7 +848,7 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
         {
             opDeleteBodies(context, id + "dropMapped", { "entities" : qCreatedBy(id, EntityType.BODY) });
         }
-        return false;
+        return 0;
     }
 }
 
@@ -869,6 +884,106 @@ function weldMatches(context is Context, edgeMapping is array, fillBodies is map
             matches = append(matches, { "topology1" : a.edge, "topology2" : b.edge, "matchType" : TopologyMatchType.COINCIDENT });
     }
     return matches;
+}
+
+/** The adjacency of the rebuilt faces for incrementalJoin: for every source edge between two faces, a point on its wrapped edge and the two faces. */
+function joinLinks(context is Context, edgeMapping is array, fillBodies is map) returns array
+{
+    var links = [];
+    for (var m in edgeMapping)
+    {
+        const adjacent = evaluateQuery(context, qAdjacent(m.sourceEdge, AdjacencyType.EDGE, EntityType.FACE));
+        if (size(adjacent) != 2)
+            continue;
+        const ka = toString(adjacent[0]);
+        const kb = toString(adjacent[1]);
+        if (fillBodies[ka] == undefined || fillBodies[kb] == undefined || ka == kb)
+            continue;
+        links = append(links, { "middle" : evEdgeTangentLine(context, { "edge" : m.wrappedEdge, "parameter" : 0.5 }).origin, "a" : ka, "b" : kb });
+    }
+    return links;
+}
+
+/**
+ * The faces joined one at a time, breadth first from the largest, each join in a try of its own, with the edge matches found
+ * against the bodies as they are at that step (`links` from joinLinks). A face the kernel refuses stays a separate sheet and
+ * the others go on, so what can be joined is joined and the refusals are named.
+ *
+ * @returns {map} { "joined" : faces in the main body, "left" : faces left as separate sheets }
+ */
+function incrementalJoin(context is Context, id is Id, links is array, fillBodies is map, makeSolid is boolean) returns map
+{
+    var current = fillBodies;
+    var seed = undefined;
+    var seedArea = 0 * meter ^ 2;
+    for (var entry in fillBodies)
+    {
+        const area = evArea(context, { "entities" : entry.value });
+        if (seed == undefined || area > seedArea)
+        {
+            seed = entry.key;
+            seedArea = area;
+        }
+    }
+    if (seed == undefined)
+        return { "joined" : 0, "left" : 0 };
+    var done = { seed : true };
+    var refused = {};
+    var step = 0;
+    var progress = true;
+    while (progress)
+    {
+        progress = false;
+        for (var entry in fillBodies)
+        {
+            const key = entry.key;
+            if (done[key] != undefined || refused[key] != undefined)
+                continue;
+            var matches = [];
+            var touching = false;
+            for (var link in links)
+            {
+                var other = undefined;
+                if (link.a == key && done[link.b] != undefined)
+                    other = link.b;
+                else if (link.b == key && done[link.a] != undefined)
+                    other = link.a;
+                if (other == undefined)
+                    continue;
+                touching = true;
+                const a = nearestEdgeTo(context, link.middle, qOwnedByBody(current[other], EntityType.EDGE));
+                const b = nearestEdgeTo(context, link.middle, qOwnedByBody(current[key], EntityType.EDGE));
+                if (a.distance < JOIN_MATCH_GATE && b.distance < JOIN_MATCH_GATE)
+                    matches = append(matches, { "topology1" : a.edge, "topology2" : b.edge, "matchType" : TopologyMatchType.COINCIDENT });
+            }
+            if (!touching)
+                continue;
+            step += 1;
+            const joinId = id + ("join" ~ step);
+            try
+            {
+                opBoolean(context, joinId, { "tools" : qUnion([current[seed], current[key]]), "operationType" : BooleanOperationType.UNION,
+                                             "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true,
+                                             "matches" : matches, "recomputeMatches" : true });
+                const merged = qBodyType(qCreatedBy(joinId, EntityType.BODY), BodyType.SHEET);
+                for (var member in done)
+                    current[member.key] = merged;
+                current[key] = merged;
+                done[key] = true;
+                progress = true;
+            }
+            catch (joinErr)
+            {
+                refused[key] = true;
+                println("join refused a face: " ~ toString(joinErr) ~ " (" ~ size(matches) ~ " edge matches)");
+            }
+        }
+    }
+    var left = 0;
+    for (var entry in fillBodies)
+        if (done[entry.key] == undefined)
+            left += 1;
+    return { "joined" : size(done), "left" : left };
 }
 
 /** Whether (diagonal of the face's box)^2 / its area is above `aspect`. */
@@ -1043,6 +1158,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Face builder", "Default" : FaceBuilder.FILL, "Description" : "How faces are rebuilt after their outline is wrapped. Fill builds a face from its outline alone; mapping a face's surface carries the source face's own shape and tangency through the deform (every mapped point costs interpreter steps, so only long thin faces are mapped by default)." }
             definition.faceBuilder is FaceBuilder;
 
+            annotation { "Name" : "Mapped sample spacing", "Description" : "When a face's surface is mapped, a sample is taken about this often along each of its directions (the interpolation error falls with the fourth power of the spacing; each sample costs interpreter steps)." }
+            isLength(definition.mappedSpacing, MAPPED_SPACING_BOUND);
+
             annotation { "Name" : "Use face guide points", "Default" : false, "Description" : "Sample interior points from each face and map them as guide vertices for opFillSurface. Improves shape accuracy on curved faces at the cost of extra computation." }
             definition.useFacePoints is boolean;
             
@@ -1175,6 +1293,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             var poorFaces   = [];        // thin faces whose fill is too far from the mapped shape (rebuilt in pieces)
             var measuredFaces = 0;
             var mappedFaces   = 0;
+            var mappedPointCount = 0;
             const workId    = id + ("work" ~ unitIdx);
             const workId2   = id + ("work" ~ unitIdx ~ "b");
             var unionFailed  = false;    // the final union of this attempt was refused
@@ -1187,6 +1306,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 poorFaces   = [];
                 measuredFaces = 0;
                 mappedFaces   = 0;
+                mappedPointCount = 0;
                 unionFailed = false;
                 if (attempt >= 1)
                     uid = id + ("unit" ~ unitIdx ~ "retry" ~ (attempt > 1 ? toString(attempt) : ""));
@@ -1462,10 +1582,15 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         {
                             const mapThis = !isFacesMode && (definition.faceBuilder == FaceBuilder.MAP_ALL ||
                                 (definition.faceBuilder == FaceBuilder.MAP_THIN && mappedFaces < MAX_MAPPED_FACES && isThinAndLong(context, face)));
-                            if (mapThis && mappedSurfaceFace(context, fillId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal))
+                            var pointsMapped = 0;
+                            if (mapThis)
+                                pointsMapped = mappedSurfaceFace(context, fillId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal,
+                                    definition.mappedSpacing, MAPPED_POINT_BUDGET - mappedPointCount);
+                            if (pointsMapped > 0)
                             {
                                 builder = "mapped";
                                 mappedFaces += 1;
+                                mappedPointCount += pointsMapped;
                             }
                             else if (definition.useBoundarySurface && boundarySurfaceFace(context, fillId, bdryEdges))
                             {
@@ -1599,9 +1724,11 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 {
                     // The edges that must weld, found while the wrapped edges still exist.
                     var matches = [];
+                    var links = [];
                     try
                     {
                         matches = weldMatches(context, edgeMapping, fillBodies);
+                        links = joinLinks(context, edgeMapping, fillBodies);
                     }
                     catch (matchesErr)
                     {
@@ -1691,8 +1818,21 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             // Every face was rebuilt; the kernel would not join them (the edges of neighbouring faces
                             // do not agree closely enough, which a higher control-point limit usually cures).
                             // Keep the faces as separate sheets rather than losing the whole result.
-                            println("WARNING: the " ~ size(surfaceBodiesList) ~ " rebuilt faces could not be joined: " ~ toString(unionErr));
+                            println("WARNING: the " ~ size(surfaceBodiesList) ~ " rebuilt faces could not be joined at once: " ~ toString(unionErr) ~ "; joining them one at a time");
                             unionFailed = true;
+                            if (size(links) > 0)
+                            {
+                                try
+                                {
+                                    const stepwise = incrementalJoin(context, joinId + "one", links, fillBodies, inputIsSolid);
+                                    println("Deform: " ~ stepwise.joined ~ " faces joined into one body, " ~ stepwise.left ~ " left as separate sheets");
+                                    unionFailed = stepwise.left > 0;
+                                }
+                                catch (stepwiseErr)
+                                {
+                                    println("WARNING: joining one at a time failed: " ~ toString(stepwiseErr));
+                                }
+                            }
                         }
                     }
                     else if (size(surfaceBodiesList) == 1 && inputIsSolid)
@@ -1821,6 +1961,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         "mateConnectors" : qNothing(),
         "reportAccuracy" : false,
         "faceBuilder" : FaceBuilder.FILL,
+        "mappedSpacing" : 6e-3 * meter,
         "edgeAccuracy" : 0 * meter,
         "faceAccuracy" : 0 * meter,
         "useBoundarySurface" : false,
