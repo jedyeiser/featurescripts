@@ -96,6 +96,9 @@ const SPLIT_MIN_SPAN = 1e-3 * meter;
 const SPLIT_MIN_GAP = 2e-3 * meter;
 /** A face is long and thin enough to be worth measuring when (diagonal of its box)^2 / area exceeds this. */
 const THIN_FACE_ASPECT = 80;
+/** In the rebuild of cut faces, a piece with (diagonal of its box)^2 / area above this (and an area above GUIDED_FACE_MIN_AREA) is filled with guide points: a fill of a thin piece is flat across its width, and its end curves are too far away to hold the cross-section. */
+const GUIDED_FACE_ASPECT = 20;
+const GUIDED_FACE_MIN_AREA = 2e-5 * meter ^ 2;     // 20 mm2
 /** At most this many thin faces of one body are measured (each measurement maps interior points; the interpreter has a step limit). */
 const MAX_MEASURED_FACES = 4;
 /** A thin face whose fill is too far from the mapped shape is recut into pieces about this long (cross cuts on a grid along the from path). */
@@ -607,6 +610,14 @@ function weldMatches(context is Context, edgeMapping is array, fillBodies is map
             matches = append(matches, { "topology1" : a.edge, "topology2" : b.edge, "matchType" : TopologyMatchType.COINCIDENT });
     }
     return matches;
+}
+
+/** Whether (diagonal of the face's box)^2 / its area is above `aspect`. */
+function isAspectAbove(context is Context, face is Query, aspect is number) returns boolean
+{
+    const faceBox = evBox3d(context, { "topology" : face });
+    const diagonal = norm(faceBox.maxCorner - faceBox.minCorner);
+    return diagonal * diagonal > aspect * evArea(context, { "entities" : face });
 }
 
 /** Whether a face is long and thin enough that a fill of its outline may flatten it (see THIN_FACE_ASPECT). */
@@ -1147,7 +1158,11 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         // Declared outside the try so a failure part-way through the loop can remove the
                         // points already made (they used to be left behind as stray point bodies).
                         var faceGuideVtxQueries = [];
-                        if (definition.useFacePoints) try
+                        // Guide points for the user's option, or for the long thin pieces of a cut face (when the face accuracy is on).
+                        const guided = definition.useFacePoints ||
+                            (attempt >= 1 && definition.faceAccuracy > 0 * meter && !isFacesMode && evArea(context, { "entities" : face }) > GUIDED_FACE_MIN_AREA &&
+                             isAspectAbove(context, face, GUIDED_FACE_ASPECT));
+                        if (guided) try
                         {
                             var guidePoints = transformFacepoints(
                                 context, uid + ("faceGuides" ~ fIdx), face,
