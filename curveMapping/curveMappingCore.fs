@@ -2552,9 +2552,17 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
             {
                 const periodic = closedInterpolatingSpline(resize(mappedPoints, size(mappedPoints) - 1));
                 opCreateBSplineCurve(context, closedId, { "bSplineCurve" : periodic });
+                // A closed edge with no vertex cannot meet the seam edge of a periodic face. Split at the start (where the source
+                // edge's vertex maps to) and at the opposite point (a closed edge cannot be split at one point only): the halves are
+                // pieces of the same C2 curve, so nothing is lost, and the loop now has the vertex the neighbouring edges end at.
+                try silent
+                {
+                    opSplitEdges(context, closedId + "split", { "edges" : qCreatedBy(closedId, EntityType.EDGE), "parameters" : [[0, 0.5]],
+                                                                 "arcLengthParameterization" : false });
+                }
                 result = append(result, {
                     "sourceEdge" : edge,
-                    "wrappedEdge": qCreatedBy(closedId, EntityType.EDGE),
+                    "wrappedEdge": qOwnedByBody(qCreatedBy(closedId, EntityType.BODY), EntityType.EDGE),
                     "wrappedBody": qCreatedBy(closedId, EntityType.BODY),
                     "controlPoints" : size(periodic.controlPoints) - 3,
                     "fitPasses"  : 0,
