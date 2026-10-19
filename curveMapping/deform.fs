@@ -602,9 +602,11 @@ const MAPPED_SAMPLES_MIN_V = 8;
 const MAPPED_SAMPLES_MAX_V = 40;
 /** Points mapped for mapped surfaces in one feature (each costs interpreter steps; the budget of a whole feature is about 20-30k). */
 const MAPPED_POINT_BUDGET = 20000;
-/** Faces that are not long and thin are sampled no more often than this: a fill already reproduces them well, and the budget is for the long thin faces. */
-const MAPPED_COARSE_SPACING = 0.015 * meter;
-/** Sample spacing along a mapped surface (default 6 mm): lengths in meter [min, default, max] and the other units. */
+/** How far a mapped surface may lie from the exactly mapped face between its samples (default 2 microns): lengths in meter [min, default, max] and the other units. */
+const MAPPED_ACCURACY_BOUND = { (meter) : [1e-7, 2e-6, 1e-4], (centimeter) : 0.0002, (millimeter) : 0.002, (inch) : 0.00008, (foot) : 0.000007, (yard) : 0.0000022 } as LengthBoundSpec;
+/** Times the sampling grid of a mapped surface may be refined (each time the directions that miss the accuracy get twice the intervals). */
+const MAPPED_REFINE_PASSES = 5;
+/** Sample spacing along a mapped surface (the old control, no longer used: the grid follows the measured error). */
 const MAPPED_SPACING_BOUND = { (meter) : [1e-3, 6e-3, 5e-2], (centimeter) : 0.6, (millimeter) : 6, (inch) : 0.24, (foot) : 0.02, (yard) : 0.0066 } as LengthBoundSpec;
 /** A wrapped edge farther than this from an edge of a built sheet is not matched with it. */
 const JOIN_MATCH_GATE = 2e-5 * meter;
@@ -753,95 +755,223 @@ function faceUvOutline(context is Context, face is Query)
     return curves;
 }
 
+/** The non-zero basis functions of a clamped B-spline at u: { "first" : index of the first, "values" : degree + 1 values }. */
+function basisNonzero(knots is array, degree is number, n is number, u is number) returns map
+{
+    var span = degree;
+    while (span < n - 1 && u >= knots[span + 1])
+        span += 1;
+    var left = makeArray(degree + 1, 0);
+    var right = makeArray(degree + 1, 0);
+    var basis = makeArray(degree + 1, 0);
+    basis[0] = 1;
+    for (var j = 1; j <= degree; j += 1)
+    {
+        left[j] = u - knots[span + 1 - j];
+        right[j] = knots[span + j] - u;
+        var saved = 0;
+        for (var r = 0; r < j; r += 1)
+        {
+            const denominator = right[r + 1] + left[j - r];
+            const ratio = denominator == 0 ? 0 : basis[r] / denominator;
+            basis[r] = saved + right[r + 1] * ratio;
+            saved = left[j - r] * ratio;
+        }
+        basis[j] = saved;
+    }
+    return { "first" : span - degree, "values" : basis };
+}
+
 /**
- * Build the deformed face by mapping the SURFACE of the source face: the face is sampled on a grid of its own parameter box
- * (kernel evaluator, one batch), every sample is mapped exactly, the mapped samples are interpolated by a cubic tensor B-spline
- * surface, and the surface is trimmed with the face's own outline. Interior shape and tangency are carried through the deform
- * (the surface is mapped, not rebuilt from its boundary); the edge it ends on is the image of the source edge to within the
- * interpolation error, and the union welds it to the neighbours through edge matches.
+ * The interpolating tensor B-spline through the exact images of the face sampled on an nU x nV grid of its parameter box.
+ * @returns {map} { "us", "vs", "knotsU", "knotsV", "degreeU", "degreeV", "coordinates" (three matrices, meters), "surface" }
+ */
+function mappedGrid(context is Context, face is Query, nU is number, nV is number, fromFrenetPath is map, toFrenetPath is map,
+    fromRefArc, toRefArc, flipToNormal is boolean) returns map
+{
+    var us = [];
+    for (var i = 0; i < nU; i += 1)
+        us = append(us, i / (nU - 1));
+    var vs = [];
+    for (var j = 0; j < nV; j += 1)
+        vs = append(vs, j / (nV - 1));
+
+    // Sample the source face and map the samples (one chain of ordered points per v).
+    var parameters = [];
+    for (var i = 0; i < nU; i += 1)
+        for (var j = 0; j < nV; j += 1)
+            parameters = append(parameters, vector(us[i], vs[j]));
+    const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : parameters });
+    var mapped = makeArray(nU);
+    for (var i = 0; i < nU; i += 1)
+        mapped[i] = makeArray(nV);
+    for (var j = 0; j < nV; j += 1)
+    {
+        var chain = [];
+        for (var i = 0; i < nU; i += 1)
+            chain = append(chain, planes[i * nV + j].origin);
+        const images = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, chain);
+        for (var i = 0; i < nU; i += 1)
+            mapped[i][j] = images[i];
+    }
+
+    // Interpolate: P = A^-1 Q B^-T, once per coordinate.
+    const degreeU = min(3, nU - 1);
+    const degreeV = min(3, nV - 1);
+    const knotsU = interpolationKnots(us, degreeU);
+    const knotsV = interpolationKnots(vs, degreeV);
+    const inverseU = inverse(collocationMatrix(us, knotsU, degreeU));
+    const inverseVT = transpose(inverse(collocationMatrix(vs, knotsV, degreeV)));
+    var coordinates = [];
+    for (var c = 0; c < 3; c += 1)
+    {
+        var rows = [];
+        for (var i = 0; i < nU; i += 1)
+        {
+            var row = [];
+            for (var j = 0; j < nV; j += 1)
+                row = append(row, mapped[i][j][c] / meter);
+            rows = append(rows, row);
+        }
+        coordinates = append(coordinates, inverseU * matrix(rows) * inverseVT);
+    }
+    var grid = [];
+    for (var i = 0; i < nU; i += 1)
+    {
+        var row = [];
+        for (var j = 0; j < nV; j += 1)
+            row = append(row, vector(coordinates[0][i][j], coordinates[1][i][j], coordinates[2][i][j]) * meter);
+        grid = append(grid, row);
+    }
+    const surface = bSplineSurface({ "uDegree" : degreeU, "vDegree" : degreeV, "isUPeriodic" : false, "isVPeriodic" : false,
+                                     "controlPoints" : controlPointMatrix(grid), "uKnots" : knotArray(knotsU), "vKnots" : knotArray(knotsV) });
+    return { "us" : us, "vs" : vs, "knotsU" : knotsU, "knotsV" : knotsV, "degreeU" : degreeU, "degreeV" : degreeV, "coordinates" : coordinates, "surface" : surface };
+}
+
+/** The point of a mappedGrid surface at (u, v), from its non-zero basis functions only. */
+function mappedGridPoint(grid is map, u is number, v is number) returns Vector
+{
+    const bu = basisNonzero(grid.knotsU, grid.degreeU, size(grid.us), u);
+    const bv = basisNonzero(grid.knotsV, grid.degreeV, size(grid.vs), v);
+    var sum = [0, 0, 0];
+    for (var a = 0; a <= grid.degreeU; a += 1)
+        for (var b = 0; b <= grid.degreeV; b += 1)
+        {
+            const w = bu.values[a] * bv.values[b];
+            for (var c = 0; c < 3; c += 1)
+                sum[c] += w * grid.coordinates[c][bu.first + a][bv.first + b];
+        }
+    return vector(sum[0], sum[1], sum[2]) * meter;
+}
+
+/**
+ * How far the interpolated surface is from the exactly mapped face BETWEEN its samples, where a cubic interpolation is least
+ * accurate: probes at interval midpoints along u (on a few v sample lines), along v (on a few u sample lines) and at cell
+ * centres. Returns { "u", "v", "centre" } (worst distances) and "points" (the mappings spent).
+ */
+function mappedGridError(context is Context, face is Query, grid is map, fromFrenetPath is map, toFrenetPath is map,
+    fromRefArc, toRefArc, flipToNormal is boolean) returns map
+{
+    const nU = size(grid.us);
+    const nV = size(grid.vs);
+    var uIntervals = [];
+    for (var k in [0, floor((nU - 2) / 3), floor(2 * (nU - 2) / 3), nU - 2])
+        if (k >= 0 && k <= nU - 2 && indexOf(uIntervals, k) < 0)
+            uIntervals = append(uIntervals, k);
+    var vIntervals = [];
+    for (var k in [0, nV - 2])
+        if (k >= 0 && k <= nV - 2 && indexOf(vIntervals, k) < 0)
+            vIntervals = append(vIntervals, k);
+    var vLines = [];
+    for (var k in [0, floor((nV - 1) / 2), nV - 1])
+        if (indexOf(vLines, k) < 0)
+            vLines = append(vLines, k);
+
+    // each chain: one v, increasing u
+    var chains = [];
+    for (var kv in vLines)
+    {
+        var chain = [];
+        for (var ku in uIntervals)
+            chain = append(chain, { "u" : (grid.us[ku] + grid.us[ku + 1]) / 2, "v" : grid.vs[kv], "kind" : "u" });
+        chains = append(chains, chain);
+    }
+    for (var kv in vIntervals)
+    {
+        var onSamples = [];
+        var atCentres = [];
+        for (var ku in uIntervals)
+        {
+            onSamples = append(onSamples, { "u" : grid.us[ku], "v" : (grid.vs[kv] + grid.vs[kv + 1]) / 2, "kind" : "v" });
+            atCentres = append(atCentres, { "u" : (grid.us[ku] + grid.us[ku + 1]) / 2, "v" : (grid.vs[kv] + grid.vs[kv + 1]) / 2, "kind" : "centre" });
+        }
+        chains = append(chains, onSamples);
+        chains = append(chains, atCentres);
+    }
+    var worst = { "u" : 0 * meter, "v" : 0 * meter, "centre" : 0 * meter };
+    var points = 0;
+    for (var chain in chains)
+    {
+        const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : mapArray(chain, function(q) { return vector(q.u, q.v); }) });
+        const images = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal,
+            mapArray(planes, function(pl) { return pl.origin; }));
+        points += size(chain);
+        for (var k = 0; k < size(chain); k += 1)
+            worst[chain[k].kind] = max(worst[chain[k].kind], norm(images[k] - mappedGridPoint(grid, chain[k].u, chain[k].v)));
+    }
+    return { "u" : worst.u, "v" : worst.v, "centre" : worst.centre, "points" : points };
+}
+
+/**
+ * Build the deformed face by mapping the SURFACE of the source face: the face is sampled on a grid of its own parameter box, every
+ * sample is mapped exactly, the mapped samples are interpolated by a cubic tensor B-spline surface, and the surface is trimmed with
+ * the face's own outline. Interior shape and tangency are carried through the deform (the surface is mapped, not rebuilt from its
+ * boundary).
+ *
+ * The grid is not fixed: it starts at twice the control net of the source face's own approximation, the surface is compared with
+ * exactly mapped probe points between its samples (mappedGridError), and the directions that miss `accuracy` get twice the
+ * intervals, up to MAPPED_REFINE_PASSES times, the sample caps and the point budget. A face the map barely bends stays coarse (few
+ * control points); a face near a strongly bending part of the path gets the density it needs, so neighbouring faces' edges meet.
  *
  * @returns {number} the number of points mapped when the sheet was made under `id`; 0, having left nothing, when the face does not qualify
  */
 function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFrenetPath is map, toFrenetPath is map,
-    fromRefArc, toRefArc, flipToNormal is boolean, spacing is ValueWithUnits, pointBudget is number) returns number
+    fromRefArc, toRefArc, flipToNormal is boolean, accuracy is ValueWithUnits, pointBudget is number) returns number
 {
     try
     {
         const approximation = evApproximateBSplineSurface(context, { "face" : face, "tolerance" : 1e-6 });
         const net = approximation.bSplineSurface.controlPoints;
-        // The grid follows the face: at least twice the control net of its own approximation, and a sample every `spacing`
-        // along each direction (the interpolation error of a cubic falls with the fourth power of the spacing).
-        const probe = evFaceTangentPlanes(context, { "face" : face, "parameters" : [vector(0, 0.5), vector(1, 0.5), vector(0.5, 0), vector(0.5, 1)] });
-        const lengthU = norm(probe[1].origin - probe[0].origin);
-        const lengthV = norm(probe[3].origin - probe[2].origin);
-        const nV = clamp(max(2 * size(net[0]), ceil(lengthV / spacing) + 1), MAPPED_SAMPLES_MIN_V, MAPPED_SAMPLES_MAX_V);
-        var nU = clamp(max(2 * size(net), ceil(lengthU / spacing) + 1), MAPPED_SAMPLES_MIN_U, MAPPED_SAMPLES_MAX_U);
-        if (nU * nV > pointBudget)
-            nU = max(MAPPED_SAMPLES_MIN_U, floor(pointBudget / nV));
+        var nU = clamp(2 * size(net), MAPPED_SAMPLES_MIN_U, MAPPED_SAMPLES_MAX_U);
+        var nV = clamp(2 * size(net[0]), MAPPED_SAMPLES_MIN_V, MAPPED_SAMPLES_MAX_V);
         if (nU * nV > pointBudget)
             return 0;
-        var us = [];
-        for (var i = 0; i < nU; i += 1)
-            us = append(us, i / (nU - 1));
-        var vs = [];
-        for (var j = 0; j < nV; j += 1)
-            vs = append(vs, j / (nV - 1));
-
-        // Sample the source face and map the samples (one chain of ordered points per v).
-        var parameters = [];
-        for (var i = 0; i < nU; i += 1)
-            for (var j = 0; j < nV; j += 1)
-                parameters = append(parameters, vector(us[i], vs[j]));
-        const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : parameters });
-        var mapped = makeArray(nU);
-        for (var i = 0; i < nU; i += 1)
-            mapped[i] = makeArray(nV);
-        for (var j = 0; j < nV; j += 1)
+        var spent = 0;
+        var grid = mappedGrid(context, face, nU, nV, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
+        spent += nU * nV;
+        for (var pass = 0; pass < MAPPED_REFINE_PASSES; pass += 1)
         {
-            var chain = [];
-            for (var i = 0; i < nU; i += 1)
-                chain = append(chain, planes[i * nV + j].origin);
-            const images = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, chain);
-            for (var i = 0; i < nU; i += 1)
-                mapped[i][j] = images[i];
+            const error = mappedGridError(context, face, grid, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
+            spent += error.points;
+            const refineU = (error.u > accuracy || error.centre > accuracy) && nU < MAPPED_SAMPLES_MAX_U;
+            const refineV = (error.v > accuracy || error.centre > accuracy) && nV < MAPPED_SAMPLES_MAX_V;
+            if (!refineU && !refineV)
+                break;
+            const nextU = refineU ? min(MAPPED_SAMPLES_MAX_U, 2 * nU - 1) : nU;
+            const nextV = refineV ? min(MAPPED_SAMPLES_MAX_V, 2 * nV - 1) : nV;
+            if (spent + nextU * nextV > pointBudget)
+                break;
+            nU = nextU;
+            nV = nextV;
+            grid = mappedGrid(context, face, nU, nV, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
+            spent += nU * nV;
         }
-
-        // Interpolate: P = A^-1 Q B^-T, once per coordinate.
-        const degreeU = min(3, nU - 1);
-        const degreeV = min(3, nV - 1);
-        const knotsU = interpolationKnots(us, degreeU);
-        const knotsV = interpolationKnots(vs, degreeV);
-        const inverseU = inverse(collocationMatrix(us, knotsU, degreeU));
-        const inverseVT = transpose(inverse(collocationMatrix(vs, knotsV, degreeV)));
-        var coordinates = [];
-        for (var c = 0; c < 3; c += 1)
-        {
-            var rows = [];
-            for (var i = 0; i < nU; i += 1)
-            {
-                var row = [];
-                for (var j = 0; j < nV; j += 1)
-                    row = append(row, mapped[i][j][c] / meter);
-                rows = append(rows, row);
-            }
-            coordinates = append(coordinates, inverseU * matrix(rows) * inverseVT);
-        }
-        var grid = [];
-        for (var i = 0; i < nU; i += 1)
-        {
-            var row = [];
-            for (var j = 0; j < nV; j += 1)
-                row = append(row, vector(coordinates[0][i][j], coordinates[1][i][j], coordinates[2][i][j]) * meter);
-            grid = append(grid, row);
-        }
-        const surface = bSplineSurface({ "uDegree" : degreeU, "vDegree" : degreeV, "isUPeriodic" : false, "isVPeriodic" : false,
-                                         "controlPoints" : controlPointMatrix(grid), "uKnots" : knotArray(knotsU), "vKnots" : knotArray(knotsV) });
 
         const outline = faceUvOutline(context, face);
         if (outline == undefined)
             return 0;
-        opCreateBSplineSurface(context, id + "mapped", { "bSplineSurface" : surface, "boundaryBSplineCurves" : outline });
-        return nU * nV;
+        opCreateBSplineSurface(context, id + "mapped", { "bSplineSurface" : grid.surface, "boundaryBSplineCurves" : outline });
+        return spent;
     }
     catch (mappedErr)
     {
@@ -1244,7 +1374,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Face builder", "Default" : FaceBuilder.FILL, "Description" : "How faces are rebuilt after their outline is wrapped. Fill builds a face from its outline alone; mapping a face's surface carries the source face's own shape and tangency through the deform (every mapped point costs interpreter steps, so only long thin faces are mapped by default)." }
             definition.faceBuilder is FaceBuilder;
 
-            annotation { "Name" : "Mapped sample spacing", "Description" : "When a face's surface is mapped, a sample is taken about this often along each of its directions (the interpolation error falls with the fourth power of the spacing; each sample costs interpreter steps)." }
+            annotation { "Name" : "Mapped surface accuracy", "Description" : "When a face's surface is mapped, the sampling grid is refined until the surface lies this close to the exactly mapped face between its samples (each sample costs interpreter steps; neighbouring faces' edges meet to about twice this)." }
+            isLength(definition.mappedAccuracy, MAPPED_ACCURACY_BOUND);
+
+            annotation { "Name" : "Mapped sample spacing (unused)", "UIHint" : UIHint.ALWAYS_HIDDEN }
             isLength(definition.mappedSpacing, MAPPED_SPACING_BOUND);
 
             annotation { "Name" : "Use face guide points", "Default" : false, "Description" : "Sample interior points from each face and map them as guide vertices for opFillSurface. Improves shape accuracy on curved faces at the cost of extra computation." }
@@ -1673,7 +1806,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             var pointsMapped = 0;
                             if (mapThis)
                                 pointsMapped = mappedSurfaceFace(context, fillId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal,
-                                    isThinAndLong(context, face) ? definition.mappedSpacing : max(definition.mappedSpacing, MAPPED_COARSE_SPACING), pointBudget - mappedPointCount);
+                                    definition.mappedAccuracy, pointBudget - mappedPointCount);
                             if (pointsMapped > 0)
                             {
                                 builder = "mapped";
@@ -2050,6 +2183,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         "reportAccuracy" : false,
         "faceBuilder" : FaceBuilder.FILL,
         "mappedSpacing" : 6e-3 * meter,
+        "mappedAccuracy" : 2e-6 * meter,
         "edgeAccuracy" : 0 * meter,
         "faceAccuracy" : 0 * meter,
         "useBoundarySurface" : false,
