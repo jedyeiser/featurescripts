@@ -52,8 +52,14 @@ for x in list(tree["features"]):
 
 # 1b. the baseline test_Deform is suppressed: it costs regen time and the stress cases are what matter
 for x in cache["tree"]["features"]:
-    if x["name"] == "test_Deform" and bool(x.get("suppressed")) != (not args.get("baseline")):
-        x["suppressed"] = not args.get("baseline")          # baseline=1 runs it (the ski; the regression case)
+    if x["name"] == "test_Deform" and (args.get("baseline") or bool(x.get("suppressed")) != True):
+        x["suppressed"] = not args.get("baseline")          # baseline=1 runs it (the ski; the regression case), rebound to the pushed deform tab
+        if args.get("baseline"):
+            _ns = namespace_of(D, W, "deform")
+            x["namespace"] = _ns
+            for _p in x["parameters"]:
+                if _p.get("namespace"):
+                    _p["namespace"] = _ns
         write_feature(BASE, x, cache, client=c)
         print("test_Deform suppressed =", x["suppressed"])
 

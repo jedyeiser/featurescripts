@@ -880,6 +880,46 @@ function nearestEdgeTo(context is Context, point is Vector, edges is Query) retu
 }
 
 /**
+ * Vertex matches for two edges that are to be welded: each end vertex of the first with the vertex of the second that lies at
+ * it (the faces' corners are the images of one source vertex, but each face's own surface puts its corner a fraction of a micron
+ * off; unmatched, the union leaves a micro edge between the two corners).
+ */
+function vertexMatches(context is Context, edgeA is Query, edgeB is Query, gate is ValueWithUnits) returns array
+{
+    var found = [];
+    const verticesB = evaluateQuery(context, qAdjacent(edgeB, AdjacencyType.VERTEX, EntityType.VERTEX));
+    for (var va in evaluateQuery(context, qAdjacent(edgeA, AdjacencyType.VERTEX, EntityType.VERTEX)))
+    {
+        const pa = evVertexPoint(context, { "vertex" : va });
+        for (var vb in verticesB)
+        {
+            if (norm(evVertexPoint(context, { "vertex" : vb }) - pa) < gate)
+            {
+                found = append(found, { "topology1" : va, "topology2" : vb, "matchType" : TopologyMatchType.COINCIDENT });
+                break;
+            }
+        }
+    }
+    return found;
+}
+
+/** The matches without repeats (a corner is shared by several edges). */
+function uniqueMatches(matches is array) returns array
+{
+    var seen = {};
+    var result = [];
+    for (var m in matches)
+    {
+        const key = toString(m.topology1) ~ "|" ~ toString(m.topology2);
+        if (seen[key] != undefined)
+            continue;
+        seen[key] = true;
+        result = append(result, m);
+    }
+    return result;
+}
+
+/**
  * The edge matches for the union of the rebuilt faces. Every source edge between two faces became one wrapped edge, and each
  * of the two rebuilt faces has an edge that follows it; those two edges are meant to coincide but, being the boundaries of
  * two separately built surfaces, can be a fraction of a micron apart, which the kernel will not weld on its own. Telling it
@@ -901,9 +941,12 @@ function weldMatches(context is Context, edgeMapping is array, fillBodies is map
         const a = nearestEdgeTo(context, middle, qOwnedByBody(bodyA, EntityType.EDGE));
         const b = nearestEdgeTo(context, middle, qOwnedByBody(bodyB, EntityType.EDGE));
         if (a.distance < 5e-5 * meter && b.distance < 5e-5 * meter)
+        {
             matches = append(matches, { "topology1" : a.edge, "topology2" : b.edge, "matchType" : TopologyMatchType.COINCIDENT });
+            matches = concatenateArrays([matches, vertexMatches(context, a.edge, b.edge, 5e-5 * meter)]);
+        }
     }
-    return matches;
+    return uniqueMatches(matches);
 }
 
 /** The adjacency of the rebuilt faces for incrementalJoin: for every source edge between two faces, a point on its wrapped edge and the two faces. */
@@ -974,7 +1017,10 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
                 const a = nearestEdgeTo(context, link.middle, qOwnedByBody(current[other], EntityType.EDGE));
                 const b = nearestEdgeTo(context, link.middle, qOwnedByBody(current[key], EntityType.EDGE));
                 if (a.distance < JOIN_MATCH_GATE && b.distance < JOIN_MATCH_GATE)
+                {
                     matches = append(matches, { "topology1" : a.edge, "topology2" : b.edge, "matchType" : TopologyMatchType.COINCIDENT });
+                    matches = concatenateArrays([matches, vertexMatches(context, a.edge, b.edge, JOIN_MATCH_GATE)]);
+                }
             }
             if (!touching)
                 continue;
@@ -984,7 +1030,7 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
             {
                 opBoolean(context, joinId, { "tools" : qUnion([current[seed], current[key]]), "operationType" : BooleanOperationType.UNION,
                                              "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true,
-                                             "matches" : matches, "recomputeMatches" : true });
+                                             "matches" : uniqueMatches(matches), "recomputeMatches" : true });
                 const merged = qBodyType(qCreatedBy(joinId, EntityType.BODY), BodyType.SHEET);
                 for (var member in done)
                     current[member.key] = merged;
