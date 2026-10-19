@@ -1,5 +1,6 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 
 /**
  * Test inputs for the Deform feature's stress test (scratch studio only). Builds, around the derived ski surface
