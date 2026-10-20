@@ -912,7 +912,11 @@ function mappedGridError(context is Context, face is Query, grid is map, fromFre
     const nU = size(grid.us);
     const nV = size(grid.vs);
     var uIntervals = [];
-    for (var k in [0, floor((nU - 2) / 3), floor(2 * (nU - 2) / 3), nU - 2])
+    const uProbeCount = nU > 40 ? 8 : 4;
+    var uProbeIndices = [];
+    for (var q = 0; q < uProbeCount; q += 1)
+        uProbeIndices = append(uProbeIndices, floor(q * (nU - 2) / (uProbeCount - 1)));
+    for (var k in uProbeIndices)
         if (k >= 0 && k <= nU - 2 && indexOf(uIntervals, k) < 0)
             uIntervals = append(uIntervals, k);
     var vIntervals = [];
@@ -979,8 +983,12 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
     {
         const approximation = evApproximateBSplineSurface(context, { "face" : face, "tolerance" : 1e-6 });
         const net = approximation.bSplineSurface.controlPoints;
-        var nU = clamp(2 * size(net), MAPPED_SAMPLES_MIN_U, MAPPED_SAMPLES_MAX_U);
-        var nV = clamp(2 * size(net[0]), MAPPED_SAMPLES_MIN_V, MAPPED_SAMPLES_MAX_V);
+        var nU = clamp(size(net), MAPPED_SAMPLES_MIN_U, MAPPED_SAMPLES_MAX_U);
+        var nV = clamp(size(net[0]), MAPPED_SAMPLES_MIN_V, MAPPED_SAMPLES_MAX_V);
+        // A face that does not fit the budget at its natural size is sampled more coarsely rather than not at all (a fill cannot
+        // rebuild a long thin face); the probes then say how far from the exact map it is.
+        if (nU * nV > pointBudget)
+            nU = max(MAPPED_SAMPLES_MIN_U, floor(pointBudget / nV));
         if (nU * nV > pointBudget)
             return 0;
         var samples = mapGridSamples(context, face, nU, nV, undefined, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
@@ -1011,6 +1019,8 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
         if (outline == undefined)
             return 0;
         opCreateBSplineSurface(context, id + "mapped", { "bSplineSurface" : grid.surface, "boundaryBSplineCurves" : outline });
+        if (spent > 1500)
+            println("MAPPED grid " ~ nU ~ " x " ~ nV ~ ", " ~ spent ~ " points mapped (budget left " ~ (pointBudget - spent) ~ ")");
         return spent;
     }
     catch (mappedErr)
