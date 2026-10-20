@@ -611,9 +611,9 @@ const MAPPED_SPACING_BOUND = { (meter) : [1e-3, 6e-3, 5e-2], (centimeter) : 0.6,
 /** A wrapped edge farther than this from an edge of a built sheet is not matched with it. */
 const JOIN_MATCH_GATE = 2e-5 * meter;
 /** A sample step of this much in the trim loop (meters of edge) between UV samples. */
-const OUTLINE_SAMPLE_SPACING = 0.004 * meter;
+const OUTLINE_SAMPLE_SPACING = 0.0015 * meter;
 /** Most UV samples taken along one outline edge. */
-const OUTLINE_MAX_SAMPLES = 300;
+const OUTLINE_MAX_SAMPLES = 500;
 
 /** Values of all n basis functions of a clamped B-spline (degree, knots) at u. */
 function basisValues(knots is array, degree is number, n is number, u is number) returns array
