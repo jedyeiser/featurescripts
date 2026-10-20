@@ -966,6 +966,42 @@ function mappedGridError(context is Context, face is Query, grid is map, fromFre
 }
 
 /**
+ * Probes on the face's own edges, which is what neighbouring faces must meet: for a few points on every edge, the parameter
+ * position on the face and the exactly mapped image. The interpolation probes sit between samples on a few lines of the grid and can
+ * miss the boundary of a face whose outline is a curve in parameter space.
+ * @returns {array} [{ "u", "v", "image" }, ...]
+ */
+function boundaryProbes(context is Context, face is Query, fromFrenetPath is map, toFrenetPath is map, fromRefArc, toRefArc, flipToNormal is boolean) returns array
+{
+    var probes = [];
+    const edges = evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE));
+    const parameters = size(edges) > 8 ? [0.5] : [0.2, 0.5, 0.8];
+    for (var edge in edges)
+    {
+        try silent
+        {
+            const onEdge = mapArray(evEdgeTangentLines(context, { "edge" : edge, "parameters" : parameters }), function(l) { return l.origin; });
+            const images = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, onEdge);
+            for (var k = 0; k < size(onEdge); k += 1)
+            {
+                const uv = evDistance(context, { "side0" : onEdge[k], "side1" : face }).sides[1].parameter;
+                probes = append(probes, { "u" : uv[0], "v" : uv[1], "image" : images[k] });
+            }
+        }
+    }
+    return probes;
+}
+
+/** The worst distance from the exactly mapped boundary probes to the interpolated surface. */
+function boundaryError(grid is map, probes is array) returns ValueWithUnits
+{
+    var worst = 0 * meter;
+    for (var probe in probes)
+        worst = max(worst, norm(probe.image - mappedGridPoint(grid, clamp(probe.u, 0, 1), clamp(probe.v, 0, 1))));
+    return worst;
+}
+
+/**
  * Build the deformed face by mapping the SURFACE of the source face: the face is sampled on a grid of its own parameter box, every
  * sample is mapped exactly, the mapped samples are interpolated by a cubic tensor B-spline surface, and the surface is trimmed with
  * the face's own outline. Interior shape and tangency are carried through the deform (the surface is mapped, not rebuilt from its
@@ -996,12 +1032,20 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
         var samples = mapGridSamples(context, face, nU, nV, undefined, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
         var spent = samples.points;
         var grid = interpolateGrid(samples.mapped, nU, nV);
+        const probes = boundaryProbes(context, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
+        spent += size(probes);
+        // physical length of the face along u and v: where the boundary misses, the direction with the longer sample spacing is refined
+        const extent = evFaceTangentPlanes(context, { "face" : face, "parameters" : [vector(0, 0.5), vector(1, 0.5), vector(0.5, 0), vector(0.5, 1)] });
+        const lengthU = norm(extent[1].origin - extent[0].origin);
+        const lengthV = norm(extent[3].origin - extent[2].origin);
         for (var pass = 0; pass < MAPPED_REFINE_PASSES; pass += 1)
         {
             const error = mappedGridError(context, face, grid, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
             spent += error.points;
-            const refineU = (error.u > accuracy || error.centre > accuracy) && 2 * nU - 1 <= MAPPED_SAMPLES_MAX_U;
-            const refineV = (error.v > accuracy || error.centre > accuracy) && 2 * nV - 1 <= MAPPED_SAMPLES_MAX_V;
+            const edgeMiss = boundaryError(grid, probes) > accuracy;
+            const uLonger = lengthU / (nU - 1) >= lengthV / (nV - 1);
+            const refineU = (error.u > accuracy || error.centre > accuracy || (edgeMiss && uLonger)) && 2 * nU - 1 <= MAPPED_SAMPLES_MAX_U;
+            const refineV = (error.v > accuracy || error.centre > accuracy || (edgeMiss && !uLonger)) && 2 * nV - 1 <= MAPPED_SAMPLES_MAX_V;
             if (!refineU && !refineV)
                 break;
             const nextU = refineU ? 2 * nU - 1 : nU;
