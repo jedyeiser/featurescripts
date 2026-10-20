@@ -784,6 +784,9 @@ function basisNonzero(knots is array, degree is number, n is number, u is number
     return { "first" : span - degree, "values" : basis };
 }
 
+/** Whether the sample grid has extra samples at the ends (off: the server failed on the clustered grids, to be investigated). */
+const USE_END_CLUSTERS = false;
+
 /**
  * The sample parameters of one direction: n evenly spaced over 0..1 and, at each end, three more halving the first interval
  * (1/2, 1/4, 1/8 of it): the parts of a face next to a strongly bending part of the path change fastest there, and a uniform grid
@@ -792,6 +795,14 @@ function basisNonzero(knots is array, degree is number, n is number, u is number
 function clusteredParameters(n is number) returns array
 {
     const step = 1 / (n - 1);
+    if (!USE_END_CLUSTERS)
+    {
+        var uniform = [];
+        for (var i = 0; i < n; i += 1)
+            uniform = append(uniform, i * step);
+        uniform[n - 1] = 1;
+        return uniform;
+    }
     var parameters = [0];
     for (var k in [1 / 8, 1 / 4, 1 / 2])
         parameters = append(parameters, step * k);
