@@ -89,19 +89,22 @@ export const stressSources = defineFeature(function(context is Context, id is Id
         {
             println("box failed: " ~ toString(e));
         }
-            // 7. a closed circular wire (a full circle as one curve) for wrapCurve and wrapAndLoft
-        try
+        // 7. closed circular wires (a full circle as one curve) for wrapCurve and wrapAndLoft: one on the straight part of the path, one near the bend
+        for (var spec in [["ring", -200], ["ring2", 700]])
         {
-            const ringAt = vector(c[0] - 200 * millimeter, c[1], c[2]);
-            fCylinder(context, id + "ringSolid", { "bottomCenter" : ringAt - vector(0, 0, 1) * millimeter, "topCenter" : ringAt + vector(0, 0, 1) * millimeter, "radius" : 15 * millimeter });
-            const rim = evaluateQuery(context, qGeometry(qOwnedByBody(qCreatedBy(id + "ringSolid", EntityType.BODY), EntityType.EDGE), GeometryType.CIRCLE))[0];
-            opExtractWires(context, id + "ring", { "edges" : rim });
-            opDeleteBodies(context, id + "dropRingSolid", { "entities" : qCreatedBy(id + "ringSolid", EntityType.BODY) });
-            setProperty(context, { "entities" : qCreatedBy(id + "ring", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "stress_ring" });
-        }
-        catch (e)
-        {
-            println("ring failed: " ~ toString(e));
+            try
+            {
+                const ringAt = vector(c[0] + spec[1] * millimeter, c[1], c[2]);
+                fCylinder(context, id + (spec[0] ~ "Solid"), { "bottomCenter" : ringAt - vector(0, 0, 1) * millimeter, "topCenter" : ringAt + vector(0, 0, 1) * millimeter, "radius" : 15 * millimeter });
+                const rim = evaluateQuery(context, qGeometry(qOwnedByBody(qCreatedBy(id + (spec[0] ~ "Solid"), EntityType.BODY), EntityType.EDGE), GeometryType.CIRCLE))[0];
+                opExtractWires(context, id + spec[0], { "edges" : rim });
+                opDeleteBodies(context, id + (spec[0] ~ "Drop"), { "entities" : qCreatedBy(id + (spec[0] ~ "Solid"), EntityType.BODY) });
+                setProperty(context, { "entities" : qCreatedBy(id + spec[0], EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "stress_" ~ spec[0] });
+            }
+            catch (e)
+            {
+                println(spec[0] ~ " failed: " ~ toString(e));
+            }
         }
 
 });
