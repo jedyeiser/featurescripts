@@ -1338,15 +1338,25 @@ function reportFaceAccuracy(context is Context, id is Id, face is Query, filled 
         {
             try silent
             {
-                const onEdge = mapArray(evEdgeTangentLines(context, { "edge" : sourceEdge, "parameters" : [0.25, 0.5, 0.75] }), function(x) { return x.origin; });
+                const reportParameters = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95];
+                const onEdge = mapArray(evEdgeTangentLines(context, { "edge" : sourceEdge, "parameters" : reportParameters }), function(x) { return x.origin; });
                 const images = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, settings.fromRefArc, settings.toRefArc, settings.flipToNormal, onEdge);
                 var edgeWorst = 0 * meter;
-                for (var image in images)
-                    edgeWorst = max(edgeWorst, evDistance(context, { "side0" : image, "side1" : rebuiltEdges }).distance);
+                var worstAt = 0;
+                for (var k = 0; k < size(images); k += 1)
+                {
+                    const gap = evDistance(context, { "side0" : images[k], "side1" : rebuiltEdges }).distance;
+                    if (gap > edgeWorst)
+                    {
+                        edgeWorst = gap;
+                        worstAt = reportParameters[k];
+                    }
+                }
                 if (edgeWorst > boundaryWorst)
                 {
                     boundaryWorst = edgeWorst;
-                    boundaryNote = " (source edge " ~ roundToPrecision(evLength(context, { "entities" : sourceEdge }) / millimeter, 1) ~ " mm)";
+                    const at = onEdge[round(worstAt * 10 - 0.5)] / millimeter;
+                    boundaryNote = " (source edge " ~ roundToPrecision(evLength(context, { "entities" : sourceEdge }) / millimeter, 1) ~ " mm, worst at " ~ worstAt ~ " of it, source (" ~ roundToPrecision(at[0], 0) ~ "," ~ roundToPrecision(at[1], 0) ~ "," ~ roundToPrecision(at[2], 0) ~ "))";
                 }
             }
         }
