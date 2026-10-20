@@ -7,7 +7,7 @@ import(path : "onshape/std/path.fs", version : "3083.0");
 //import tools/bspline_data
 import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/b1c7f2116fb64e6b40bf53f4", version : "afe2c4279f26bf0b7e587d71");
 //import Utils
-export import(path : "08e8748f2ef24eea16072b75/6a7ed8c7d74ed47b642b408c/ad98c7f43a25a4c0e8a428e7", version : "223c53d12a83984c4c62e354");
+export import(path : "08e8748f2ef24eea16072b75/ba8568eda07a12e345381e48/ad98c7f43a25a4c0e8a428e7", version : "223c53d12a83984c4c62e354");
 // IMPORT: tools/arc_length.fs
 import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/f88f68e9ff3cb3c30d4afffe", version : "9d7ce42abf58886bfeccfaaa");
 // IMPORT: tools/frenet.fs
@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/18ce001c456655455ae400f8/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/7b929214cd84db0fb9ce14a8/683d867c35fdab9c98d47556", version : "87e3a5183c3a065393776f5c");
+export import(path : "08e8748f2ef24eea16072b75/ba8568eda07a12e345381e48/683d867c35fdab9c98d47556", version : "2ce76fa46e9966199cf9231b");
 
 
 IconNamespace::import(path : "1d6621cd4535c5f1201a122f", version : "5d5d1804a5dc095d14573622");
@@ -201,7 +201,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         // 1. Build FrenetPaths for from/to references
         // Frame orientation: BINORMAL builds a flip-free in-plane normal from a supplied plane
         // normal (the binormal), shared by both paths; FRENET is the legacy curvature normal.
-        // The binormal sign is shared, so it does not affect the wrap output — use "Flip normal"
+        // The binormal sign is shared, so it does not affect the wrap output - use "Flip normal"
         // to flip the offset side.
         var frameOpts = defaultFrameNormalOptions();
         if (definition.frameNormalMode == FrameNormalMode.BINORMAL)
@@ -584,7 +584,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 if (segEndIdx + 1 < size(mappedData))
                 {
                     var nextEdgeIdx   = mappedData[segEndIdx + 1].edgeIndex;
-                    // Use the higher-index edge's startArcLength — works for both forward and backward transitions
+                    // Use the higher-index edge's startArcLength - works for both forward and backward transitions
                     // The first edge boundary past the current run, in the direction of travel. Same as
                     // max(current, next) for adjacent edges; still right when a merged sliver run makes them
                     // non-adjacent.
@@ -660,7 +660,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     }
                     var junctionWorldPt = frenetPointToWorld(localCoords_j, toFrameResult_j);
 
-                    // Phase 4: junction-aware oversampling — 2 extra mapped points near the junction
+                    // Phase 4: junction-aware oversampling - 2 extra mapped points near the junction
                     {
                         var nExtra = 2;
                         for (var ex = 1; ex <= nExtra; ex += 1)
@@ -707,7 +707,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 }
                 else
                 {
-                    // Last span — constrain end tangent from source edge at parameter 1
+                    // Last span - constrain end tangent from source edge at parameter 1
                     var endDirection    = srcFlipped ? sampleResult.startTangent : sampleResult.endTangent;   // sampled at parameter 0 / 1
                     var endSrcTangent = srcFlipped ? -1 * endDirection : endDirection;
                     var s_from_end        = mappedData[size(mappedData) - 1].sFrom;
@@ -756,7 +756,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     // Scale for derivative constraints: total chord length of this segment.
                     // approximateSpline uses [0,1] parameterization, so the natural derivative
                     // magnitude at an endpoint is ~totalChord (velocity = length/param_range).
-                    // Dividing by (n-1) would give per-sample spacing (~218× too small for 218
+                    // Dividing by (n-1) would give per-sample spacing (~218x too small for 218
                     // points on a 0.3m arc), causing startDerivative to force near-zero velocity
                     // and produce a visible bulge of ~0.45mm near the junction.
                     var totalChord = 0 * meter;
@@ -804,6 +804,13 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     {
                         var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
                         printBSpline(mappedCurve, fmt, ["Wrapped curve " ~ toString(i) ~ "." ~ toString(segCount)]);
+                    }
+
+                    // A span that closes on itself (a full circle as one span) is made a periodic curve through its wrapped points:
+                    // the kernel refuses a clamped open spline closed on itself (BAD_GEOMETRY), and fitting it open would leave a kink.
+                    if (norm(segPoints[0] - segPoints[size(segPoints) - 1]) < 1e-7 * meter && totalChord > 1e-4 * meter && size(segPoints) >= 8)
+                    {
+                        mappedCurve = closedInterpolatingSpline(resize(segPoints, size(segPoints) - 1));
                     }
 
                     var thisSegCount = segCount;
@@ -861,7 +868,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             allSegBodies = append(allSegBodies, fastSegBodies[fi]);
         }
 
-        // Single opExtractWires for all source curves — all output owned by id + "wire".
+        // Single opExtractWires for all source curves - all output owned by id + "wire".
         if (size(allSegEdges) > 0)
         {
             opExtractWires(context, id + "wire", { "edges": qUnion(allSegEdges) });

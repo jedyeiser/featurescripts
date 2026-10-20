@@ -9,7 +9,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/a19a275a032ee47
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "81bc07a889519fa45984e5fa");
+export import(path : "683d867c35fdab9c98d47556", version : "2ce76fa46e9966199cf9231b");
 
 // wrapCurve is deliberately NOT imported: nothing here calls it, and its export-import of the
 // core could bring a second version of the core into this scope.
@@ -120,7 +120,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 var v2        = p2 - p0;
                 var normalVec = cross(v1, v2);
 
-                // norm(normalVec) has units m²; .value gives SI scalar
+                // norm(normalVec) has units m^2; .value gives SI scalar
                 if (norm(normalVec).value > 1e-15)
                 {
                     var normalDir = normalize(normalVec);  // unitless
@@ -1008,7 +1008,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     var junctionWorldPt = frenetPointToWorld(localCoords_j, toFrameResult_j);
                     var junctionOffDir  = toFrameResult_j.frame.xAxis;
 
-                    // Phase 4: junction-aware oversampling — inject 2 extra mapped points between
+                    // Phase 4: junction-aware oversampling - inject 2 extra mapped points between
                     // the last regular sample and the junction for better curvature fit near junctions.
                     {
                         var nExtra = 2;
@@ -1031,7 +1031,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     }
 
                     // Phase 2: compute and map source curvature at junction via finite differences.
-                    // kappaSrc = dT/ds ≈ (T(t+ε) - T(t-ε)) / arc_length_step  (units: 1/m)
+                    // kappaSrc = dT/ds ~ (T(t+eps) - T(t-eps)) / arc_length_step  (units: 1/m)
                     {
                         var kLines = [junctionLines[3], junctionLines[4]];   // batched above
                         var dsJ    = norm(kLines[1].origin - kLines[0].origin);  // chord between evaluation points
@@ -1060,7 +1060,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 }
                 else
                 {
-                    // Last span — constrain end tangent from source edge at parameter 1
+                    // Last span - constrain end tangent from source edge at parameter 1
                     var endDirection    = srcFlipped ? sampleResult.startTangent : sampleResult.endTangent;   // sampled at parameter 0 / 1
                     var endSrcTangent = srcFlipped ? -1 * endDirection : endDirection;
                     var s_from_end        = mappedData[size(mappedData) - 1].sFrom;
@@ -1186,7 +1186,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                                 " offsetDir[-1]="      ~ toString(segOffsetDirs[size(segOffsetDirs) - 1]));
                     }
 
-                    // Offset curves don't need exact endpoint interpolation — use unconstrained fit
+                    // Offset curves don't need exact endpoint interpolation - use unconstrained fit
                     var offsetApproxBase = {
                         "tolerance"        : definition.approximationTolerance,
                         "maxControlPoints" : definition.approximationMaxCPs,
@@ -1455,7 +1455,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
         // exact instead (mapTangentExact).
 
         // ===== Per-source-curve loft =====
-        // One opLoft per source curve — each uses only its own span queries, preventing
+        // One opLoft per source curve - each uses only its own span queries, preventing
         // opLoft from chaining all spans across all source curves into one huge surface.
         if (size(allWrappedSegQueries) > 0)
         {
@@ -1551,7 +1551,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
             }
 
             // Union all per-source-curve surfaces into one body with N faces.
-            // Requires boundary edges to be exactly coincident — guaranteed by the
+            // Requires boundary edges to be exactly coincident - guaranteed by the
             // endpoint-snapping step on offset curves above.
             if (size(allLoftBodyQueries) > 1)
             {

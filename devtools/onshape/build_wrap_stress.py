@@ -42,13 +42,15 @@ for p in f["parameters"]:
         p["queries"] = copy.deepcopy(paths[p["parameterId"]]["queries"])
     elif p["parameterId"] in ("sourceCurves", "sourceEdges"):
         p["queries"] = [{"btType": "BTMIndividualQuery-138", "queryStatement": None,
-                         "queryString": 'query=qCreatedBy(makeId("%s") + "ring", EntityType.EDGE);' % sources["featureId"]}]
+                         "queryString": 'query=qCreatedBy(makeId("%s") + "%s", EntityType.EDGE);' % (sources["featureId"], args.get("ring", "ring"))}]
     elif p["parameterId"].startswith("debug") or p["parameterId"] in ("showWrappedPoints", "showSourcePoints", "printWrapDetails"):
         p["value"] = False
     if kind == "wrapAndLoft" and p["parameterId"] == "primaryOffset":
         p["expression"] = "5 mm"           # a loft needs distinct rails
     if kind == "wrapAndLoft" and p["parameterId"] == "outputCurveMode" and args.get("keepall"):
         p["value"] = "KEEP_ALL"
+    if kind == "wrapAndLoft" and p["parameterId"] == "sourceEdgesArePlanar" and args.get("planar") == "0":
+        p["value"] = False
     if kind == "wrapAndLoft" and p["parameterId"] == "secondDirection":
         p["value"] = False
     if p.get("namespace"):

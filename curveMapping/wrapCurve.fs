@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "81bc07a889519fa45984e5fa");
+export import(path : "683d867c35fdab9c98d47556", version : "2ce76fa46e9966199cf9231b");
 
 
 
@@ -191,7 +191,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
         // 1. Build FrenetPaths for from/to references
         // Frame orientation: BINORMAL builds a flip-free in-plane normal from a supplied plane
         // normal (the binormal), shared by both paths; FRENET is the legacy curvature normal.
-        // The binormal sign is shared, so it does not affect the wrap output — use "Flip normal"
+        // The binormal sign is shared, so it does not affect the wrap output - use "Flip normal"
         // to flip the offset side.
         var frameOpts = defaultFrameNormalOptions();
         if (definition.frameNormalMode == FrameNormalMode.BINORMAL)
@@ -587,7 +587,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     }
 
                     // --- Phase 2: compute and map source curvature at junction ---
-                    // Finite-difference approximation: (T(t+ε) - T(t-ε)) / arc_length_step
+                    // Finite-difference approximation: (T(t+eps) - T(t-eps)) / arc_length_step
                     {
                         var kLines = [junctionLines[3], junctionLines[4]];   // batched above
                         var dsJ    = norm(kLines[1].origin - kLines[0].origin);  // chord between evaluation points
@@ -615,7 +615,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 }
                 else
                 {
-                    // Last span — constrain end tangent from source edge at parameter 1 (or 0 if flipped)
+                    // Last span - constrain end tangent from source edge at parameter 1 (or 0 if flipped)
                     var endDirection    = srcFlipped ? sampleResult.startTangent : sampleResult.endTangent;   // sampled at parameter 0 / 1
                     var endSrcTangent = srcFlipped ? -1 * endDirection : endDirection;
                     var s_from_end        = mappedData[size(mappedData) - 1].sFrom;
@@ -663,7 +663,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     // Scale for derivative constraints: total chord length of this segment.
                     // approximateSpline uses [0,1] parameterization, so the natural derivative
                     // magnitude at an endpoint is ~totalChord (velocity = length/param_range).
-                    // Dividing by (n-1) would give per-sample spacing (~218× too small for 218
+                    // Dividing by (n-1) would give per-sample spacing (~218x too small for 218
                     // points on a 0.3m arc), causing startDerivative to force near-zero velocity
                     // and produce a visible bulge of ~0.45mm near the junction.
                     var totalChord = 0 * meter;
@@ -777,7 +777,7 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
             allSegBodies = append(allSegBodies, fastSegBodies[fi]);
         }
 
-        // Single opExtractWires for all source curves — all output owned by id + "wire".
+        // Single opExtractWires for all source curves - all output owned by id + "wire".
         if (size(allSegEdges) > 0)
         {
             opExtractWires(context, id + "wire", { "edges": qUnion(allSegEdges) });

@@ -23,7 +23,7 @@ export enum SamplingMode
 
 export const cpMultiplierBounds = { (unitless) : [1, 3, 50] } as IntegerBoundSpec;
 
-// ── Frame normal mode ───────────────────────────────────────────────────────
+// -- Frame normal mode -------------------------------------------------------
 // Controls how getFrameAtArcLength orients the frame normal (xAxis) along a path.
 //   FRENET   : a normal seeded from the kernel curvature normal at the first curved
 //              edge, then parallel-transported along the whole path. It cannot flip at
@@ -209,14 +209,14 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
     {
         var edge    = path.edges[i];
         var flipped = path.flipped[i];
-        var stdDir  = !flipped;  // true = traverse param 0→1
+        var stdDir  = !flipped;  // true = traverse param 0->1
 
         var bspline  = evApproximateBSplineCurve(context, { "edge": edge });
         var length   = evLength(context, { "entities": edge });
         var curveDef = evCurveDefinition(context, { "edge": edge });
         var isLine   = (curveDef.curveType == CurveType.LINE);
 
-        // Always build arc-length table — used for both projection and frame lookup
+        // Always build arc-length table - used for both projection and frame lookup
         var arcLengthTable = buildArcLengthTable(bspline, 100);
 
         // BINORMAL requires each reference edge to be planar with normal ~= planeRef.
@@ -285,7 +285,7 @@ export function buildFrenetPath(context is Context, id is Id, sourceEdges is Que
 
             // Promote near-linear BSplines to line mode so getFrameAtArcLength uses a
             // stable, consistent xAxis instead of computeFrenetFrame's noisy normal.
-            // (computeFrenetFrame is unreliable when curvature ≈ 0.)
+            // (computeFrenetFrame is unreliable when curvature ~ 0.)
             if (isNearLinear)
             {
                 isLine = true;
@@ -1095,7 +1095,7 @@ export function getFrameAtArcLength(context is Context, frenetPath is map, arcLe
     // The evEdgeCurvature call above already provides the tangent (zAxis), so we only rebuild
     // the normal. (We tried evaluateSpline for a tangent-only frame: it is also a kernel call,
     // but it takes a raw BSpline parameter, so it needs a per-sample arc-length -> parameter
-    // conversion [parameterAtArcLength] that evEdgeCurvature does internally for free — net
+    // conversion [parameterAtArcLength] that evEdgeCurvature does internally for free - net
     // slower. So we keep evEdgeCurvature and override only the normal.)
     if (binormalMode)
     {
@@ -1785,7 +1785,7 @@ export function alignIsolatedLineFrames(context is Context,
  * Align isolated line frames in BOTH FrenetPaths so the from/to frames stay
  * aligned regardless of which path contains the straight line(s).
  *
- * Why: alignIsolatedLineFrames is one-directional — it only fixes isolated
+ * Why: alignIsolatedLineFrames is one-directional - it only fixes isolated
  * lines on the first path by borrowing the second path's xAxis. When the
  * line lives on the to-path instead (e.g. flattening a bent body with Deform),
  * the to-path's line keeps its arbitrary world-axis heuristic from
@@ -1919,7 +1919,7 @@ export function mapEdgeJunctionTangent(srcTangent is Vector,
  *
  * Projects srcCurvature onto the normal (xAxis) and binormal (yAxis) components
  * of the from-frame, then reconstructs in the to-frame. The tangent (zAxis)
- * component is discarded — curvature is always perpendicular to the tangent
+ * component is discarded - curvature is always perpendicular to the tangent
  * for smooth curves; any residual tangential component is numerical noise.
  *
  * @param srcCurvature {Vector} - curvature vector in world space (units: 1/length)
@@ -2067,7 +2067,7 @@ export function jostleG2Splines(wrappedBSplines is array, matchTol is ValueWithU
         var T_A          = d1A / sqrt(d1A_sq);
         var kappa_B      = (d2B - dot(d2B, T_B) * T_B) / d1B_sq;
         var kappa_A      = (d2A - dot(d2A, T_A) * T_A) / d1A_sq;
-        // Option 2 — relative near-linear guard: skip jostle when either span's curvature is
+        // Option 2 - relative near-linear guard: skip jostle when either span's curvature is
         // less than 5% of the dominant side. This naturally suppresses jostling near inflection
         // points without needing an absolute threshold, and handles asymmetric span curvatures.
         var kappaScale  = max([norm(kappa_B), norm(kappa_A)]);
@@ -2088,9 +2088,9 @@ export function jostleG2Splines(wrappedBSplines is array, matchTol is ValueWithU
             kappa_target = 0.5 * (kappa_B + kappa_A);
         }
 
-        // Option 1 — inflection detector: if kappa_B and kappa_A point in opposite directions,
+        // Option 1 - inflection detector: if kappa_B and kappa_A point in opposite directions,
         // the junction is (or contains) a curvature sign-reversal. Force kappa_target to the
-        // zero vector so the jostle targets κ=0 rather than a noisy near-zero direction from
+        // zero vector so the jostle targets kappa=0 rather than a noisy near-zero direction from
         // the finite-difference estimate. The shift guard still prevents over-correction.
         var nKB = norm(kappa_B);
         var nKA = norm(kappa_A);
@@ -2735,7 +2735,7 @@ export function transformFacepoints(context is Context, id is Id, face is Query,
         total += size(pts);
     }
 
-    // 4. Delete iso curve bodies — they were only needed for sampling
+    // 4. Delete iso curve bodies - they were only needed for sampling
     opDeleteBodies(context, id + "deleteIso", { "entities": isoBodies });
 
     // 5. Map each curve's points as a chain, then thin evenly to the cap.
