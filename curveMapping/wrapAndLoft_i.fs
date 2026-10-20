@@ -56,6 +56,19 @@ export import(path : "683d867c35fdab9c98d47556", version : "81bc07a889519fa45984
  */
 
 
+/** Splits a closed (periodic ring) edge made under `id` at its seam and the opposite point, so the ring has vertices. No-op if it cannot be split. */
+function splitClosedRing(context is Context, id is Id)
+{
+    try
+    {
+        opSplitEdges(context, id + "split", { "edges" : qCreatedBy(id, EntityType.EDGE), "parameters" : [[0, 0.5]], "arcLengthParameterization" : false });
+    }
+    catch (splitErr)
+    {
+        println("splitClosedRing: the ring could not be split (" ~ toString(splitErr) ~ "); it stays one edge without a vertex");
+    }
+}
+
 const ZERO_INCLUSIVE_OFFSET_BOUND = { (millimeter) : [0, 0, 100] } as LengthBoundSpec;
 const PRIMARY_OFFSET_BOUND        = { (millimeter) : [0, 20, 100] } as LengthBoundSpec;
 // A to-edge span whose mapped chord length is below this is treated as a seam
@@ -397,12 +410,22 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 }
             }
 
+            // The plane normal from the best-conditioned pair of sample points (the first, middle and last points are not enough:
+            // on a closed curve the last point IS the first, the cross product is zero and the normal is NaN).
             var planeOrigin = allSrcPts[0];
-            var midSrcIdx   = floor(size(allSrcPts) / 2);
-            var planeNormal = normalize(cross(
-                allSrcPts[midSrcIdx]             - planeOrigin,
-                allSrcPts[size(allSrcPts) - 1]  - planeOrigin
-            ));
+            var planeCross  = cross(allSrcPts[floor(size(allSrcPts) / 2)] - planeOrigin, allSrcPts[size(allSrcPts) - 1] - planeOrigin);
+            // (the original choice is kept unless it is degenerate, so the normal's sign does not change for ordinary curves)
+            if (norm(planeCross) < 1e-9 * meter ^ 2)
+            {
+                for (var pj = 1; pj < size(allSrcPts); pj += 1)
+                    for (var pk = pj + 1; pk < size(allSrcPts); pk += 1)
+                    {
+                        const candidate = cross(allSrcPts[pj] - planeOrigin, allSrcPts[pk] - planeOrigin);
+                        if (norm(candidate) > norm(planeCross))
+                            planeCross = candidate;
+                    }
+            }
+            var planeNormal = normalize(planeCross);
 
             // 2. For each toEdge, sample uniformly, project onto source plane, fit a spline
             var toEdgeArray          = evaluateQuery(context, expandEdgeQuery(definition.toEdges));
@@ -1311,7 +1334,8 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     // A span that closes on itself (a full circle as one span): the wrapped curve and its offset curves are made
                     // periodic through their points. The kernel refuses a clamped open spline closed on itself (BAD_GEOMETRY), and
                     // fitting it open would leave a kink where the loft closes.
-                    if (norm(segPoints[0] - segPoints[size(segPoints) - 1]) < 1e-7 * meter && totalChord > 1e-4 * meter && size(segPoints) >= 8)
+                    const closedSpan = norm(segPoints[0] - segPoints[size(segPoints) - 1]) < 1e-7 * meter && totalChord > 1e-4 * meter && size(segPoints) >= 8;
+                    if (closedSpan)
                     {
                         mappedCurve = closedInterpolatingSpline(resize(segPoints, size(segPoints) - 1));
                         primaryOffsetCurve = closedInterpolatingSpline(resize(primaryOffsetPoints, size(primaryOffsetPoints) - 1));
@@ -1331,14 +1355,23 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     var secondaryOffsetId = id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "secondaryOffset");
                     try
                     {
+                        // A periodic ring has no vertex: each ring is split at its seam and the opposite point (a closed edge cannot be
+                        // split at one point only) right after it is made (ops under one id must be contiguous), so that it has vertices
+                        // for a loft or a neighbouring edge to meet. The halves are pieces of one C2 curve, so nothing is lost.
                         opCreateBSplineCurve(context, wrappedId, { "bSplineCurve": mappedCurve });
+                        if (closedSpan)
+                            splitClosedRing(context, wrappedId);
                         opCreateBSplineCurve(context, primaryOffsetId, { "bSplineCurve": primaryOffsetCurve });
+                        if (closedSpan)
+                            splitClosedRing(context, primaryOffsetId);
                         if (secondaryOffsetCurve != undefined)
                         {
                             opCreateBSplineCurve(context, secondaryOffsetId, { "bSplineCurve": secondaryOffsetCurve });
+                            if (closedSpan)
+                                splitClosedRing(context, secondaryOffsetId);
                         }
 
-                        allWrappedSegQueries = append(allWrappedSegQueries, qCreatedBy(wrappedId, EntityType.EDGE));
+                        allWrappedSegQueries = append(allWrappedSegQueries, closedSpan ? qOwnedByBody(qCreatedBy(wrappedId, EntityType.BODY), EntityType.EDGE) : qCreatedBy(wrappedId, EntityType.EDGE));
                         allWrappedSegBodies  = append(allWrappedSegBodies,  qCreatedBy(wrappedId, EntityType.BODY));
                         spanIsFast           = append(spanIsFast, false);
                         wrappedBSplines       = append(wrappedBSplines,       mappedCurve);
@@ -1346,11 +1379,11 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         secondaryBSplines     = append(secondaryBSplines,     secondaryOffsetCurve);
                         wrappedIds            = append(wrappedIds,            wrappedId);
                         allJunctionCurvatures = append(allJunctionCurvatures, junctionCurvature);
-                        allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, qCreatedBy(primaryOffsetId, EntityType.EDGE));
+                        allPrimaryOffsetSegQueries = append(allPrimaryOffsetSegQueries, closedSpan ? qOwnedByBody(qCreatedBy(primaryOffsetId, EntityType.BODY), EntityType.EDGE) : qCreatedBy(primaryOffsetId, EntityType.EDGE));
                         allPrimaryOffsetSegBodies  = append(allPrimaryOffsetSegBodies,  qCreatedBy(primaryOffsetId, EntityType.BODY));
                         if (secondaryOffsetCurve != undefined)
                         {
-                            allSecondaryOffsetSegQueries = append(allSecondaryOffsetSegQueries, qCreatedBy(secondaryOffsetId, EntityType.EDGE));
+                            allSecondaryOffsetSegQueries = append(allSecondaryOffsetSegQueries, closedSpan ? qOwnedByBody(qCreatedBy(secondaryOffsetId, EntityType.BODY), EntityType.EDGE) : qCreatedBy(secondaryOffsetId, EntityType.EDGE));
                             allSecondaryOffsetSegBodies  = append(allSecondaryOffsetSegBodies,  qCreatedBy(secondaryOffsetId, EntityType.BODY));
                         }
                     }
