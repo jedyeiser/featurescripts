@@ -89,4 +89,19 @@ export const stressSources = defineFeature(function(context is Context, id is Id
         {
             println("box failed: " ~ toString(e));
         }
-    });
+            // 7. a closed circular wire (a full circle as one curve) for wrapCurve and wrapAndLoft
+        try
+        {
+            const ringAt = vector(c[0] - 200 * millimeter, c[1], c[2]);
+            fCylinder(context, id + "ringSolid", { "bottomCenter" : ringAt - vector(0, 0, 1) * millimeter, "topCenter" : ringAt + vector(0, 0, 1) * millimeter, "radius" : 15 * millimeter });
+            const rim = evaluateQuery(context, qGeometry(qOwnedByBody(qCreatedBy(id + "ringSolid", EntityType.BODY), EntityType.EDGE), GeometryType.CIRCLE))[0];
+            opExtractWires(context, id + "ring", { "edges" : rim });
+            opDeleteBodies(context, id + "dropRingSolid", { "entities" : qCreatedBy(id + "ringSolid", EntityType.BODY) });
+            setProperty(context, { "entities" : qCreatedBy(id + "ring", EntityType.BODY), "propertyType" : PropertyType.NAME, "value" : "stress_ring" });
+        }
+        catch (e)
+        {
+            println("ring failed: " ~ toString(e));
+        }
+
+});

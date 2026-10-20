@@ -17,7 +17,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/eb46317a27a44e3
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "87e3a5183c3a065393776f5c");
+export import(path : "683d867c35fdab9c98d47556", version : "81bc07a889519fa45984e5fa");
 
 
 
@@ -711,6 +711,13 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     {
                         var fmt = definition.debugDetailedBSplines ? PrintFormat.DETAILS : PrintFormat.METADATA;
                         printBSpline(mappedCurve, fmt, ["Wrapped curve " ~ toString(i) ~ "." ~ toString(segCount)]);
+                    }
+
+                    // A span that closes on itself (a full circle as one span) is made a periodic curve through its wrapped points:
+                    // the kernel refuses a clamped open spline closed on itself (BAD_GEOMETRY), and fitting it open would leave a kink.
+                    if (norm(segPoints[0] - segPoints[size(segPoints) - 1]) < 1e-7 * meter && totalChord > 1e-4 * meter && size(segPoints) >= 8)
+                    {
+                        mappedCurve = closedInterpolatingSpline(resize(segPoints, size(segPoints) - 1));
                     }
 
                     var thisSegCount = segCount;

@@ -7,8 +7,8 @@ import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 // BinormalSource) come from it. wrapCurve is not imported: nothing here uses it, and its own
 // export-import of the core could bring a second version of the core into this scope.
 // Pinned to the core at curveMapping V28 (adds mapCoordSystems).
-// DEVELOPMENT: follows the core tab (adaptive edge fit). Re-pin to the next core version once the user creates it.
-export import(path : "683d867c35fdab9c98d47556", version : "");
+// Pinned to the core tab's microversion with the closed-edge fit, adaptive mapped-surface grid support and the pushforward (2026-10-20).
+export import(path : "683d867c35fdab9c98d47556", version : "81bc07a889519fa45984e5fa");
 
 
 
@@ -601,7 +601,7 @@ const MAPPED_SAMPLES_MAX_U = 400;
 const MAPPED_SAMPLES_MIN_V = 8;
 const MAPPED_SAMPLES_MAX_V = 40;
 /** Points mapped for mapped surfaces in one feature (each costs interpreter steps; the budget of a whole feature is about 20-30k). */
-const MAPPED_POINT_BUDGET = 20000;
+const MAPPED_POINT_BUDGET = 24000;
 /** How far a mapped surface may lie from the exactly mapped face between its samples (default 2 microns): lengths in meter [min, default, max] and the other units. */
 const MAPPED_ACCURACY_BOUND = { (meter) : [1e-7, 2e-6, 1e-4], (centimeter) : 0.0002, (millimeter) : 0.002, (inch) : 0.00008, (foot) : 0.000007, (yard) : 0.0000022 } as LengthBoundSpec;
 /** Times the sampling grid of a mapped surface may be refined (each time the directions that miss the accuracy get twice the intervals). */
@@ -614,6 +614,27 @@ const JOIN_MATCH_GATE = 2e-5 * meter;
 const OUTLINE_SAMPLE_SPACING = 0.004 * meter;
 /** Most UV samples taken along one outline edge. */
 const OUTLINE_MAX_SAMPLES = 300;
+/** How far (on the source face) the fitted outline curve may lie from the true edge between its samples. */
+const OUTLINE_TOLERANCE = 2e-6 * meter;
+/** Times an outline curve is checked between its samples and refitted with samples added where it drifts. */
+const OUTLINE_CORRECT_PASSES = 3;
+
+/** Whether the trim outline is checked between its samples and refitted where it drifts (measured: no change on the ski, costs kernel calls). */
+const USE_OUTLINE_CORRECTION = false;
+
+/** The point of a clamped 2D B-spline (unitless control points) at t. */
+function outlineCurvePoint(controlPoints is array, knots is array, degree is number, t is number) returns Vector
+{
+    const basis = basisNonzero(knots, degree, size(controlPoints), t);
+    var x = 0;
+    var y = 0;
+    for (var a = 0; a <= degree; a += 1)
+    {
+        x += basis.values[a] * controlPoints[basis.first + a][0];
+        y += basis.values[a] * controlPoints[basis.first + a][1];
+    }
+    return vector(x, y);
+}
 
 /** Values of all n basis functions of a clamped B-spline (degree, knots) at u. */
 function basisValues(knots is array, degree is number, n is number, u is number) returns array
@@ -669,12 +690,31 @@ function collocationMatrix(parameters is array, knots is array, degree is number
     return matrix(rows);
 }
 
+/** The points of an edge at the traversal positions taus (0..1 along the walk; reversed edges are walked from their end). */
+function outlinePoints(context is Context, edge is Query, forward is boolean, taus is array) returns array
+{
+    var parameters = taus;
+    if (!forward)
+    {
+        parameters = [];
+        for (var tau in taus)
+            parameters = append(parameters, 1 - tau);
+    }
+    return mapArray(evEdgeTangentLines(context, { "edge" : edge, "parameters" : parameters }), function(l) { return l.origin; });
+}
+
+/** A 2D parameter position kept inside the face's parameter box. */
+function clampUv(uv is Vector) returns Vector
+{
+    return vector(clamp(uv[0], 0, 1), clamp(uv[1], 0, 1));
+}
+
 /**
  * The UV outline (in the face's normalized parameter space, the one evFaceTangentPlanes uses) of a face with one outer loop, as
  * closed, joined 2D B-spline curves for opCreateBSplineSurface. `undefined` when the face has holes, wraps around its surface
  * (an outline that jumps across the parameter range) or the walk of its edges does not close.
  */
-function faceUvOutline(context is Context, face is Query)
+function faceUvOutline(context is Context, face is Query, correct is boolean)
 {
     const edges = evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE));
     const n = size(edges);
@@ -727,32 +767,62 @@ function faceUvOutline(context is Context, face is Query)
         const edge = edges[order[k]];
         const length = evLength(context, { "entities" : edge });
         const count = clamp(ceil(length / OUTLINE_SAMPLE_SPACING) + 1, 6, OUTLINE_MAX_SAMPLES);
-        var parameters = range(0, 1, count);
-        if (!forward[k])
-            parameters = reverse(parameters);
-        const points = mapArray(evEdgeTangentLines(context, { "edge" : edge, "parameters" : parameters }), function(l) { return l.origin; });
+        // taus: positions along the traversal of the edge (0 at the start of the walk); the edge's own parameter runs the other way on a reversed edge
+        var taus = range(0, 1, count);
         var uv = [];
-        for (var point in points)
-        {
-            const on = evDistance(context, { "side0" : point, "side1" : face }).sides[1].parameter;
-            uv = append(uv, on);
-        }
+        for (var point in outlinePoints(context, edge, forward[k], taus))
+            uv = append(uv, evDistance(context, { "side0" : point, "side1" : face }).sides[1].parameter);
         if (previousEnd != undefined)
             uv[0] = previousEnd;
-        for (var j = 1; j < size(uv); j += 1)
-            if (norm(uv[j] - uv[j - 1]) > 0.5)
-                return undefined;      // the outline runs around the surface: not a single closed loop in this parameter box
+        var curve = undefined;
+        for (var pass = 0; pass <= (correct ? OUTLINE_CORRECT_PASSES : 0); pass += 1)
+        {
+            for (var j = 1; j < size(uv); j += 1)
+                if (norm(uv[j] - uv[j - 1]) > 0.5)
+                    return undefined;      // the outline runs around the surface: not a single closed loop in this parameter box
+            // The curve through the samples, fitted in a fake length unit (1 = 1 meter) and turned into a 2D curve.
+            var positions = [];
+            for (var q in uv)
+                positions = append(positions, vector(q[0], q[1], 0) * meter);
+            const fitted = approximateSpline(context, { "targets" : [approximationTarget({ "positions" : positions })], "tolerance" : 1e-8,
+                                                        "maxControlPoints" : 300, "degree" : 3, "isPeriodic" : false, "parameters" : taus })[0];
+            var controlPoints = mapArray(fitted.controlPoints, function(c) { return vector(c[0] / meter, c[1] / meter); });
+            controlPoints[0] = uv[0];
+            controlPoints[size(controlPoints) - 1] = uv[size(uv) - 1];
+            curve = bSplineCurve({ "degree" : fitted.degree, "isPeriodic" : false, "controlPoints" : controlPoints, "knots" : fitted.knots });
+            if (pass == OUTLINE_CORRECT_PASSES || !correct || size(taus) >= 2 * OUTLINE_MAX_SAMPLES)
+                break;
+
+            // Between the samples: the fitted curve's point on the source face against the true edge point; samples go where it drifts.
+            var midTaus = [];
+            for (var j = 0; j < size(taus) - 1; j += 1)
+                midTaus = append(midTaus, (taus[j] + taus[j + 1]) / 2);
+            const midPoints = outlinePoints(context, edge, forward[k], midTaus);
+            var fittedUv = [];
+            for (var tau in midTaus)
+                fittedUv = append(fittedUv, clampUv(outlineCurvePoint(controlPoints, fitted.knots, fitted.degree, tau)));
+            const onFace = evFaceTangentPlanes(context, { "face" : face, "parameters" : fittedUv });
+            var newTaus = [];
+            var newUv = [];
+            for (var j = 0; j < size(midTaus); j += 1)
+            {
+                newTaus = append(newTaus, taus[j]);
+                newUv = append(newUv, uv[j]);
+                if (norm(onFace[j].origin - midPoints[j]) > OUTLINE_TOLERANCE)
+                {
+                    newTaus = append(newTaus, midTaus[j]);
+                    newUv = append(newUv, evDistance(context, { "side0" : midPoints[j], "side1" : face }).sides[1].parameter);
+                }
+            }
+            newTaus = append(newTaus, taus[size(taus) - 1]);
+            newUv = append(newUv, uv[size(uv) - 1]);
+            if (size(newTaus) == size(taus))
+                break;                     // within tolerance everywhere
+            taus = newTaus;
+            uv = newUv;
+        }
         previousEnd = uv[size(uv) - 1];
-        // The curve through the samples, fitted in a fake length unit (1 = 1 meter) and turned into a 2D curve.
-        var positions = [];
-        for (var q in uv)
-            positions = append(positions, vector(q[0], q[1], 0) * meter);
-        const fitted = approximateSpline(context, { "targets" : [approximationTarget({ "positions" : positions })], "tolerance" : 1e-8,
-                                                    "maxControlPoints" : 300, "degree" : 3, "isPeriodic" : false })[0];
-        var controlPoints = mapArray(fitted.controlPoints, function(c) { return vector(c[0] / meter, c[1] / meter); });
-        controlPoints[0] = uv[0];
-        controlPoints[size(controlPoints) - 1] = uv[size(uv) - 1];
-        curves = append(curves, bSplineCurve({ "degree" : fitted.degree, "isPeriodic" : false, "controlPoints" : controlPoints, "knots" : fitted.knots }));
+        curves = append(curves, curve);
     }
     return curves;
 }
@@ -1005,7 +1075,9 @@ function mappedGridError(context is Context, face is Query, grid is map, fromFre
 }
 
 /** Whether the refinement also probes the face's own edges (off: on the ski they never changed a grid and cost budget the long faces need). */
-const USE_BOUNDARY_PROBES = false;
+const USE_BOUNDARY_PROBES = true;
+/** Boundary probes per face (each costs one mapped point). */
+const BOUNDARY_PROBES_PER_FACE = 48;
 
 /**
  * Probes on the face's own edges, which is what neighbouring faces must meet: for a few points on every edge, the parameter
@@ -1017,7 +1089,11 @@ function boundaryProbes(context is Context, face is Query, fromFrenetPath is map
 {
     var probes = [];
     const edges = evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE));
-    const parameters = size(edges) > 8 ? [0.5] : [0.2, 0.5, 0.8];
+    // about BOUNDARY_PROBES_PER_FACE probes in all, spread evenly along every edge (a face with many edges gets fewer on each)
+    const perEdge = clamp(floor(BOUNDARY_PROBES_PER_FACE / max(1, size(edges))), 1, 9);
+    var parameters = [];
+    for (var k = 0; k < perEdge; k += 1)
+        parameters = append(parameters, (k + 0.5) / perEdge);
     for (var edge in edges)
     {
         try silent
@@ -1092,8 +1168,24 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
             spent += error.points;
             const edgeMiss = boundaryError(grid, probes) > accuracy;
             const uLonger = lengthU / (nU - 1) >= lengthV / (nV - 1);
-            const refineU = (error.u > accuracy || error.centre > accuracy || (edgeMiss && uLonger)) && 2 * nU - 1 <= MAPPED_SAMPLES_MAX_U + 6;
-            const refineV = (error.v > accuracy || error.centre > accuracy || (edgeMiss && !uLonger)) && 2 * nV - 1 <= MAPPED_SAMPLES_MAX_V + 6;
+            // One direction per pass (a refined direction doubles the points): the one whose probes miss most; when only the
+            // cell centres or the boundary miss, the one with the longer physical sample spacing.
+            var wantU = error.u > accuracy;
+            var wantV = error.v > accuracy;
+            if (wantU && wantV)
+            {
+                if (error.u / accuracy >= error.v / accuracy)
+                    wantV = false;
+                else
+                    wantU = false;
+            }
+            else if (!wantU && !wantV && (error.centre > accuracy || edgeMiss))
+            {
+                wantU = uLonger;
+                wantV = !uLonger;
+            }
+            const refineU = wantU && 2 * nU - 1 <= MAPPED_SAMPLES_MAX_U + 6;
+            const refineV = wantV && 2 * nV - 1 <= MAPPED_SAMPLES_MAX_V + 6;
             if (!refineU && !refineV)
                 break;
             const nextU = refineU ? 2 * nU - 1 : nU;
@@ -1113,10 +1205,22 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
             grid = interpolateGrid(samples.mapped, us, vs);
         }
 
-        const outline = faceUvOutline(context, face);
+        const outline = faceUvOutline(context, face, USE_OUTLINE_CORRECTION);
         if (outline == undefined)
             return 0;
-        opCreateBSplineSurface(context, id + "mapped", { "bSplineSurface" : grid.surface, "boundaryBSplineCurves" : outline });
+        try
+        {
+            opCreateBSplineSurface(context, id + "mapped", { "bSplineSurface" : grid.surface, "boundaryBSplineCurves" : outline });
+        }
+        catch (correctedErr)
+        {
+            // The corrected outline (more samples where the fit drifted) was refused: the plain outline joined before.
+            const plain = faceUvOutline(context, face, false);
+            if (plain == undefined)
+                throw correctedErr;
+            println("Deform: the corrected outline of a face was refused (" ~ toString(correctedErr) ~ "); using the plain outline");
+            opCreateBSplineSurface(context, id + "mapped", { "bSplineSurface" : grid.surface, "boundaryBSplineCurves" : plain });
+        }
         if (spent > 1500)
             println("MAPPED grid " ~ nU ~ " x " ~ nV ~ ", " ~ spent ~ " points mapped (budget left " ~ (pointBudget - spent) ~ ")");
         return spent;
@@ -1534,7 +1638,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Edge accuracy", "Description" : "Each wrapped edge is checked against the exact image of its source edge and refitted with more samples and control points until it follows it this closely. The maximum control points is where the fitting starts. 0 turns the check off (a single fit)." }
             isLength(definition.edgeAccuracy, EDGE_ACCURACY_BOUND);
 
-            annotation { "Name" : "Face builder", "Default" : FaceBuilder.FILL, "Description" : "How faces are rebuilt after their outline is wrapped. Fill builds a face from its outline alone; mapping a face's surface carries the source face's own shape and tangency through the deform (every mapped point costs interpreter steps, so only long thin faces are mapped by default)." }
+            annotation { "Name" : "Face builder", "Default" : FaceBuilder.MAP_ALL, "Description" : "How faces are rebuilt after their outline is wrapped. Fill builds a face from its outline alone; mapping a face's surface carries the source face's own shape and tangency through the deform (every mapped point costs interpreter steps; the sampling grid is refined only where the map needs it)." }
             definition.faceBuilder is FaceBuilder;
 
             annotation { "Name" : "Mapped surface accuracy", "Description" : "When a face's surface is mapped, the sampling grid is refined until the surface lies this close to the exactly mapped face between its samples (each sample costs interpreter steps; neighbouring faces' edges meet to about twice this)." }
@@ -1672,6 +1776,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             var geomBody    = unitBody;
             var joinId      = uid;       // ids of the final join (step 3); differs from uid when work ops had to run in between
             var failedFaces = [];
+            var skippedFaces = [];       // faces with no wrapped boundary edge (a sphere, a closed face with no edges): nothing to rebuild them from
             var poorFaces   = [];        // thin faces whose fill is too far from the mapped shape (rebuilt in pieces)
             var measuredFaces = 0;
             var mappedFaces   = 0;
@@ -1687,6 +1792,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             for (var attempt = 0; attempt < 3; attempt += 1)
             {
                 failedFaces = [];
+                skippedFaces = [];
                 poorFaces   = [];
                 measuredFaces = 0;
                 mappedFaces   = 0;
@@ -1814,6 +1920,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         if (size(wrappedBoundaryEdgeQueries) == 0)
                         {
                             println("WARNING: face " ~ fIdx ~ " has no wrapped boundary edges — skipping fill");
+                            skippedFaces = append(skippedFaces, face);
                             continue;
                         }
 
@@ -2014,6 +2121,24 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         catch (fillErr)
                         {
                             println("ERROR fill face " ~ fIdx ~ ": " ~ toString(fillErr));
+                            // Last resort: the mapped surface of the face (some faces a fill cannot rebuild, the map can).
+                            var recovered = false;
+                            if (!isFacesMode && builder != "mapped" && pointBudget - mappedPointCount >= MAPPED_SAMPLES_MIN_U * MAPPED_SAMPLES_MIN_V)
+                            {
+                                const recoverId = uid + ("recover" ~ fIdx);
+                                const recoveredPoints = mappedSurfaceFace(context, recoverId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc,
+                                    definition.flipToNormal, definition.mappedAccuracy, pointBudget - mappedPointCount);
+                                if (recoveredPoints > 0)
+                                {
+                                    recovered = true;
+                                    mappedFaces += 1;
+                                    mappedPointCount += recoveredPoints;
+                                    fillBodies[toString(face)] = qBodyType(qCreatedBy(recoverId, EntityType.BODY), BodyType.SHEET);
+                                    println("Deform: face " ~ fIdx ~ " could not be filled; its mapped surface was used instead");
+                                }
+                            }
+                            if (!recovered)
+                            {
                             failedFaces = append(failedFaces, face);
                             // Cyan = undeformed source boundary, Red = stitched wrapped boundary
                             for (var seq in faceEdges)
@@ -2057,6 +2182,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                                 " nearest=stitched[" ~ bestJ ~ "] gap=" ~ toString(bestGap));
                                     }
                                 }
+                            }
                             }
 
                             opDeleteBodies(context, uid + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
@@ -2273,9 +2399,14 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     opDeleteBodies(context, id + ("dropWork" ~ unitIdx), { "entities" : geomBody });
                 }
             }
-            if (size(failedFaces) > 0)
+            if (size(failedFaces) + size(skippedFaces) > 0)
             {
-                reportFeatureWarning(context, id, size(failedFaces) ~ " face(s) of a source body could not be rebuilt and are missing from the result (see the notices).");
+                reportFeatureWarning(context, id, (size(failedFaces) + size(skippedFaces)) ~ " face(s) of a source body could not be rebuilt and are missing from the result"
+                    ~ (size(skippedFaces) > 0 ? " (" ~ size(skippedFaces) ~ " with no edges to rebuild from, e.g. a full sphere)" : "") ~ "; they are highlighted (see the notices).");
+                try silent
+                {
+                    setErrorEntities(context, id, { "entities" : qUnion(concatenateArrays([failedFaces, skippedFaces])) });
+                }
             }
 
             // Record this unit's deformed body and name it. Source names cannot be read here
@@ -2344,7 +2475,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // Saved features predate these parameters: keep their behaviour (no connectors, no naming).
         "mateConnectors" : qNothing(),
         "reportAccuracy" : false,
-        "faceBuilder" : FaceBuilder.FILL,
+        "faceBuilder" : FaceBuilder.MAP_ALL,
         "mappedSpacing" : 6e-3 * meter,
         "mappedAccuracy" : 2e-6 * meter,
         "edgeAccuracy" : 0 * meter,

@@ -9,7 +9,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/a19a275a032ee47
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 // IMPORT: curveMappingCore.fs
-export import(path : "683d867c35fdab9c98d47556", version : "87e3a5183c3a065393776f5c");
+export import(path : "683d867c35fdab9c98d47556", version : "81bc07a889519fa45984e5fa");
 
 // wrapCurve is deliberately NOT imported: nothing here calls it, and its export-import of the
 // core could bring a second version of the core into this scope.
@@ -1307,6 +1307,17 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     }
 
                     
+
+                    // A span that closes on itself (a full circle as one span): the wrapped curve and its offset curves are made
+                    // periodic through their points. The kernel refuses a clamped open spline closed on itself (BAD_GEOMETRY), and
+                    // fitting it open would leave a kink where the loft closes.
+                    if (norm(segPoints[0] - segPoints[size(segPoints) - 1]) < 1e-7 * meter && totalChord > 1e-4 * meter && size(segPoints) >= 8)
+                    {
+                        mappedCurve = closedInterpolatingSpline(resize(segPoints, size(segPoints) - 1));
+                        primaryOffsetCurve = closedInterpolatingSpline(resize(primaryOffsetPoints, size(primaryOffsetPoints) - 1));
+                        if (secondaryOffsetCurve != undefined)
+                            secondaryOffsetCurve = closedInterpolatingSpline(resize(secondaryOffsetPoints, size(secondaryOffsetPoints) - 1));
+                    }
 
                     // Capture and pre-increment so a failed op can never reuse the same Id
                     var thisSegCount = segCount;
