@@ -965,6 +965,9 @@ function mappedGridError(context is Context, face is Query, grid is map, fromFre
     return { "u" : worst.u, "v" : worst.v, "centre" : worst.centre, "points" : points };
 }
 
+/** Whether the refinement also probes the face's own edges (off: on the ski they never changed a grid and cost budget the long faces need). */
+const USE_BOUNDARY_PROBES = false;
+
 /**
  * Probes on the face's own edges, which is what neighbouring faces must meet: for a few points on every edge, the parameter
  * position on the face and the exactly mapped image. The interpolation probes sit between samples on a few lines of the grid and can
@@ -975,7 +978,7 @@ function boundaryProbes(context is Context, face is Query, fromFrenetPath is map
 {
     var probes = [];
     const edges = evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE));
-    const parameters = size(edges) > 8 ? [0.1, 0.5, 0.9] : [0.04, 0.25, 0.5, 0.75, 0.96];
+    const parameters = size(edges) > 8 ? [0.5] : [0.2, 0.5, 0.8];
     for (var edge in edges)
     {
         try silent
@@ -1032,7 +1035,7 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
         var samples = mapGridSamples(context, face, nU, nV, undefined, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
         var spent = samples.points;
         var grid = interpolateGrid(samples.mapped, nU, nV);
-        const probes = boundaryProbes(context, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
+        const probes = USE_BOUNDARY_PROBES ? boundaryProbes(context, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal) : [];
         spent += size(probes);
         // physical length of the face along u and v: where the boundary misses, the direction with the longer sample spacing is refined
         const extent = evFaceTangentPlanes(context, { "face" : face, "parameters" : [vector(0, 0.5), vector(1, 0.5), vector(0.5, 0), vector(0.5, 1)] });
