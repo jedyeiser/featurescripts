@@ -611,7 +611,9 @@ const MAPPED_SPACING_BOUND = { (meter) : [1e-3, 6e-3, 5e-2], (centimeter) : 0.6,
 /** A wrapped edge farther than this from an edge of a built sheet is not matched with it. */
 const JOIN_MATCH_GATE = 2e-5 * meter;
 /** A sample step of this much in the trim loop (meters of edge) between UV samples. */
-const OUTLINE_SAMPLE_SPACING = 0.015 * meter;
+const OUTLINE_SAMPLE_SPACING = 0.004 * meter;
+/** Most UV samples taken along one outline edge. */
+const OUTLINE_MAX_SAMPLES = 300;
 
 /** Values of all n basis functions of a clamped B-spline (degree, knots) at u. */
 function basisValues(knots is array, degree is number, n is number, u is number) returns array
@@ -724,7 +726,7 @@ function faceUvOutline(context is Context, face is Query)
     {
         const edge = edges[order[k]];
         const length = evLength(context, { "entities" : edge });
-        const count = clamp(ceil(length / OUTLINE_SAMPLE_SPACING) + 1, 6, 120);
+        const count = clamp(ceil(length / OUTLINE_SAMPLE_SPACING) + 1, 6, OUTLINE_MAX_SAMPLES);
         var parameters = range(0, 1, count);
         if (!forward[k])
             parameters = reverse(parameters);
@@ -746,7 +748,7 @@ function faceUvOutline(context is Context, face is Query)
         for (var q in uv)
             positions = append(positions, vector(q[0], q[1], 0) * meter);
         const fitted = approximateSpline(context, { "targets" : [approximationTarget({ "positions" : positions })], "tolerance" : 1e-8,
-                                                    "maxControlPoints" : 150, "degree" : 3, "isPeriodic" : false })[0];
+                                                    "maxControlPoints" : 300, "degree" : 3, "isPeriodic" : false })[0];
         var controlPoints = mapArray(fitted.controlPoints, function(c) { return vector(c[0] / meter, c[1] / meter); });
         controlPoints[0] = uv[0];
         controlPoints[size(controlPoints) - 1] = uv[size(uv) - 1];
