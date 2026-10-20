@@ -785,14 +785,46 @@ function basisNonzero(knots is array, degree is number, n is number, u is number
 }
 
 /**
+ * The sample parameters of one direction: n evenly spaced over 0..1 and, at each end, three more halving the first interval
+ * (1/2, 1/4, 1/8 of it): the parts of a face next to a strongly bending part of the path change fastest there, and a uniform grid
+ * is least accurate at the very ends, which is where a neighbouring face has to meet.
+ */
+function clusteredParameters(n is number) returns array
+{
+    const step = 1 / (n - 1);
+    var parameters = [0];
+    for (var k in [1 / 8, 1 / 4, 1 / 2])
+        parameters = append(parameters, step * k);
+    for (var i = 1; i < n - 1; i += 1)
+        parameters = append(parameters, i * step);
+    for (var k in [1 / 2, 1 / 4, 1 / 8])
+        parameters = append(parameters, 1 - step * k);
+    return append(parameters, 1);
+}
+
+/** The parameters with a new one halfway between every two neighbours (the old ones keep the even indices). */
+function refinedParameters(parameters is array) returns array
+{
+    var refined = [];
+    for (var i = 0; i < size(parameters) - 1; i += 1)
+    {
+        refined = append(refined, parameters[i]);
+        refined = append(refined, (parameters[i] + parameters[i + 1]) / 2);
+    }
+    return append(refined, parameters[size(parameters) - 1]);
+}
+
+/**
  * The exact images of the face sampled on an nU x nV grid of its parameter box. With `previous` (the samples of the grid this one
  * refines: { "nU", "nV", "mapped", "doU", "doV" }, where a direction that was refined has twice the intervals, so the old samples are
  * at the even indices) only the new samples are mapped: refining costs the new points, not the whole grid.
  * @returns {map} { "mapped" : nU x nV array of positions, "points" : how many were mapped }
  */
-function mapGridSamples(context is Context, face is Query, nU is number, nV is number, previous, fromFrenetPath is map, toFrenetPath is map,
+function mapGridSamples(context is Context, face is Query, us is array, vs is array, previous, fromFrenetPath is map, toFrenetPath is map,
     fromRefArc, toRefArc, flipToNormal is boolean) returns map
 {
+    const nU = size(us);
+    const nV = size(vs);
     var mapped = makeArray(nU);
     var known = makeArray(nU);
     for (var i = 0; i < nU; i += 1)
@@ -817,7 +849,7 @@ function mapGridSamples(context is Context, face is Query, nU is number, nV is n
         for (var i = 0; i < nU; i += 1)
             if (!known[i][j])
             {
-                parameters = append(parameters, vector(i / (nU - 1), j / (nV - 1)));
+                parameters = append(parameters, vector(us[i], vs[j]));
                 slots = append(slots, [i, j]);
             }
     if (size(slots) == 0)
@@ -845,14 +877,10 @@ function mapGridSamples(context is Context, face is Query, nU is number, nV is n
  * The interpolating tensor B-spline through the mapped samples (the images of a uniform grid of the face's parameter box).
  * @returns {map} { "us", "vs", "knotsU", "knotsV", "degreeU", "degreeV", "coordinates" (three matrices, meters), "surface" }
  */
-function interpolateGrid(mapped is array, nU is number, nV is number) returns map
+function interpolateGrid(mapped is array, us is array, vs is array) returns map
 {
-    var us = [];
-    for (var i = 0; i < nU; i += 1)
-        us = append(us, i / (nU - 1));
-    var vs = [];
-    for (var j = 0; j < nV; j += 1)
-        vs = append(vs, j / (nV - 1));
+    const nU = size(us);
+    const nV = size(vs);
 
     // Interpolate: P = A^-1 Q B^-T, once per coordinate.
     const degreeU = min(3, nU - 1);
@@ -1032,9 +1060,15 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
             nU = max(MAPPED_SAMPLES_MIN_U, floor(pointBudget / nV));
         if (nU * nV > pointBudget)
             return 0;
-        var samples = mapGridSamples(context, face, nU, nV, undefined, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
+        var us = clusteredParameters(nU);
+        var vs = clusteredParameters(nV);
+        nU = size(us);
+        nV = size(vs);
+        if (nU * nV > pointBudget)
+            return 0;
+        var samples = mapGridSamples(context, face, us, vs, undefined, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
         var spent = samples.points;
-        var grid = interpolateGrid(samples.mapped, nU, nV);
+        var grid = interpolateGrid(samples.mapped, us, vs);
         const probes = USE_BOUNDARY_PROBES ? boundaryProbes(context, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal) : [];
         spent += size(probes);
         // physical length of the face along u and v: where the boundary misses, the direction with the longer sample spacing is refined
@@ -1047,8 +1081,8 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
             spent += error.points;
             const edgeMiss = boundaryError(grid, probes) > accuracy;
             const uLonger = lengthU / (nU - 1) >= lengthV / (nV - 1);
-            const refineU = (error.u > accuracy || error.centre > accuracy || (edgeMiss && uLonger)) && 2 * nU - 1 <= MAPPED_SAMPLES_MAX_U;
-            const refineV = (error.v > accuracy || error.centre > accuracy || (edgeMiss && !uLonger)) && 2 * nV - 1 <= MAPPED_SAMPLES_MAX_V;
+            const refineU = (error.u > accuracy || error.centre > accuracy || (edgeMiss && uLonger)) && 2 * nU - 1 <= MAPPED_SAMPLES_MAX_U + 6;
+            const refineV = (error.v > accuracy || error.centre > accuracy || (edgeMiss && !uLonger)) && 2 * nV - 1 <= MAPPED_SAMPLES_MAX_V + 6;
             if (!refineU && !refineV)
                 break;
             const nextU = refineU ? 2 * nU - 1 : nU;
@@ -1056,12 +1090,16 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
             // only the new samples are mapped: the grid's points are all but the old ones
             if (spent + nextU * nextV - nU * nV > pointBudget)
                 break;
-            samples = mapGridSamples(context, face, nextU, nextV, { "nU" : nU, "nV" : nV, "mapped" : samples.mapped, "doU" : refineU, "doV" : refineV },
+            const nextUs = refineU ? refinedParameters(us) : us;
+            const nextVs = refineV ? refinedParameters(vs) : vs;
+            samples = mapGridSamples(context, face, nextUs, nextVs, { "nU" : nU, "nV" : nV, "mapped" : samples.mapped, "doU" : refineU, "doV" : refineV },
                 fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
             spent += samples.points;
+            us = nextUs;
+            vs = nextVs;
             nU = nextU;
             nV = nextV;
-            grid = interpolateGrid(samples.mapped, nU, nV);
+            grid = interpolateGrid(samples.mapped, us, vs);
         }
 
         const outline = faceUvOutline(context, face);
