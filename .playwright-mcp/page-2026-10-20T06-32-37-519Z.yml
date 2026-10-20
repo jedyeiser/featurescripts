@@ -1,0 +1,667 @@
+- generic [ref=f77e5]:
+  - navigation [ref=f77e6]:
+    - generic [ref=f77e7]:
+      - link [ref=f77e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f77e11]
+      - generic [ref=f77e13] [cursor=pointer]
+    - generic [ref=f77e16]:
+      - generic [ref=f77e18]:
+        - generic [ref=f77e19]: CurveWrapping_Full
+        - generic [ref=f77e20]: Main
+      - generic [ref=f77e22] [cursor=pointer]
+      - link "Curve Features" [ref=f77e26] [cursor=pointer]:
+        - /url: /documents?nodeId=51ee18495de21143dcea6ac7&resourceType=folder
+    - generic [ref=f77e30]:
+      - generic [ref=f77e33] [cursor=pointer]
+      - generic [ref=f77e39] [cursor=pointer]
+      - button "Notifications" [ref=f77e44] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f77e52]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f77e55] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f77e60] [cursor=pointer]
+      - button "Share" [ref=f77e64] [cursor=pointer]
+      - generic "Help menu" [ref=f77e66] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f77e70] [cursor=pointer]
+  - generic [ref=f77e80]:
+    - generic [ref=f77e82]:
+      - generic [ref=f77e83]:
+        - generic [ref=f77e84]:
+          - generic [ref=f77e85] [cursor=pointer]
+          - generic [ref=f77e88] [cursor=pointer]
+          - generic [ref=f77e91] [cursor=pointer]
+          - generic [ref=f77e94] [cursor=pointer]
+          - generic [ref=f77e97] [cursor=pointer]
+          - generic [ref=f77e100] [cursor=pointer]
+          - generic [ref=f77e103] [cursor=pointer]
+          - generic [ref=f77e108] [cursor=pointer]
+        - generic [ref=f77e112] [cursor=pointer]
+      - generic [ref=f77e116] [cursor=pointer]
+    - generic [ref=f77e121]:
+      - generic [ref=f77e123]:
+        - generic [ref=f77e130]:
+          - generic [ref=f77e142]:
+            - generic [ref=f77e143]: Sketch
+            - generic [ref=f77e155]:
+              - generic [ref=f77e156] [cursor=pointer]
+              - generic [ref=f77e160] [cursor=pointer]
+              - generic [ref=f77e164] [cursor=pointer]
+              - generic [ref=f77e168] [cursor=pointer]
+              - generic [ref=f77e173]:
+                - generic [ref=f77e174] [cursor=pointer]
+                - generic [ref=f77e178] [cursor=pointer]
+            - generic [ref=f77e184]:
+              - generic [ref=f77e186]:
+                - generic [ref=f77e187] [cursor=pointer]
+                - generic [ref=f77e191] [cursor=pointer]
+              - generic [ref=f77e194] [cursor=pointer]
+              - generic [ref=f77e199]:
+                - generic [ref=f77e200] [cursor=pointer]
+                - generic [ref=f77e204] [cursor=pointer]
+              - generic [ref=f77e207] [cursor=pointer]
+              - generic [ref=f77e211] [cursor=pointer]
+              - generic [ref=f77e215] [cursor=pointer]
+              - generic [ref=f77e219] [cursor=pointer]
+            - generic [ref=f77e226]:
+              - generic [ref=f77e228]:
+                - generic [ref=f77e229] [cursor=pointer]
+                - generic [ref=f77e233] [cursor=pointer]
+              - generic [ref=f77e236] [cursor=pointer]
+            - generic [ref=f77e243]:
+              - generic [ref=f77e244] [cursor=pointer]
+              - generic [ref=f77e248] [cursor=pointer]
+              - generic [ref=f77e253]:
+                - generic [ref=f77e254] [cursor=pointer]
+                - generic [ref=f77e258] [cursor=pointer]
+              - generic [ref=f77e261] [cursor=pointer]
+            - generic [ref=f77e268]:
+              - generic [ref=f77e269] [cursor=pointer]
+              - generic [ref=f77e273] [cursor=pointer]
+              - generic [ref=f77e277] [cursor=pointer]
+              - generic [ref=f77e281] [cursor=pointer]
+            - generic [ref=f77e289]:
+              - generic [ref=f77e290] [cursor=pointer]
+              - generic [ref=f77e294] [cursor=pointer]
+            - generic [ref=f77e301]:
+              - generic [ref=f77e302] [cursor=pointer]: SA
+              - generic [ref=f77e305] [cursor=pointer]
+            - generic [ref=f77e312] [cursor=pointer]
+          - button "Search tools… alt/⌥ c" [ref=f77e319] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f77e320]:
+              - generic [ref=f77e321]: alt/⌥
+              - generic [ref=f77e322]: c
+        - generic [ref=f77e326]:
+          - generic [ref=f77e329]:
+            - generic [ref=f77e331]:
+              - generic [ref=f77e332]:
+                - generic [ref=f77e334]:
+                  - button [ref=f77e336] [cursor=pointer]
+                  - textbox "Filter by name or type" [ref=f77e341]
+                - generic [ref=f77e342]:
+                  - button [ref=f77e343] [cursor=pointer]
+                  - generic [ref=f77e346]: Features (19)
+                  - button [ref=f77e347] [cursor=pointer]
+                  - button [ref=f77e350] [cursor=pointer]
+                  - button [ref=f77e353] [cursor=pointer]
+              - generic [ref=f77e357]:
+                - generic [ref=f77e358]:
+                  - generic [ref=f77e360]:
+                    - generic [ref=f77e361] [cursor=pointer]
+                    - generic [ref=f77e364]: Default geometry
+                  - generic [ref=f77e366]: Origin
+                  - generic [ref=f77e376]: Top
+                  - generic [ref=f77e386]: Front
+                  - generic [ref=f77e396]: Right
+                  - generic [ref=f77e407]:
+                    - generic [ref=f77e409] [cursor=pointer]
+                    - generic [ref=f77e412]: Derived 1
+                  - generic [ref=f77e422]: "#extract_qvs"
+                  - generic [ref=f77e434]: Join wires 1
+                  - generic [ref=f77e449]:
+                    - generic [ref=f77e450]: De
+                    - generic [ref=f77e452]: test_Deform
+                  - generic [ref=f77e456]:
+                    - generic [ref=f77e457]: Ss
+                    - generic [ref=f77e459]: Stress sources
+                  - generic [ref=f77e463]:
+                    - generic [ref=f77e464]: De
+                    - generic [ref=f77e466]: stress_thick
+                  - generic [ref=f77e470]:
+                    - generic [ref=f77e471]: De
+                    - generic [ref=f77e473]: stress_holed
+                  - generic [ref=f77e477]:
+                    - generic [ref=f77e478]: De
+                    - generic [ref=f77e480]: stress_cyl
+                  - generic [ref=f77e484]:
+                    - generic [ref=f77e485]: De
+                    - generic [ref=f77e487]: stress_wall
+                  - generic [ref=f77e491]:
+                    - generic [ref=f77e492]: De
+                    - generic [ref=f77e494]: stress_sphere
+                  - generic [ref=f77e498]:
+                    - generic [ref=f77e499]: De
+                    - generic [ref=f77e501]: stress_box
+                  - generic [ref=f77e502]: Offset+ 1
+                  - generic [ref=f77e516]: Offset surface 1
+                  - generic [ref=f77e526]: Deformed_Surface_Eval
+                  - generic [ref=f77e540]: Original_Surface_Eval
+                - list
+            - generic [ref=f77e560]:
+              - generic [ref=f77e562]:
+                - generic [ref=f77e564] [cursor=pointer]
+                - generic [ref=f77e567]: Parts (4)
+              - generic [ref=f77e571]: stress_thick_solid
+              - generic [ref=f77e583]: stress_cylinder_solid
+              - generic [ref=f77e595]: stress_sphere
+              - generic [ref=f77e607]: stress_box
+              - generic [ref=f77e620]:
+                - generic [ref=f77e622] [cursor=pointer]
+                - generic [ref=f77e625]: Composite parts (1)
+              - generic [ref=f77e630]:
+                - generic [ref=f77e632] [cursor=pointer]
+                - generic [ref=f77e635]: Surfaces (53)
+              - generic [ref=f77e640]:
+                - generic [ref=f77e642] [cursor=pointer]
+                - generic [ref=f77e645]: Curves (109)
+          - generic [ref=f77e650]:
+            - generic [ref=f77e652] [cursor=pointer]
+            - generic [ref=f77e656]:
+              - generic [ref=f77e658]:
+                - button [ref=f77e659] [cursor=pointer]
+                - button [ref=f77e663] [cursor=pointer]
+                - button [ref=f77e667] [cursor=pointer]
+              - generic [ref=f77e671] [cursor=pointer]
+            - generic [ref=f77e676]:
+              - generic [ref=f77e677] [cursor=pointer]
+              - generic [ref=f77e681] [cursor=pointer]
+              - generic [ref=f77e685] [cursor=pointer]
+              - generic [ref=f77e689] [cursor=pointer]
+              - generic [ref=f77e693] [cursor=pointer]
+              - generic [ref=f77e697] [cursor=pointer]
+              - generic [ref=f77e700] [cursor=pointer]
+        - generic [ref=f77e704]:
+          - img [ref=f77e707] [cursor=pointer]
+          - generic [ref=f77e710]:
+            - generic [ref=f77e711] [cursor=pointer]: Test
+            - generic [ref=f77e717] [cursor=pointer]: SKH_Test
+            - generic [ref=f77e725] [cursor=pointer]: Test2
+            - generic [ref=f77e733] [cursor=pointer]: ONE Testing
+            - generic [ref=f77e741] [cursor=pointer]: CNT Testing
+            - generic [ref=f77e747] [cursor=pointer]: CNT Testing Copy 1
+            - generic [ref=f77e753]: CNT Testing Copy 1 Copy 1
+            - generic [ref=f77e759] [cursor=pointer]: deform
+            - generic [ref=f77e765] [cursor=pointer]: deform Copy 1
+            - generic [ref=f77e771] [cursor=pointer]: wrapAndLoft_i
+            - generic [ref=f77e777] [cursor=pointer]: wrapCurve
+            - generic [ref=f77e783] [cursor=pointer]: Utils
+            - generic [ref=f77e789] [cursor=pointer]: curveMappingCore
+            - generic [ref=f77e795] [cursor=pointer]: Deform tests
+            - generic [ref=f77e801] [cursor=pointer]: stress_sources
+          - generic [ref=f77e807]:
+            - listitem [ref=f77e808]
+            - listitem [ref=f77e812]
+      - generic [ref=f77e821]:
+        - generic [ref=f77e822]:
+          - generic [ref=f77e823]:
+            - heading "FeatureScript notices" [level=4] [ref=f77e824]
+            - generic [ref=f77e826]:
+              - button [ref=f77e828] [cursor=pointer]
+              - textbox "Filter notices" [ref=f77e833]
+          - button [ref=f77e834] [cursor=pointer]
+        - generic [ref=f77e835]:
+          - generic [ref=f77e836]: Monitor
+          - generic [ref=f77e846] [cursor=pointer]: CNT Testing
+        - generic [ref=f77e850]:
+          - generic [ref=f77e851]: Monitor
+          - generic [ref=f77e861] [cursor=pointer]: CNT Testing Copy 1
+        - generic [ref=f77e865]:
+          - generic [ref=f77e866]: Monitor
+          - generic [ref=f77e876] [cursor=pointer]: CNT Testing Copy 1 Copy 1
+          - generic [ref=f77e880]:
+            - table [ref=f77e881]:
+              - rowgroup [ref=f77e882]:
+                - row [ref=f77e883] [cursor=pointer]:
+                  - cell [ref=f77e884]
+                  - cell [ref=f77e888]
+                  - cell "4 infos in referenced module" [ref=f77e890]
+                - row [ref=f77e892] [cursor=pointer]:
+                  - cell [ref=f77e893]
+                  - cell [ref=f77e894]
+                  - cell [ref=f77e895]
+                  - cell "203e19a12cb7b94a591a75db/ce610e22b3f1afeee54cc660/6ca95704fe952c881fa5db70" [ref=f77e896]
+                - row [ref=f77e898] [cursor=pointer]:
+                  - cell [ref=f77e899]
+                  - cell [ref=f77e900]
+                  - cell "133:37" [ref=f77e901]
+                  - cell "onshape/std/importDerived.fs (const importDerived)" [ref=f77e903]
+                - row [ref=f77e905] [cursor=pointer]:
+                  - cell [ref=f77e906]
+                  - cell [ref=f77e907]
+                  - cell "61:17" [ref=f77e908]
+                  - cell "onshape/std/feature.fs (defineFeature)" [ref=f77e910]
+                - row [ref=f77e912] [cursor=pointer]:
+                  - cell [ref=f77e913]
+                  - cell [ref=f77e914]
+                  - cell [ref=f77e915]
+                  - cell "CNT Testing Copy 1 Copy 1 (Derived 1)" [ref=f77e916]
+                - row [ref=f77e918] [cursor=pointer]:
+                  - cell [ref=f77e919]
+                  - cell [ref=f77e920]
+                  - cell [ref=f77e921]
+                  - cell "CNT Testing Copy 1 Copy 1" [ref=f77e922]
+            - table [ref=f77e924]:
+              - rowgroup [ref=f77e925]:
+                - row [ref=f77e926] [cursor=pointer]:
+                  - cell [ref=f77e927]
+                  - cell [ref=f77e931]
+                  - cell "throw DIRECT_EDIT_MOVE_FACE_CREATE_SELECT" [ref=f77e933]
+                - row [ref=f77e935] [cursor=pointer]:
+                  - cell [ref=f77e936]
+                  - cell [ref=f77e937]
+                  - cell "50:9" [ref=f77e938]
+                  - cell "onshape/std/offsetSurface.fs (const offsetSurface)" [ref=f77e940]
+                - row [ref=f77e942] [cursor=pointer]:
+                  - cell [ref=f77e943]
+                  - cell [ref=f77e944]
+                  - cell "61:17" [ref=f77e945]
+                  - cell "onshape/std/feature.fs (defineFeature)" [ref=f77e947]
+                - row [ref=f77e949] [cursor=pointer]:
+                  - cell [ref=f77e950]
+                  - cell [ref=f77e951]
+                  - cell [ref=f77e952]
+                  - cell "CNT Testing Copy 1 Copy 1 (Offset surface 1)" [ref=f77e953]
+                - row [ref=f77e955] [cursor=pointer]:
+                  - cell [ref=f77e956]
+                  - cell [ref=f77e957]
+                  - cell [ref=f77e958]
+                  - cell "CNT Testing Copy 1 Copy 1" [ref=f77e959]
+            - table [ref=f77e961]:
+              - rowgroup [ref=f77e962]:
+                - row [ref=f77e963] [cursor=pointer]:
+                  - cell [ref=f77e964]
+                  - cell [ref=f77e968]
+                  - cell "Variable e set but not used" [ref=f77e970]
+                - row [ref=f77e972] [cursor=pointer]:
+                  - cell [ref=f77e973]
+                  - cell [ref=f77e974]
+                  - cell "54:5" [ref=f77e975]
+                  - cell "f8deedeb1fbd819a8fa20113/bfe8c06c78c7b33eb2c3d1c9/08fddb59786b6bfee020ee05" [ref=f77e977]
+            - table [ref=f77e979]:
+              - rowgroup [ref=f77e980]:
+                - row [ref=f77e981] [cursor=pointer]:
+                  - cell [ref=f77e982]
+                  - cell [ref=f77e986]
+                  - cell "Variable e set but not used" [ref=f77e988]
+                - row [ref=f77e990] [cursor=pointer]:
+                  - cell [ref=f77e991]
+                  - cell [ref=f77e992]
+                  - cell "68:5" [ref=f77e993]
+                  - cell "f8deedeb1fbd819a8fa20113/bfe8c06c78c7b33eb2c3d1c9/08fddb59786b6bfee020ee05" [ref=f77e995]
+            - table [ref=f77e997]:
+              - rowgroup [ref=f77e998]:
+                - row [ref=f77e999] [cursor=pointer]:
+                  - cell [ref=f77e1000]
+                  - cell [ref=f77e1004]
+                  - cell "Variable skippedRows set but not used" [ref=f77e1006]
+                - row [ref=f77e1008] [cursor=pointer]:
+                  - cell [ref=f77e1009]
+                  - cell [ref=f77e1010]
+                  - cell "73:1" [ref=f77e1011]
+                  - cell "f8deedeb1fbd819a8fa20113/bfe8c06c78c7b33eb2c3d1c9/f8e590162884d45f56e0a05f" [ref=f77e1013]
+            - table [ref=f77e1015]:
+              - rowgroup [ref=f77e1016]:
+                - row [ref=f77e1017] [cursor=pointer]:
+                  - cell [ref=f77e1018]
+                  - cell [ref=f77e1022]
+                  - cell "Variable validRows set but not used" [ref=f77e1024]
+                - row [ref=f77e1026] [cursor=pointer]:
+                  - cell [ref=f77e1027]
+                  - cell [ref=f77e1028]
+                  - cell "73:1" [ref=f77e1029]
+                  - cell "f8deedeb1fbd819a8fa20113/bfe8c06c78c7b33eb2c3d1c9/f8e590162884d45f56e0a05f" [ref=f77e1031]
+            - table [ref=f77e1033]:
+              - rowgroup [ref=f77e1034]:
+                - row [ref=f77e1035] [cursor=pointer]:
+                  - cell [ref=f77e1036]
+                  - cell [ref=f77e1040]
+                  - cell "No approximation found; interpolating spline returned." [ref=f77e1042]
+                - row [ref=f77e1044] [cursor=pointer]:
+                  - cell [ref=f77e1045]
+                  - cell [ref=f77e1046]
+                  - cell "75:12" [ref=f77e1047]
+                  - cell "onshape/std/splineUtils.fs (approximateSpline)" [ref=f77e1049]
+                - row [ref=f77e1051] [cursor=pointer]:
+                  - cell [ref=f77e1052]
+                  - cell [ref=f77e1053]
+                  - cell "748:24" [ref=f77e1054]
+                  - cell "deform (faceUvOutline)" [ref=f77e1056]
+                - row [ref=f77e1058] [cursor=pointer]:
+                  - cell [ref=f77e1059]
+                  - cell [ref=f77e1060]
+                  - cell "970:25" [ref=f77e1061]
+                  - cell "deform (mappedSurfaceFace)" [ref=f77e1063]
+                - row [ref=f77e1065] [cursor=pointer]:
+                  - cell [ref=f77e1066]
+                  - cell [ref=f77e1067]
+                  - cell "1808:48" [ref=f77e1068]
+                  - cell "deform (const deform)" [ref=f77e1070]
+                - row [ref=f77e1072] [cursor=pointer]:
+                  - cell [ref=f77e1073]
+                  - cell [ref=f77e1074]
+                  - cell "61:17" [ref=f77e1075]
+                  - cell "onshape/std/feature.fs (defineFeature)" [ref=f77e1077]
+                - row [ref=f77e1079] [cursor=pointer]:
+                  - cell [ref=f77e1080]
+                  - cell [ref=f77e1081]
+                  - cell [ref=f77e1082]
+                  - cell "CNT Testing Copy 1 Copy 1 (test_Deform)" [ref=f77e1083]
+                - row [ref=f77e1085] [cursor=pointer]:
+                  - cell [ref=f77e1086]
+                  - cell [ref=f77e1087]
+                  - cell [ref=f77e1088]
+                  - cell "CNT Testing Copy 1 Copy 1" [ref=f77e1089]
+            - table [ref=f77e1091]:
+              - rowgroup [ref=f77e1092]:
+                - row [ref=f77e1093] [cursor=pointer]:
+                  - cell [ref=f77e1094]
+                  - cell [ref=f77e1098]
+                  - cell "Variable lastAbT set but not used" [ref=f77e1100]
+                - row [ref=f77e1102] [cursor=pointer]:
+                  - cell [ref=f77e1103]
+                  - cell [ref=f77e1104]
+                  - cell "182:5" [ref=f77e1105]
+                  - cell "f8deedeb1fbd819a8fa20113/bfe8c06c78c7b33eb2c3d1c9/afbdbc9bbcd525fc16e46e95" [ref=f77e1107]
+            - table [ref=f77e1109]:
+              - rowgroup [ref=f77e1110]:
+                - row [ref=f77e1111] [cursor=pointer]:
+                  - cell [ref=f77e1112]
+                  - cell [ref=f77e1116]
+                  - cell "Variable lastFbT set but not used" [ref=f77e1118]
+                - row [ref=f77e1120] [cursor=pointer]:
+                  - cell [ref=f77e1121]
+                  - cell [ref=f77e1122]
+                  - cell "182:5" [ref=f77e1123]
+                  - cell "f8deedeb1fbd819a8fa20113/bfe8c06c78c7b33eb2c3d1c9/afbdbc9bbcd525fc16e46e95" [ref=f77e1125]
+            - table [ref=f77e1127]:
+              - rowgroup [ref=f77e1128]:
+                - row [ref=f77e1129] [cursor=pointer]:
+                  - cell [ref=f77e1130]
+                  - cell [ref=f77e1134]
+                  - cell "Variable error set but not used" [ref=f77e1136]
+                - row [ref=f77e1138] [cursor=pointer]:
+                  - cell [ref=f77e1139]
+                  - cell [ref=f77e1140]
+                  - cell "191:5" [ref=f77e1141]
+                  - cell "curveMappingCore" [ref=f77e1143]
+            - table [ref=f77e1145]:
+              - rowgroup [ref=f77e1146]:
+                - row [ref=f77e1147] [cursor=pointer]:
+                  - cell [ref=f77e1148]
+                  - cell [ref=f77e1152]
+                  - cell "Variable error set but not used" [ref=f77e1154]
+            - table [ref=f77e1156]:
+              - rowgroup [ref=f77e1157]:
+                - row [ref=f77e1158] [cursor=pointer]:
+                  - cell [ref=f77e1159]
+                  - cell [ref=f77e1163]
+                  - cell "Variable e set but not used" [ref=f77e1165]
+            - table [ref=f77e1167]:
+              - rowgroup [ref=f77e1168]:
+                - row [ref=f77e1169] [cursor=pointer]:
+                  - cell [ref=f77e1170]
+                  - cell [ref=f77e1174]
+                  - cell "Variable numEdges set but not used" [ref=f77e1176]
+            - table [ref=f77e1178]:
+              - rowgroup [ref=f77e1179]:
+                - row [ref=f77e1180] [cursor=pointer]:
+                  - cell [ref=f77e1181]
+                  - cell [ref=f77e1185]
+                  - cell "Variable inputBox set but not used" [ref=f77e1187]
+            - table [ref=f77e1189]:
+              - rowgroup [ref=f77e1190]:
+                - row [ref=f77e1191] [cursor=pointer]:
+                  - cell [ref=f77e1192]
+                  - cell [ref=f77e1196]
+                  - cell "throw DIRECT_EDIT_MOVE_FACE_CREATE_SELECT" [ref=f77e1198]
+            - table [ref=f77e1200]:
+              - rowgroup [ref=f77e1201]:
+                - row [ref=f77e1202] [cursor=pointer]:
+                  - cell [ref=f77e1203]
+                  - cell [ref=f77e1207]
+                  - cell "Variable startToEnd set but not used" [ref=f77e1209]
+            - table [ref=f77e1211]:
+              - rowgroup [ref=f77e1212]:
+                - row [ref=f77e1213] [cursor=pointer]:
+                  - cell [ref=f77e1214]
+                  - cell [ref=f77e1218]
+                  - cell "Variable xVals set but not used" [ref=f77e1220]
+            - table [ref=f77e1222]:
+              - rowgroup [ref=f77e1223]:
+                - row [ref=f77e1224] [cursor=pointer]:
+                  - cell [ref=f77e1225]
+                  - cell [ref=f77e1229]
+                  - cell "Variable controlX set but not used" [ref=f77e1231]
+            - table [ref=f77e1233]:
+              - rowgroup [ref=f77e1234]:
+                - row [ref=f77e1235] [cursor=pointer]:
+                  - cell [ref=f77e1236]
+                  - cell [ref=f77e1240]
+                  - cell "Variable localMax set but not used" [ref=f77e1242]
+            - table [ref=f77e1244]:
+              - rowgroup [ref=f77e1245]:
+                - row [ref=f77e1246] [cursor=pointer]:
+                  - cell [ref=f77e1247]
+                  - cell [ref=f77e1251]
+                  - cell "Variable localMin set but not used" [ref=f77e1253]
+            - table [ref=f77e1255]:
+              - rowgroup [ref=f77e1256]:
+                - row [ref=f77e1257] [cursor=pointer]:
+                  - cell [ref=f77e1258]
+                  - cell [ref=f77e1262]
+                  - cell "Variable e set but not used" [ref=f77e1264]
+            - table [ref=f77e1266]:
+              - rowgroup [ref=f77e1267]:
+                - row [ref=f77e1268] [cursor=pointer]:
+                  - cell [ref=f77e1269]
+                  - cell [ref=f77e1273]
+                  - cell "Variable startY set but not used" [ref=f77e1275]
+            - table [ref=f77e1277]:
+              - rowgroup [ref=f77e1278]:
+                - row [ref=f77e1279] [cursor=pointer]:
+                  - cell [ref=f77e1280]
+                  - cell [ref=f77e1284]
+                  - cell "Variable e set but not used" [ref=f77e1286]
+            - table [ref=f77e1288]:
+              - rowgroup [ref=f77e1289]:
+                - row [ref=f77e1290] [cursor=pointer]:
+                  - cell [ref=f77e1291]
+                  - cell [ref=f77e1295]
+                  - cell "throw Select face to evaluate" [ref=f77e1297]
+            - table [ref=f77e1299]:
+              - rowgroup [ref=f77e1300]:
+                - row [ref=f77e1301] [cursor=pointer]:
+                  - cell [ref=f77e1302]
+                  - cell [ref=f77e1306]
+                  - 'cell "@opFillSurface: FILL_SURFACE_FAIL" [ref=f77e1308]'
+            - table [ref=f77e1310]:
+              - rowgroup [ref=f77e1311]:
+                - row [ref=f77e1312] [cursor=pointer]:
+                  - cell [ref=f77e1313]
+                  - cell [ref=f77e1317]
+                  - cell "Variable tolValue set but not used" [ref=f77e1319]
+            - table [ref=f77e1321]:
+              - rowgroup [ref=f77e1322]:
+                - row [ref=f77e1323] [cursor=pointer]:
+                  - cell [ref=f77e1324]
+                  - cell [ref=f77e1328]
+                  - cell "Variable toFrameResult_0 set but not used" [ref=f77e1330]
+            - table [ref=f77e1332]:
+              - rowgroup [ref=f77e1333]:
+                - row [ref=f77e1334] [cursor=pointer]:
+                  - cell [ref=f77e1335]
+                  - cell [ref=f77e1339]
+                  - cell "Variable retArray set but not used" [ref=f77e1341]
+            - table [ref=f77e1343]:
+              - rowgroup [ref=f77e1344]:
+                - row [ref=f77e1345] [cursor=pointer]:
+                  - cell [ref=f77e1346]
+                  - cell [ref=f77e1350]
+                  - cell "Variable toFrameResult_end set but not used" [ref=f77e1352]
+            - table [ref=f77e1354]:
+              - rowgroup [ref=f77e1355]:
+                - row [ref=f77e1356] [cursor=pointer]:
+                  - cell [ref=f77e1357]
+                  - cell [ref=f77e1361]
+                  - cell "Variable acp_x set but not used" [ref=f77e1363]
+            - table [ref=f77e1365]:
+              - rowgroup [ref=f77e1366]:
+                - row [ref=f77e1367] [cursor=pointer]:
+                  - cell [ref=f77e1368]
+                  - cell [ref=f77e1372]
+                  - cell "Variable fcp_x set but not used" [ref=f77e1374]
+            - table [ref=f77e1376]:
+              - rowgroup [ref=f77e1377]:
+                - row [ref=f77e1378] [cursor=pointer]:
+                  - cell [ref=f77e1379]
+                  - cell [ref=f77e1383]
+                  - cell "Variable __ set but not used" [ref=f77e1385]
+            - table [ref=f77e1387]:
+              - rowgroup [ref=f77e1388]:
+                - row [ref=f77e1389] [cursor=pointer]:
+                  - cell [ref=f77e1390]
+                  - cell [ref=f77e1394]
+                  - cell "Variable poor set but not used" [ref=f77e1396]
+            - table [ref=f77e1398]:
+              - rowgroup [ref=f77e1399]:
+                - row [ref=f77e1400] [cursor=pointer]:
+                  - cell [ref=f77e1401]
+                  - cell [ref=f77e1405]
+                  - cell "Variable cutFace set but not used" [ref=f77e1407]
+            - table [ref=f77e1409]:
+              - rowgroup [ref=f77e1410]:
+                - row [ref=f77e1411] [cursor=pointer]:
+                  - cell [ref=f77e1412]
+                  - cell [ref=f77e1416]
+                  - cell "Variable total set but not used" [ref=f77e1418]
+            - table [ref=f77e1420]:
+              - rowgroup [ref=f77e1421]:
+                - row [ref=f77e1422] [cursor=pointer]:
+                  - cell [ref=f77e1423]
+                  - cell [ref=f77e1427]
+                  - cell "Variable total set but not used" [ref=f77e1429]
+            - generic [ref=f77e1431]: "FCP -> -0.73 meter MRS -> 0 meter ACP -> 0.73 meter FOREBODY WIDEST = (-0.7495051743818206 meter, 0.057356623893578096 meter, 0.025 meter) FB INFLECTION - > (-0.5886251438993872 meter, 0.054366622740814385 meter, 0.025 meter) AB WIDEST - > (0.7142187368509952 meter, 0.054683427863030154 meter, 0.025 meter) AB INFLECTION - > (0.569325405679763 meter, 0.0522589226789032 meter, 0.025 meter) AVERAGE RADIUS -> ValueWithUnits : { \"unit\" : UnitSpec : { \"meter\" : 1 } , \"value\" : 16.310271754186672 } WARNING: a run of 859 points starting at -885.0 0.0 58.6 mm reached the cap of 100 control points 0.0300 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. WARNING: a run of 859 points starting at -865.3 0.0 72.6 mm reached the cap of 100 control points 0.0286 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. ERROR fill face 34: { message : FILL_SURFACE_FAIL } stitched boundary: 12 edges stitched[0]: (-0.729674105922818 meter, 0.05250258891089668 meter, 1.7261387619213209e-18 meter) → (0.729694316114414 meter, 0.049840872787893176 meter, 0 meter) stitched[1]: (0.729694316114414 meter, 0.049840872787893176 meter, 0 meter) → (0.8084863550273578 meter, 0.04905177125329945 meter, -3.3060881784263115e-18 meter) stitched[2]: (-0.8085679582310665 meter, 0.05421144529453781 meter, -0.0012698116366960182 meter) → (-0.8870292152632876 meter, 0.022925154095991412 meter, -0.0012979449287124018 meter) stitched[3]: (-0.8084758721426462 meter, 0.05201379100739277 meter, 3.402165128626183e-17 meter) → (-0.729674105922818 meter, 0.05250258891089668 meter, 1.7261387619213209e-18 meter) stitched[4]: (-0.7296536990087379 meter, 0.05470225800269978 meter, -0.0012701029660702767 meter) → (-0.8085679582310665 meter, 0.05421144529453781 meter, -0.0012698116366960182 meter) stitched[5]: (0.7296986620346867 meter, 0.052040568222778805 meter, -0.0012699917591980372 meter) → (-0.7296536990087379 meter, 0.05470225800269978 meter, -0.0012701029660702767 meter) stitched[6]: (0.808533826377827 meter, 0.05125084170382277 meter, -0.001269795337679634 meter) → (0.7296986620346867 meter, 0.052040568222778805 meter, -0.0012699917591980372 meter) stitched[7]: (0.8869892610542965 meter, 0.022922978717331986 meter, -0.00129787264137847 meter) → (0.808533826377827 meter, 0.05125084170382277 meter, -0.001269795337679634 meter) stitched[8]: (-0.8870292152632876 meter, 0.022925154095991412 meter, -0.0012979449287124018 meter) → (-0.8849353350730098 meter, 0.022219581478682783 meter, 4.808706666461699e-12 meter) stitched[9]: (-0.8849353350730098 meter, 0.022219581478682783 meter, 4.808706666461699e-12 meter) → (-0.8084758721426462 meter, 0.05201379100739277 meter, 3.402165128626183e-17 meter) stitched[10]: (0.8848957639786913 meter, 0.022216373338456486 meter, 4.513677593295445e-12 meter) → (0.8869892610542965 meter, 0.022922978717331986 meter, -0.00129787264137847 meter) stitched[11]: (0.8084863550273578 meter, 0.04905177125329945 meter, -3.3060881784263115e-18 meter) → (0.8848957639786913 meter, 0.022216373338456486 meter, 4.513677593295445e-12 meter) Deform: 1 face(s) failed to fill; retrying with 6 cut(s) across them debug: CP in u = 200 debug: CP in v = 3 debug: Rational = true debug: uPeriodic = false debug: vPeriodic = false debug: uDegree = 3 debug: vDegree = 2 debug: uKnots = KnotArray : [ -1.6990295596156446 , -1.6990295596156446 , -1.6990295596156446 , -1.6990295596156446 , -1.6955416833847097 , -1.6955416833847097 , -1.6920538071537745 , -1.6920538071537745 , -1.6885659309228396 , -1.6885659309228396 , -1.686821992807372 , -1.686821992807372 , -1.6850780546919046 , -1.6850780546919046 , -1.6815901784609697 , -1.6815901784609697 , -1.6781023022300348 , -1.6781023022300348 , -1.6763583641145674 , -1.6763583641145674 , -1.6746144259990998 , -1.6746144259990998 , -1.6711265497681649 , -1.6711265497681649 , -1.664150797306295 , -1.664150797306295 , -1.6606629210753598 , -1.6606629210753598 , -1.657175044844425 , -1.657175044844425 , -1.6501992923825548 , -1.6501992923825548 , -1.643223539920685 , -1.643223539920685 , -1.6292720349969452 , -1.6292720349969452 , -1.6222962825350753 , -1.6222962825350753 , -1.6153205300732052 , -1.6153205300732052 , -1.6135765919577376 , -1.6135765919577376 , -1.6118326538422703 , -1.6118326538422703 , -1.608344777611335 , -1.608344777611335 , -1.6013690251494652 , -1.6013690251494652 , -1.5874175202257255 , -1.5874175202257255 , -1.5804417677638556 , -1.5804417677638556 , -1.5734660153019855 , -1.5734660153019855 , -1.5595145103782455 , -1.5595145103782455 , -1.5455630054545058 , -1.5455630054545058 , -1.5385872529926359 , -1.5385872529926359 , -1.5350993767617007 , -1.5350993767617007 , -1.5333554386462334 , -1.5333554386462334 , -1.5316115005307658 , -1.5316115005307658 , -1.503708490683286 , -1.503708490683286 , -1.475805480835806 , -1.475805480835806 , -1.4479024709883261 , -1.4479024709883261 , -1.4199994611408464 , -1.4199994611408464 , -1.4060479562171064 , -1.4060479562171064 , -1.3920964512933667 , -1.3920964512933667 , -1.3781449463696267 , -1.3781449463696267 , -1.3641934414458867 , -1.3641934414458867 , -1.3502419365221467 , -1.3502419365221467 , -1.3362904315984068 , -1.3362904315984068 , -1.308387421750927 , -1.308387421750927 , -1.2525814020559674 , -1.2525814020559674 , -1.1967753823610077 , -1.1967753823610077 , -1.140969362666048 , -1.140969362666048 , -1.0851633429710883 , -1.0851633429710883 , -1.0293573232761286 , -1.0293573232761286 , -0.9177452838862094 , -0.9177452838862094 , -0.8619392641912498 , -0.8619392641912498 , -0.8061332444962901 , -0.8061332444962901 , -0.7503272248013304 , -0.7503272248013304 , -0.6945212051063707 , -0.6945212051063707 , -0.638715185411411 , -0.638715185411411 , -0.5829091657164515 , -0.5829091657164515 , -0.5271031460214918 , -0.5271031460214918 , -0.47129712632653215 , -0.47129712632653215 , -0.4154911066315725 , -0.4154911066315725 , -0.35968508693661283 , -0.35968508693661283 , -0.30387906724165314 , -0.30387906724165314 , -0.2759760573941733 , -0.2759760573941733 , -0.26202455247043344 , -0.26202455247043344 , -0.24807304754669351 , -0.24807304754669351 , -0.2341215426229536 , -0.2341215426229536 , -0.2201700376992137 , -0.2201700376992137 , -0.19226702785173388 , -0.19226702785173388 , -0.16436401800425404 , -0.16436401800425404 , -0.13646100815677423 , -0.13646100815677423 , -0.1085579983092944 , -0.1085579983092944 , -0.09460649338555449 , -0.09460649338555449 , -0.08065498846181457 , -0.08065498846181457 , -0.07891105034634707 , -0.07891105034634707 , -0.07716711223087959 , -0.07716711223087959 , -0.07367923599994461 , -0.07367923599994461 , -0.06670348353807466 , -0.06670348353807466 , -0.05275197861433475 , -0.05275197861433475 , -0.03880047369059483 , -0.03880047369059483 , -0.03182472122872488 , -0.03182472122872488 , -0.024848968766854926 , -0.024848968766854926 , -0.01787321630498497 , -0.01787321630498497 , -0.010897463843115013 , -0.010897463843115013 , -0.003921711381245057 , -0.003921711381245057 , -0.00043383515031007866 , -0.00043383515031007866 , 0.0030540410806248995 , 0.0030540410806248995 , 0.01700554600436481 , 0.01700554600436481 , 0.023981298466234768 , 0.023981298466234768 , 0.030957050928104725 , 0.030957050928104725 , 0.03793280338997468 , 0.03793280338997468 , 0.04490855585184464 , 0.04490855585184464 , 0.05188430831371459 , 0.05188430831371459 , 0.055372184544649566 , 0.055372184544649566 , 0.05886006077558455 , 0.05886006077558455 , 0.0658358132374545 , 0.0658358132374545 , 0.06932368946838947 , 0.06932368946838947 , 0.07281156569932445 , 0.07281156569932445 , 0.07455550381479195 , 0.07455550381479195 , 0.07629944193025943 , 0.07629944193025943 , 0.07804338004572692 , 0.07804338004572692 , 0.07978731816119441 , 0.07978731816119441 , 0.08676307062306438 , 0.08676307062306438 , 0.08676307062306438 , 0.08676307062306438 ] debug: vKnots = KnotArray : [ 0 , 0 , 0 , 1 , 1 , 1 ] debug: uKnots size = 204 debug: vKnots size = 6 debug: uSpans = 99 debug: vSpans = 1 debug: Multi-span Result: Regeneration complete"
+        - generic [ref=f77e1432]:
+          - generic [ref=f77e1433]: Monitor
+          - generic [ref=f77e1443] [cursor=pointer]: Deform tests
+        - generic [ref=f77e1447]:
+          - generic [ref=f77e1448]: Monitor
+          - generic [ref=f77e1458] [cursor=pointer]: ONE Testing
+        - generic [ref=f77e1462]:
+          - generic [ref=f77e1463]: Monitor
+          - generic [ref=f77e1473] [cursor=pointer]: SKH_Test
+        - generic [ref=f77e1477]:
+          - generic [ref=f77e1478]: Monitor
+          - generic [ref=f77e1488] [cursor=pointer]: Test
+        - generic [ref=f77e1492]:
+          - generic [ref=f77e1493]: Monitor
+          - generic [ref=f77e1503] [cursor=pointer]: Test2
+        - generic [ref=f77e1507]:
+          - generic [ref=f77e1508] [cursor=pointer]: curveMappingCore
+          - generic [ref=f77e1512]:
+            - table [ref=f77e1513]:
+              - rowgroup [ref=f77e1514]:
+                - row [ref=f77e1515] [cursor=pointer]:
+                  - cell [ref=f77e1516]
+                  - cell [ref=f77e1520]
+                  - cell "Variable error set but not used" [ref=f77e1522]
+                - row [ref=f77e1524] [cursor=pointer]:
+                  - cell [ref=f77e1525]
+                  - cell [ref=f77e1526]
+                  - cell "191:5" [ref=f77e1527]
+                  - cell "683d867c35fdab9c98d47556" [ref=f77e1529]
+            - table [ref=f77e1531]:
+              - rowgroup [ref=f77e1532]:
+                - row [ref=f77e1533] [cursor=pointer]:
+                  - cell [ref=f77e1534]
+                  - cell [ref=f77e1538]
+                  - cell "Variable total set but not used" [ref=f77e1540]
+                - row [ref=f77e1542] [cursor=pointer]:
+                  - cell [ref=f77e1543]
+                  - cell [ref=f77e1544]
+                  - cell "2692:1" [ref=f77e1545]
+                  - cell "683d867c35fdab9c98d47556" [ref=f77e1547]
+        - generic [ref=f77e1549]:
+          - generic [ref=f77e1550] [cursor=pointer]: deform
+          - generic [ref=f77e1554]:
+            - table [ref=f77e1555]:
+              - rowgroup [ref=f77e1556]:
+                - row [ref=f77e1557] [cursor=pointer]:
+                  - cell [ref=f77e1558]
+                  - cell [ref=f77e1562]
+                  - cell "Variable poor set but not used" [ref=f77e1564]
+                - row [ref=f77e1566] [cursor=pointer]:
+                  - cell [ref=f77e1567]
+                  - cell [ref=f77e1568]
+                  - cell "1914:21" [ref=f77e1569]
+                  - cell "72d140fb4a1a51b6b3427b44" [ref=f77e1571]
+            - table [ref=f77e1573]:
+              - rowgroup [ref=f77e1574]:
+                - row [ref=f77e1575] [cursor=pointer]:
+                  - cell [ref=f77e1576]
+                  - cell [ref=f77e1580]
+                  - cell "Variable cutFace set but not used" [ref=f77e1582]
+                - row [ref=f77e1584] [cursor=pointer]:
+                  - cell [ref=f77e1585]
+                  - cell [ref=f77e1586]
+                  - cell "2081:21" [ref=f77e1587]
+                  - cell "72d140fb4a1a51b6b3427b44" [ref=f77e1589]
+        - generic [ref=f77e1591]:
+          - generic [ref=f77e1592] [cursor=pointer]: wrapAndLoft_i
+          - generic [ref=f77e1596]:
+            - table [ref=f77e1597]:
+              - rowgroup [ref=f77e1598]:
+                - row [ref=f77e1599] [cursor=pointer]:
+                  - cell [ref=f77e1600]
+                  - cell [ref=f77e1604]
+                  - cell "Variable toFrameResult_0 set but not used" [ref=f77e1606]
+                - row [ref=f77e1608] [cursor=pointer]:
+                  - cell [ref=f77e1609]
+                  - cell [ref=f77e1610]
+                  - cell "809:13" [ref=f77e1611]
+                  - cell "876e80fb9387d52093b32910" [ref=f77e1613]
+            - table [ref=f77e1615]:
+              - rowgroup [ref=f77e1616]:
+                - row [ref=f77e1617] [cursor=pointer]:
+                  - cell [ref=f77e1618]
+                  - cell [ref=f77e1622]
+                  - cell "Variable toFrameResult_end set but not used" [ref=f77e1624]
+                - row [ref=f77e1626] [cursor=pointer]:
+                  - cell [ref=f77e1627]
+                  - cell [ref=f77e1628]
+                  - cell "1039:17" [ref=f77e1629]
+                  - cell "876e80fb9387d52093b32910" [ref=f77e1631]
+        - generic [ref=f77e1633]:
+          - generic [ref=f77e1634] [cursor=pointer]: wrapCurve
+          - generic [ref=f77e1638]:
+            - table [ref=f77e1639]:
+              - rowgroup [ref=f77e1640]:
+                - row [ref=f77e1641] [cursor=pointer]:
+                  - cell [ref=f77e1642]
+                  - cell [ref=f77e1646]
+                  - cell "Variable toFrameResult_0 set but not used" [ref=f77e1648]
+                - row [ref=f77e1650] [cursor=pointer]:
+                  - cell [ref=f77e1651]
+                  - cell [ref=f77e1652]
+                  - cell "389:13" [ref=f77e1653]
+                  - cell "6863116065bf5063633f30ac" [ref=f77e1655]
+            - table [ref=f77e1657]:
+              - rowgroup [ref=f77e1658]:
+                - row [ref=f77e1659] [cursor=pointer]:
+                  - cell [ref=f77e1660]
+                  - cell [ref=f77e1664]
+                  - cell "Variable toFrameResult_end set but not used" [ref=f77e1666]
+                - row [ref=f77e1668] [cursor=pointer]:
+                  - cell [ref=f77e1669]
+                  - cell [ref=f77e1670]
+                  - cell "617:17" [ref=f77e1671]
+                  - cell "6863116065bf5063633f30ac" [ref=f77e1673]
