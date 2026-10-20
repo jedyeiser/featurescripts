@@ -1049,6 +1049,9 @@ function nearestEdgeTo(context is Context, point is Vector, edges is Query) retu
     return { "edge" : evaluateQuery(context, edges)[nearest.sides[1].index], "distance" : nearest.distance };
 }
 
+/** Whether the union is given vertex-to-vertex matches as well as edge matches (off while it is checked that the kernel accepts them). */
+const USE_VERTEX_MATCHES = false;
+
 /**
  * Vertex matches for two edges that are to be welded: each end vertex of the first with the vertex of the second that lies at
  * it (the faces' corners are the images of one source vertex, but each face's own surface puts its corner a fraction of a micron
@@ -1056,6 +1059,8 @@ function nearestEdgeTo(context is Context, point is Vector, edges is Query) retu
  */
 function vertexMatches(context is Context, edgeA is Query, edgeB is Query, gate is ValueWithUnits) returns array
 {
+    if (!USE_VERTEX_MATCHES)
+        return [];
     var found = [];
     const verticesB = evaluateQuery(context, qAdjacent(edgeB, AdjacencyType.VERTEX, EntityType.VERTEX));
     for (var va in evaluateQuery(context, qAdjacent(edgeA, AdjacencyType.VERTEX, EntityType.VERTEX)))
