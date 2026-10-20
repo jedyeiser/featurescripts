@@ -1520,16 +1520,21 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             annotation { "Name" : "Mapped sample spacing (unused)", "UIHint" : UIHint.ALWAYS_HIDDEN }
             isLength(definition.mappedSpacing, MAPPED_SPACING_BOUND);
 
-            annotation { "Name" : "Use face guide points", "Default" : false, "Description" : "Sample interior points from each face and map them as guide vertices for opFillSurface. Improves shape accuracy on curved faces at the cost of extra computation." }
-            definition.useFacePoints is boolean;
-            
-            if (definition.useFacePoints)
+            // Guide points only help opFillSurface (they pull a filled face's interior toward the mapped shape). With "Map all faces"
+            // nearly every face is built from its mapped surface and the points would only cost steps, so the option is not offered.
+            if (definition.faceBuilder != FaceBuilder.MAP_ALL)
             {
-                annotation { "Name" : "uSampling multiplier", "Description" : "Number of u iso curves = N * u control-point count", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "useFacePoints" }
-                isInteger(definition.faceUsamplingMultiplier, FaceControlMultiplierBounds);
+                annotation { "Name" : "Use face guide points", "Default" : false, "Description" : "Sample interior points from each face and map them as guide vertices for opFillSurface. Improves shape accuracy on faces that are filled, at the cost of extra computation. Not used when every face is mapped." }
+                definition.useFacePoints is boolean;
 
-                annotation { "Name" : "vSampling multiplier", "Description" : "Number of v iso curves = N * v control-point count", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "useFacePoints" }
-                isInteger(definition.faceVsamplingMultiplier, FaceControlMultiplierBounds);
+                if (definition.useFacePoints)
+                {
+                    annotation { "Name" : "uSampling multiplier", "Description" : "Number of u iso curves = N * u control-point count", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "useFacePoints" }
+                    isInteger(definition.faceUsamplingMultiplier, FaceControlMultiplierBounds);
+
+                    annotation { "Name" : "vSampling multiplier", "Description" : "Number of v iso curves = N * v control-point count", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "useFacePoints" }
+                    isInteger(definition.faceVsamplingMultiplier, FaceControlMultiplierBounds);
+                }
             }
 
             annotation { "Name" : "Keep wires", "Default" : false, "Description" : "Retain wrapped edge bodies after reconstruction. Merged into one wire body if possible, otherwise a composite part." }
@@ -1640,6 +1645,32 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
         // find the body they now belong to.
         var unitResults = {};
 
+        // Mapped points cost interpreter steps and the step limit is the FEATURE's, so the budget is shared by all its bodies (a
+        // second body used to get a whole budget of its own, and the feature then ran out of steps). Each body's share follows
+        // its estimated demand: the starting sampling grid of each of its faces (the control net of the face's own approximation).
+        var unitWeights = [];
+        var weightLeft = 0;
+        for (var weightBody in unitBodies)
+        {
+            var weight = 0;
+            if (!isFacesMode && size(unitBodies) > 1)
+            {
+                for (var weightFace in evaluateQuery(context, qOwnedByBody(weightBody, EntityType.FACE)))
+                {
+                    var cells = MAPPED_SAMPLES_MIN_U * MAPPED_SAMPLES_MIN_V;
+                    try silent
+                    {
+                        const weightNet = evApproximateBSplineSurface(context, { "face" : weightFace, "tolerance" : 1e-6 }).bSplineSurface.controlPoints;
+                        cells = clamp(size(weightNet), MAPPED_SAMPLES_MIN_U, MAPPED_SAMPLES_MAX_U) * clamp(size(weightNet[0]), MAPPED_SAMPLES_MIN_V, MAPPED_SAMPLES_MAX_V);
+                    }
+                    weight += cells;
+                }
+            }
+            unitWeights = append(unitWeights, weight);
+            weightLeft += weight;
+        }
+        var featurePointsUsed = 0;
+
         for (var unitIdx = 0; unitIdx < size(unitBodies); unitIdx += 1)
         {
             var unitBody = unitBodies[unitIdx];
@@ -1655,7 +1686,11 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
             var mappedFaces   = 0;
             var mappedPointCount = 0;
             // Steps, not points, are the limit (a feature gets about 20-30k mapped points in all, edges and the rest included): a unit with more faces gets a smaller share.
-            const pointBudget = clamp(MAPPED_POINT_BUDGET * 40 / max(1, size(evaluateQuery(context, qOwnedByBody(unitBody, EntityType.FACE)))), 4000, MAPPED_POINT_BUDGET);
+            const unitFaceCount = isFacesMode ? 40 : size(evaluateQuery(context, qOwnedByBody(unitBody, EntityType.FACE)));
+            const sizeScaled = clamp(MAPPED_POINT_BUDGET * 40 / max(1, unitFaceCount), 4000, MAPPED_POINT_BUDGET);
+            // this body's share of what the feature has left (all of it for a single body), never less than a coarse grid per face
+            const share = (weightLeft > 0 && size(unitBodies) > 1) ? floor((MAPPED_POINT_BUDGET - featurePointsUsed) * unitWeights[unitIdx] / weightLeft) : MAPPED_POINT_BUDGET;
+            const pointBudget = max(110 * unitFaceCount, min(share, sizeScaled));
             const workId    = id + ("work" ~ unitIdx);
             const workId2   = id + ("work" ~ unitIdx ~ "b");
             var unionFailed  = false;    // the final union of this attempt was refused
@@ -1907,7 +1942,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         // points already made (they used to be left behind as stray point bodies).
                         var faceGuideVtxQueries = [];
                         // Guide points for the user's option, or for the long thin pieces of a cut face (when the face accuracy is on).
-                        const guided = definition.useFacePoints ||
+                        const guided = (definition.useFacePoints && definition.faceBuilder != FaceBuilder.MAP_ALL) ||
                             (attempt >= 1 && definition.faceAccuracy > 0 * meter && !isFacesMode && evArea(context, { "entities" : face }) > GUIDED_FACE_MIN_AREA &&
                              isAspectAbove(context, face, GUIDED_FACE_ASPECT));
                         if (guided) try
@@ -2261,6 +2296,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                 }
                 break;
             }
+            featurePointsUsed += mappedPointCount;
+            weightLeft -= unitWeights[unitIdx];
             if (unionFailed)
             {
                 reportFeatureWarning(context, id, "The rebuilt faces of a body could not be joined into one body and are left as separate sheets. Raising the maximum control points usually fixes this.");

@@ -333,7 +333,13 @@ export const genericQCTable = defineTable(function(context is Context, definitio
 
         if (size(withAttr) == 0)
         {
-            return table("Generic QC Table (No Data)", [], []);
+            // No data: the attribute is set at the end of "Generic QC Table", so it exists only in a regeneration where that
+            // feature executed (not rolled back, suppressed, in error or still regenerating). Keep the columns and say why.
+            return table("Generic QC Table (No Data)",
+                [tableColumnDefinition("station", "Station #"), tableColumnDefinition("x", "X"),
+                 tableColumnDefinition("width", "Width"), tableColumnDefinition("height", "Height")],
+                [tableRow({ "station" : "No QC data in this regeneration. 'Generic QC Table' is rolled back, suppressed, in error, or the Part Studio is still regenerating.",
+                            "x" : "", "width" : "", "height" : "" })]);
         }
 
         var attr = getAttribute(context, {

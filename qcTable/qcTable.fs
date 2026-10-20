@@ -597,8 +597,14 @@ export const qcTable = defineTable(function(context is Context, definition is ma
 
         if (size(bodiesWithAttribute) == 0)
         {
-            // No data - return empty table
-            return table("QC Table (No Data)", [], []);
+            // No data. The data is an attribute that "Generate QC Table Data" sets at the end of its own run, so it
+            // exists only in a regeneration where that feature executed: not when the feature is rolled back (the
+            // rollback bar is above it), suppressed, in error, or when the Part Studio is still regenerating.
+            // Keep the table's columns and say why it is empty (a table with no columns can look like it has vanished).
+            return table("QC Table (No Data)",
+                [tableColumnDefinition("callout", "Callout"), tableColumnDefinition("station", "Station"), tableColumnDefinition("x_mrs", "X")],
+                [tableRow({ "callout" : "No QC data in this regeneration. 'Generate QC Table Data' is rolled back, suppressed, in error, or the Part Studio is still regenerating.",
+                            "station" : "", "x_mrs" : "" })]);
         }
 
         // Get attribute data

@@ -1,0 +1,152 @@
+- generic [ref=f99e5]:
+  - navigation [ref=f99e6]:
+    - generic [ref=f99e7]:
+      - link [ref=f99e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f99e11]
+      - generic [ref=f99e13] [cursor=pointer]
+    - generic [ref=f99e16]:
+      - generic [ref=f99e18]:
+        - generic [ref=f99e19]: Core_Sidewall_QC
+        - generic [ref=f99e20]: Dev
+      - generic [ref=f99e22] [cursor=pointer]
+      - link "Ski/Snowboard" [ref=f99e26] [cursor=pointer]:
+        - /url: /documents?nodeId=a4031dd13e6b49409dda5f9c&resourceType=folder
+    - generic [ref=f99e30]:
+      - generic [ref=f99e38] [cursor=pointer]
+      - generic [ref=f99e44] [cursor=pointer]
+      - button "Notifications" [ref=f99e49] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f99e57]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f99e60] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f99e65] [cursor=pointer]
+      - button "Share" [ref=f99e69] [cursor=pointer]
+      - generic "Help menu" [ref=f99e71] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f99e75] [cursor=pointer]
+  - generic [ref=f99e85]:
+    - generic [ref=f99e87]:
+      - generic [ref=f99e88]:
+        - generic [ref=f99e89]:
+          - generic [ref=f99e90] [cursor=pointer]
+          - generic [ref=f99e93] [cursor=pointer]
+          - generic [ref=f99e96] [cursor=pointer]
+          - generic [ref=f99e99] [cursor=pointer]
+          - generic [ref=f99e102] [cursor=pointer]
+          - generic [ref=f99e105] [cursor=pointer]
+          - generic [ref=f99e108] [cursor=pointer]
+          - generic [ref=f99e111] [cursor=pointer]
+        - generic [ref=f99e115] [cursor=pointer]
+      - generic [ref=f99e119] [cursor=pointer]
+    - generic [ref=f99e126]:
+      - generic [ref=f99e133]:
+        - generic [ref=f99e145]:
+          - generic [ref=f99e146]: Sketch
+          - generic [ref=f99e158]:
+            - generic [ref=f99e159] [cursor=pointer]
+            - generic [ref=f99e163] [cursor=pointer]
+            - generic [ref=f99e167] [cursor=pointer]
+            - generic [ref=f99e171] [cursor=pointer]
+            - generic [ref=f99e176]:
+              - generic [ref=f99e177] [cursor=pointer]
+              - generic [ref=f99e181] [cursor=pointer]
+          - generic [ref=f99e187]:
+            - generic [ref=f99e189]:
+              - generic [ref=f99e190] [cursor=pointer]
+              - generic [ref=f99e194] [cursor=pointer]
+            - generic [ref=f99e197] [cursor=pointer]
+            - generic [ref=f99e202]:
+              - generic [ref=f99e203] [cursor=pointer]
+              - generic [ref=f99e207] [cursor=pointer]
+            - generic [ref=f99e210] [cursor=pointer]
+            - generic [ref=f99e214] [cursor=pointer]
+            - generic [ref=f99e218] [cursor=pointer]
+            - generic [ref=f99e222] [cursor=pointer]
+          - generic [ref=f99e229]:
+            - generic [ref=f99e231]:
+              - generic [ref=f99e232] [cursor=pointer]
+              - generic [ref=f99e236] [cursor=pointer]
+            - generic [ref=f99e239] [cursor=pointer]
+          - generic [ref=f99e246]:
+            - generic [ref=f99e247] [cursor=pointer]
+            - generic [ref=f99e251] [cursor=pointer]
+            - generic [ref=f99e256]:
+              - generic [ref=f99e257] [cursor=pointer]
+              - generic [ref=f99e261] [cursor=pointer]
+            - generic [ref=f99e264] [cursor=pointer]
+          - generic [ref=f99e271]:
+            - generic [ref=f99e272] [cursor=pointer]
+            - generic [ref=f99e276] [cursor=pointer]
+            - generic [ref=f99e280] [cursor=pointer]
+            - generic [ref=f99e284] [cursor=pointer]
+          - generic [ref=f99e292]:
+            - generic [ref=f99e293] [cursor=pointer]
+            - generic [ref=f99e297] [cursor=pointer]
+          - generic [ref=f99e304]:
+            - generic [ref=f99e305] [cursor=pointer]: SA
+            - generic [ref=f99e308] [cursor=pointer]
+          - generic [ref=f99e315] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f99e322] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f99e323]:
+            - generic [ref=f99e324]: alt/⌥
+            - generic [ref=f99e325]: c
+      - generic [ref=f99e329]:
+        - generic [ref=f99e332]:
+          - generic [ref=f99e334]:
+            - generic [ref=f99e335]:
+              - generic [ref=f99e337]:
+                - button [ref=f99e339] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f99e344]
+              - generic [ref=f99e345]:
+                - generic [ref=f99e346]: Features (10)
+                - button [ref=f99e347] [cursor=pointer]
+                - button [ref=f99e350] [cursor=pointer]
+                - button [ref=f99e353] [cursor=pointer]
+            - generic [ref=f99e357]:
+              - generic [ref=f99e358]:
+                - generic [ref=f99e360]:
+                  - generic [ref=f99e361] [cursor=pointer]
+                  - generic [ref=f99e364]: Default geometry
+                - generic [ref=f99e366]: Origin
+                - generic [ref=f99e376]: Top
+                - generic [ref=f99e386]: Front
+                - generic [ref=f99e396]: Right
+                - generic [ref=f99e407]:
+                  - generic [ref=f99e409] [cursor=pointer]
+                  - generic [ref=f99e412]: Derived 1
+                - generic [ref=f99e422]: Sketch 1
+                - generic [ref=f99e430]: Move face 1
+                - generic [ref=f99e438]: Split 1
+                - generic [ref=f99e446]: Split 2
+                - generic [ref=f99e454]: Generate QC Table Data 1
+              - list
+          - generic [ref=f99e469]:
+            - generic [ref=f99e471]:
+              - generic [ref=f99e473] [cursor=pointer]
+              - generic [ref=f99e476]: Parts (2)
+            - generic [ref=f99e480]: 2D_CORE_VOLUME
+            - generic [ref=f99e492]: RD 20ONE 28 178 4401_L
+        - generic [ref=f99e505]:
+          - generic [ref=f99e507] [cursor=pointer]
+          - generic [ref=f99e511]:
+            - generic [ref=f99e513]:
+              - button [ref=f99e514] [cursor=pointer]
+              - button [ref=f99e518] [cursor=pointer]
+              - button [ref=f99e522] [cursor=pointer]
+            - generic [ref=f99e526] [cursor=pointer]
+          - generic [ref=f99e531]:
+            - generic [ref=f99e532] [cursor=pointer]
+            - generic [ref=f99e536] [cursor=pointer]
+            - generic [ref=f99e540] [cursor=pointer]
+            - generic [ref=f99e544] [cursor=pointer]
+            - generic [ref=f99e548] [cursor=pointer]
+            - generic [ref=f99e552] [cursor=pointer]
+            - generic [ref=f99e555] [cursor=pointer]
+      - generic [ref=f99e559]:
+        - img [ref=f99e562] [cursor=pointer]
+        - generic [ref=f99e565]:
+          - generic [ref=f99e566] [cursor=pointer]: Test
+          - generic [ref=f99e574] [cursor=pointer]: RD 21SKH 28 177 4305 Drawing 1
+          - generic [ref=f99e580]: New ONE Test
+          - generic [ref=f99e588] [cursor=pointer]: Core_Sidewall_Table.pdf
+          - generic [ref=f99e594] [cursor=pointer]: featurescript
+          - generic [ref=f99e600] [cursor=pointer]: updatedONETEst
