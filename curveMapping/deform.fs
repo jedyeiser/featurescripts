@@ -975,7 +975,7 @@ function boundaryProbes(context is Context, face is Query, fromFrenetPath is map
 {
     var probes = [];
     const edges = evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE));
-    const parameters = size(edges) > 8 ? [0.5] : [0.2, 0.5, 0.8];
+    const parameters = size(edges) > 8 ? [0.1, 0.5, 0.9] : [0.04, 0.25, 0.5, 0.75, 0.96];
     for (var edge in edges)
     {
         try silent
