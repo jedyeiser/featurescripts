@@ -69,6 +69,16 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
 
         annotation { "Name" : "Create composite part", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE }
         definition.createComposite is boolean;
+
+        if (definition.createComposite)
+        {
+            annotation { "Name" : "Composite name", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE }
+            definition.compositeName is string;
+        }
+
+        annotation { "Name" : "Show layout preview", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE,
+                    "Description" : "While editing, draws each slot's box, the layout boundary and the origin frame." }
+        definition.showPreview is boolean;
     }
     {
         // Origin: an MC pick may arrive as its owner body or vertex
@@ -148,6 +158,24 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
             }
         }
 
+        // Preview: debug geometry shows only while the feature is being edited
+        if (definition.showPreview)
+        {
+            debug(context, cSys);
+            for (var i = 0; i < size(items); i += 1)
+            {
+                const zLo = definition.dropToPlane ? 0 * meter : items[i].bb.minCorner[2];
+                const zHi = zLo + items[i].bb.maxCorner[2] - items[i].bb.minCorner[2];
+                debug(context, box3d(vector(items[i].x, items[i].y, zLo), vector(items[i].x + items[i].w, items[i].y + items[i].h, zHi)),
+                    cSys, DebugColor.CYAN);
+            }
+            if (definition.limitWidth)
+            {
+                debug(context, box3d(vector(0 * meter, 0 * meter, 0 * meter),
+                        vector(definition.layoutWidth, y + rowHeight + definition.yBuffer, 0 * meter)), cSys, DebugColor.MAGENTA);
+            }
+        }
+
         // Move or copy each body to its slot
         const toOrigin = fromWorld(cSys);
         const fromOrigin = toWorld(cSys);
@@ -208,7 +236,16 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
                             "bodies" : placed,
                             "closed" : false
                         });
+                if (definition.compositeName != "")
+                {
+                    setProperty(context, {
+                                "entities" : qCreatedBy(id + "composite", EntityType.BODY),
+                                "propertyType" : PropertyType.NAME,
+                                "value" : definition.compositeName
+                            });
+                }
             }
         }
     }, { "xBuffer" : 10 * millimeter, "yBuffer" : 10 * millimeter, "limitWidth" : false, "layoutWidth" : 2000 * millimeter,
-            "allowRotation" : false, "dropToPlane" : true, "copyBodies" : false, "createComposite" : false });
+            "allowRotation" : false, "dropToPlane" : true, "copyBodies" : false, "createComposite" : false,
+            "compositeName" : "Layout", "showPreview" : true });
