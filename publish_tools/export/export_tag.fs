@@ -3,6 +3,8 @@ import(path : "onshape/std/common.fs", version : "3095.0");
 import(path : "onshape/std/projectiontype.gen.fs", version : "3095.0");
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
+// IMPORT: export_tag_icon.svg (feature icon)
+IconNamespace::import(path : "f560c2fac5b751264e8c9ac3", version : "0f0021fcd5b08901d6d9ce6e");
 
 // IMPORT: export_tag_icon.svg (feature icon) -- added once the icon tab exists
 
@@ -99,7 +101,7 @@ const DXF_PLANE_SIZE = 20 * meter;
  *   - everything is written to the attribute publishExportTag (schema exportTag/1) on the tagged body and
  *     to the standard output slot (variable exportTag).
  */
-annotation { "Feature Type Name" : "Export tag",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Export tag",
             "Feature Type Description" : "Records what to export for a body or composite (solid formats, DXF plan / profile, origin shift) and builds the DXF faces.",
             "Editing Logic Function" : "exportTagEditLogic" }
 export const exportTag = defineFeature(function(context is Context, id is Id, definition is map)
@@ -117,7 +119,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             annotation { "Name" : "Name is stale", "Default" : false, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
             definition.nameStale is boolean;
 
-            annotation { "Name" : "Get the part's name", "Description" : "Copies the part's current name into the tag." }
+            annotation { "Name" : "Get Part Name", "Description" : "Copies the part's current name into the tag." }
             isButton(definition.getName);
 
             annotation { "Name" : "Export name", "Default" : "", "MaxLength" : 128,
@@ -135,59 +137,71 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Group Name" : "Export info", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "STEP", "Default" : false }
-            definition.stepOut is boolean;
+            annotation { "Name" : "Export solid", "Default" : false }
+            definition.exportSolid is boolean;
 
-            annotation { "Name" : "IGES", "Default" : false }
-            definition.igesOut is boolean;
-
-            annotation { "Name" : "STL", "Default" : false }
-            definition.stlOut is boolean;
-
-            annotation { "Name" : "Solid file name", "Default" : "", "MaxLength" : 128,
-                        "Description" : "Empty = the export name." }
-            definition.solidName is string;
-
-            annotation { "Name" : "Plan DXF (XY)", "Default" : ExportDxfSource.NONE, "UIHint" : UIHint.SHOW_LABEL }
-            definition.planSource is ExportDxfSource;
-
-            if (definition.planSource == ExportDxfSource.SELECTION)
+            if (definition.exportSolid)
             {
-                annotation { "Name" : "Plan faces", "Filter" : EntityType.FACE,
-                            "Description" : "Faces projected onto the XY plane." }
-                definition.planFaces is Query;
+                annotation { "Name" : "STEP", "Default" : false }
+                definition.stepOut is boolean;
+
+                annotation { "Name" : "IGES", "Default" : false }
+                definition.igesOut is boolean;
+
+                annotation { "Name" : "STL", "Default" : false }
+                definition.stlOut is boolean;
+
+                annotation { "Name" : "Solid file name", "Default" : "", "MaxLength" : 128,
+                            "Description" : "Empty = the export name." }
+                definition.solidName is string;
             }
 
-            if (definition.planSource != ExportDxfSource.NONE)
+            annotation { "Name" : "Export DXF", "Default" : false }
+            definition.exportDxf is boolean;
+
+            if (definition.exportDxf)
             {
-                annotation { "Name" : "Plan file name", "Default" : "", "MaxLength" : 128, "Description" : "Empty = the app's default." }
-                definition.planName is string;
+                annotation { "Name" : "Plan DXF (XY)", "Default" : ExportDxfSource.NONE, "UIHint" : UIHint.SHOW_LABEL }
+                definition.planSource is ExportDxfSource;
+
+                if (definition.planSource == ExportDxfSource.SELECTION)
+                {
+                    annotation { "Name" : "Plan faces", "Filter" : EntityType.FACE,
+                                "Description" : "Faces projected onto the XY plane." }
+                    definition.planFaces is Query;
+                }
+
+                if (definition.planSource != ExportDxfSource.NONE)
+                {
+                    annotation { "Name" : "Plan file name", "Default" : "", "MaxLength" : 128, "Description" : "Empty = the app's default." }
+                    definition.planName is string;
+                }
+
+                annotation { "Name" : "Profile DXF (XZ)", "Default" : ExportDxfSource.NONE, "UIHint" : UIHint.SHOW_LABEL }
+                definition.profileSource is ExportDxfSource;
+
+                if (definition.profileSource == ExportDxfSource.SELECTION)
+                {
+                    annotation { "Name" : "Profile faces", "Filter" : EntityType.FACE,
+                                "Description" : "Faces projected onto the XZ plane." }
+                    definition.profileFaces is Query;
+                }
+
+                if (definition.profileSource != ExportDxfSource.NONE)
+                {
+                    annotation { "Name" : "Profile file name", "Default" : "", "MaxLength" : 128, "Description" : "Empty = the app's default." }
+                    definition.profileName is string;
+                }
+
+                if (definition.planSource != ExportDxfSource.NONE && definition.profileSource != ExportDxfSource.NONE)
+                {
+                    annotation { "Name" : "One composite for plan and profile", "Default" : false,
+                                "Description" : "Off: one composite per view (when it has several faces)." }
+                    definition.oneDxfComposite is boolean;
+                }
             }
 
-            annotation { "Name" : "Profile DXF (XZ)", "Default" : ExportDxfSource.NONE, "UIHint" : UIHint.SHOW_LABEL }
-            definition.profileSource is ExportDxfSource;
-
-            if (definition.profileSource == ExportDxfSource.SELECTION)
-            {
-                annotation { "Name" : "Profile faces", "Filter" : EntityType.FACE,
-                            "Description" : "Faces projected onto the XZ plane." }
-                definition.profileFaces is Query;
-            }
-
-            if (definition.profileSource != ExportDxfSource.NONE)
-            {
-                annotation { "Name" : "Profile file name", "Default" : "", "MaxLength" : 128, "Description" : "Empty = the app's default." }
-                definition.profileName is string;
-            }
-
-            if (definition.planSource != ExportDxfSource.NONE && definition.profileSource != ExportDxfSource.NONE)
-            {
-                annotation { "Name" : "One composite for plan and profile", "Default" : false,
-                            "Description" : "Off: one composite per view (when it has several faces)." }
-                definition.oneDxfComposite is boolean;
-            }
-
-            annotation { "Name" : "Drawing", "Default" : false,
+            annotation { "Name" : "Export drawing", "Default" : false,
                         "Description" : "Intent only: the part has a drawing to export with it." }
             definition.drawingOut is boolean;
 
@@ -195,6 +209,17 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             {
                 annotation { "Name" : "Drawing file name", "Default" : "", "MaxLength" : 128, "Description" : "Empty = the export name." }
                 definition.drawingName is string;
+
+                annotation { "Name" : "Station table in the drawing", "Default" : false,
+                            "Description" : "The drawing shows the Station table of this part (Station geometry's views). Recorded in the tag with the view filter below." }
+                definition.stationTable is boolean;
+
+                if (definition.stationTable)
+                {
+                    annotation { "Name" : "Views containing", "Default" : "", "MaxLength" : 128,
+                                "Description" : "The Station table's 'Views containing' filter. Empty = the export name (Station geometry's name prefix is the part name)." }
+                    definition.stationViewFilter is string;
+                }
             }
         }
 
@@ -205,7 +230,8 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
 
             if (definition.originType == ExportOriginType.MATE_CONNECTOR)
             {
-                annotation { "Name" : "Mate connector", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                annotation { "Name" : "Mate connector or vertex", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1,
+                            "Description" : "A mate connector (existing or created here) or a vertex. A vertex moves the origin only." }
                 definition.originConnector is Query;
 
                 annotation { "Name" : "Move", "Default" : ExportOriginAxes.ORIGIN_ONLY, "UIHint" : UIHint.SHOW_LABEL }
@@ -249,7 +275,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         const stem = exportStem(definition);
         if (stem == "")
         {
-            throw regenError("Press Get the part's name, or enter an export name.", ["exportName"]);
+            throw regenError("Press Get Part Name, or enter an export name.", ["exportName"]);
         }
         const isComposite = !isQueryEmpty(context, qBodyType(definition.part, BodyType.COMPOSITE));
 
@@ -257,11 +283,11 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         var notes = [];
         if (definition.nameStale && definition.staleAction == StaleNameAction.ERROR)
         {
-            throw regenError("The part was renamed since the name was stored. Press Get the part's name.", ["part"]);
+            throw regenError("The part was renamed since the name was stored. Press Get Part Name.", ["part"]);
         }
         if (definition.nameStale && definition.staleAction == StaleNameAction.WARN)
         {
-            warnings = append(warnings, "The part was renamed since the name was stored; press Get the part's name.");
+            warnings = append(warnings, "The part was renamed since the name was stored; Press Get Part Name.");
         }
 
         // Export origin: the minimum transform, recorded; applied only to a single body copy and to the DXF faces.
@@ -274,9 +300,11 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         var created = [];
         var dxf = {};
         var dxfBodies = {};
-        for (var view in [{ "key" : "plan", "label" : "PLAN", "source" : definition.planSource, "faces" : definition.planFaces,
+        const planSource = definition.exportDxf ? definition.planSource : ExportDxfSource.NONE;
+        const profileSource = definition.exportDxf ? definition.profileSource : ExportDxfSource.NONE;
+        for (var view in [{ "key" : "plan", "label" : "PLAN", "source" : planSource, "faces" : definition.planFaces,
                     "name" : definition.planName, "normal" : vector(0, 0, 1), "xAxis" : vector(1, 0, 0) },
-                { "key" : "profile", "label" : "PROFILE", "source" : definition.profileSource, "faces" : definition.profileFaces,
+                { "key" : "profile", "label" : "PROFILE", "source" : profileSource, "faces" : definition.profileFaces,
                     "name" : definition.profileName, "normal" : vector(0, 1, 0), "xAxis" : vector(1, 0, 0) }])
         {
             if (view.source == ExportDxfSource.NONE)
@@ -322,18 +350,19 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         }
 
         var solidFormats = [];
-        if (definition.stepOut)
+        if (definition.exportSolid && definition.stepOut)
         {
             solidFormats = append(solidFormats, "STEP");
         }
-        if (definition.igesOut)
+        if (definition.exportSolid && definition.igesOut)
         {
             solidFormats = append(solidFormats, "IGES");
         }
-        if (definition.stlOut)
+        if (definition.exportSolid && definition.stlOut)
         {
             solidFormats = append(solidFormats, "STL");
         }
+        const stationTable = definition.drawingOut && definition.stationTable;
 
         const data = {
             "schema" : EXPORT_TAG_SCHEMA,
@@ -341,7 +370,8 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             "isComposite" : isComposite,
             "solid" : { "formats" : solidFormats, "name" : definition.solidName },
             "dxf" : dxf,
-            "drawing" : { "export" : definition.drawingOut == true, "name" : definition.drawingName },
+            "drawing" : { "export" : definition.drawingOut == true, "name" : definition.drawingName,
+                "stationTable" : stationTable, "stationViewFilter" : stationTable ? (definition.stationViewFilter == "" ? stem : definition.stationViewFilter) : "" },
             "origin" : originData(definition, origin),
             "shiftedCopy" : size(evaluateQuery(context, shiftedCopy)) > 0
         };
@@ -380,6 +410,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
          "quadrant" : ExportQuadrant.FIRST, "bufferX" : 10 * millimeter, "bufferY" : 10 * millimeter, "bufferZ" : 0 * millimeter,
          "bodyName" : "", "nameStale" : false, "exportName" : "", "solidName" : "", "planName" : "", "profileName" : "",
          "drawingName" : "", "oneDxfComposite" : false, "shiftCopy" : false,
+         "exportSolid" : false, "exportDxf" : false, "stationTable" : false, "stationViewFilter" : "",
          "stepOut" : false, "igesOut" : false, "stlOut" : false, "drawingOut" : false,
          "planFaces" : qNothing(), "profileFaces" : qNothing(), "originConnector" : qNothing() });
 
@@ -472,14 +503,19 @@ function exportOrigin(context is Context, definition is map, isComposite is bool
         {
             throw regenError("Pick the origin mate connector.", ["originConnector"]);
         }
+        // An MC pick may arrive as its vertex (correction 44); a real vertex gives the origin only.
         const connectors = evaluateQuery(context, qBodyType(qOwnerBody(definition.originConnector), BodyType.MATE_CONNECTOR));
         if (size(connectors) == 0)
         {
-            throw regenError("The origin must be a mate connector.", ["originConnector"]);
+            result.kind = "VERTEX";
+            result.xf = transform(-evVertexPoint(context, { "vertex" : definition.originConnector }));
         }
-        const cs = evMateConnector(context, { "mateConnector" : connectors[0] });
-        result.kind = "MATE_CONNECTOR";
-        result.xf = definition.originAxes == ExportOriginAxes.ORIGIN_AND_AXES ? fromWorld(cs) : transform(-cs.origin);
+        else
+        {
+            const cs = evMateConnector(context, { "mateConnector" : connectors[0] });
+            result.kind = "MATE_CONNECTOR";
+            result.xf = definition.originAxes == ExportOriginAxes.ORIGIN_AND_AXES ? fromWorld(cs) : transform(-cs.origin);
+        }
     }
     else
     {
