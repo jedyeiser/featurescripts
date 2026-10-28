@@ -17,7 +17,8 @@
     "primitive_footprint": "fbc957543e769a649f00c5cc",
     "primitive_output": "6f122edb2547a6a46991d9fd",
     "primitive_profiles": "5865b24d55ff270a56088adf",
-    "export_primitive": "3ce76ee786987ef00917b9b2"
+    "export_primitive": "3ce76ee786987ef00917b9b2",
+    "export_tag": "8fc60681ae9f7d4777decd28"
   },
   "tab_folders": {
     "primitive_frame": "primitive",
@@ -26,6 +27,7 @@
     "primitive_footprint": "primitive",
     "primitive_output": "primitive",
     "primitive_profiles": "primitive",
-    "export_primitive": "primitive"
+    "export_primitive": "primitive",
+    "export_tag": "export"
   }
 }

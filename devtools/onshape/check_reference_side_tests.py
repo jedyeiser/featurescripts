@@ -420,7 +420,7 @@ for tag, want_faces, x_range in (("E1", 6, None), ("E2", 6, (18350, 18450)), ("E
 NO_END = ["endOutside", "endLoft", "endInsideEdge", "endOutsideEdge"]
 NO_START = ["startOutside", "startLoft", "startInsideEdge", "startOutsideEdge"]
 for tag, area, faces, absent in (("J1", 24000, 5, []), ("J2", 25000, 5, []), ("J3", 25000, 5, []), ("J4", None, 6, []),
-                                 ("J5", 22000, 3, NO_END), ("J6", 22000, 3, NO_START), ("J7", 22000, 3, NO_END), ("J8", 22000, 3, NO_START)):
+                                 ("J5", 22000, 3, NO_END), ("J6", 22000, 3, NO_START), ("J7", 22000, 3, NO_END), ("J8", 22000, 3, NO_START), ("K1", 22000, 5, NO_END)):
     case(tag + " ", r'''
         const out = embedded(SELF);
         const bodies = evaluateQuery(context, out.query.output.value);
@@ -435,6 +435,10 @@ for tag, area, faces, absent in (("J1", 24000, 5, []), ("J2", 25000, 5, []), ("J
             keysOk = keysOk && (isIn(k, ABSENT) ? n == 0 : n >= 1);
             keys ~= k ~ " " ~ n ~ ", ";
         }
+        // the strip has ONE face (K1: a 3-edge cut against a 1-edge cut must not make three faces)
+        const oneLoft = (count(out.query.startLoft.value) <= 1) && (count(out.query.endLoft.value) <= 1);
+        keysOk = keysOk && oneLoft;
+        keys ~= "loft faces start " ~ count(out.query.startLoft.value) ~ " end " ~ count(out.query.endLoft.value) ~ ", ";
         const sq = millimeter * millimeter;
         const areaOk = %s;
         return [faces == %d && areaOk && keysOk, "faces " ~ faces ~ " (%d), area " ~ roundToPrecision(area / sq, 2) ~ " (%s); " ~ keys];'''.replace("ABSENT", json.dumps(absent)) % (

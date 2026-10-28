@@ -25,7 +25,7 @@ E = studios[STUDIO]
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 TABS = {e["name"]: e for e in ELEMENTS if e["elementType"] == "FEATURESTUDIO"}
 NS = {name: "e%s::m%s" % (TABS[name]["id"], TABS[name]["microversionId"])
-      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference", "move_face_plus", "enclose_plus", "join_profile_surfaces", "referenced_part"]}
+      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference", "move_face_plus", "enclose_plus", "join_profile_surfaces", "referenced_part", "jps_test_fixture"]}
 
 STATE = {"features": None}
 
@@ -574,6 +574,17 @@ for tag, x0, start_on, mode, want in (("J5", 22600, True, "same", "start split o
         params = join_params(split if start_on else None, None if start_on else split, pt, ins, "0 mm",
                              start_prof=out if start_on else None, end_prof=None if start_on else out)
     join("%s Join profile surfaces, %s" % (tag, want), params)
+
+# K1 (2026-10-21): a profile cut into three edges against a profile cut into one (the outside has three faces on one side of the
+# split, the inside one): the loft between them is ONE face (it was three, two of them slivers, when the inside cut also carried
+# the 0.006 mm edges the kernel leaves where a cut ends beside an existing vertex). Fixture: reference_side/jps_test_fixture.fs.
+_fx = feature("K0 JPS fixture (inside z 0; outside z 20 with 3 faces left of x 30000, 1 right; plane x 30000; point at x 30050)", "jpsFixture", [], NS["jps_test_fixture"])
+def _of(name, entity):
+    return 'qCreatedBy(makeId("%s") + "%s", EntityType.%s)' % (_fx, name, entity)
+join("K1 Join profile surfaces, start split on a 3-edge / 1-edge seam -> 5 faces, area 22000, ONE loft face",
+     [q("startSplit", _of("seam", "FACE")), q("endSplit"), q("insidePoint", _of("pt", "VERTEX")), q("insideProfile", _of("inside", "BODY")), num("insideOffset", "0 mm"),
+      en("outsideMode", "JoinOutsideMode", "SAME", NS["join_profile_surfaces"]), q("outsideProfile", _of("outside", "BODY")), num("outsideOffset", "0 mm"),
+      b("startFillet", False), b("endFillet", False), b("keepInputs", True)])
 
 join("J9 Join profile surfaces, no split -> ERROR", join_params(None, None, ref_front("J9 inside point (24200, 0, -10)", 24200, -10),
      sheet("J9 inside profile z 0", [(24100, 0), (24300, 0)]), "0 mm", outside=sheet("J9 outside profile z 20", [(24100, 20), (24300, 20)])))

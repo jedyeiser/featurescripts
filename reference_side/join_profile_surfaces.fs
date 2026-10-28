@@ -251,11 +251,15 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         {
             verifyCut(context, insideStart, "start", "inside");
             verifyCut(context, outsideStart, "start", "outside");
+            insideStart = withoutSlivers(context, insideStart);
+            outsideStart = withoutSlivers(context, outsideStart);
         }
         if (hasEnd)
         {
             verifyCut(context, insideEnd, "end", "inside");
             verifyCut(context, outsideEnd, "end", "outside");
+            insideEnd = withoutSlivers(context, insideEnd);
+            outsideEnd = withoutSlivers(context, outsideEnd);
         }
 
         // 3. A loft between the paired cut edges at each split given.
@@ -614,17 +618,52 @@ function distanceToTool(context is Context, point is Vector, tool is Query, cutP
     return evDistance(context, { "side0" : point, "side1" : tool }).distance;
 }
 
-/** An edge lies on a tool when five points along it are all within SEAM_TOLERANCE of it. */
+/**
+ * An edge lies on a tool when five points along it are all within SEAM_TOLERANCE of it AND, for a plane tool, it runs along the
+ * plane: a micro edge only 0.006 mm long that crosses the plane has all its points within the tolerance too, but it is a piece of
+ * the profile's boundary, not a cut (2026-10-21: two such edges, each side of a seam 0.006 mm off the split, were taken for cut
+ * edges, and a loft from three edges to three made three faces, two of them slivers, where one was meant).
+ */
 function edgeLiesOnTool(context is Context, edge is Query, tool is Query, cutPlane) returns boolean
 {
-    for (var line in evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 0.25, 0.5, 0.75, 1] }))
+    const lines = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 0.25, 0.5, 0.75, 1] });
+    for (var line in lines)
     {
         if (distanceToTool(context, line.origin, tool, cutPlane) > SEAM_TOLERANCE)
         {
             return false;
         }
     }
+    if (cutPlane != undefined)
+    {
+        const across = abs(dot(lines[size(lines) - 1].origin - lines[0].origin, cutPlane.normal));
+        const along = norm(lines[size(lines) - 1].origin - lines[0].origin);
+        // mostly across the plane (and not a closed edge, whose ends meet): it crosses the tool instead of lying on it
+        if (along > 1e-9 * meter && across > 0.5 * along)
+        {
+            return false;
+        }
+    }
     return true;
+}
+
+/**
+ * A cut's edges without its slivers: edges shorter than twice the seam tolerance are dropped so that each loft profile is the
+ * cut itself, not the cut plus the bits of the profile's boundary that happen to lie within the tolerance of the tool. (A loft
+ * pairs the edges of its two profiles one to one: an extra micro edge becomes a sliver face.) The cut as it was when nothing
+ * longer is left.
+ */
+function withoutSlivers(context is Context, cut is Query) returns Query
+{
+    var kept = [];
+    for (var edge in evaluateQuery(context, cut))
+    {
+        if (evLength(context, { "entities" : edge }) > 2 * SEAM_TOLERANCE)
+        {
+            kept = append(kept, edge);
+        }
+    }
+    return size(kept) == 0 ? cut : qUnion(kept);
 }
 
 /** Which side of a plane a point is on: 1 in front, -1 behind (and on it). */
