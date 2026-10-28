@@ -39,7 +39,8 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
                     "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.COMPOSITE) && ModifiableEntityOnly.YES }
         definition.bodies is Query;
 
-        annotation { "Name" : "Pattern origin", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Pattern origin", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1,
+                    "Description" : "A mate connector (existing or created here) or a vertex. A vertex gives world axes." }
         definition.origin is Query;
 
         annotation { "Name" : "X buffer", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE }
@@ -73,16 +74,19 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
         // Origin: an MC pick may arrive as its owner body or vertex
         // (existing connectors via their owner body; an implicit connector created in the field resolves as the pick itself)
         const ownerMC = qBodyType(qOwnerBody(definition.origin), BodyType.MATE_CONNECTOR);
-        // (an implicit connector does not evaluate to a body here, so evMateConnector alone validates the pick, as std Decal does)
-        const originMC = size(evaluateQuery(context, ownerMC)) == 1 ? ownerMC : definition.origin;
-        var cSys = undefined;
-        try
+        // (a connector created in the field arrives as its vertex, as in export_tag; a real vertex gives world axes)
+        if (isQueryEmpty(context, definition.origin))
         {
-            cSys = evMateConnector(context, { "mateConnector" : originMC });
+            throw regenError("Select a mate connector or vertex as the pattern origin.", ["origin"]);
         }
-        catch
+        var cSys is CoordSystem = WORLD_COORD_SYSTEM;
+        if (size(evaluateQuery(context, ownerMC)) > 0)
         {
-            throw regenError("Select a mate connector (existing or new) as the pattern origin.", ["origin"]);
+            cSys = evMateConnector(context, { "mateConnector" : evaluateQuery(context, ownerMC)[0] });
+        }
+        else
+        {
+            cSys = coordSystem(evVertexPoint(context, { "vertex" : definition.origin }), vector(1, 0, 0), vector(0, 0, 1));
         }
 
         // A constituent of a selected composite moves with it
