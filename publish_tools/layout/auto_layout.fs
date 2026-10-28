@@ -73,12 +73,17 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
         // Origin: an MC pick may arrive as its owner body or vertex
         // (existing connectors via their owner body; an implicit connector created in the field resolves as the pick itself)
         const ownerMC = qBodyType(qOwnerBody(definition.origin), BodyType.MATE_CONNECTOR);
+        // (an implicit connector does not evaluate to a body here, so evMateConnector alone validates the pick, as std Decal does)
         const originMC = size(evaluateQuery(context, ownerMC)) == 1 ? ownerMC : definition.origin;
-        if (size(evaluateQuery(context, originMC)) != 1)
+        var cSys is CoordSystem;
+        try
         {
-            throw regenError("Select one mate connector as the pattern origin.", ["origin"]);
+            cSys = evMateConnector(context, { "mateConnector" : originMC });
         }
-        const cSys is CoordSystem = evMateConnector(context, { "mateConnector" : originMC });
+        catch
+        {
+            throw regenError("Select a mate connector (existing or new) as the pattern origin.", ["origin"]);
+        }
 
         // A constituent of a selected composite moves with it
         const composites = qBodyType(definition.bodies, BodyType.COMPOSITE);
