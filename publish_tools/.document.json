@@ -18,7 +18,8 @@
     "primitive_output": "6f122edb2547a6a46991d9fd",
     "primitive_profiles": "5865b24d55ff270a56088adf",
     "export_primitive": "3ce76ee786987ef00917b9b2",
-    "export_tag": "27ea220eb001108a75d2bcc6"
+    "export_tag": "27ea220eb001108a75d2bcc6",
+    "auto_layout": "8fd96a3e05d43a953d0ba400"
   },
   "tab_folders": {
     "primitive_frame": "primitive",
@@ -28,6 +29,7 @@
     "primitive_output": "primitive",
     "primitive_profiles": "primitive",
     "export_primitive": "primitive",
-    "export_tag": "export"
+    "export_tag": "export",
+    "auto_layout": "layout"
   }
 }

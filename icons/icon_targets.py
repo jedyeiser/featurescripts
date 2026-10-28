@@ -48,5 +48,6 @@ TARGETS = [
     ("publish_tools", "station_table", "station_table"),  # 2026-09-28, table annotation wired by hand (user picked B)
     ("publish_tools", "primitive/export_primitive", "export_primitive"),  # 2026-09-28, user picked draft B
     ("publish_tools", "primitive/primitive_table", "primitive_tables"),  # 2026-09-28, draft A; table annotation wired by hand
+    ("publish_tools", "layout/auto_layout", "auto_layout"),  # 2026-10-28, packed boxes + blue origin dot
     ("publish_tools", "export/export_tag", "export_tag"),  # 2026-10-28, tag outline + blue hole and line
 ]
