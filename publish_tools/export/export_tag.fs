@@ -293,8 +293,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         var composites = [];
         if (definition.oneDxfComposite == true)
         {
-            const all = qUnion([tryGetKey(dxfBodies, "plan") == undefined ? qNothing() : dxfBodies.plan,
-                    tryGetKey(dxfBodies, "profile") == undefined ? qNothing() : dxfBodies.profile]);
+            const all = qUnion([viewBodies(dxfBodies, "plan"), viewBodies(dxfBodies, "profile")]);
             composites = append(composites, dxfComposite(context, id + "dxfAll", all, stem ~ " DXF"));
         }
         else
@@ -357,8 +356,8 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                         "exportTag" : extractableVariable(data, "What to export for the tagged part (schema exportTag/1): name rule, solid formats, DXF plan / profile, drawing intent, origin transform in mm.")
                     },
                     "queries" : {
-                        "exportPlan" : tryGetKey(dxfBodies, "plan") == undefined ? qNothing() : dxfBodies.plan,
-                        "exportProfile" : tryGetKey(dxfBodies, "profile") == undefined ? qNothing() : dxfBodies.profile
+                        "exportPlan" : viewBodies(dxfBodies, "plan"),
+                        "exportProfile" : viewBodies(dxfBodies, "profile")
                     }
                 });
 
@@ -410,6 +409,12 @@ export function exportTagEditLogic(context is Context, id is Id, oldDefinition i
         definition.nameStale = definition.bodyName != current;
     }
     return definition;
+}
+
+/** A view's DXF bodies, or nothing when that view has none. */
+function viewBodies(bodies is map, key is string) returns Query
+{
+    return bodies[key] == undefined ? qNothing() : bodies[key];
 }
 
 /** The name used for exports and generated bodies. */

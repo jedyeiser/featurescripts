@@ -1,0 +1,195 @@
+- generic [ref=f6e5]:
+  - navigation [ref=f6e6]:
+    - generic [ref=f6e7]:
+      - link [ref=f6e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f6e11]
+      - generic [ref=f6e13] [cursor=pointer]
+    - generic [ref=f6e16]:
+      - generic [ref=f6e18]:
+        - generic [ref=f6e19]: Publish & Drawing tools
+        - generic [ref=f6e20]: Main
+      - generic [ref=f6e22] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f6e26] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f6e30]:
+      - generic [ref=f6e41] [cursor=pointer]
+      - generic [ref=f6e47] [cursor=pointer]
+      - button "Notifications" [ref=f6e52] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f6e60]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f6e63] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f6e68] [cursor=pointer]
+      - button "Share" [ref=f6e72] [cursor=pointer]
+      - generic "Help menu" [ref=f6e74] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f6e78] [cursor=pointer]
+  - generic [ref=f6e88]:
+    - generic [ref=f6e90]:
+      - generic [ref=f6e91]:
+        - generic [ref=f6e92]:
+          - generic [ref=f6e93] [cursor=pointer]
+          - generic [ref=f6e96] [cursor=pointer]
+          - generic [ref=f6e99] [cursor=pointer]
+          - generic [ref=f6e102] [cursor=pointer]
+          - generic [ref=f6e105] [cursor=pointer]
+          - generic [ref=f6e108] [cursor=pointer]
+          - generic [ref=f6e111] [cursor=pointer]
+          - generic [ref=f6e114] [cursor=pointer]
+        - generic [ref=f6e118] [cursor=pointer]
+      - generic [ref=f6e122] [cursor=pointer]
+    - generic [ref=f6e129]:
+      - generic [ref=f6e132]:
+        - generic [ref=f6e136]:
+          - generic [ref=f6e148]:
+            - generic [ref=f6e149]: New feature
+            - generic [ref=f6e162]:
+              - generic [ref=f6e163] [cursor=pointer]: Length parameter
+              - generic [ref=f6e165] [cursor=pointer]
+            - generic [ref=f6e172]:
+              - generic [ref=f6e173] [cursor=pointer]
+              - generic [ref=f6e177] [cursor=pointer]
+            - generic [ref=f6e180]: Commit
+          - button "Search tools… alt/⌥ c" [ref=f6e191] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f6e192]:
+              - generic [ref=f6e193]: alt/⌥
+              - generic [ref=f6e194]: c
+          - generic [ref=f6e195]:
+            - switch "Co-complete" [disabled] [ref=f6e197] [cursor=pointer]
+            - generic [ref=f6e198]: Co-complete
+        - generic [ref=f6e203]:
+          - generic [ref=f6e204]: Monitor Autolayout_Tests
+          - generic [ref=f6e216]: Module outline
+          - generic [ref=f6e251]: Line 1 , Column 1
+      - generic [ref=f6e258]:
+        - textbox "Cursor at row 1" [active] [ref=f6e259]: FeatureScript 3095;
+        - generic [ref=f6e261]:
+          - generic [aria-hidden] [ref=f6e262]: "1"
+          - generic [aria-hidden] [ref=f6e263]: "2"
+          - generic [aria-hidden] [ref=f6e264]: "3"
+          - generic [aria-hidden] [ref=f6e265]: "4"
+          - generic [aria-hidden] [ref=f6e266]: "5"
+          - generic [aria-hidden] [ref=f6e267]: "6"
+          - generic [aria-hidden] [ref=f6e268]: "7"
+          - generic [aria-hidden] [ref=f6e269]: "8"
+          - generic [aria-hidden] [ref=f6e270]: "9"
+          - generic [aria-hidden] [ref=f6e271]: "10"
+          - generic [aria-hidden] [ref=f6e272]: "11"
+          - generic [aria-hidden] [ref=f6e273]: "12"
+          - generic [aria-hidden] [ref=f6e274]: "13"
+          - generic [aria-hidden] [ref=f6e275]: "14"
+          - generic [ref=f6e276]:
+            - text: "15"
+            - button [expanded] [ref=f6e277] [cursor=pointer]
+          - generic [aria-hidden] [ref=f6e278]: "16"
+          - generic [aria-hidden] [ref=f6e279]: "17"
+          - generic [aria-hidden] [ref=f6e280]: "18"
+          - generic [aria-hidden] [ref=f6e281]: "19"
+          - generic [aria-hidden] [ref=f6e282]: "20"
+          - generic [aria-hidden] [ref=f6e283]: "21"
+          - generic [aria-hidden] [ref=f6e284]: "22"
+          - generic [aria-hidden] [ref=f6e285]: "23"
+          - generic [aria-hidden] [ref=f6e286]: "24"
+          - generic [aria-hidden] [ref=f6e287]: "25"
+          - generic [ref=f6e288]:
+            - text: "26"
+            - button [expanded] [ref=f6e289] [cursor=pointer]
+          - generic [aria-hidden] [ref=f6e290]: "27"
+          - generic [aria-hidden] [ref=f6e291]: "28"
+          - generic [aria-hidden] [ref=f6e292]: "29"
+          - generic [aria-hidden] [ref=f6e293]: "30"
+          - generic [aria-hidden] [ref=f6e294]: "31"
+          - generic [aria-hidden] [ref=f6e295]: "32"
+          - generic [aria-hidden] [ref=f6e296]: "33"
+          - generic [aria-hidden] [ref=f6e297]: "34"
+          - generic [aria-hidden] [ref=f6e298]: "35"
+          - generic [aria-hidden] [ref=f6e299]: "36"
+          - generic [aria-hidden] [ref=f6e300]: "37"
+          - generic [aria-hidden] [ref=f6e301]: "38"
+          - generic [aria-hidden] [ref=f6e302]: "39"
+          - generic [aria-hidden] [ref=f6e303]: "40"
+          - generic [ref=f6e304]:
+            - text: "41"
+            - button [expanded] [ref=f6e305] [cursor=pointer]
+          - generic [aria-hidden] [ref=f6e306]: "42"
+          - generic [aria-hidden] [ref=f6e307]: "43"
+          - generic [aria-hidden] [ref=f6e308]: "44"
+          - generic [aria-hidden] [ref=f6e309]: "45"
+          - generic [aria-hidden] [ref=f6e310]: "46"
+          - generic [aria-hidden] [ref=f6e311]: "47"
+          - generic [aria-hidden] [ref=f6e312]: "48"
+          - generic [aria-hidden] [ref=f6e313]: "49"
+          - generic [aria-hidden] [ref=f6e314]: "50"
+          - generic [aria-hidden] [ref=f6e315]: "51"
+          - generic [ref=f6e316]:
+            - text: "52"
+            - button [expanded] [ref=f6e317] [cursor=pointer]
+          - generic [aria-hidden] [ref=f6e318]: "53"
+          - generic [aria-hidden] [ref=f6e319]: "54"
+          - generic [aria-hidden] [ref=f6e320]: "55"
+          - generic [aria-hidden] [ref=f6e321]: "56"
+          - generic [aria-hidden] [ref=f6e322]: "57"
+        - generic [ref=f6e324]:
+          - generic:
+            - generic: FeatureScript 3095;
+            - generic: "import(path : \"onshape/std/common.fs\", version : \"3095.0\");"
+            - generic: "import(path : \"onshape/std/projectiontype.gen.fs\", version : \"3095.0\");"
+            - generic: "// IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)"
+            - generic: "import(path : \"a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3\", version : \"cffacd73d80aa6dc1a2c4273\");"
+            - generic: "// IMPORT: export_tag_icon.svg (feature icon) -- added once the icon tab exists"
+            - generic: /** Attribute written on the tagged body (schema exportTag/1). */
+            - generic: export const EXPORT_TAG_ATTRIBUTE = "publishExportTag";
+            - generic: export const EXPORT_TAG_SCHEMA = "exportTag/1";
+            - generic: /** What to do when the stored name no longer matches the body's current name. */
+            - generic: export enum StaleNameAction
+            - generic: "{"
+            - generic: "annotation { \"Name\" : \"Ignore\" }"
+            - generic: IGNORE,
+            - generic: "annotation { \"Name\" : \"Warn\" }"
+            - generic: WARN,
+            - generic: "annotation { \"Name\" : \"Error\" }"
+            - generic: ERROR
+            - generic: "}"
+            - generic: /** Released-version prefix RULE; the app resolves the real revision at export time. */
+            - generic: export enum ExportVersionPrefix
+            - generic: "{"
+            - generic: "annotation { \"Name\" : \"None\" }"
+            - generic: NONE,
+            - generic: "annotation { \"Name\" : \"V1, V2, ...\" }"
+            - generic: V1,
+            - generic: "annotation { \"Name\" : \"V001, V002, ...\" }"
+            - generic: V001,
+            - generic: "annotation { \"Name\" : \"R0, R1, ...\" }"
+            - generic: R0,
+            - generic: "annotation { \"Name\" : \"R1, R2, ...\" }"
+            - generic: R1
+            - generic: "}"
+            - generic: /** Where a DXF's faces come from. */
+            - generic: export enum ExportDxfSource
+            - generic: "{"
+            - generic: "annotation { \"Name\" : \"None\" }"
+            - generic: NONE,
+            - generic: "annotation { \"Name\" : \"Projection of the part\" }"
+            - generic: PROJECTION,
+            - generic: "annotation { \"Name\" : \"Selected faces\" }"
+            - generic: SELECTION
+            - generic: "}"
+            - generic: /** How the export origin is defined. */
+            - generic: export enum ExportOriginType
+            - generic: "{"
+            - generic: "annotation { \"Name\" : \"None (leave in place)\" }"
+            - generic: NONE,
+            - generic: "annotation { \"Name\" : \"Mate connector\" }"
+            - generic: MATE_CONNECTOR,
+            - generic: "annotation { \"Name\" : \"Insert into quadrant\" }"
+          - generic [ref=f6e328]:
+            - generic [ref=f6e329] [cursor=pointer]
+            - text: Variable_Tools / V6 / extract_outputs
+      - generic [ref=f6e336]:
+        - img [ref=f6e339] [cursor=pointer]
+        - generic [ref=f6e342]:
+          - generic [ref=f6e343] [cursor=pointer]: primitive
+          - generic [ref=f6e349] [cursor=pointer]: station_tools
+          - generic [ref=f6e355] [cursor=pointer]: tests
+          - generic [ref=f6e361] [cursor=pointer]: test drawings
+          - generic [ref=f6e367] [cursor=pointer]: export
+          - generic [ref=f6e373]: export_tag
