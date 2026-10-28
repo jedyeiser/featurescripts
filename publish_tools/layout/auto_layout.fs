@@ -71,7 +71,9 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
     }
     {
         // Origin: an MC pick may arrive as its owner body or vertex
-        const originMC = qBodyType(qUnion([definition.origin, qOwnerBody(definition.origin)]), BodyType.MATE_CONNECTOR);
+        // (existing connectors via their owner body; an implicit connector created in the field resolves as the pick itself)
+        const ownerMC = qBodyType(qOwnerBody(definition.origin), BodyType.MATE_CONNECTOR);
+        const originMC = size(evaluateQuery(context, ownerMC)) == 1 ? ownerMC : definition.origin;
         if (size(evaluateQuery(context, originMC)) != 1)
         {
             throw regenError("Select one mate connector as the pattern origin.", ["origin"]);

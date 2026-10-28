@@ -6,7 +6,8 @@ import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b982
 // IMPORT: export_tag_icon.svg (feature icon)
 IconNamespace::import(path : "f560c2fac5b751264e8c9ac3", version : "0f0021fcd5b08901d6d9ce6e");
 
-// IMPORT: export_tag_icon.svg (feature icon) -- added once the icon tab exists
+// IMPORT: station_geometry.fs (same document, pinned by microversion; re-pin when Station geometry changes)
+import(path : "5d3299cf520723444c27b273", version : "bce94261782be4eeb9b363d2");
 
 /** Attribute written on the tagged body (schema exportTag/1). */
 export const EXPORT_TAG_ATTRIBUTE = "publishExportTag";
@@ -201,6 +202,10 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                 }
             }
 
+        }
+
+        annotation { "Group Name" : "Drawing Information", "Collapsed By Default" : false }
+        {
             annotation { "Name" : "Export drawing", "Default" : false,
                         "Description" : "Intent only: the part has a drawing to export with it." }
             definition.drawingOut is boolean;
@@ -209,17 +214,30 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             {
                 annotation { "Name" : "Drawing file name", "Default" : "", "MaxLength" : 128, "Description" : "Empty = the export name." }
                 definition.drawingName is string;
+            }
 
-                annotation { "Name" : "Station table in the drawing", "Default" : false,
-                            "Description" : "The drawing shows the Station table of this part (Station geometry's views). Recorded in the tag with the view filter below." }
-                definition.stationTable is boolean;
+            annotation { "Name" : "Station table", "Default" : false,
+                        "Description" : "Runs Station geometry for this part, named with the export name, so the drawing's Station table (Views containing = the export name) has its data." }
+            definition.stationTable is boolean;
 
-                if (definition.stationTable)
-                {
-                    annotation { "Name" : "Views containing", "Default" : "", "MaxLength" : 128,
-                                "Description" : "The Station table's 'Views containing' filter. Empty = the export name (Station geometry's name prefix is the part name)." }
-                    definition.stationViewFilter is string;
-                }
+            if (definition.stationTable)
+            {
+                annotation { "Name" : "Station definitions",
+                            "Description" : "The Station definition feature(s) whose stations this part is measured at." }
+                definition.stationDefinitions is FeatureList;
+
+                annotation { "Name" : "Datum (measuring origin)", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1,
+                            "Description" : "Where x = 0. Empty = world origin." }
+                definition.stationDatum is Query;
+
+                annotation { "Name" : "Datum axes", "Default" : StationDatumUse.ORIGIN, "UIHint" : UIHint.SHOW_LABEL }
+                definition.stationDatumUses is StationDatumUse;
+
+                annotation { "Name" : "Plan view (datum XY)", "Default" : true }
+                definition.stationPlan is boolean;
+
+                annotation { "Name" : "Profile view (datum XZ)", "Default" : false }
+                definition.stationProfile is boolean;
             }
         }
 
@@ -287,7 +305,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         }
         if (definition.nameStale && definition.staleAction == StaleNameAction.WARN)
         {
-            warnings = append(warnings, "The part was renamed since the name was stored; Press Get Part Name.");
+            warnings = append(warnings, "The part was renamed since the name was stored; press Get Part Name.");
         }
 
         // Export origin: the minimum transform, recorded; applied only to a single body copy and to the DXF faces.
@@ -362,7 +380,37 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         {
             solidFormats = append(solidFormats, "STL");
         }
-        const stationTable = definition.drawingOut && definition.stationTable;
+
+        // Station table: run Station geometry for this part, named with the stem, so the drawing's Station table
+        // (Views containing = the stem) has its data. The views are tagged composites "<stem> PLAN" / "<stem> PROFILE".
+        const stationTable = definition.stationTable == true;
+        if (stationTable)
+        {
+            if (!definition.stationPlan && !definition.stationProfile)
+            {
+                throw regenError("Turn on the plan or the profile view for the Station table.", ["stationPlan"]);
+            }
+            stationGeometry(context, id + "stations", {
+                        "part" : definition.part,
+                        "datum" : definition.stationDatum,
+                        "datumUses" : definition.stationDatumUses,
+                        "prefix" : stem,
+                        "planView" : definition.stationPlan,
+                        "profileView" : definition.stationProfile,
+                        "profileOutline" : StationProfileOutline.SECTION,
+                        "otherViews" : [],
+                        "stationDefinitions" : definition.stationDefinitions,
+                        "stationSet" : "",
+                        "stations" : [],
+                        "stationLines" : true,
+                        "outlineWires" : true,
+                        "outlineSurface" : false,
+                        "datumPoint" : true,
+                        "flatCopy" : false,
+                        "printTable" : false
+                    });
+            notes = append(notes, "Station table: insert it in the drawing with Views containing = '" ~ stem ~ "'.");
+        }
 
         const data = {
             "schema" : EXPORT_TAG_SCHEMA,
@@ -371,7 +419,8 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             "solid" : { "formats" : solidFormats, "name" : definition.solidName },
             "dxf" : dxf,
             "drawing" : { "export" : definition.drawingOut == true, "name" : definition.drawingName,
-                "stationTable" : stationTable, "stationViewFilter" : stationTable ? (definition.stationViewFilter == "" ? stem : definition.stationViewFilter) : "" },
+                "stationTable" : stationTable, "stationViewFilter" : stationTable ? stem : "",
+                "stationViews" : stationTable ? concatenateArrays([definition.stationPlan ? ["PLAN"] : [], definition.stationProfile ? ["PROFILE"] : []]) : [] },
             "origin" : originData(definition, origin),
             "shiftedCopy" : size(evaluateQuery(context, shiftedCopy)) > 0
         };
@@ -410,7 +459,8 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
          "quadrant" : ExportQuadrant.FIRST, "bufferX" : 10 * millimeter, "bufferY" : 10 * millimeter, "bufferZ" : 0 * millimeter,
          "bodyName" : "", "nameStale" : false, "exportName" : "", "solidName" : "", "planName" : "", "profileName" : "",
          "drawingName" : "", "oneDxfComposite" : false, "shiftCopy" : false,
-         "exportSolid" : false, "exportDxf" : false, "stationTable" : false, "stationViewFilter" : "",
+         "exportSolid" : false, "exportDxf" : false, "stationTable" : false, "stationPlan" : true, "stationProfile" : false,
+         "stationDatum" : qNothing(), "stationDatumUses" : StationDatumUse.ORIGIN,
          "stepOut" : false, "igesOut" : false, "stlOut" : false, "drawingOut" : false,
          "planFaces" : qNothing(), "profileFaces" : qNothing(), "originConnector" : qNothing() });
 

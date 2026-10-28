@@ -4,7 +4,7 @@
   "document_name": "publish_tools",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/73271cfcd708b3f5e3fc315c/w/fea83d30106dba0a4e066761",
-  "last_sync": "2026-10-28T19:44:40.738551+00:00",
+  "last_sync": "2026-10-28T20:12:35.974975+00:00",
   "feature_studios": {
     "station_utils": "8a8c023e223cf0814d973a63",
     "station_definition": "8b522e33d07f67c10c37ba11",
@@ -19,7 +19,7 @@
     "primitive_profiles": "5865b24d55ff270a56088adf",
     "export_primitive": "3ce76ee786987ef00917b9b2",
     "export_tag": "27ea220eb001108a75d2bcc6",
-    "auto_layout": "8fd96a3e05d43a953d0ba400"
+    "auto_layout": "ef7f70dfda622c7df3639950"
   },
   "tab_folders": {
     "primitive_frame": "primitive",
