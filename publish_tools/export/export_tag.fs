@@ -83,6 +83,15 @@ export enum ExportQuadrant
     FOURTH
 }
 
+/** How the DXF face pattern is spaced. */
+export enum ExportPatternSpacing
+{
+    annotation { "Name" : "Minimum clearance between faces" }
+    CLEARANCE,
+    annotation { "Name" : "Pattern distance (pitch)" }
+    DISTANCE
+}
+
 /** The face outlines are built 20 m wide; the part must lie inside. */
 const DXF_PLANE_SIZE = 20 * meter;
 
@@ -199,6 +208,31 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                     annotation { "Name" : "One composite for plan and profile", "Default" : false,
                                 "Description" : "Off: one composite per view (when it has several faces)." }
                     definition.oneDxfComposite is boolean;
+                }
+
+                if (definition.planSource != ExportDxfSource.NONE || definition.profileSource != ExportDxfSource.NONE)
+                {
+                    annotation { "Name" : "Pattern the DXF faces", "Default" : false,
+                                "Description" : "Patterns the projected faces from the export origin, so one DXF holds several copies. Only for a single part (a composite is taken as already patterned). Plan: X and Y. Profile: X and Z." }
+                    definition.dxfPattern is boolean;
+
+                    if (definition.dxfPattern)
+                    {
+                        annotation { "Name" : "Spacing", "Default" : ExportPatternSpacing.CLEARANCE, "UIHint" : UIHint.SHOW_LABEL }
+                        definition.patternSpacing is ExportPatternSpacing;
+
+                        annotation { "Name" : "Instances in X" }
+                        isInteger(definition.patternCountX, { (unitless) : [1, 1, 500] } as IntegerBoundSpec);
+
+                        annotation { "Name" : "Spacing in X" }
+                        isLength(definition.patternSpacingX, { (millimeter) : [0, 10, 100000] } as LengthBoundSpec);
+
+                        annotation { "Name" : "Instances in Y" }
+                        isInteger(definition.patternCountY, { (unitless) : [1, 1, 500] } as IntegerBoundSpec);
+
+                        annotation { "Name" : "Spacing in Y" }
+                        isLength(definition.patternSpacingY, { (millimeter) : [0, 10, 100000] } as LengthBoundSpec);
+                    }
                 }
             }
 
@@ -320,19 +354,31 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         var dxfBodies = {};
         const planSource = definition.exportDxf ? definition.planSource : ExportDxfSource.NONE;
         const profileSource = definition.exportDxf ? definition.profileSource : ExportDxfSource.NONE;
+        // A pattern needs a single part; a composite is taken as already patterned.
+        const patternWanted = definition.exportDxf && definition.dxfPattern == true
+            && (definition.patternCountX > 1 || definition.patternCountY > 1);
+        const pattern = { "applied" : patternWanted && !isComposite, "mode" : definition.patternSpacing,
+            "countX" : definition.patternCountX, "countY" : definition.patternCountY,
+            "spacingX" : definition.patternSpacingX, "spacingY" : definition.patternSpacingY };
+        if (patternWanted && isComposite)
+        {
+            notes = append(notes, "A composite is taken as already patterned: no DXF pattern.");
+        }
         for (var view in [{ "key" : "plan", "label" : "PLAN", "source" : planSource, "faces" : definition.planFaces,
-                    "name" : definition.planName, "normal" : vector(0, 0, 1), "xAxis" : vector(1, 0, 0) },
+                    "name" : definition.planName, "normal" : vector(0, 0, 1), "xAxis" : vector(1, 0, 0),
+                    "secondAxis" : vector(0, 1, 0), "secondIndex" : 1 },
                 { "key" : "profile", "label" : "PROFILE", "source" : profileSource, "faces" : definition.profileFaces,
-                    "name" : definition.profileName, "normal" : vector(0, 1, 0), "xAxis" : vector(1, 0, 0) }])
+                    "name" : definition.profileName, "normal" : vector(0, 1, 0), "xAxis" : vector(1, 0, 0),
+                    "secondAxis" : vector(0, 0, 1), "secondIndex" : 2 }])
         {
             if (view.source == ExportDxfSource.NONE)
             {
                 continue;
             }
-            const bodies = buildDxfFaces(context, id + view.key, definition.part, view, origin, stem);
-            dxfBodies[view.key] = bodies;
+            const built = buildDxfFaces(context, id + view.key, definition.part, view, origin, stem, pattern);
+            dxfBodies[view.key] = built.bodies;
             dxf[view.key] = { "source" : view.source == ExportDxfSource.PROJECTION ? "PROJECTION" : "SELECTION",
-                "name" : view.name, "faceCount" : size(evaluateQuery(context, bodies)) };
+                "name" : view.name, "faceCount" : size(evaluateQuery(context, built.bodies)), "pattern" : built.pattern };
         }
 
         // Composites: one per view when it has several faces, or one for both views.
@@ -459,6 +505,8 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
          "quadrant" : ExportQuadrant.FIRST, "bufferX" : 10 * millimeter, "bufferY" : 10 * millimeter, "bufferZ" : 0 * millimeter,
          "bodyName" : "", "nameStale" : false, "exportName" : "", "solidName" : "", "planName" : "", "profileName" : "",
          "drawingName" : "", "oneDxfComposite" : false, "shiftCopy" : false,
+         "dxfPattern" : false, "patternSpacing" : ExportPatternSpacing.CLEARANCE, "patternCountX" : 1, "patternCountY" : 1,
+         "patternSpacingX" : 10 * millimeter, "patternSpacingY" : 10 * millimeter,
          "exportSolid" : false, "exportDxf" : false, "stationTable" : false, "stationPlan" : true, "stationProfile" : false,
          "stationDatum" : qNothing(), "stationDatumUses" : StationDatumUse.ORIGIN,
          "stepOut" : false, "igesOut" : false, "stlOut" : false, "drawingOut" : false,
@@ -611,7 +659,7 @@ function originData(definition is map, origin is map) returns map
  * land on the world plane at the export position.
  * Returns a Query of the (named) bodies.
  */
-function buildDxfFaces(context is Context, vid is Id, part is Query, view is map, origin is map, stem is string) returns Query
+function buildDxfFaces(context is Context, vid is Id, part is Query, view is map, origin is map, stem is string, pattern is map) returns map
 {
     var tools = qNothing();
     if (view.source == ExportDxfSource.PROJECTION)
@@ -650,13 +698,60 @@ function buildDxfFaces(context is Context, vid is Id, part is Query, view is map
         opTransform(context, vid + "move", { "bodies" : regions, "transform" : origin.xf });
     }
 
-    const bodies = evaluateQuery(context, qBodyType(regions, BodyType.SHEET));
+    var sheets = qBodyType(regions, BodyType.SHEET);
+    var patternData = { "applied" : false };
+    if (pattern.applied)
+    {
+        // Pattern from the export origin along the view's X and second axis (plan Y, profile Z). The pitch is the
+        // faces' extent plus the clearance, or the given distance, which must not be smaller than the extent.
+        const originals = evaluateQuery(context, sheets);
+        const bb = evBox3d(context, { "topology" : qUnion(originals) });
+        const extentX = bb.maxCorner[0] - bb.minCorner[0];
+        const extentY = bb.maxCorner[view.secondIndex] - bb.minCorner[view.secondIndex];
+        const pitchX = pattern.mode == ExportPatternSpacing.CLEARANCE ? extentX + pattern.spacingX : pattern.spacingX;
+        const pitchY = pattern.mode == ExportPatternSpacing.CLEARANCE ? extentY + pattern.spacingY : pattern.spacingY;
+        if (pattern.countX > 1 && pitchX < extentX - TOLERANCE.zeroLength * meter)
+        {
+            throw regenError(view.label ~ " pattern distance in X is smaller than the part (" ~ roundMm(extentX) ~ " mm): the copies would overlap.", ["patternSpacingX"]);
+        }
+        if (pattern.countY > 1 && pitchY < extentY - TOLERANCE.zeroLength * meter)
+        {
+            throw regenError(view.label ~ " pattern distance in Y is smaller than the part (" ~ roundMm(extentY) ~ " mm): the copies would overlap.", ["patternSpacingY"]);
+        }
+        var transforms = [];
+        var names = [];
+        for (var j = 0; j < pattern.countY; j += 1)
+        {
+            for (var i = 0; i < pattern.countX; i += 1)
+            {
+                if (i == 0 && j == 0)
+                {
+                    continue;
+                }
+                transforms = append(transforms, transform(view.xAxis * (pitchX * i) + view.secondAxis * (pitchY * j)));
+                names = append(names, "p_" ~ i ~ "_" ~ j);
+            }
+        }
+        opPattern(context, vid + "pattern", { "entities" : qUnion(originals), "transforms" : transforms, "instanceNames" : names });
+        sheets = qUnion([qUnion(originals), qBodyType(qCreatedBy(vid + "pattern", EntityType.BODY), BodyType.SHEET)]);
+        patternData = { "applied" : true, "countX" : pattern.countX, "countY" : pattern.countY,
+            "pitchXMm" : pitchX / millimeter, "pitchYMm" : pitchY / millimeter,
+            "extentXMm" : extentX / millimeter, "extentYMm" : extentY / millimeter,
+            "spacing" : pattern.mode == ExportPatternSpacing.CLEARANCE ? "CLEARANCE" : "DISTANCE" };
+    }
+
+    const bodies = evaluateQuery(context, sheets);
     for (var i = 0; i < size(bodies); i += 1)
     {
         setProperty(context, { "entities" : bodies[i], "propertyType" : PropertyType.NAME,
                     "value" : size(bodies) == 1 ? stem ~ " " ~ view.label : stem ~ " " ~ view.label ~ " " ~ (i + 1) });
     }
-    return qUnion(bodies);
+    return { "bodies" : qUnion(bodies), "pattern" : patternData };
+}
+
+function roundMm(length is ValueWithUnits) returns number
+{
+    return round(length / millimeter * 100) / 100;
 }
 
 /** Groups several surface bodies in a closed composite named for the view, excluded from the BOM. A single body is left alone. */
