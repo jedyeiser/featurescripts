@@ -364,10 +364,10 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         {
             notes = append(notes, "A composite is taken as already patterned: no DXF pattern.");
         }
-        for (var view in [{ "key" : "plan", "label" : "PLAN", "source" : planSource, "faces" : definition.planFaces,
+        for (var view in [{ "key" : "plan", "label" : "XY", "source" : planSource, "faces" : definition.planFaces,
                     "name" : definition.planName, "normal" : vector(0, 0, 1), "xAxis" : vector(1, 0, 0),
                     "secondAxis" : vector(0, 1, 0), "secondIndex" : 1 },
-                { "key" : "profile", "label" : "PROFILE", "source" : profileSource, "faces" : definition.profileFaces,
+                { "key" : "profile", "label" : "XZ", "source" : profileSource, "faces" : definition.profileFaces,
                     "name" : definition.profileName, "normal" : vector(0, 1, 0), "xAxis" : vector(1, 0, 0),
                     "secondAxis" : vector(0, 0, 1), "secondIndex" : 2 }])
         {
@@ -392,7 +392,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         {
             for (var key in keys(dxfBodies))
             {
-                composites = append(composites, dxfComposite(context, id + ("dxf_" ~ key), dxfBodies[key], stem ~ " " ~ (key == "plan" ? "PLAN" : "PROFILE")));
+                composites = append(composites, dxfComposite(context, id + ("dxf_" ~ key), dxfBodies[key], stem ~ " " ~ (key == "plan" ? "XY" : "XZ")));
             }
         }
         for (var key in keys(dxfBodies))
@@ -441,6 +441,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                         "datum" : definition.stationDatum,
                         "datumUses" : definition.stationDatumUses,
                         "prefix" : stem,
+                        "viewNames" : StationViewNames.XY_XZ,
                         "planView" : definition.stationPlan,
                         "profileView" : definition.stationProfile,
                         "profileOutline" : StationProfileOutline.SECTION,
@@ -466,7 +467,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             "dxf" : dxf,
             "drawing" : { "export" : definition.drawingOut == true, "name" : definition.drawingName,
                 "stationTable" : stationTable, "stationViewFilter" : stationTable ? stem : "",
-                "stationViews" : stationTable ? concatenateArrays([definition.stationPlan ? ["PLAN"] : [], definition.stationProfile ? ["PROFILE"] : []]) : [] },
+                "stationViews" : stationTable ? concatenateArrays([definition.stationPlan ? ["XY"] : [], definition.stationProfile ? ["XZ"] : []]) : [] },
             "origin" : originData(definition, origin),
             "shiftedCopy" : size(evaluateQuery(context, shiftedCopy)) > 0
         };

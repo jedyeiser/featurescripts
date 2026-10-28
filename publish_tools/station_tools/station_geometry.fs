@@ -18,6 +18,15 @@ export enum StationDatumUse
     COORDINATE_SYSTEM
 }
 
+/** How the plan and profile views are named in bodies, composites and the Station table's title. */
+export enum StationViewNames
+{
+    annotation { "Name" : "XY / XZ" }
+    XY_XZ,
+    annotation { "Name" : "PLAN / PROFILE" }
+    PLAN_PROFILE
+}
+
 /** Where the profile view's outline comes from. */
 export enum StationProfileOutline
 {
@@ -104,6 +113,10 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
                             "Description" : "Section: the solids cut by the datum XZ plane (the centreline profile, exact edges); thicknesses are measured on it. Silhouette: the projected outline (the thickest point across the part at each station). Falls back to the silhouette when the plane misses the part." }
                 definition.profileOutline is StationProfileOutline;
             }
+
+            annotation { "Name" : "View names", "Default" : StationViewNames.PLAN_PROFILE, "UIHint" : UIHint.SHOW_LABEL,
+                        "Description" : "Names the plan and profile views' bodies, composites and table title: <prefix> XY / XZ, or <prefix> PLAN / PROFILE. New features start with XY / XZ; saved features keep PLAN / PROFILE." }
+            definition.viewNames is StationViewNames;
 
             annotation { "Name" : "Custom views", "Item name" : "view", "Item label template" : "#viewName",
                         "Description" : "More views, each on a mate connector's XY plane." }
@@ -237,7 +250,7 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
         {
             reportFeatureInfo(context, id, summary);
         }
-    }, { "datumUses" : StationDatumUse.ORIGIN, "profileOutline" : StationProfileOutline.SECTION });
+    }, { "datumUses" : StationDatumUse.ORIGIN, "profileOutline" : StationProfileOutline.SECTION, "viewNames" : StationViewNames.PLAN_PROFILE });
 
 /**
  * Fills the name prefix with the part's name when the part is picked, and follows a part
@@ -247,6 +260,12 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
 export function stationGeometryEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
     isCreating is boolean, specifiedParameters is map) returns map
 {
+    // The annotation default (PLAN / PROFILE) migrates into saved features, so new features start with XY / XZ here
+    // (correction 25).
+    if (isCreating && specifiedParameters.viewNames != true)
+    {
+        definition.viewNames = StationViewNames.XY_XZ;
+    }
     if (isQueryEmpty(context, definition.part))
     {
         return definition;
@@ -294,13 +313,14 @@ function viewFrames(context is Context, definition is map) returns array
     var views = [];
     if (definition.planView)
     {
-        views = append(views, { "key" : "plan", "label" : "PLAN", "cs" : datum });
+        views = append(views, { "key" : "plan", "label" : "PLAN", "display" : definition.viewNames == StationViewNames.XY_XZ ? "XY" : "PLAN", "cs" : datum });
     }
     if (definition.profileView)
     {
         // Looking from datum -Y: X stays the measuring axis and datum Z reads as up.
         const yAxis = cross(datum.zAxis, datum.xAxis);
-        var profile = { "key" : "profile", "label" : "PROFILE", "cs" : coordSystem(datum.origin, datum.xAxis, -yAxis) };
+        var profile = { "key" : "profile", "label" : "PROFILE", "display" : definition.viewNames == StationViewNames.XY_XZ ? "XZ" : "PROFILE",
+                "cs" : coordSystem(datum.origin, datum.xAxis, -yAxis) };
         if (definition.profileOutline != StationProfileOutline.SILHOUETTE)
         {
             // The centreline profile: the solids cut by the datum XZ plane.
@@ -320,7 +340,7 @@ function viewFrames(context is Context, definition is map) returns array
         {
             throw regenError("Custom view " ~ (i + 1) ~ ": enter a view name.", ["otherViews[" ~ i ~ "].viewName"]);
         }
-        views = append(views, { "key" : "view_" ~ label, "label" : label,
+        views = append(views, { "key" : "view_" ~ label, "label" : label, "display" : label,
                     "cs" : evMateConnector(context, { "mateConnector" : v.viewConnector }) });
     }
     return views;
@@ -342,7 +362,9 @@ function buildView(context is Context, vid is Id, definition is map, view is map
     const n = cs.zAxis;
     const u = cs.xAxis;
     const viewPlane = plane(cs.origin, n, u);
-    const namePrefix = prefix ~ " " ~ view.label;
+    // Body and composite names (and the Station table's title / filter) use the display name; the attribute's "view"
+    // stays PLAN / PROFILE, the role the table's headings (Width / Thickness) key on.
+    const namePrefix = prefix ~ " " ~ view.display;
 
     // Silhouette on the view plane. The outline refuses a composite, so give it the members.
     //   solid                    -> opCreateOutline (a region); with a section plane: the section (a region)
