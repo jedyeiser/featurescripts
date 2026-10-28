@@ -444,6 +444,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         // Station table: run Station geometry for this part, named with the stem, so the drawing's Station table
         // (Views containing = the stem) has its data. The views are tagged composites "<stem> XY" / "<stem> XZ".
         const stationTable = definition.stationTable == true;
+        var layout = {};
         if (stationTable)
         {
             if (!definition.stationPlan && !definition.stationProfile)
@@ -471,6 +472,59 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                         "printTable" : false
                     });
             notes = append(notes, "Station table: insert it in the drawing with Views containing = '" ~ stem ~ "'.");
+
+            // Drawing layout for the API tool: what to put in each view, by body name (station ids are the body names, so
+            // adding a station never re-binds another one). Ordinate dimensions run from the datum point along x; the
+            // span (lo / hi) is the width or thickness between a station line's ends. Rows come from the view
+            // composite's Station table attribute.
+            const sid = id + "stations";
+            for (var v in [{ "key" : "plan", "name" : "XY", "on" : definition.stationPlan },
+                    { "key" : "profile", "name" : "XZ", "on" : definition.stationProfile }])
+            {
+                if (!v.on)
+                {
+                    continue;
+                }
+                const prefix = stem ~ " " ~ v.name;
+                const viewComposite = qBodyType(qCreatedBy(sid + v.key + "composite", EntityType.BODY), BodyType.COMPOSITE);
+                const wires = qBodyType(qCreatedBy(sid + v.key + "wires", EntityType.BODY), BodyType.COMPOSITE);
+                var rows = [];
+                if (!isQueryEmpty(context, viewComposite))
+                {
+                    const attr = getAttribute(context, { "entity" : viewComposite, "name" : STATION_TABLE_ATTRIBUTE });
+                    if (attr is map && attr.rows is array)
+                    {
+                        for (var r in attr.rows)
+                        {
+                            if (r.extent != undefined)
+                            {
+                                rows = append(rows, { "id" : r.id, "kind" : "EXTENT", "body" : prefix ~ " " ~ r.id, "x" : r.x });
+                            }
+                            else if (r.hit)
+                            {
+                                rows = append(rows, { "id" : r.id, "kind" : "STATION", "body" : prefix ~ " ST " ~ r.id,
+                                            "x" : r.x, "lo" : r.lo, "hi" : r.hi, "span" : r.span });
+                            }
+                        }
+                    }
+                }
+
+                // With a shift, the station lines, outline and datum point follow it: the CLOSED wires composite is
+                // copied by the export transform (the open view composite holds the part and cannot move).
+                var movedName = "";
+                if (origin.applied && !isQueryEmpty(context, wires))
+                {
+                    const copyId = id + ("stationsCopy_" ~ v.key);
+                    opPattern(context, copyId, { "entities" : wires, "transforms" : [origin.xf], "instanceNames" : ["moved"] });
+                    const moved = qBodyType(qCreatedBy(copyId, EntityType.BODY), BodyType.COMPOSITE);
+                    movedName = prefix ~ " STATIONS";
+                    setProperty(context, { "entities" : moved, "propertyType" : PropertyType.NAME, "value" : movedName });
+                    setProperty(context, { "entities" : moved, "propertyType" : PropertyType.EXCLUDE_FROM_BOM, "value" : true });
+                    created = append(created, moved);
+                }
+                layout[v.name] = { "composite" : prefix, "wires" : prefix ~ " WIRES", "datum" : prefix ~ " DATUM",
+                    "stationsCopy" : movedName, "includeWires" : true, "rows" : rows };
+            }
         }
 
         const data = {
@@ -480,12 +534,16 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             "solid" : { "formats" : solidFormats, "name" : definition.solidName },
             "dxf" : dxf,
             "drawing" : { "export" : definition.drawingOut == true, "name" : definition.drawingName,
-                "stationTable" : stationTable, "stationViewFilter" : stationTable ? stem : "",
+                "stationTable" : stationTable, "stationViewFilter" : stationTable ? stem : "", "layout" : layout,
                 "stationViews" : stationTable ? concatenateArrays([definition.stationPlan ? ["XY"] : [], definition.stationProfile ? ["XZ"] : []]) : [] },
             "origin" : originData(definition, origin),
             "shiftedCopy" : size(evaluateQuery(context, shiftedCopy)) > 0
         };
 
+        if (!isQueryEmpty(context, qHasAttribute(definition.part, EXPORT_TAG_ATTRIBUTE)))
+        {
+            warnings = append(warnings, "Another Export tag already tags this part; this tag overwrites it.");
+        }
         setAttribute(context, { "entities" : definition.part, "name" : EXPORT_TAG_ATTRIBUTE, "attribute" : data });
 
         embedStandardOutputs(context, id, {
@@ -720,13 +778,13 @@ function buildDxfFaces(context is Context, vid is Id, part is Query, view is map
         opTransform(context, vid + "move", { "bodies" : regions, "transform" : origin.xf });
     }
 
-    var sheets = qBodyType(regions, BodyType.SHEET);
+    const originals = evaluateQuery(context, qBodyType(regions, BodyType.SHEET));
+    var copies = [];
     var patternData = { "applied" : false };
     if (pattern.applied)
     {
         // Pattern from the export origin along the view's X and second axis (plan Y, profile Z). The pitch is the
         // faces' extent plus the clearance, or the given distance, which must not be smaller than the extent.
-        const originals = evaluateQuery(context, sheets);
         const bb = evBox3d(context, { "topology" : qUnion(originals) });
         const extentX = bb.maxCorner[0] - bb.minCorner[0];
         const extentY = bb.maxCorner[view.secondIndex] - bb.minCorner[view.secondIndex];
@@ -742,6 +800,7 @@ function buildDxfFaces(context is Context, vid is Id, part is Query, view is map
         }
         var transforms = [];
         var names = [];
+        var instances = [{ "n" : 0, "ix" : 0, "iy" : 0, "offsetXMm" : 0, "offsetYMm" : 0 }];
         for (var j = 0; j < pattern.countY; j += 1)
         {
             for (var i = 0; i < pattern.countX; i += 1)
@@ -752,23 +811,34 @@ function buildDxfFaces(context is Context, vid is Id, part is Query, view is map
                 }
                 transforms = append(transforms, transform(view.xAxis * (pitchX * i) + view.secondAxis * (pitchY * j)));
                 names = append(names, "p_" ~ i ~ "_" ~ j);
+                instances = append(instances, { "n" : size(instances), "ix" : i, "iy" : j,
+                            "offsetXMm" : pitchX * i / millimeter, "offsetYMm" : pitchY * j / millimeter });
             }
         }
         opPattern(context, vid + "pattern", { "entities" : qUnion(originals), "transforms" : transforms, "instanceNames" : names });
-        sheets = qUnion([qUnion(originals), qBodyType(qCreatedBy(vid + "pattern", EntityType.BODY), BodyType.SHEET)]);
-        patternData = { "applied" : true, "countX" : pattern.countX, "countY" : pattern.countY,
+        copies = evaluateQuery(context, qBodyType(qCreatedBy(vid + "pattern", EntityType.BODY), BodyType.SHEET));
+        patternData = { "applied" : true, "instances" : instances, "countX" : pattern.countX, "countY" : pattern.countY,
             "pitchXMm" : pitchX / millimeter, "pitchYMm" : pitchY / millimeter,
             "extentXMm" : extentX / millimeter, "extentYMm" : extentY / millimeter,
             "spacing" : pattern.mode == ExportPatternSpacing.CLEARANCE ? "CLEARANCE" : "DISTANCE" };
     }
 
-    const bodies = evaluateQuery(context, sheets);
-    for (var i = 0; i < size(bodies); i += 1)
+    // Originals: "<stem> XY" (or "<stem> XY <k>" when the outline has several regions). Copies: "<stem> XY PATTERN <n>",
+    // n counting along X first, then along Y (the attribute lists each instance's indices and offsets).
+    const nOriginal = size(originals);
+    for (var k = 0; k < nOriginal; k += 1)
     {
-        setProperty(context, { "entities" : bodies[i], "propertyType" : PropertyType.NAME,
-                    "value" : size(bodies) == 1 ? stem ~ " " ~ view.label : stem ~ " " ~ view.label ~ " " ~ (i + 1) });
+        setProperty(context, { "entities" : originals[k], "propertyType" : PropertyType.NAME,
+                    "value" : nOriginal == 1 ? stem ~ " " ~ view.label : stem ~ " " ~ view.label ~ " " ~ (k + 1) });
     }
-    return { "bodies" : qUnion(bodies), "pattern" : patternData };
+    for (var m = 0; m < size(copies); m += 1)
+    {
+        const instance = floor(m / nOriginal) + 1;
+        const region = m - (instance - 1) * nOriginal + 1;
+        setProperty(context, { "entities" : copies[m], "propertyType" : PropertyType.NAME,
+                    "value" : stem ~ " " ~ view.label ~ " PATTERN " ~ instance ~ (nOriginal > 1 ? " " ~ region : "") });
+    }
+    return { "bodies" : qUnion(concatenateArrays([originals, copies])), "pattern" : patternData };
 }
 
 function roundMm(length is ValueWithUnits) returns number
