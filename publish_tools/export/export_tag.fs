@@ -7,7 +7,7 @@ import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b982
 IconNamespace::import(path : "f560c2fac5b751264e8c9ac3", version : "0f0021fcd5b08901d6d9ce6e");
 
 // IMPORT: station_geometry.fs (same document, pinned by microversion; re-pin when Station geometry changes)
-import(path : "5d3299cf520723444c27b273", version : "bce94261782be4eeb9b363d2");
+export import(path : "5d3299cf520723444c27b273", version : "bce94261782be4eeb9b363d2");
 
 /** Attribute written on the tagged body (schema exportTag/1). */
 export const EXPORT_TAG_ATTRIBUTE = "publishExportTag";
