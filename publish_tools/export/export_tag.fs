@@ -213,7 +213,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                 if (definition.planSource != ExportDxfSource.NONE || definition.profileSource != ExportDxfSource.NONE)
                 {
                     annotation { "Name" : "Pattern the DXF faces", "Default" : false,
-                                "Description" : "Patterns the projected faces from the export origin, so one DXF holds several copies. Only for a single part (a composite is taken as already patterned). Plan: X and Y. Profile: X and Z." }
+                                "Description" : "Creates the patterned copies as real surface bodies in this Part Studio (the DXF faces and their composite), starting at the export origin, so one DXF holds several copies. Only for a single part (a composite is taken as already patterned and gets a warning). Plan: X and Y. Profile: X and Z." }
                     definition.dxfPattern is boolean;
 
                     if (definition.dxfPattern)
@@ -362,7 +362,8 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             "spacingX" : definition.patternSpacingX, "spacingY" : definition.patternSpacingY };
         if (patternWanted && isComposite)
         {
-            notes = append(notes, "A composite is taken as already patterned: no DXF pattern.");
+            // The requested output is missing, so this is a warning (the feature would otherwise look fine).
+            warnings = append(warnings, "A composite is taken as already patterned: the DXF pattern was NOT created.");
         }
         for (var view in [{ "key" : "plan", "label" : "XY", "source" : planSource, "faces" : definition.planFaces,
                     "name" : definition.planName, "normal" : vector(0, 0, 1), "xAxis" : vector(1, 0, 0),
@@ -488,6 +489,13 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                 });
 
         var summary = "Tag recorded for '" ~ stem ~ "'.";
+        for (var key in keys(dxf))
+        {
+            const faces = dxf[key].faceCount;
+            const pat = dxf[key].pattern;
+            summary = summary ~ " " ~ (key == "plan" ? "XY" : "XZ") ~ " DXF: " ~ faces ~ " surface bod" ~ (faces == 1 ? "y" : "ies")
+                ~ (pat.applied ? " (pattern " ~ pat.countX ~ " x " ~ pat.countY ~ ", pitch " ~ roundMm(pat.pitchXMm * millimeter) ~ " x " ~ roundMm(pat.pitchYMm * millimeter) ~ " mm)" : "") ~ ".";
+        }
         if (size(notes) > 0)
         {
             summary = summary ~ " " ~ join(notes, " ");
