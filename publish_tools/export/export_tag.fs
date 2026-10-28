@@ -224,14 +224,26 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                         annotation { "Name" : "Instances in X" }
                         isInteger(definition.patternCountX, { (unitless) : [1, 1, 500] } as IntegerBoundSpec);
 
-                        annotation { "Name" : "Spacing in X" }
-                        isLength(definition.patternSpacingX, { (millimeter) : [0, 10, 100000] } as LengthBoundSpec);
-
                         annotation { "Name" : "Instances in Y" }
                         isInteger(definition.patternCountY, { (unitless) : [1, 1, 500] } as IntegerBoundSpec);
 
-                        annotation { "Name" : "Spacing in Y" }
-                        isLength(definition.patternSpacingY, { (millimeter) : [0, 10, 100000] } as LengthBoundSpec);
+                        // One id per branch (correction 46a), so each label says what the value is.
+                        if (definition.patternSpacing == ExportPatternSpacing.CLEARANCE)
+                        {
+                            annotation { "Name" : "Clearance in X", "Description" : "Gap between neighbouring faces along X." }
+                            isLength(definition.clearanceX, { (millimeter) : [0, 10, 100000] } as LengthBoundSpec);
+
+                            annotation { "Name" : "Clearance in Y", "Description" : "Gap between neighbouring faces along Y (Z in the XZ view)." }
+                            isLength(definition.clearanceY, { (millimeter) : [0, 10, 100000] } as LengthBoundSpec);
+                        }
+                        else
+                        {
+                            annotation { "Name" : "Pattern distance in X", "Description" : "Pitch: start-to-start distance along X. Must not be smaller than the faces' width." }
+                            isLength(definition.pitchX, { (millimeter) : [0, 300, 100000] } as LengthBoundSpec);
+
+                            annotation { "Name" : "Pattern distance in Y", "Description" : "Pitch along Y (Z in the XZ view). Must not be smaller than the faces' height." }
+                            isLength(definition.pitchY, { (millimeter) : [0, 300, 100000] } as LengthBoundSpec);
+                        }
                     }
                 }
             }
@@ -359,7 +371,8 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             && (definition.patternCountX > 1 || definition.patternCountY > 1);
         const pattern = { "applied" : patternWanted && !isComposite, "mode" : definition.patternSpacing,
             "countX" : definition.patternCountX, "countY" : definition.patternCountY,
-            "spacingX" : definition.patternSpacingX, "spacingY" : definition.patternSpacingY };
+            "spacingX" : definition.patternSpacing == ExportPatternSpacing.CLEARANCE ? definition.clearanceX : definition.pitchX,
+            "spacingY" : definition.patternSpacing == ExportPatternSpacing.CLEARANCE ? definition.clearanceY : definition.pitchY };
         if (patternWanted && isComposite)
         {
             // The requested output is missing, so this is a warning (the feature would otherwise look fine).
@@ -515,7 +528,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
          "bodyName" : "", "nameStale" : false, "exportName" : "", "solidName" : "", "planName" : "", "profileName" : "",
          "drawingName" : "", "oneDxfComposite" : false, "shiftCopy" : false,
          "dxfPattern" : false, "patternSpacing" : ExportPatternSpacing.CLEARANCE, "patternCountX" : 1, "patternCountY" : 1,
-         "patternSpacingX" : 10 * millimeter, "patternSpacingY" : 10 * millimeter,
+         "clearanceX" : 10 * millimeter, "clearanceY" : 10 * millimeter, "pitchX" : 300 * millimeter, "pitchY" : 300 * millimeter,
          "exportSolid" : false, "exportDxf" : false, "stationTable" : false, "stationPlan" : true, "stationProfile" : false,
          "stationDatum" : qNothing(), "stationDatumUses" : StationDatumUse.ORIGIN,
          "stepOut" : false, "igesOut" : false, "stlOut" : false, "drawingOut" : false,
@@ -721,11 +734,11 @@ function buildDxfFaces(context is Context, vid is Id, part is Query, view is map
         const pitchY = pattern.mode == ExportPatternSpacing.CLEARANCE ? extentY + pattern.spacingY : pattern.spacingY;
         if (pattern.countX > 1 && pitchX < extentX - TOLERANCE.zeroLength * meter)
         {
-            throw regenError(view.label ~ " pattern distance in X is smaller than the part (" ~ roundMm(extentX) ~ " mm): the copies would overlap.", ["patternSpacingX"]);
+            throw regenError(view.label ~ " pattern distance in X is smaller than the part (" ~ roundMm(extentX) ~ " mm): the copies would overlap.", ["pitchX"]);
         }
         if (pattern.countY > 1 && pitchY < extentY - TOLERANCE.zeroLength * meter)
         {
-            throw regenError(view.label ~ " pattern distance in Y is smaller than the part (" ~ roundMm(extentY) ~ " mm): the copies would overlap.", ["patternSpacingY"]);
+            throw regenError(view.label ~ " pattern distance in Y is smaller than the part (" ~ roundMm(extentY) ~ " mm): the copies would overlap.", ["pitchY"]);
         }
         var transforms = [];
         var names = [];
