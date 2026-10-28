@@ -75,7 +75,7 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
         const ownerMC = qBodyType(qOwnerBody(definition.origin), BodyType.MATE_CONNECTOR);
         // (an implicit connector does not evaluate to a body here, so evMateConnector alone validates the pick, as std Decal does)
         const originMC = size(evaluateQuery(context, ownerMC)) == 1 ? ownerMC : definition.origin;
-        var cSys is CoordSystem;
+        var cSys = undefined;
         try
         {
             cSys = evMateConnector(context, { "mateConnector" : originMC });
