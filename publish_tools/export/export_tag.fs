@@ -86,9 +86,9 @@ export enum ExportQuadrant
 /** How the DXF face pattern is spaced. */
 export enum ExportPatternSpacing
 {
-    annotation { "Name" : "Minimum clearance between faces" }
+    annotation { "Name" : "Clearance" }
     CLEARANCE,
-    annotation { "Name" : "Pattern distance (pitch)" }
+    annotation { "Name" : "Pitch (distance)" }
     DISTANCE
 }
 
@@ -301,13 +301,13 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                 annotation { "Name" : "Datum axes", "Default" : StationDatumUse.ORIGIN, "UIHint" : UIHint.SHOW_LABEL }
                 definition.stationDatumUses is StationDatumUse;
 
-                annotation { "Name" : "Plan view (datum XY)", "Default" : true }
+                annotation { "Name" : "Plan view (XY)", "Default" : true }
                 definition.stationPlan is boolean;
 
-                annotation { "Name" : "Profile view (datum XZ)", "Default" : false }
+                annotation { "Name" : "Profile view (XZ)", "Default" : false }
                 definition.stationProfile is boolean;
 
-                annotation { "Name" : "Build the views at the export position", "Default" : false,
+                annotation { "Name" : "Views at export position", "Default" : false,
                             "Description" : "Off: the views are built on the picked part where it is (no new part). On: they are built on a shifted copy of the part at the export origin (a new part; single bodies only). Needs an export origin." }
                 definition.stationAtExport is boolean;
             }
@@ -489,6 +489,10 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         // (Views containing = the stem) has its data. The views are tagged composites "<stem> XY" / "<stem> XZ".
         // The Station table belongs to the drawing: it only runs when Export drawing is on.
         const stationTable = definition.drawingOut == true && definition.stationTable == true;
+        if (definition.stationTable == true && definition.drawingOut != true)
+        {
+            warnings = append(warnings, "Station table is on but Export drawing is off: no station views were built.");
+        }
         var layout = {};
         if (stationTable)
         {
