@@ -458,6 +458,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             // transformed datum frame, deleted again after the run).
             var stationPart = definition.part;
             var stationDatum = definition.stationDatum;
+            var stationFrame = qNothing();
             if (origin.applied)
             {
                 stationPart = shiftedCopy;
@@ -478,10 +479,17 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                             "coordSystem" : coordSystem(origin.xf * datumCs.origin, origin.xf.linear * datumCs.xAxis, origin.xf.linear * datumCs.zAxis)
                         });
                 stationDatum = qCreatedBy(id + "stationDatum", EntityType.BODY);
+                // The Station definition's stations are absolute positions: Station geometry moves them by the image of
+                // the world frame under the shift (hidden "Station frame").
+                opMateConnector(context, id + "stationFrame", {
+                            "coordSystem" : coordSystem(origin.xf * (vector(0, 0, 0) * meter), origin.xf.linear * vector(1, 0, 0), origin.xf.linear * vector(0, 0, 1))
+                        });
+                stationFrame = qCreatedBy(id + "stationFrame", EntityType.BODY);
             }
             stationGeometry(context, id + "stations", {
                         "part" : stationPart,
                         "datum" : stationDatum,
+                        "stationFrame" : stationFrame,
                         "datumUses" : definition.stationDatumUses,
                         "prefix" : stem,
                         "viewNames" : StationViewNames.XY_XZ,
@@ -501,7 +509,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                     });
             if (origin.applied)
             {
-                opDeleteBodies(context, id + "deleteStationDatum", { "entities" : stationDatum });
+                opDeleteBodies(context, id + "deleteStationDatum", { "entities" : qUnion([stationDatum, stationFrame]) });
             }
             notes = append(notes, "Station table: insert it in the drawing with Views containing = '" ~ stem ~ "'."
                 ~ (origin.applied ? " The views are built on the shifted copy." : ""));

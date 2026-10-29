@@ -90,6 +90,12 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
                         "Description" : "Where x = 0. Empty = world origin. With 'World axes' only its position counts: x runs along world X, plan = world XY, profile = world XZ." }
             definition.datum is Query;
 
+            // Set by Export tag only: the image of the world frame under the export shift. The Station definition's
+            // stations are absolute positions, so a part built at the export position needs them moved with it.
+            annotation { "Name" : "Station frame", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                        "UIHint" : [UIHint.ALWAYS_HIDDEN, UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS] }
+            definition.stationFrame is Query;
+
             annotation { "Name" : "Datum axes", "Default" : StationDatumUse.ORIGIN,
                         "Description" : "World axes: the datum is a point only (a ski's own mate connectors usually have Z along the ski, which would turn every view). Mate connector's axes: the picked connector's X is the measuring axis and its XY the plan plane." }
             definition.datumUses is StationDatumUse;
@@ -194,7 +200,11 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
             throw regenError("Enter a name prefix, e.g. the part number.", ["prefix"]);
         }
         const prefix = definition.prefix;
-        const stations = collectStations(context, definition.stationDefinitions, definition.stationSet, definition.stations);
+        var stations = collectStations(context, definition.stationDefinitions, definition.stationSet, definition.stations);
+        if (!isQueryEmpty(context, definition.stationFrame))
+        {
+            stations = moveStations(context, stations, definition.stationFrame);
+        }
         // Table language from the Station definition; the Station table reads it from the view's attribute.
         definition.tableLanguage = readStationLanguage(context, definition.stationDefinitions);
         const views = viewFrames(context, definition);
@@ -250,7 +260,7 @@ export const stationGeometry = defineFeature(function(context is Context, id is 
         {
             reportFeatureInfo(context, id, summary);
         }
-    }, { "datumUses" : StationDatumUse.ORIGIN, "profileOutline" : StationProfileOutline.SECTION, "viewNames" : StationViewNames.PLAN_PROFILE });
+    }, { "datumUses" : StationDatumUse.ORIGIN, "profileOutline" : StationProfileOutline.SECTION, "viewNames" : StationViewNames.PLAN_PROFILE, "stationFrame" : qNothing() });
 
 /**
  * Fills the name prefix with the part's name when the part is picked, and follows a part
@@ -281,6 +291,32 @@ export function stationGeometryEditLogic(context is Context, id is Id, oldDefini
         definition.prefix = partName;
     }
     return definition;
+}
+
+/**
+ * The stations carried by the transform that takes the world frame onto `frame` (a mate connector): origins as
+ * points, directions as vectors. Used when the part is built at an export position (Export tag).
+ */
+function moveStations(context is Context, stations is array, frame is Query) returns array
+{
+    const connectors = evaluateQuery(context, qBodyType(qOwnerBody(frame), BodyType.MATE_CONNECTOR));
+    if (size(connectors) == 0)
+    {
+        throw regenError("The station frame must be a mate connector.", ["stationFrame"]);
+    }
+    const xf = toWorld(evMateConnector(context, { "mateConnector" : connectors[0] }));
+    var moved = [];
+    for (var s in stations)
+    {
+        var m = s;
+        m.origin = xf * s.origin;
+        if (s.hasDirection)
+        {
+            m.direction = xf.linear * s.direction;
+        }
+        moved = append(moved, m);
+    }
+    return moved;
 }
 
 /**
