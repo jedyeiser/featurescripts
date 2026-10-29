@@ -161,6 +161,7 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
         var oversize = 0;
         var nestedCount = 0;
         var regions = [];
+        var holeRecords = [];
         const minHoleHeight = 2 * definition.yBuffer + 1 * millimeter;
         for (var i = 0; i < size(items); i += 1)
         {
@@ -183,6 +184,11 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
                         const zShift = definition.dropToPlane ? host.bb.minCorner[2] - items[i].bb.minCorner[2] : 0 * meter;
                         items[i].local = host.local * transform(vector(shiftX, fit.ty, zShift));
                         items[i].nested = true;
+                        items[i].nestHost = regions[r].host;
+                        items[i].nestT = regions[r].i0 + fit.t;
+                        items[i].nestTy = fit.ty;
+                        items[i].nestZ = zShift;
+                        holeRecords[regions[r].hole].occupants = append(holeRecords[regions[r].hole].occupants, i);
                         var nextRegions = [];
                         for (var q = 0; q < size(regions); q += 1)
                         {
@@ -256,12 +262,46 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
                 {
                     for (var hole in items[i].nest.holes)
                     {
-                        const region = trimRegion(i, hole.lo, hole.hi, minHoleHeight);
+                        const holeId = size(holeRecords);
+                        const region = trimRegion(i, holeId, hole.lo, hole.hi, minHoleHeight);
                         if (region != undefined)
                         {
+                            holeRecords = append(holeRecords, { "lo" : hole.lo, "hi" : hole.hi, "occupants" : [] });
                             regions = append(regions, region);
                         }
                     }
+                }
+            }
+        }
+
+        // Spread the bodies inside each hole: slide every occupant to the middle of its free range (walls and neighbours)
+        if (nestedCount > 0)
+        {
+            for (var h = 0; h < size(holeRecords); h += 1)
+            {
+                var occupants = [];
+                for (var k in holeRecords[h].occupants)
+                {
+                    occupants = append(occupants, { "lo" : items[k].nest.lo, "hi" : items[k].nest.hi, "T" : items[k].nestT, "ty" : items[k].nestTy });
+                }
+                if (size(occupants) > 0)
+                {
+                    const relaxed = relaxHole(holeRecords[h], occupants, definition.xBuffer, definition.yBuffer);
+                    for (var n = 0; n < size(relaxed); n += 1)
+                    {
+                        items[holeRecords[h].occupants[n]].nestT = relaxed[n].T;
+                        items[holeRecords[h].occupants[n]].nestTy = relaxed[n].ty;
+                    }
+                }
+            }
+            // Hosts come before the bodies inside them, so one pass in order rebuilds every nested transform
+            for (var i = 0; i < size(items); i += 1)
+            {
+                if (items[i].nested)
+                {
+                    const host = items[items[i].nestHost];
+                    const shiftX = host.bb.minCorner[0] + items[i].nestT * NEST_STEP - items[i].bb.minCorner[0];
+                    items[i].local = host.local * transform(vector(shiftX, items[i].nestTy, items[i].nestZ));
                 }
             }
         }
@@ -715,7 +755,7 @@ function nestingProfile(context is Context, body is Query, cSys is CoordSystem, 
 }
 
 // A hole's free intervals cut down to the cells that leave room for a body, as a region owned by item `host`
-function trimRegion(host is number, lo is array, hi is array, minHeight is ValueWithUnits)
+function trimRegion(host is number, holeId is number, lo is array, hi is array, minHeight is ValueWithUnits)
 {
     var first = -1;
     var last = -1;
@@ -741,7 +781,7 @@ function trimRegion(host is number, lo is array, hi is array, minHeight is Value
         regionLo = append(regionLo, lo[k]);
         regionHi = append(regionHi, hi[k]);
     }
-    return { "host" : host, "i0" : first, "lo" : regionLo, "hi" : regionHi };
+    return { "host" : host, "hole" : holeId, "i0" : first, "lo" : regionLo, "hi" : regionHi };
 }
 
 // The lowest-x cell offset (then lowest y) where a body's envelope fits in the region with the buffers all round
@@ -811,12 +851,141 @@ function splitRegion(region is map, cand is map, fit is map, xBuffer is ValueWit
     {
         if (size(c.lo) > 0)
         {
-            const piece = trimRegion(region.host, c.lo, c.hi, minHeight);
+            const piece = trimRegion(region.host, region.hole, c.lo, c.hi, minHeight);
             if (piece != undefined)
             {
-                pieces = append(pieces, { "host" : piece.host, "i0" : c.i0 + piece.i0, "lo" : piece.lo, "hi" : piece.hi });
+                pieces = append(pieces, { "host" : piece.host, "hole" : piece.hole, "i0" : c.i0 + piece.i0, "lo" : piece.lo, "hi" : piece.hi });
             }
         }
     }
     return pieces;
+}
+
+// ---- spreading the bodies inside a hole ----
+
+const NEST_RELAX_PASSES = 4;
+const NEST_RELAX_REACH = 40; // cells (200 mm) an occupant may slide along the hole
+
+// Occupant a's envelope at cell offset j (clipped, so the buffer cells past its ends repeat the end values)
+function envelopeAt(arr is array, j is number)
+{
+    return arr[clamp(j, 0, size(arr) - 1)];
+}
+
+// Is occupant a feasible at cell offset T and y shift ty: inside the hole walls and clear of the other occupants,
+// with the buffers all round (x buffer as cells before and after, y buffer vertically)?
+function occupantFits(hole is map, pos is array, a is number, T is number, ty is ValueWithUnits, nb is number, yBuffer is ValueWithUnits) returns boolean
+{
+    const me = pos[a];
+    const m = size(me.lo);
+    for (var j = -nb; j < m + nb; j += 1)
+    {
+        const cell = T + j;
+        if (cell < 0 || cell >= size(hole.lo))
+        {
+            return false;
+        }
+        const myLo = envelopeAt(me.lo, j) + ty;
+        const myHi = envelopeAt(me.hi, j) + ty;
+        if (myLo < hole.lo[cell] + yBuffer - FREE_TOL || myHi > hole.hi[cell] - yBuffer + FREE_TOL)
+        {
+            return false;
+        }
+        for (var b = 0; b < size(pos); b += 1)
+        {
+            const jb = cell - pos[b].T;
+            if (b != a && jb >= 0 && jb < size(pos[b].lo))
+            {
+                const otherLo = pos[b].lo[jb] + pos[b].ty;
+                const otherHi = pos[b].hi[jb] + pos[b].ty;
+                const separated = myLo >= otherHi + yBuffer - FREE_TOL || myHi <= otherLo - yBuffer + FREE_TOL;
+                if (!separated)
+                {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
+}
+
+// The y shift in the middle of what occupant a may take at its current cells (walls and the neighbours above and below)
+function centredY(hole is map, pos is array, a is number, yBuffer is ValueWithUnits) returns ValueWithUnits
+{
+    const me = pos[a];
+    const m = size(me.lo);
+    var lowBound = -NEST_BIG;
+    var highBound = NEST_BIG;
+    for (var j = 0; j < m; j += 1)
+    {
+        const cell = me.T + j;
+        lowBound = maxLen(lowBound, hole.lo[cell] - me.lo[j] + yBuffer);
+        highBound = minLen(highBound, hole.hi[cell] - me.hi[j] - yBuffer);
+        for (var b = 0; b < size(pos); b += 1)
+        {
+            const jb = cell - pos[b].T;
+            if (b != a && jb >= 0 && jb < size(pos[b].lo))
+            {
+                const otherMid = pos[b].ty + (pos[b].lo[jb] + pos[b].hi[jb]) / 2;
+                const myMid = me.ty + (me.lo[j] + me.hi[j]) / 2;
+                if (otherMid < myMid)
+                {
+                    lowBound = maxLen(lowBound, pos[b].hi[jb] + pos[b].ty - me.lo[j] + yBuffer);
+                }
+                else
+                {
+                    highBound = minLen(highBound, pos[b].lo[jb] + pos[b].ty - me.hi[j] - yBuffer);
+                }
+            }
+        }
+    }
+    return lowBound <= highBound ? (lowBound + highBound) / 2 : me.ty;
+}
+
+// The cell offset in the middle of how far occupant a can slide along the hole (found by bisection each way)
+function centredT(hole is map, pos is array, a is number, nb is number, yBuffer is ValueWithUnits) returns number
+{
+    const T = pos[a].T;
+    if (!occupantFits(hole, pos, a, T, pos[a].ty, nb, yBuffer))
+    {
+        return T;
+    }
+    var reach = [0, 0];
+    for (var side = 0; side < 2; side += 1)
+    {
+        const dir = side == 0 ? -1 : 1;
+        var good = 0;
+        var bad = NEST_RELAX_REACH + 1;
+        while (bad - good > 1)
+        {
+            const mid = floor((good + bad) / 2);
+            if (occupantFits(hole, pos, a, T + dir * mid, pos[a].ty, nb, yBuffer))
+            {
+                good = mid;
+            }
+            else
+            {
+                bad = mid;
+            }
+        }
+        reach[side] = dir * good;
+    }
+    return T + round((reach[0] + reach[1]) / 2);
+}
+
+// A few passes of sliding every occupant to the middle of its free range in y and then along x: the clearance to the hole
+// wall and to the other bodies inside it evens out. Rough on purpose: vertical gaps stand in for true distances.
+function relaxHole(hole is map, occupants is array, xBuffer is ValueWithUnits, yBuffer is ValueWithUnits) returns array
+{
+    const nb = ceil(xBuffer / NEST_STEP);
+    var pos = occupants;
+    for (var pass = 0; pass < NEST_RELAX_PASSES; pass += 1)
+    {
+        for (var a = 0; a < size(pos); a += 1)
+        {
+            pos[a].ty = centredY(hole, pos, a, yBuffer);
+            pos[a].T = centredT(hole, pos, a, nb, yBuffer);
+        }
+    }
+    return pos;
 }
