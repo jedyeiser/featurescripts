@@ -115,7 +115,24 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
             const bb is Box3d = evBox3d(context, { "topology" : body, "cSys" : cSys });
             const dx = bb.maxCorner[0] - bb.minCorner[0];
             const dy = bb.maxCorner[1] - bb.minCorner[1];
-            const rotate = definition.allowRotation && dy > dx;
+            // Long side along X by default; with a width limit, a body too wide for it turns so its length runs along Y
+            var rotate = definition.allowRotation && dy > dx;
+            if (definition.allowRotation && definition.limitWidth)
+            {
+                const room = definition.layoutWidth - 2 * definition.xBuffer + TOLERANCE.zeroLength * meter;
+                if (dx > room && dy <= room)
+                {
+                    rotate = true;
+                }
+                else if (dy > room && dx <= room)
+                {
+                    rotate = false;
+                }
+                else if (dx > room && dy > room)
+                {
+                    rotate = dy < dx;
+                }
+            }
             items = append(items, {
                         "body" : body,
                         "bb" : bb,
