@@ -92,6 +92,18 @@ export enum ExportPatternSpacing
     DISTANCE
 }
 
+/** Where the profile (XZ) projection of a solid comes from. */
+export enum ExportProfileOutline
+{
+    annotation { "Name" : "Section through the part (exact edges)" }
+    SECTION,
+    annotation { "Name" : "Silhouette (projected outline)" }
+    SILHOUETTE
+}
+
+/** The most copies a DXF pattern may create (instances in X times instances in Y). */
+const PATTERN_MAX_INSTANCES = 200;
+
 /** The face outlines are built 20 m wide; the part must lie inside. */
 const DXF_PLANE_SIZE = 20 * meter;
 
@@ -143,6 +155,11 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             annotation { "Name" : "Release prefix", "Default" : ExportVersionPrefix.NONE, "UIHint" : UIHint.SHOW_LABEL,
                         "Description" : "A rule only: the app adds the released version in this format at export time." }
             definition.versionPrefix is ExportVersionPrefix;
+
+            // Room for options added after the first version: the dialog's parameters cannot be extended safely once published
+            // (correction 64). Stored in the attribute as is (JSON text).
+            annotation { "Name" : "Extra options", "Default" : "", "MaxLength" : 4096, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
+            definition.extraOptions is string;
         }
 
         annotation { "Group Name" : "Export info", "Collapsed By Default" : false }
@@ -195,6 +212,13 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                     annotation { "Name" : "Profile faces", "Filter" : EntityType.FACE,
                                 "Description" : "Faces projected onto the XZ plane." }
                     definition.profileFaces is Query;
+                }
+
+                if (definition.profileSource == ExportDxfSource.PROJECTION)
+                {
+                    annotation { "Name" : "Profile outline", "Default" : ExportProfileOutline.SECTION, "UIHint" : UIHint.SHOW_LABEL,
+                                "Description" : "Section: the solids cut by a plane through the part (its centre across the view), exact edges. Silhouette: the projected outline, which re-fits a curved top into many small pieces. Falls back to the silhouette when the plane misses the part." }
+                    definition.profileOutline is ExportProfileOutline;
                 }
 
                 if (definition.profileSource != ExportDxfSource.NONE)
@@ -377,6 +401,11 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         // A pattern needs a single part; a composite is taken as already patterned.
         const patternWanted = definition.exportDxf && definition.dxfPattern == true
             && (definition.patternCountX > 1 || definition.patternCountY > 1);
+        if (patternWanted && definition.patternCountX * definition.patternCountY > PATTERN_MAX_INSTANCES)
+        {
+            throw regenError("The DXF pattern would create " ~ (definition.patternCountX * definition.patternCountY) ~ " copies; the limit is "
+                    ~ PATTERN_MAX_INSTANCES ~ ".", ["patternCountX", "patternCountY"]);
+        }
         const pattern = { "applied" : patternWanted && !isComposite, "mode" : definition.patternSpacing,
             "countX" : definition.patternCountX, "countY" : definition.patternCountY,
             "spacingX" : definition.patternSpacing == ExportPatternSpacing.CLEARANCE ? definition.clearanceX : definition.pitchX,
@@ -388,10 +417,11 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         }
         for (var view in [{ "key" : "plan", "label" : "XY", "source" : planSource, "faces" : definition.planFaces,
                     "name" : definition.planName, "normal" : vector(0, 0, 1), "xAxis" : vector(1, 0, 0),
-                    "secondAxis" : vector(0, 1, 0), "secondIndex" : 1 },
+                    "secondAxis" : vector(0, 1, 0), "secondIndex" : 1, "section" : false },
                 { "key" : "profile", "label" : "XZ", "source" : profileSource, "faces" : definition.profileFaces,
                     "name" : definition.profileName, "normal" : vector(0, 1, 0), "xAxis" : vector(1, 0, 0),
-                    "secondAxis" : vector(0, 0, 1), "secondIndex" : 2 }])
+                    "secondAxis" : vector(0, 0, 1), "secondIndex" : 2,
+                    "section" : definition.profileOutline == ExportProfileOutline.SECTION }])
         {
             if (view.source == ExportDxfSource.NONE)
             {
@@ -399,6 +429,10 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             }
             const built = buildDxfFaces(context, id + view.key, definition.part, view, origin, stem, pattern);
             dxfBodies[view.key] = built.bodies;
+            if (built.note != undefined)
+            {
+                notes = append(notes, built.note);
+            }
             dxf[view.key] = { "source" : view.source == ExportDxfSource.PROJECTION ? "PROJECTION" : "SELECTION",
                 "name" : view.name, "faceCount" : size(evaluateQuery(context, built.bodies)), "pattern" : built.pattern,
                 "composite" : definition.oneDxfComposite == true ? stem ~ " DXF" : stem ~ " " ~ view.label ~ " DXF" };
@@ -562,19 +596,54 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             }
         }
 
+        // Part structure for the app. Ids are this microversion's (the REST part id equals the body id); the app matches
+        // them against the other tagged bodies. "membersTagged" sees only tags EARLIER in the feature tree.
+        const shiftedMade = size(evaluateQuery(context, shiftedCopy)) > 0;
+        const partInfo = {
+            "id" : transientQueriesToStrings(evaluateQuery(context, definition.part))[0],
+            "isComposite" : isComposite,
+            "members" : isComposite ? transientQueriesToStrings(evaluateQuery(context, qFlattenedCompositeParts(definition.part))) : [],
+            "membersTagged" : isComposite ? transientQueriesToStrings(evaluateQuery(context,
+                        qHasAttribute(qFlattenedCompositeParts(definition.part), EXPORT_TAG_ATTRIBUTE))) : [],
+            "inComposites" : isComposite ? [] : transientQueriesToStrings(evaluateQuery(context, qCompositePartsContaining(definition.part)))
+        };
+
         const data = {
             "schema" : EXPORT_TAG_SCHEMA,
+            "part" : partInfo,
+            "extra" : definition.extraOptions,
             "name" : { "stored" : definition.bodyName, "stem" : stem, "versionPrefix" : versionPrefixText(definition.versionPrefix) },
             "isComposite" : isComposite,
-            "solid" : { "formats" : solidFormats, "name" : definition.solidName },
+            "solid" : { "formats" : solidFormats, "name" : definition.solidName,
+                // Which body to export, and whether the recorded transform still has to be applied to it.
+                "exportBody" : shiftedMade ? stem ~ " EXPORT" : definition.bodyName,
+                "atExportPosition" : shiftedMade, "transformNeeded" : origin.applied && !shiftedMade },
             "dxf" : dxf,
             "drawing" : { "export" : definition.drawingOut == true, "name" : definition.drawingName,
                 "stationTable" : stationTable, "stationViewFilter" : stationTable ? stem : "", "layout" : layout,
                 "stationViews" : stationTable ? concatenateArrays([definition.stationPlan ? ["XY"] : [], definition.stationProfile ? ["XZ"] : []]) : [] },
             "origin" : originData(definition, origin),
-            "shiftedCopy" : size(evaluateQuery(context, shiftedCopy)) > 0
+            "shiftedCopy" : shiftedMade
         };
 
+        // Names: a second tag with the same export name makes duplicate bodies and views; a name that contains (or sits inside)
+        // another tag's name makes the Station table's substring filter match both. Only EARLIER tags are visible here.
+        for (var other in evaluateQuery(context, qSubtraction(qHasAttribute(qEverything(EntityType.BODY), EXPORT_TAG_ATTRIBUTE), definition.part)))
+        {
+            const otherTag = getAttribute(context, { "entity" : other, "name" : EXPORT_TAG_ATTRIBUTE });
+            if (otherTag is map && otherTag.name is map && otherTag.name.stem is string)
+            {
+                const otherStem = otherTag.name.stem;
+                if (otherStem == stem)
+                {
+                    warnings = append(warnings, "Another Export tag already uses the export name '" ~ stem ~ "': its bodies and views will have the same names.");
+                }
+                else if (stationTable && (indexOf(otherStem, stem) >= 0 || indexOf(stem, otherStem) >= 0))
+                {
+                    warnings = append(warnings, "The Station table filter '" ~ stem ~ "' also matches the export name '" ~ otherStem ~ "' (substring match).");
+                }
+            }
+        }
         if (!isQueryEmpty(context, qHasAttribute(definition.part, EXPORT_TAG_ATTRIBUTE)))
         {
             warnings = append(warnings, "Another Export tag already tags this part; this tag overwrites it.");
@@ -620,6 +689,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
          "quadrant" : ExportQuadrant.FIRST, "bufferX" : 10 * millimeter, "bufferY" : 10 * millimeter, "bufferZ" : 0 * millimeter,
          "bodyName" : "", "nameStale" : false, "exportName" : "", "solidName" : "", "planName" : "", "profileName" : "",
          "drawingName" : "", "oneDxfComposite" : false, "shiftCopy" : false,
+         "profileOutline" : ExportProfileOutline.SECTION, "extraOptions" : "",
          "dxfPattern" : false, "patternSpacing" : ExportPatternSpacing.CLEARANCE, "patternCountX" : 1, "patternCountY" : 1,
          "clearanceX" : 10 * millimeter, "clearanceY" : 10 * millimeter, "pitchX" : 300 * millimeter, "pitchY" : 300 * millimeter,
          "exportSolid" : false, "exportDxf" : false, "stationTable" : false, "stationPlan" : true, "stationProfile" : false,
@@ -784,6 +854,7 @@ function buildDxfFaces(context is Context, vid is Id, part is Query, view is map
     // and is only lifted onto the plane, any other face is outlined as a sheet.
     var outlineTools = [];
     var flatSheets = [];
+    var note = undefined;
     if (view.source == ExportDxfSource.PROJECTION)
     {
         const solids = qBodyType(memberQuery(part), BodyType.SOLID);
@@ -792,6 +863,26 @@ function buildDxfFaces(context is Context, vid is Id, part is Query, view is map
             throw regenError(view.label ~ " projection needs a solid. For a surface, select its faces.", [view.key ~ "Source"]);
         }
         outlineTools = [solids];
+        if (view.section)
+        {
+            // A plane through the part, parallel to the view plane (the centre of the solids across the view): the section is
+            // exact (the silhouette of a curved top is hundreds of tiny re-fitted pieces, correction 57), then it is carried
+            // onto the view plane.
+            const solidBox = evBox3d(context, { "topology" : solids });
+            const centre = (solidBox.minCorner + solidBox.maxCorner) / 2;
+            const sectionPlane = plane(centre, targetPlane.normal, targetPlane.x);
+            const lift = targetPlane.normal * dot(targetPlane.origin - centre, targetPlane.normal);
+            const sectionRegion = dxfSection(context, vid + "section", evaluateQuery(context, solids), sectionPlane, lift);
+            if (sectionRegion == undefined)
+            {
+                note = view.label ~ ": the section plane misses the part, outline from its silhouette.";
+            }
+            else
+            {
+                flatSheets = [sectionRegion];
+                outlineTools = [];
+            }
+        }
     }
     else
     {
@@ -908,7 +999,45 @@ function buildDxfFaces(context is Context, vid is Id, part is Query, view is map
         setProperty(context, { "entities" : copies[m], "propertyType" : PropertyType.NAME,
                     "value" : stem ~ " " ~ view.label ~ " EXPORT_PATTERN_" ~ instance ~ (nOriginal > 1 ? "_" ~ region : "") });
     }
-    return { "bodies" : qUnion(concatenateArrays([originals, copies])), "pattern" : patternData };
+    return { "bodies" : qUnion(concatenateArrays([originals, copies])), "pattern" : patternData, "note" : note };
+}
+
+/**
+ * The region where `sectionPlane` cuts the solids `solids`, carried by `lift` onto the view plane: a large plane sheet
+ * with everything outside the solids removed (as Station geometry's section). Undefined, with nothing left behind,
+ * when the plane misses every solid.
+ */
+function dxfSection(context is Context, id is Id, solids is array, sectionPlane is Plane, lift is Vector)
+{
+    var cut = [];
+    for (var solid in solids)
+    {
+        if (!isQueryEmpty(context, qIntersectsPlane(qOwnedByBody(solid, EntityType.FACE), sectionPlane)))
+        {
+            cut = append(cut, solid);
+        }
+    }
+    if (size(cut) == 0)
+    {
+        return undefined;
+    }
+    opPlane(context, id + "plane", { "plane" : sectionPlane, "width" : DXF_PLANE_SIZE, "height" : DXF_PLANE_SIZE });
+    const region = qCreatedBy(id + "plane", EntityType.BODY);
+    opBoolean(context, id + "trim", { "tools" : qUnion(cut), "targets" : region,
+                "operationType" : BooleanOperationType.SUBTRACT_COMPLEMENT, "keepTools" : true });
+    if (isQueryEmpty(context, qOwnedByBody(region, EntityType.FACE)))
+    {
+        if (!isQueryEmpty(context, region))
+        {
+            opDeleteBodies(context, id + "deleteEmpty", { "entities" : region });
+        }
+        return undefined;
+    }
+    if (norm(lift) > TOLERANCE.zeroLength * meter)
+    {
+        opTransform(context, id + "lift", { "bodies" : region, "transform" : transform(lift) });
+    }
+    return region;
 }
 
 function roundMm(length is ValueWithUnits) returns number
