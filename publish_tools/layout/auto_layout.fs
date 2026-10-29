@@ -78,6 +78,10 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
         annotation { "Name" : "Allow 90 degree rotation", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE }
         definition.allowRotation is boolean;
 
+        annotation { "Name" : "Nest bodies inside holes", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE,
+                    "Description" : "Place smaller bodies inside holes and windows of larger ones (flat bodies, outline and holes read from the largest flat face; 5 mm resolution; nested bodies keep their orientation)." }
+        definition.allowNesting is boolean;
+
         annotation { "Name" : "Place on origin plane", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE }
         definition.dropToPlane is boolean;
 
@@ -136,7 +140,8 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
             {
                 orientations = append(orientations, { "rotate" : !turnFirst, "w" : turnFirst ? dx : dy, "h" : turnFirst ? dy : dx });
             }
-            items = append(items, { "body" : body, "bb" : bb, "orientations" : orientations, "long" : dx > dy ? dx : dy });
+            items = append(items, { "body" : body, "bb" : bb, "orientations" : orientations, "long" : dx > dy ? dx : dy,
+                        "nested" : false, "profiled" : false, "nest" : { "valid" : false } });
         }
 
         // Longest side first
@@ -154,49 +159,111 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
         const sheetPitch = definition.limitWidth ? 1.1 * definition.layoutWidth : 0 * meter;
         var sheets = [{ "free" : [{ "x" : 0 * meter, "y" : 0 * meter, "w" : binLength, "h" : binWidth }], "usedX" : 0 * meter }];
         var oversize = 0;
+        var nestedCount = 0;
+        var regions = [];
+        const minHoleHeight = 2 * definition.yBuffer + 1 * millimeter;
         for (var i = 0; i < size(items); i += 1)
         {
-            var best = undefined;
-            for (var s = 0; s < size(sheets) && best == undefined; s += 1)
+            // Internal nesting first: a hole region of an already placed body, in that body's original frame
+            var done = false;
+            if (definition.allowNesting && size(regions) > 0)
             {
-                best = findPosition(sheets[s].free, items[i].orientations, definition.xBuffer, definition.yBuffer);
-                if (best != undefined)
+                if (!items[i].profiled)
                 {
+                    items[i].nest = nestingProfile(context, items[i].body, cSys, items[i].bb);
+                    items[i].profiled = true;
+                }
+                for (var r = 0; r < size(regions) && items[i].nest.valid && !done; r += 1)
+                {
+                    const fit = fitRegion(regions[r], items[i].nest, definition.xBuffer, definition.yBuffer);
+                    if (fit != undefined)
+                    {
+                        const host = items[regions[r].host];
+                        const shiftX = host.bb.minCorner[0] + (regions[r].i0 + fit.t) * NEST_STEP - items[i].bb.minCorner[0];
+                        const zShift = definition.dropToPlane ? host.bb.minCorner[2] - items[i].bb.minCorner[2] : 0 * meter;
+                        items[i].local = host.local * transform(vector(shiftX, fit.ty, zShift));
+                        items[i].nested = true;
+                        var nextRegions = [];
+                        for (var q = 0; q < size(regions); q += 1)
+                        {
+                            if (q != r)
+                            {
+                                nextRegions = append(nextRegions, regions[q]);
+                            }
+                        }
+                        regions = concatenateArrays([nextRegions, splitRegion(regions[r], items[i].nest, fit, definition.xBuffer, minHoleHeight)]);
+                        nestedCount += 1;
+                        done = true;
+                    }
+                }
+            }
+
+            if (!done)
+            {
+                var best = undefined;
+                for (var s = 0; s < size(sheets) && best == undefined; s += 1)
+                {
+                    best = findPosition(sheets[s].free, items[i].orientations, definition.xBuffer, definition.yBuffer);
+                    if (best != undefined)
+                    {
+                        best.sheet = s;
+                    }
+                }
+                if (best == undefined && boundedLength)
+                {
+                    // Sheet full: start a new one (a body bigger than a whole sheet is placed on it anyway)
+                    const newY = size(sheets) * sheetPitch;
+                    sheets = append(sheets, { "free" : [{ "x" : 0 * meter, "y" : newY, "w" : binLength, "h" : binWidth }], "usedX" : 0 * meter });
+                    const s = size(sheets) - 1;
+                    best = findPosition(sheets[s].free, items[i].orientations, definition.xBuffer, definition.yBuffer);
+                    if (best == undefined)
+                    {
+                        best = { "orientation" : items[i].orientations[0], "x" : 0 * meter, "y" : newY };
+                        oversize += 1;
+                    }
                     best.sheet = s;
                 }
-            }
-            if (best == undefined && boundedLength)
-            {
-                // Sheet full: start a new one (a body bigger than a whole sheet is placed on it anyway)
-                const newY = size(sheets) * sheetPitch;
-                sheets = append(sheets, { "free" : [{ "x" : 0 * meter, "y" : newY, "w" : binLength, "h" : binWidth }], "usedX" : 0 * meter });
-                const s = size(sheets) - 1;
-                best = findPosition(sheets[s].free, items[i].orientations, definition.xBuffer, definition.yBuffer);
-                if (best == undefined)
+                else if (best == undefined)
                 {
-                    best = { "orientation" : items[i].orientations[0], "x" : 0 * meter, "y" : newY };
+                    // Only a body wider than the layout width can get here (the length is unbounded): put it beyond the others
+                    best = { "orientation" : items[i].orientations[0], "x" : sheets[0].usedX, "y" : 0 * meter, "sheet" : 0 };
                     oversize += 1;
                 }
-                best.sheet = s;
+                const o = best.orientation;
+                const taken = { "x" : best.x, "y" : best.y, "w" : o.w + definition.xBuffer, "h" : o.h + definition.yBuffer };
+                sheets[best.sheet].free = occupyRect(sheets[best.sheet].free, taken);
+                if (taken.x + taken.w > sheets[best.sheet].usedX)
+                {
+                    sheets[best.sheet].usedX = taken.x + taken.w;
+                }
+                items[i].rotate = o.rotate;
+                items[i].w = o.w;
+                items[i].h = o.h;
+                items[i].x = best.x + definition.xBuffer;
+                items[i].y = best.y + definition.yBuffer;
+                items[i].local = slotTransform(items[i], definition.dropToPlane);
             }
-            else if (best == undefined)
+
+            // Register this body's holes as places for the bodies still to come
+            if (definition.allowNesting && i + 1 < size(items))
             {
-                // Only a body wider than the layout width can get here (the length is unbounded): put it beyond the others
-                best = { "orientation" : items[i].orientations[0], "x" : sheets[0].usedX, "y" : 0 * meter, "sheet" : 0 };
-                oversize += 1;
+                if (!items[i].profiled)
+                {
+                    items[i].nest = nestingProfile(context, items[i].body, cSys, items[i].bb);
+                    items[i].profiled = true;
+                }
+                if (items[i].nest.valid)
+                {
+                    for (var hole in items[i].nest.holes)
+                    {
+                        const region = trimRegion(i, hole.lo, hole.hi, minHoleHeight);
+                        if (region != undefined)
+                        {
+                            regions = append(regions, region);
+                        }
+                    }
+                }
             }
-            const o = best.orientation;
-            const taken = { "x" : best.x, "y" : best.y, "w" : o.w + definition.xBuffer, "h" : o.h + definition.yBuffer };
-            sheets[best.sheet].free = occupyRect(sheets[best.sheet].free, taken);
-            if (taken.x + taken.w > sheets[best.sheet].usedX)
-            {
-                sheets[best.sheet].usedX = taken.x + taken.w;
-            }
-            items[i].rotate = o.rotate;
-            items[i].w = o.w;
-            items[i].h = o.h;
-            items[i].x = best.x + definition.xBuffer;
-            items[i].y = best.y + definition.yBuffer;
         }
 
         // Preview: debug geometry shows only while the feature is being edited
@@ -205,10 +272,14 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
             debug(context, cSys);
             for (var i = 0; i < size(items); i += 1)
             {
-                const zLo = definition.dropToPlane ? 0 * meter : items[i].bb.minCorner[2];
-                const zHi = zLo + items[i].bb.maxCorner[2] - items[i].bb.minCorner[2];
-                debug(context, box3d(vector(items[i].x, items[i].y, zLo), vector(items[i].x + items[i].w, items[i].y + items[i].h, zHi)),
-                    cSys, DebugColor.CYAN);
+                // (nested bodies sit inside their host's outline, so only the hosts are boxed)
+                if (!items[i].nested)
+                {
+                    const zLo = definition.dropToPlane ? 0 * meter : items[i].bb.minCorner[2];
+                    const zHi = zLo + items[i].bb.maxCorner[2] - items[i].bb.minCorner[2];
+                    debug(context, box3d(vector(items[i].x, items[i].y, zLo), vector(items[i].x + items[i].w, items[i].y + items[i].h, zHi)),
+                        cSys, DebugColor.CYAN);
+                }
             }
             if (definition.limitWidth)
             {
@@ -224,24 +295,10 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
         // Move or copy each body to its slot
         const toOrigin = fromWorld(cSys);
         const fromOrigin = toWorld(cSys);
-        const zAxisLocal = line(vector(0, 0, 0) * meter, vector(0, 0, 1));
         var placed = qNothing();
         for (var i = 0; i < size(items); i += 1)
         {
-            const bb = items[i].bb;
-            const minZ = definition.dropToPlane ? bb.minCorner[2] : 0 * meter;
-            var local;
-            if (items[i].rotate)
-            {
-                // (px, py) -> (-py, px): new min corner is (-maxY, minX)
-                local = transform(vector(items[i].x + bb.maxCorner[1], items[i].y - bb.minCorner[0], -minZ))
-                    * rotationAround(zAxisLocal, 90 * degree);
-            }
-            else
-            {
-                local = transform(vector(items[i].x - bb.minCorner[0], items[i].y - bb.minCorner[1], -minZ));
-            }
-            const worldTransform = fromOrigin * local * toOrigin;
+            const worldTransform = fromOrigin * items[i].local * toOrigin;
 
             if (definition.copyBodies)
             {
@@ -268,9 +325,18 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
             reportFeatureWarning(context, id, oversize ~ " bod" ~ (oversize == 1 ? "y is" : "ies are")
                     ~ " larger than the layout and " ~ (oversize == 1 ? "was" : "were") ~ " placed on their own.");
         }
-        else if (size(sheets) > 1)
+        else if (size(sheets) > 1 || nestedCount > 0)
         {
-            reportFeatureInfo(context, id, "The layout uses " ~ size(sheets) ~ " sheets; each further sheet is offset along +Y.");
+            var notes = [];
+            if (size(sheets) > 1)
+            {
+                notes = append(notes, "The layout uses " ~ size(sheets) ~ " sheets; each further sheet is offset along +Y.");
+            }
+            if (nestedCount > 0)
+            {
+                notes = append(notes, nestedCount ~ " bod" ~ (nestedCount == 1 ? "y was" : "ies were") ~ " nested inside holes.");
+            }
+            reportFeatureInfo(context, id, join(notes, " "));
         }
 
         if (definition.createComposite)
@@ -308,7 +374,7 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
         }
     }, { "xBuffer" : 10 * millimeter, "yBuffer" : 10 * millimeter, "limitWidth" : false, "layoutWidth" : 2000 * millimeter,
             "limitLength" : false, "layoutLength" : 2000 * millimeter,
-            "allowRotation" : false, "dropToPlane" : true, "copyBodies" : false, "createComposite" : false,
+            "allowRotation" : false, "allowNesting" : false, "dropToPlane" : true, "copyBodies" : false, "createComposite" : false,
             "compositeName" : "Layout", "showPreview" : true });
 
 // ---- free-rectangle packing helpers (rectangles are maps with x, y, w, h lengths in the origin frame) ----
@@ -396,4 +462,361 @@ function occupyRect(free is array, taken is map) returns array
         }
     }
     return kept;
+}
+
+// ---- slot transform and internal nesting helpers ----
+
+const NEST_STEP = 5 * millimeter;
+const NEST_EDGE_SAMPLE = 10 * millimeter;
+const NEST_JOIN_TOL = 1e-6 * meter;
+const NEST_BIG = 1000 * meter;
+
+// Origin-frame transform that takes a body to its packed slot (rotation about the origin Z first, then translation)
+function slotTransform(item is map, dropToPlane is boolean) returns Transform
+{
+    const bb = item.bb;
+    const minZ = dropToPlane ? bb.minCorner[2] : 0 * meter;
+    if (item.rotate)
+    {
+        // (px, py) -> (-py, px): new min corner is (-maxY, minX)
+        return transform(vector(item.x + bb.maxCorner[1], item.y - bb.minCorner[0], -minZ))
+            * rotationAround(line(vector(0, 0, 0) * meter, vector(0, 0, 1)), 90 * degree);
+    }
+    return transform(vector(item.x - bb.minCorner[0], item.y - bb.minCorner[1], -minZ));
+}
+
+function minLen(a is ValueWithUnits, b is ValueWithUnits) returns ValueWithUnits
+{
+    return a < b ? a : b;
+}
+
+function maxLen(a is ValueWithUnits, b is ValueWithUnits) returns ValueWithUnits
+{
+    return a > b ? a : b;
+}
+
+// The closed loops of a planar face as polylines in the origin frame (z dropped). Edges are sampled about every 10 mm and
+// come oriented with the face on their left, so each edge continues from the end of the previous one.
+function faceLoops(context is Context, face is Query, cSys is CoordSystem) returns array
+{
+    var chains = [];
+    for (var e in evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE)))
+    {
+        const n = clamp(ceil(evLength(context, { "entities" : e }) / NEST_EDGE_SAMPLE), 1, 40);
+        var params = [];
+        for (var k = 0; k <= n; k += 1)
+        {
+            params = append(params, k / n);
+        }
+        var points = [];
+        for (var tangent in evEdgeTangentLines(context, { "edge" : e, "parameters" : params, "face" : face }))
+        {
+            const p = fromWorld(cSys, tangent.origin);
+            points = append(points, vector(p[0], p[1], 0 * meter));
+        }
+        chains = append(chains, points);
+    }
+    var loops = [];
+    var used = makeArray(size(chains), false);
+    for (var i = 0; i < size(chains); i += 1)
+    {
+        if (!used[i])
+        {
+            used[i] = true;
+            var loop = chains[i];
+            var grew = true;
+            while (grew)
+            {
+                grew = false;
+                const tail = loop[size(loop) - 1];
+                for (var j = 0; j < size(chains) && !grew; j += 1)
+                {
+                    if (!used[j] && norm(chains[j][0] - tail) < NEST_JOIN_TOL)
+                    {
+                        used[j] = true;
+                        loop = concatenateArrays([loop, chains[j]]);
+                        grew = true;
+                    }
+                }
+            }
+            loops = append(loops, loop);
+        }
+    }
+    return loops;
+}
+
+function loopExtent(loop is array) returns map
+{
+    var ext = { "x0" : loop[0][0], "x1" : loop[0][0], "y0" : loop[0][1], "y1" : loop[0][1] };
+    for (var p in loop)
+    {
+        ext.x0 = minLen(ext.x0, p[0]);
+        ext.x1 = maxLen(ext.x1, p[0]);
+        ext.y0 = minLen(ext.y0, p[1]);
+        ext.y1 = maxLen(ext.y1, p[1]);
+    }
+    return ext;
+}
+
+// The y values where the vertical line at x crosses a polyline, ascending
+function crossings(loop is array, x is ValueWithUnits) returns array
+{
+    var ys = [];
+    for (var i = 0; i + 1 < size(loop); i += 1)
+    {
+        const a = loop[i];
+        const b = loop[i + 1];
+        if ((a[0] <= x && x < b[0]) || (b[0] <= x && x < a[0]))
+        {
+            ys = append(ys, a[1] + (b[1] - a[1]) * ((x - a[0]) / (b[0] - a[0])));
+        }
+    }
+    return sort(ys, function(p, q)
+        {
+            return p - q;
+        });
+}
+
+// Per 5 mm cell from x0: the lowest and highest y of a body outline (a cell with no outline stays at NEST_BIG / -NEST_BIG)
+function outlineCells(loop is array, x0 is ValueWithUnits, cells is number) returns map
+{
+    var samples = [];
+    for (var b = 0; b <= cells; b += 1)
+    {
+        const ys = crossings(loop, x0 + b * NEST_STEP);
+        samples = append(samples, size(ys) >= 2 ? { "lo" : ys[0], "hi" : ys[size(ys) - 1] } : undefined);
+    }
+    var lo = makeArray(cells, NEST_BIG);
+    var hi = makeArray(cells, -NEST_BIG);
+    for (var k = 0; k < cells; k += 1)
+    {
+        for (var s in [samples[k], samples[k + 1]])
+        {
+            if (s != undefined)
+            {
+                lo[k] = minLen(lo[k], s.lo);
+                hi[k] = maxLen(hi[k], s.hi);
+            }
+        }
+    }
+    return { "lo" : lo, "hi" : hi };
+}
+
+// Per 5 mm cell from x0: the free interval of a hole (cells where the hole is not a single interval stay invalid)
+function holeCells(loop is array, x0 is ValueWithUnits, cells is number) returns map
+{
+    var lo = makeArray(cells, NEST_BIG);
+    var hi = makeArray(cells, -NEST_BIG);
+    const ext = loopExtent(loop);
+    const bStart = max(0, floor((ext.x0 - x0) / NEST_STEP));
+    const bEnd = min(cells, ceil((ext.x1 - x0) / NEST_STEP));
+    var previous = undefined;
+    for (var b = bStart; b <= bEnd; b += 1)
+    {
+        const ys = crossings(loop, x0 + b * NEST_STEP);
+        const current = size(ys) == 2 ? { "lo" : ys[0], "hi" : ys[1] } : undefined;
+        if (b > bStart && previous != undefined && current != undefined)
+        {
+            lo[b - 1] = maxLen(previous.lo, current.lo);
+            hi[b - 1] = minLen(previous.hi, current.hi);
+        }
+        previous = current;
+    }
+    return { "lo" : lo, "hi" : hi };
+}
+
+// The overlap of two sets of holes (layers of a composite): every pair that still leaves room
+function intersectHoles(a is array, b is array) returns array
+{
+    var result = [];
+    for (var h in a)
+    {
+        for (var g in b)
+        {
+            var lo = [];
+            var hi = [];
+            var room = false;
+            for (var k = 0; k < size(h.lo); k += 1)
+            {
+                lo = append(lo, maxLen(h.lo[k], g.lo[k]));
+                hi = append(hi, minLen(h.hi[k], g.hi[k]));
+                if (hi[k] - lo[k] > 0 * meter)
+                {
+                    room = true;
+                }
+            }
+            if (room)
+            {
+                result = append(result, { "lo" : lo, "hi" : hi });
+            }
+        }
+    }
+    return result;
+}
+
+// Outline envelope and holes of a flat body (a composite uses every layer: envelope = union, holes = overlap), read from
+// the largest planar face of each layer in the origin frame. Not valid for bodies without a face parallel to the XY plane.
+function nestingProfile(context is Context, body is Query, cSys is CoordSystem, bb is Box3d) returns map
+{
+    const isComposite = size(evaluateQuery(context, qBodyType(body, BodyType.COMPOSITE))) > 0;
+    const layers = isComposite ? evaluateQuery(context, qContainedInCompositeParts(body)) : [body];
+    const x0 = bb.minCorner[0];
+    const cells = ceil((bb.maxCorner[0] - x0) / NEST_STEP);
+    var envLo = makeArray(cells, NEST_BIG);
+    var envHi = makeArray(cells, -NEST_BIG);
+    var holes = undefined;
+    for (var layer in layers)
+    {
+        const faces = evaluateQuery(context, qLargest(qGeometry(qOwnedByBody(layer, EntityType.FACE), GeometryType.PLANE)));
+        if (size(faces) == 0 || abs(dot(evPlane(context, { "face" : faces[0] }).normal, cSys.zAxis)) < 0.999)
+        {
+            return { "valid" : false };
+        }
+        const loops = faceLoops(context, faces[0], cSys);
+        if (size(loops) == 0)
+        {
+            return { "valid" : false };
+        }
+        var outer = 0;
+        var outerArea = -1 * meter * meter;
+        for (var i = 0; i < size(loops); i += 1)
+        {
+            const ext = loopExtent(loops[i]);
+            if ((ext.x1 - ext.x0) * (ext.y1 - ext.y0) > outerArea)
+            {
+                outerArea = (ext.x1 - ext.x0) * (ext.y1 - ext.y0);
+                outer = i;
+            }
+        }
+        const env = outlineCells(loops[outer], x0, cells);
+        var layerHoles = [];
+        for (var i = 0; i < size(loops); i += 1)
+        {
+            if (i != outer)
+            {
+                layerHoles = append(layerHoles, holeCells(loops[i], x0, cells));
+            }
+        }
+        for (var k = 0; k < cells; k += 1)
+        {
+            envLo[k] = minLen(envLo[k], env.lo[k]);
+            envHi[k] = maxLen(envHi[k], env.hi[k]);
+        }
+        holes = holes == undefined ? layerHoles : intersectHoles(holes, layerHoles);
+    }
+    for (var k = 0; k < cells; k += 1)
+    {
+        if (envHi[k] < envLo[k])
+        {
+            return { "valid" : false };
+        }
+    }
+    return { "valid" : true, "lo" : envLo, "hi" : envHi, "holes" : holes == undefined ? [] : holes };
+}
+
+// A hole's free intervals cut down to the cells that leave room for a body, as a region owned by item `host`
+function trimRegion(host is number, lo is array, hi is array, minHeight is ValueWithUnits)
+{
+    var first = -1;
+    var last = -1;
+    for (var k = 0; k < size(lo); k += 1)
+    {
+        if (hi[k] - lo[k] > minHeight)
+        {
+            if (first < 0)
+            {
+                first = k;
+            }
+            last = k;
+        }
+    }
+    if (last - first < 2)
+    {
+        return undefined;
+    }
+    var regionLo = [];
+    var regionHi = [];
+    for (var k = first; k <= last; k += 1)
+    {
+        regionLo = append(regionLo, lo[k]);
+        regionHi = append(regionHi, hi[k]);
+    }
+    return { "host" : host, "i0" : first, "lo" : regionLo, "hi" : regionHi };
+}
+
+// The lowest-x cell offset (then lowest y) where a body's envelope fits in the region with the buffers all round
+function fitRegion(region is map, cand is map, xBuffer is ValueWithUnits, yBuffer is ValueWithUnits)
+{
+    const n = size(region.lo);
+    const m = size(cand.lo);
+    const nb = ceil(xBuffer / NEST_STEP);
+    for (var t = nb; t + m + nb <= n; t += 1)
+    {
+        var lowY = -NEST_BIG;
+        var highY = NEST_BIG;
+        var ok = true;
+        for (var j = 0; j < m && ok; j += 1)
+        {
+            lowY = maxLen(lowY, region.lo[t + j] - cand.lo[j]);
+            highY = minLen(highY, region.hi[t + j] - cand.hi[j]);
+            ok = lowY + yBuffer <= highY - yBuffer + FREE_TOL;
+        }
+        if (ok)
+        {
+            return { "t" : t, "ty" : lowY + yBuffer };
+        }
+    }
+    return undefined;
+}
+
+// What is left of a region after a body took its place: the cells before and after it, and the strips above and below it
+function splitRegion(region is map, cand is map, fit is map, xBuffer is ValueWithUnits, minHeight is ValueWithUnits) returns array
+{
+    const n = size(region.lo);
+    const m = size(cand.lo);
+    const nb = ceil(xBuffer / NEST_STEP);
+    var pieces = [];
+    var leftLo = [];
+    var leftHi = [];
+    for (var k = 0; k < fit.t - nb; k += 1)
+    {
+        leftLo = append(leftLo, region.lo[k]);
+        leftHi = append(leftHi, region.hi[k]);
+    }
+    var rightLo = [];
+    var rightHi = [];
+    for (var k = fit.t + m + nb; k < n; k += 1)
+    {
+        rightLo = append(rightLo, region.lo[k]);
+        rightHi = append(rightHi, region.hi[k]);
+    }
+    var aboveLo = [];
+    var aboveHi = [];
+    var belowLo = [];
+    var belowHi = [];
+    for (var j = 0; j < m; j += 1)
+    {
+        aboveLo = append(aboveLo, cand.hi[j] + fit.ty);
+        aboveHi = append(aboveHi, region.hi[fit.t + j]);
+        belowLo = append(belowLo, region.lo[fit.t + j]);
+        belowHi = append(belowHi, cand.lo[j] + fit.ty);
+    }
+    const candidates = [
+            { "i0" : region.i0, "lo" : leftLo, "hi" : leftHi },
+            { "i0" : region.i0 + fit.t + m + nb, "lo" : rightLo, "hi" : rightHi },
+            { "i0" : region.i0 + fit.t, "lo" : aboveLo, "hi" : aboveHi },
+            { "i0" : region.i0 + fit.t, "lo" : belowLo, "hi" : belowHi }
+        ];
+    for (var c in candidates)
+    {
+        if (size(c.lo) > 0)
+        {
+            const piece = trimRegion(region.host, c.lo, c.hi, minHeight);
+            if (piece != undefined)
+            {
+                pieces = append(pieces, { "host" : piece.host, "i0" : c.i0 + piece.i0, "lo" : piece.lo, "hi" : piece.hi });
+            }
+        }
+    }
+    return pieces;
 }
