@@ -940,45 +940,59 @@ function splitRegion(region is map, cand is map, fit is map, xBuffer is ValueWit
     return pieces;
 }
 
-// ---- spreading the bodies inside a hole ----
+// ---- spreading the bodies inside a hole (plain numbers in metres inside the loops: ValueWithUnits arithmetic is slow) ----
 
 const NEST_RELAX_PASSES = 4;
 const NEST_RELAX_REACH = 40; // cells (200 mm) an occupant may slide along the hole
+const NEST_BIG_M = 1000;
+const NEST_TOL_M = 1e-8;
 
-// Occupant a's envelope at cell offset j (clipped, so the buffer cells past its ends repeat the end values)
-function envelopeAt(arr is array, j is number)
+// Occupant arrays at cell offset j (clipped, so the buffer cells past its ends repeat the end values)
+function clippedAt(arr is array, j is number)
 {
     return arr[clamp(j, 0, size(arr) - 1)];
 }
 
-// Is occupant a feasible at cell offset T and y shift ty: inside the hole walls and clear of the other occupants,
-// with the buffers all round (x buffer as cells before and after, y buffer vertically)?
-function occupantFits(hole is map, pos is array, a is number, T is number, ty is ValueWithUnits, nb is number, yBuffer is ValueWithUnits) returns boolean
+// The other occupants whose cells come within `reach` cells of [T, T + m)
+function neighboursOf(pos is array, a is number, T is number, m is number, reach is number) returns array
 {
-    const me = pos[a];
+    var near = [];
+    for (var b = 0; b < size(pos); b += 1)
+    {
+        if (b != a && pos[b].T < T + m + reach && pos[b].T + size(pos[b].lo) > T - reach)
+        {
+            near = append(near, pos[b]);
+        }
+    }
+    return near;
+}
+
+// Is occupant a feasible at cell offset T and y shift ty: inside the hole walls and clear of the neighbours, with the
+// buffers all round (x buffer as cells before and after, y buffer vertically)?
+function occupantFits(wallLo is array, wallHi is array, me is map, near is array, T is number, ty is number, nb is number, yb is number) returns boolean
+{
     const m = size(me.lo);
     for (var j = -nb; j < m + nb; j += 1)
     {
         const cell = T + j;
-        if (cell < 0 || cell >= size(hole.lo))
+        if (cell < 0 || cell >= size(wallLo))
         {
             return false;
         }
-        const myLo = envelopeAt(me.lo, j) + ty;
-        const myHi = envelopeAt(me.hi, j) + ty;
-        if (myLo < hole.lo[cell] + yBuffer - FREE_TOL || myHi > hole.hi[cell] - yBuffer + FREE_TOL)
+        const myLo = clippedAt(me.lo, j) + ty;
+        const myHi = clippedAt(me.hi, j) + ty;
+        if (myLo < wallLo[cell] + yb - NEST_TOL_M || myHi > wallHi[cell] - yb + NEST_TOL_M)
         {
             return false;
         }
-        for (var b = 0; b < size(pos); b += 1)
+        for (var other in near)
         {
-            const jb = cell - pos[b].T;
-            if (b != a && jb >= 0 && jb < size(pos[b].lo))
+            const jb = cell - other.T;
+            if (jb >= 0 && jb < size(other.lo))
             {
-                const otherLo = pos[b].lo[jb] + pos[b].ty;
-                const otherHi = pos[b].hi[jb] + pos[b].ty;
-                const separated = myLo >= otherHi + yBuffer - FREE_TOL || myHi <= otherLo - yBuffer + FREE_TOL;
-                if (!separated)
+                const otherLo = other.lo[jb] + other.ty;
+                const otherHi = other.hi[jb] + other.ty;
+                if (myLo < otherHi + yb - NEST_TOL_M && myHi > otherLo - yb + NEST_TOL_M)
                 {
                     return false;
                 }
@@ -989,31 +1003,30 @@ function occupantFits(hole is map, pos is array, a is number, T is number, ty is
 }
 
 // The y shift in the middle of what occupant a may take at its current cells (walls and the neighbours above and below)
-function centredY(hole is map, pos is array, a is number, yBuffer is ValueWithUnits) returns ValueWithUnits
+function centredY(wallLo is array, wallHi is array, pos is array, a is number, yb is number) returns number
 {
     const me = pos[a];
     const m = size(me.lo);
-    var lowBound = -NEST_BIG;
-    var highBound = NEST_BIG;
+    const near = neighboursOf(pos, a, me.T, m, 0);
+    var lowBound = -NEST_BIG_M;
+    var highBound = NEST_BIG_M;
     for (var j = 0; j < m; j += 1)
     {
         const cell = me.T + j;
-        lowBound = maxLen(lowBound, hole.lo[cell] - me.lo[j] + yBuffer);
-        highBound = minLen(highBound, hole.hi[cell] - me.hi[j] - yBuffer);
-        for (var b = 0; b < size(pos); b += 1)
+        lowBound = max(lowBound, wallLo[cell] - me.lo[j] + yb);
+        highBound = min(highBound, wallHi[cell] - me.hi[j] - yb);
+        for (var other in near)
         {
-            const jb = cell - pos[b].T;
-            if (b != a && jb >= 0 && jb < size(pos[b].lo))
+            const jb = cell - other.T;
+            if (jb >= 0 && jb < size(other.lo))
             {
-                const otherMid = pos[b].ty + (pos[b].lo[jb] + pos[b].hi[jb]) / 2;
-                const myMid = me.ty + (me.lo[j] + me.hi[j]) / 2;
-                if (otherMid < myMid)
+                if (other.ty + (other.lo[jb] + other.hi[jb]) / 2 < me.ty + (me.lo[j] + me.hi[j]) / 2)
                 {
-                    lowBound = maxLen(lowBound, pos[b].hi[jb] + pos[b].ty - me.lo[j] + yBuffer);
+                    lowBound = max(lowBound, other.hi[jb] + other.ty - me.lo[j] + yb);
                 }
                 else
                 {
-                    highBound = minLen(highBound, pos[b].lo[jb] + pos[b].ty - me.hi[j] - yBuffer);
+                    highBound = min(highBound, other.lo[jb] + other.ty - me.hi[j] - yb);
                 }
             }
         }
@@ -1022,12 +1035,13 @@ function centredY(hole is map, pos is array, a is number, yBuffer is ValueWithUn
 }
 
 // The cell offset in the middle of how far occupant a can slide along the hole (found by bisection each way)
-function centredT(hole is map, pos is array, a is number, nb is number, yBuffer is ValueWithUnits) returns number
+function centredT(wallLo is array, wallHi is array, pos is array, a is number, nb is number, yb is number) returns number
 {
-    const T = pos[a].T;
-    if (!occupantFits(hole, pos, a, T, pos[a].ty, nb, yBuffer))
+    const me = pos[a];
+    const near = neighboursOf(pos, a, me.T - NEST_RELAX_REACH, size(me.lo) + 2 * NEST_RELAX_REACH, nb);
+    if (!occupantFits(wallLo, wallHi, me, near, me.T, me.ty, nb, yb))
     {
-        return T;
+        return me.T;
     }
     var reach = [0, 0];
     for (var side = 0; side < 2; side += 1)
@@ -1038,7 +1052,7 @@ function centredT(hole is map, pos is array, a is number, nb is number, yBuffer 
         while (bad - good > 1)
         {
             const mid = floor((good + bad) / 2);
-            if (occupantFits(hole, pos, a, T + dir * mid, pos[a].ty, nb, yBuffer))
+            if (occupantFits(wallLo, wallHi, me, near, me.T + dir * mid, me.ty, nb, yb))
             {
                 good = mid;
             }
@@ -1049,22 +1063,61 @@ function centredT(hole is map, pos is array, a is number, nb is number, yBuffer 
         }
         reach[side] = dir * good;
     }
-    return T + round((reach[0] + reach[1]) / 2);
+    return me.T + round((reach[0] + reach[1]) / 2);
 }
 
-// A few passes of sliding every occupant to the middle of its free range in y and then along x: the clearance to the hole
-// wall and to the other bodies inside it evens out. Rough on purpose: vertical gaps stand in for true distances.
+// Passes of sliding every occupant to the middle of its free range in y and then along x, until nothing moves: the clearance
+// to the hole wall and to the other bodies inside it evens out. Rough on purpose: vertical gaps stand in for true distances.
 function relaxHole(hole is map, occupants is array, xBuffer is ValueWithUnits, yBuffer is ValueWithUnits) returns array
 {
     const nb = ceil(xBuffer / NEST_STEP);
-    var pos = occupants;
+    const yb = yBuffer / meter;
+    var wallLo = [];
+    var wallHi = [];
+    for (var k = 0; k < size(hole.lo); k += 1)
+    {
+        wallLo = append(wallLo, hole.lo[k] / meter);
+        wallHi = append(wallHi, hole.hi[k] / meter);
+    }
+    var pos = [];
+    for (var o in occupants)
+    {
+        var lo = [];
+        var hi = [];
+        for (var k = 0; k < size(o.lo); k += 1)
+        {
+            lo = append(lo, o.lo[k] / meter);
+            hi = append(hi, o.hi[k] / meter);
+        }
+        pos = append(pos, { "lo" : lo, "hi" : hi, "T" : o.T, "ty" : o.ty / meter });
+    }
     for (var pass = 0; pass < NEST_RELAX_PASSES; pass += 1)
     {
+        var moved = false;
         for (var a = 0; a < size(pos); a += 1)
         {
-            pos[a].ty = centredY(hole, pos, a, yBuffer);
-            pos[a].T = centredT(hole, pos, a, nb, yBuffer);
+            const ty = centredY(wallLo, wallHi, pos, a, yb);
+            if (abs(ty - pos[a].ty) > 1e-6)
+            {
+                moved = true;
+            }
+            pos[a].ty = ty;
+            const T = centredT(wallLo, wallHi, pos, a, nb, yb);
+            if (T != pos[a].T)
+            {
+                moved = true;
+            }
+            pos[a].T = T;
+        }
+        if (!moved)
+        {
+            break;
         }
     }
-    return pos;
+    var result = [];
+    for (var p in pos)
+    {
+        result = append(result, { "T" : p.T, "ty" : p.ty * meter });
+    }
+    return result;
 }
