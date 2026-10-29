@@ -252,12 +252,11 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
 
         // The group's own checkbox is "Export drawing": the part has a drawing to export with it. Everything below
         // (file name, Station table) applies only when it is on.
+        annotation { "Name" : "Export drawing", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.drawingOut is boolean;
+
         annotation { "Group Name" : "Drawing Information", "Driving Parameter" : "drawingOut", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "Export drawing", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN,
-                        "Description" : "Intent only: the part has a drawing to export with it." }
-            definition.drawingOut is boolean;
-
             annotation { "Name" : "Drawing file name", "Default" : "", "MaxLength" : 128, "Description" : "Empty = the export name." }
             definition.drawingName is string;
 
