@@ -82,6 +82,13 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
                     "Description" : "Place smaller bodies inside holes and windows of larger ones (flat bodies, outline and holes read from the largest flat face; 5 mm resolution; nested bodies keep their orientation)." }
         definition.allowNesting is boolean;
 
+        if (definition.allowNesting)
+        {
+            annotation { "Name" : "Spread bodies in holes", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE,
+                        "Description" : "Slide bodies nested in a hole to the middle of their free range, evening out the clearance to the hole wall and to each other. Off packs them tight against the first wall." }
+            definition.spreadInHoles is boolean;
+        }
+
         annotation { "Name" : "Place on origin plane", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE }
         definition.dropToPlane is boolean;
 
@@ -275,7 +282,7 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
         }
 
         // Spread the bodies inside each hole: slide every occupant to the middle of its free range (walls and neighbours)
-        if (nestedCount > 0)
+        if (nestedCount > 0 && definition.spreadInHoles)
         {
             for (var h = 0; h < size(holeRecords); h += 1)
             {
@@ -414,7 +421,7 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
         }
     }, { "xBuffer" : 10 * millimeter, "yBuffer" : 10 * millimeter, "limitWidth" : false, "layoutWidth" : 2000 * millimeter,
             "limitLength" : false, "layoutLength" : 2000 * millimeter,
-            "allowRotation" : false, "allowNesting" : false, "dropToPlane" : true, "copyBodies" : false, "createComposite" : false,
+            "allowRotation" : false, "allowNesting" : false, "spreadInHoles" : true, "dropToPlane" : true, "copyBodies" : false, "createComposite" : false,
             "compositeName" : "Layout", "showPreview" : true });
 
 // ---- free-rectangle packing helpers (rectangles are maps with x, y, w, h lengths in the origin frame) ----

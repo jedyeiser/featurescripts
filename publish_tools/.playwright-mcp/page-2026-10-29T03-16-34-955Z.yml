@@ -1,0 +1,158 @@
+- generic [ref=f9e5]:
+  - navigation [ref=f9e6]:
+    - generic [ref=f9e7]:
+      - link [ref=f9e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f9e11]
+      - generic [ref=f9e13] [cursor=pointer]
+    - generic [ref=f9e16]:
+      - generic [ref=f9e18]:
+        - generic [ref=f9e19]: Publish & Drawing tools
+        - generic [ref=f9e20]: Main
+      - generic [ref=f9e22] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f9e26] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f9e30]:
+      - generic [ref=f9e47] [cursor=pointer]
+      - generic [ref=f9e53] [cursor=pointer]
+      - button "Notifications" [ref=f9e58] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f9e66]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f9e69] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f9e74] [cursor=pointer]
+      - button "Share" [ref=f9e78] [cursor=pointer]
+      - generic "Help menu" [ref=f9e80] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f9e84] [cursor=pointer]
+  - generic [ref=f9e94]:
+    - generic [ref=f9e96]:
+      - generic [ref=f9e97]:
+        - generic [ref=f9e98]:
+          - generic [ref=f9e99] [cursor=pointer]
+          - generic [ref=f9e102] [cursor=pointer]
+          - generic [ref=f9e105] [cursor=pointer]
+          - generic [ref=f9e108] [cursor=pointer]
+          - generic [ref=f9e111] [cursor=pointer]
+          - generic [ref=f9e114] [cursor=pointer]
+          - generic [ref=f9e117] [cursor=pointer]
+          - generic [ref=f9e120] [cursor=pointer]
+        - generic [ref=f9e124] [cursor=pointer]
+      - generic [ref=f9e128] [cursor=pointer]
+    - generic [ref=f9e135]:
+      - generic [ref=f9e292]:
+        - generic [ref=f9e304]:
+          - generic [ref=f9e305]: Sketch
+          - generic [ref=f9e317]:
+            - generic [ref=f9e318] [cursor=pointer]
+            - generic [ref=f9e322] [cursor=pointer]
+            - generic [ref=f9e326] [cursor=pointer]
+            - generic [ref=f9e330] [cursor=pointer]
+            - generic [ref=f9e335]:
+              - generic [ref=f9e336] [cursor=pointer]
+              - generic [ref=f9e340] [cursor=pointer]
+          - generic [ref=f9e346]:
+            - generic [ref=f9e348]:
+              - generic [ref=f9e349] [cursor=pointer]
+              - generic [ref=f9e353] [cursor=pointer]
+            - generic [ref=f9e356] [cursor=pointer]
+            - generic [ref=f9e361]:
+              - generic [ref=f9e362] [cursor=pointer]
+              - generic [ref=f9e366] [cursor=pointer]
+            - generic [ref=f9e369] [cursor=pointer]
+            - generic [ref=f9e373] [cursor=pointer]
+            - generic [ref=f9e377] [cursor=pointer]
+            - generic [ref=f9e381] [cursor=pointer]
+          - generic [ref=f9e388]:
+            - generic [ref=f9e390]:
+              - generic [ref=f9e391] [cursor=pointer]
+              - generic [ref=f9e395] [cursor=pointer]
+            - generic [ref=f9e398] [cursor=pointer]
+          - generic [ref=f9e405]:
+            - generic [ref=f9e406] [cursor=pointer]
+            - generic [ref=f9e410] [cursor=pointer]
+            - generic [ref=f9e415]:
+              - generic [ref=f9e416] [cursor=pointer]
+              - generic [ref=f9e420] [cursor=pointer]
+            - generic [ref=f9e423] [cursor=pointer]
+          - generic [ref=f9e430]:
+            - generic [ref=f9e431] [cursor=pointer]
+            - generic [ref=f9e435] [cursor=pointer]
+            - generic [ref=f9e439] [cursor=pointer]
+            - generic [ref=f9e443] [cursor=pointer]
+          - generic [ref=f9e451]:
+            - generic [ref=f9e452] [cursor=pointer]
+            - generic [ref=f9e456] [cursor=pointer]
+          - generic [ref=f9e463]:
+            - generic [ref=f9e464] [cursor=pointer]: SA
+            - generic [ref=f9e467] [cursor=pointer]
+          - generic [ref=f9e474] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f9e481] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f9e482]:
+            - generic [ref=f9e483]: alt/⌥
+            - generic [ref=f9e484]: c
+      - generic [ref=f9e138]:
+        - generic [ref=f9e141]:
+          - generic [ref=f9e143]:
+            - generic [ref=f9e144]:
+              - generic [ref=f9e146]:
+                - button [ref=f9e148] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f9e153]
+              - generic [ref=f9e154]:
+                - generic [ref=f9e155]: Features (6)
+                - button [ref=f9e156] [cursor=pointer]
+                - button [ref=f9e159] [cursor=pointer]
+                - button [ref=f9e162] [cursor=pointer]
+            - generic [ref=f9e166]:
+              - generic [ref=f9e486]:
+                - generic [ref=f9e488]:
+                  - generic [ref=f9e489] [cursor=pointer]
+                  - generic [ref=f9e492]: Default geometry
+                - generic [ref=f9e494]: Origin
+                - generic [ref=f9e504]: Top
+                - generic [ref=f9e514]: Front
+                - generic [ref=f9e524]: Right
+                - generic [ref=f9e535]:
+                  - generic [ref=f9e537] [cursor=pointer]
+                  - generic [ref=f9e540]: Derived 1
+                - generic [ref=f9e550]: Auto layout plus 1
+              - list
+          - generic [ref=f9e171]:
+            - generic [ref=f9e173]:
+              - generic [ref=f9e175] [cursor=pointer]
+              - generic [ref=f9e178]: Parts (8)
+            - generic [ref=f9e562]: RD K035_SZ01 178_KF_SL2
+            - generic [ref=f9e574]: RD K035_SZ01 178_KF_SL3
+            - generic [ref=f9e586]: RD K035_SZ01 178_KF_SZ
+            - generic [ref=f9e598]: RD K035_SZ01 178_KF_SL1
+            - generic [ref=f9e610]: RD K035_SZ01 178_KF_SL2
+            - generic [ref=f9e622]: RD K035_SZ01 178_KF_SL3
+            - generic [ref=f9e634]: RD K035_SZ01 178_KF_SL2
+            - generic [ref=f9e646]: RD K035_SZ01 178_KF_SL3
+            - generic [ref=f9e659]:
+              - generic [ref=f9e661] [cursor=pointer]
+              - generic [ref=f9e664]: Composite parts (3)
+        - generic [ref=f9e182]:
+          - generic [ref=f9e184] [cursor=pointer]
+          - generic [ref=f9e188]:
+            - generic [ref=f9e190]:
+              - button [ref=f9e668] [cursor=pointer]
+              - button [ref=f9e672] [cursor=pointer]
+              - button [ref=f9e676] [cursor=pointer]
+            - generic [ref=f9e203] [cursor=pointer]
+          - generic [ref=f9e208]:
+            - generic [ref=f9e682] [cursor=pointer]
+            - generic [ref=f9e209] [cursor=pointer]
+            - generic [ref=f9e213] [cursor=pointer]
+            - generic [ref=f9e217] [cursor=pointer]
+            - generic [ref=f9e686] [cursor=pointer]
+            - generic [ref=f9e221] [cursor=pointer]
+            - generic [ref=f9e224] [cursor=pointer]
+      - generic [ref=f9e228]:
+        - img [ref=f9e231] [cursor=pointer]
+        - generic [ref=f9e233]:
+          - generic [ref=f9e234] [cursor=pointer]
+          - generic [ref=f9e238]: tests
+        - generic [ref=f9e245]:
+          - generic [ref=f9e246] [cursor=pointer]: Station tests
+          - generic [ref=f9e252] [cursor=pointer]: Primitive tests
+          - generic [ref=f9e258] [cursor=pointer]: Export Tests
+          - generic [ref=f9e269]: Autolayout_Tests
