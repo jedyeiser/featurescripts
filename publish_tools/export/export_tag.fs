@@ -501,7 +501,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                         "stationSet" : "",
                         "stations" : [],
                         "stationLines" : true,
-                        "outlineWires" : true,
+                        "outlineWires" : false,
                         "outlineSurface" : false,
                         "datumPoint" : true,
                         "flatCopy" : false,
