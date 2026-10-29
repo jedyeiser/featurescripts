@@ -1,0 +1,46 @@
+{
+  "studio": "cc7309dee4072090c78a2663",
+  "fixture": "F8EFOYSZc312cCh_0",
+  "tests": [
+    {
+      "name": "T1 width 700: second column",
+      "id": "Fk2SNWbvEATAEj3_8",
+      "status": "OK"
+    },
+    {
+      "name": "T2 no width limit: one Y column",
+      "id": "F199SBRBmRVXC2Z_14",
+      "status": "OK"
+    },
+    {
+      "name": "T3 width 700 length 2000: second sheet",
+      "id": "F5JK7Okabj02gMe_20",
+      "status": "INFO"
+    },
+    {
+      "name": "T4 8 solids to a named composite",
+      "id": "Fg2GROf7zNzNuI6_26",
+      "status": "OK"
+    },
+    {
+      "name": "T5 composites to composite: warning",
+      "id": "FASoSpilmNjnBt2_27",
+      "status": "WARNING"
+    },
+    {
+      "name": "T6 nesting spread off",
+      "id": "FZAnVfLXRL6Pbah_33",
+      "status": "INFO"
+    },
+    {
+      "name": "T7 nesting spread on",
+      "id": "FPWrgdxNozyLV5x_34",
+      "status": "INFO"
+    },
+    {
+      "name": "T8 no nesting",
+      "id": "Fg51jIUbOMdY7u8_35",
+      "status": "OK"
+    }
+  ]
+}

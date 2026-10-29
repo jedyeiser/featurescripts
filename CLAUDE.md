@@ -132,7 +132,7 @@ Clean means "worth pushing", not "correct".
 `devtools/onshape/build_<x>_tests.py` inserts real test features into the document's test Part Studio (features named by
 case + expected result); `check_<x>_tests.py` regenerates and reads results with one FeatureScript eval per batch.
 Run as `PYTHONPATH=. python devtools/onshape/<script>.py` from the repo root (`FS_SYNC_TIMEOUT=120` for heavy studios).
-Pairs: arc_tangency(+deo), case_pattern, composite, deo_regions, evaluate_offset, evaluate_profiles, extract_tracking,
+Pairs: arc_tangency(+deo), auto_layout, case_pattern, composite, deo_regions, evaluate_offset, evaluate_profiles, extract_tracking,
 fillet_wire (check only), footprint, gordon, move_along_edge, offset_edges, offset_profile, primitive, reference_side,
 trim_curve_plus, unwrap(+hole_face, parts), utility, xsection. Build once, check often; both cost API calls -- see
 "Onshape API budget" above. Tests live in the feature tree, not in harness tabs (memory: feedback_tests_in_feature_tree).

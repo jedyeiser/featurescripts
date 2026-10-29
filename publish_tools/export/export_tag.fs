@@ -274,43 +274,34 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
 
         }
 
-        // The group's own checkbox is "Export drawing": the part has a drawing to export with it. Everything below
-        // (file name, Station table) applies only when it is on.
-        annotation { "Name" : "Export drawing", "Default" : false }
-        definition.drawingOut is boolean;
+        // "Do we want station tables for this part?" The group's own checkbox is the question; the API tool uses the views
+        // when it creates, updates or exports the part's drawing (it owns drawing export). Declared before the group (correction 81).
+        annotation { "Name" : "Station table", "Default" : false,
+                    "Description" : "Creates the part's station views (Station geometry, named with the export name) so the Station table in the part's drawing has its data. Insert the table with Views containing = the export name." }
+        definition.stationTable is boolean;
 
-        annotation { "Group Name" : "Drawing Information", "Driving Parameter" : "drawingOut", "Collapsed By Default" : false }
+        annotation { "Group Name" : "Drawing Information", "Driving Parameter" : "stationTable", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "Drawing file name", "Default" : "", "MaxLength" : 128, "Description" : "Empty = the export name." }
-            definition.drawingName is string;
+            annotation { "Name" : "Station definitions",
+                        "Description" : "The Station definition feature(s) whose stations this part is measured at." }
+            definition.stationDefinitions is FeatureList;
 
-            annotation { "Name" : "Station table", "Default" : false,
-                        "Description" : "Runs Station geometry for this part, named with the export name, so the drawing's Station table (Views containing = the export name) has its data." }
-            definition.stationTable is boolean;
+            annotation { "Name" : "Datum (measuring origin)", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1,
+                        "Description" : "Where x = 0. Empty = world origin." }
+            definition.stationDatum is Query;
 
-            if (definition.stationTable)
-            {
-                annotation { "Name" : "Station definitions",
-                            "Description" : "The Station definition feature(s) whose stations this part is measured at." }
-                definition.stationDefinitions is FeatureList;
+            annotation { "Name" : "Datum axes", "Default" : StationDatumUse.ORIGIN, "UIHint" : UIHint.SHOW_LABEL }
+            definition.stationDatumUses is StationDatumUse;
 
-                annotation { "Name" : "Datum (measuring origin)", "Filter" : BodyType.MATE_CONNECTOR || EntityType.VERTEX, "MaxNumberOfPicks" : 1,
-                            "Description" : "Where x = 0. Empty = world origin." }
-                definition.stationDatum is Query;
+            annotation { "Name" : "Plan view (XY)", "Default" : true }
+            definition.stationPlan is boolean;
 
-                annotation { "Name" : "Datum axes", "Default" : StationDatumUse.ORIGIN, "UIHint" : UIHint.SHOW_LABEL }
-                definition.stationDatumUses is StationDatumUse;
+            annotation { "Name" : "Profile view (XZ)", "Default" : false }
+            definition.stationProfile is boolean;
 
-                annotation { "Name" : "Plan view (XY)", "Default" : true }
-                definition.stationPlan is boolean;
-
-                annotation { "Name" : "Profile view (XZ)", "Default" : false }
-                definition.stationProfile is boolean;
-
-                annotation { "Name" : "Views at export position", "Default" : false,
-                            "Description" : "Off: the views are built on the picked part where it is (no new part). On: they are built on a shifted copy of the part at the export origin (a new part; single bodies only). Needs an export origin." }
-                definition.stationAtExport is boolean;
-            }
+            annotation { "Name" : "Views at export position", "Default" : false,
+                        "Description" : "Off: the views are built on the picked part where it is (no new part). On: they are built on a shifted copy of the part at the export origin (a new part; single bodies only). Needs an export origin." }
+            definition.stationAtExport is boolean;
         }
 
         annotation { "Group Name" : "Export origin", "Collapsed By Default" : true }
@@ -384,13 +375,13 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         var origin = exportOrigin(context, definition, isComposite);
         // A composite cannot be copied to the export position: its DXF faces are shifted, a copy / station views on a copy are not.
         const wantsCopy = definition.shiftCopy == true
-            || (definition.drawingOut == true && definition.stationTable == true && definition.stationAtExport == true);
+            || (definition.stationTable == true && definition.stationAtExport == true);
         if (isComposite && origin.applied && wantsCopy)
         {
             warnings = append(warnings, "A composite cannot be copied to the export position: the DXF faces are shifted, but the shifted copy and the station views at the export position were NOT built.");
         }
         const copyHere = origin.applied && !isComposite && wantsCopy;
-        const stationsOnCopy = origin.applied && !isComposite && definition.drawingOut == true && definition.stationTable == true
+        const stationsOnCopy = origin.applied && !isComposite && definition.stationTable == true
             && definition.stationAtExport == true;
 
         var created = [];
@@ -487,12 +478,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
 
         // Station table: run Station geometry for this part, named with the stem, so the drawing's Station table
         // (Views containing = the stem) has its data. The views are tagged composites "<stem> XY" / "<stem> XZ".
-        // The Station table belongs to the drawing: it only runs when Export drawing is on.
-        const stationTable = definition.drawingOut == true && definition.stationTable == true;
-        if (definition.stationTable == true && definition.drawingOut != true)
-        {
-            warnings = append(warnings, "Station table is on but Export drawing is off: no station views were built.");
-        }
+        const stationTable = definition.stationTable == true;
         var layout = {};
         if (stationTable)
         {
@@ -623,8 +609,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                 "exportBody" : shiftedMade ? stem ~ " EXPORT" : definition.bodyName,
                 "atExportPosition" : shiftedMade, "transformNeeded" : origin.applied && !shiftedMade },
             "dxf" : dxf,
-            "drawing" : { "export" : definition.drawingOut == true, "name" : definition.drawingName,
-                "stationTable" : stationTable, "stationViewFilter" : stationTable ? stem : "", "layout" : layout,
+            "drawing" : { "stationTable" : stationTable, "stationViewFilter" : stationTable ? stem : "", "layout" : layout,
                 "stationViews" : stationTable ? concatenateArrays([definition.stationPlan ? ["XY"] : [], definition.stationProfile ? ["XZ"] : []]) : [] },
             "origin" : originData(definition, origin),
             "shiftedCopy" : shiftedMade
@@ -692,13 +677,13 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
          "originType" : ExportOriginType.NONE, "originAxes" : ExportOriginAxes.ORIGIN_ONLY,
          "quadrant" : ExportQuadrant.FIRST, "bufferX" : 10 * millimeter, "bufferY" : 10 * millimeter, "bufferZ" : 0 * millimeter,
          "bodyName" : "", "nameStale" : false, "exportName" : "", "solidName" : "", "planName" : "", "profileName" : "",
-         "drawingName" : "", "oneDxfComposite" : false, "shiftCopy" : false,
+         "oneDxfComposite" : false, "shiftCopy" : false,
          "profileOutline" : ExportProfileOutline.SECTION, "extraOptions" : "",
          "dxfPattern" : false, "patternSpacing" : ExportPatternSpacing.CLEARANCE, "patternCountX" : 1, "patternCountY" : 1,
          "clearanceX" : 10 * millimeter, "clearanceY" : 10 * millimeter, "pitchX" : 300 * millimeter, "pitchY" : 300 * millimeter,
          "exportSolid" : false, "exportDxf" : false, "stationTable" : false, "stationPlan" : true, "stationProfile" : false,
          "stationDatum" : qNothing(), "stationDatumUses" : StationDatumUse.ORIGIN, "stationAtExport" : false,
-         "stepOut" : false, "igesOut" : false, "stlOut" : false, "drawingOut" : false,
+         "stepOut" : false, "igesOut" : false, "stlOut" : false,
          "planFaces" : qNothing(), "profileFaces" : qNothing(), "originConnector" : qNothing() });
 
 /**

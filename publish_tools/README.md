@@ -473,7 +473,7 @@ Tab `export_tag` (element 27ea220e..., folder `export`; local `publish_tools/exp
 `export-tag`; corrections 78-84. The tag tells the export app what to export for ONE body or ONE composite and builds the geometry
 the export needs. FeatureScript only records intent and builds geometry; the app (later) reads the attribute and does the exporting.
 
-Dialog groups: Part and name | Export info | Export origin | Drawing Information (its checkbox is "Export drawing").
+Dialog groups: Part and name | Export info | Export origin | Drawing Information (its checkbox is "Station table").
 * Name: "Get Part Name" button (editing logic; the body cannot read names, correction 36), stored name, stale-name Ignore / Warn /
   Error (checked only when the dialog is edited), export name (overrides), release prefix rule (V1 / V001 / R0 / R1; the app resolves it).
 * Export solid: STEP / IGES / STL booleans + file name (recorded). Export DXF: Plan (XY) and Profile (XZ), each NONE / PROJECTION /
@@ -485,15 +485,16 @@ Dialog groups: Part and name | Export info | Export origin | Drawing Information
 * Export origin: mate connector (or vertex; origin only, or origin + axes) or quadrant 1st +X+Y / 2nd -X+Y / 3rd -X-Y / 4th +X-Y with
   X / Y / Z buffers (10 / 10 / 0 mm), translation only. It shifts the DXF faces for ANY input (composites too). "Make a shifted copy"
   (`<name> EXPORT`) is for a single body only (warning for a composite).
-* Drawing Information (driving checkbox Export drawing): drawing file name; Station table = the tag RUNS Station geometry (prefix = the
-  export name, outline wires off, flat copy off) for the picked Station definition(s), datum and views (XY / XZ). "Build the views at the
+* Drawing Information (driving checkbox "Station table" = "do we want station tables for this part?"; there is NO export-drawing flag: the
+  API tool owns drawing export and uses these views when it creates, updates or exports the drawing): the tag RUNS Station geometry
+  (prefix = the export name, outline wires off, flat copy off) for the picked Station definition(s), datum and views (XY / XZ). "Build the views at the
   export position" (default off): on = views on a shifted copy of the part (a new part; single bodies only; Station geometry's hidden
   "Station frame" moves the absolute stations with it); off = in place on the input part. Insert the drawing's Station table with
   "Views containing" = the export name.
 * Attribute `publishExportTag` (schema `exportTag/1`) on the tagged body + the same map in the standard output slot (variable `exportTag`,
   queries `exportPlan`, `exportProfile`): `name` (stored, stem, versionPrefix), `part` (id, isComposite, members, membersTagged,
   inComposites -- ids are that microversion's), `solid` (formats, name, exportBody, atExportPosition, transformNeeded), `dxf.<plan|profile>`
-  (source, name, faceCount, composite, pattern with instances), `drawing` (export, name, stationTable, stationViewFilter, stationViews,
+  (source, name, faceCount, composite, pattern with instances), `drawing` (stationTable, stationViewFilter, stationViews,
   layout.<XY|XZ> = composite / wires / datum body names + one row per station: body, x, lo, hi, span, for the API tool's ordinate
   dimensions), `origin` (kind, applied, 3x3 matrix, translationMm, quadrant, bufferMm), `shiftedCopy`, `extra` (hidden JSON text, room
   for options added later: published parameters cannot be extended safely, correction 64).
@@ -520,6 +521,6 @@ Base_Export / Core_Export (stations moved with the part at +12 / +76.1 mm, 2026-
 
 Verified live (user's "Export Tests", 2026-10-29): plan projection + quadrant + 1 x 3 pattern (pitch 142.26 mm, arcs kept), composite
 shift (user), section profile (HK XZ = 6 edges, was a silhouette of hundreds), selected flat face + pattern (UG), Station table views in
-place and on a shifted copy, composite / body names, the Export drawing gate. NOT verified: selected TILTED or CURVED faces and their
+place and on a shifted copy, composite / body names. NOT verified: selected TILTED or CURVED faces and their
 arcs; an attribute surviving a composite rebuild / pattern copy; the dialog's rendering of every conditional (never opened by the author);
 the icon in the tree; a real drawing built from `drawing.layout`; heavy-studio regeneration time.
