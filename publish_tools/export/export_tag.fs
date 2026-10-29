@@ -416,7 +416,9 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         }
 
         var shiftedCopy = qNothing();
-        if (definition.shiftCopy == true && origin.applied)
+        // The copy is also made when the Station table is on: its views are built on the copy, so every station body is born
+        // at the export position and nothing is left behind in place.
+        if ((definition.shiftCopy == true || definition.stationTable == true) && origin.applied)
         {
             opPattern(context, id + "shiftCopy", {
                         "entities" : definition.part,
@@ -452,9 +454,34 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             {
                 throw regenError("Turn on the plan or the profile view for the Station table.", ["stationPlan"]);
             }
+            // With a shift the views are built on the shifted copy, and the datum is moved with it (a mate connector at the
+            // transformed datum frame, deleted again after the run).
+            var stationPart = definition.part;
+            var stationDatum = definition.stationDatum;
+            if (origin.applied)
+            {
+                stationPart = shiftedCopy;
+                var datumCs = coordSystem(vector(0, 0, 0) * meter, vector(1, 0, 0), vector(0, 0, 1));
+                if (!isQueryEmpty(context, definition.stationDatum))
+                {
+                    const datumConnectors = evaluateQuery(context, qBodyType(qOwnerBody(definition.stationDatum), BodyType.MATE_CONNECTOR));
+                    if (size(datumConnectors) > 0)
+                    {
+                        datumCs = evMateConnector(context, { "mateConnector" : datumConnectors[0] });
+                    }
+                    else
+                    {
+                        datumCs = coordSystem(evVertexPoint(context, { "vertex" : definition.stationDatum }), vector(1, 0, 0), vector(0, 0, 1));
+                    }
+                }
+                opMateConnector(context, id + "stationDatum", {
+                            "coordSystem" : coordSystem(origin.xf * datumCs.origin, origin.xf.linear * datumCs.xAxis, origin.xf.linear * datumCs.zAxis)
+                        });
+                stationDatum = qCreatedBy(id + "stationDatum", EntityType.BODY);
+            }
             stationGeometry(context, id + "stations", {
-                        "part" : definition.part,
-                        "datum" : definition.stationDatum,
+                        "part" : stationPart,
+                        "datum" : stationDatum,
                         "datumUses" : definition.stationDatumUses,
                         "prefix" : stem,
                         "viewNames" : StationViewNames.XY_XZ,
@@ -472,7 +499,12 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                         "flatCopy" : false,
                         "printTable" : false
                     });
-            notes = append(notes, "Station table: insert it in the drawing with Views containing = '" ~ stem ~ "'.");
+            if (origin.applied)
+            {
+                opDeleteBodies(context, id + "deleteStationDatum", { "entities" : stationDatum });
+            }
+            notes = append(notes, "Station table: insert it in the drawing with Views containing = '" ~ stem ~ "'."
+                ~ (origin.applied ? " The views are built on the shifted copy." : ""));
 
             // Drawing layout for the API tool: what to put in each view, by body name (station ids are the body names, so
             // adding a station never re-binds another one). Ordinate dimensions run from the datum point along x; the
@@ -488,7 +520,6 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                 }
                 const prefix = stem ~ " " ~ v.name;
                 const viewComposite = qBodyType(qCreatedBy(sid + v.key + "composite", EntityType.BODY), BodyType.COMPOSITE);
-                const wires = qBodyType(qCreatedBy(sid + v.key + "wires", EntityType.BODY), BodyType.COMPOSITE);
                 var rows = [];
                 if (!isQueryEmpty(context, viewComposite))
                 {
@@ -510,21 +541,8 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                     }
                 }
 
-                // With a shift, the station lines, outline and datum point follow it: the CLOSED wires composite is
-                // copied by the export transform (the open view composite holds the part and cannot move).
-                var movedName = "";
-                if (origin.applied && !isQueryEmpty(context, wires))
-                {
-                    const copyId = id + ("stationsCopy_" ~ v.key);
-                    opPattern(context, copyId, { "entities" : wires, "transforms" : [origin.xf], "instanceNames" : ["moved"] });
-                    const moved = qBodyType(qCreatedBy(copyId, EntityType.BODY), BodyType.COMPOSITE);
-                    movedName = prefix ~ " STATIONS";
-                    setProperty(context, { "entities" : moved, "propertyType" : PropertyType.NAME, "value" : movedName });
-                    setProperty(context, { "entities" : moved, "propertyType" : PropertyType.EXCLUDE_FROM_BOM, "value" : true });
-                    created = append(created, moved);
-                }
                 layout[v.name] = { "composite" : prefix, "wires" : prefix ~ " WIRES", "datum" : prefix ~ " DATUM",
-                    "stationsCopy" : movedName, "includeWires" : true, "rows" : rows };
+                    "builtOnShiftedCopy" : origin.applied, "includeWires" : true, "rows" : rows };
             }
         }
 
