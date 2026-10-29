@@ -147,8 +147,9 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
             {
                 orientations = append(orientations, { "rotate" : !turnFirst, "w" : turnFirst ? dx : dy, "h" : turnFirst ? dy : dx });
             }
-            items = append(items, { "body" : body, "bb" : bb, "orientations" : orientations, "long" : dx > dy ? dx : dy,
-                        "nested" : false, "profiled" : false, "nest" : { "valid" : false } });
+            items = append(items, { "body" : body, "bb" : bb, "orientations" : orientations, "long" : dx > dy ? dx : dy, "dx" : dx,
+                        "nested" : false, "facesDone" : false, "faces" : { "valid" : false },
+                        "profiled" : false, "nest" : { "valid" : false } });
         }
 
         // Longest side first
@@ -174,11 +175,17 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
         {
             // Internal nesting first: a hole region of an already placed body, in that body's original frame
             var done = false;
-            if (definition.allowNesting && size(regions) > 0)
+            if (definition.allowNesting && anyRegionFitsX(regions, items[i].dx, definition.xBuffer))
             {
+                // (a body keeps its orientation, so it can only go where a region is at least as long as it is)
                 if (!items[i].profiled)
                 {
-                    items[i].nest = nestingProfile(context, items[i].body, cSys, items[i].bb);
+                    if (!items[i].facesDone)
+                    {
+                        items[i].faces = bodyFaceData(context, items[i].body, cSys);
+                        items[i].facesDone = true;
+                    }
+                    items[i].nest = outlineEnvelope(items[i].faces, items[i].bb);
                     items[i].profiled = true;
                 }
                 for (var r = 0; r < size(regions) && items[i].nest.valid && !done; r += 1)
@@ -258,16 +265,23 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
             }
 
             // Register this body's holes as places for the bodies still to come
+            // (only a body longer than the shortest remaining body can have a hole that one of them fits in)
             if (definition.allowNesting && i + 1 < size(items))
             {
-                if (!items[i].profiled)
+                var shortest = items[i + 1].dx;
+                for (var j = i + 2; j < size(items); j += 1)
                 {
-                    items[i].nest = nestingProfile(context, items[i].body, cSys, items[i].bb);
-                    items[i].profiled = true;
+                    shortest = minLen(shortest, items[j].dx);
                 }
-                if (items[i].nest.valid)
+                const needLength = shortest + 2 * definition.xBuffer;
+                if (needLength <= items[i].dx + FREE_TOL)
                 {
-                    for (var hole in items[i].nest.holes)
+                    if (!items[i].facesDone)
+                    {
+                        items[i].faces = bodyFaceData(context, items[i].body, cSys);
+                        items[i].facesDone = true;
+                    }
+                    for (var hole in holeProfiles(items[i].faces, items[i].bb, needLength))
                     {
                         const holeId = size(holeRecords);
                         const region = trimRegion(i, holeId, hole.lo, hole.hi, minHoleHeight);
@@ -546,10 +560,20 @@ function maxLen(a is ValueWithUnits, b is ValueWithUnits) returns ValueWithUnits
 // come oriented with the face on their left, so each edge continues from the end of the previous one.
 function faceLoops(context is Context, face is Query, cSys is CoordSystem) returns array
 {
-    var chains = [];
-    for (var e in evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE)))
+    const edgeQuery = qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE);
+    const edges = evaluateQuery(context, edgeQuery);
+    // Straight edges need only their two ends; mark them once (two calls for the whole face instead of one per edge)
+    const edgeIds = transientQueriesToStrings(edges);
+    var straight = {};
+    for (var lineId in transientQueriesToStrings(evaluateQuery(context, qGeometry(edgeQuery, GeometryType.LINE))))
     {
-        const n = clamp(ceil(evLength(context, { "entities" : e }) / NEST_EDGE_SAMPLE), 1, 40);
+        straight[lineId] = true;
+    }
+    var chains = [];
+    for (var ei = 0; ei < size(edges); ei += 1)
+    {
+        const e = edges[ei];
+        const n = straight[edgeIds[ei]] == true ? 1 : clamp(ceil(evLength(context, { "entities" : e }) / NEST_EDGE_SAMPLE), 1, 40);
         var params = [];
         for (var k = 0; k <= n; k += 1)
         {
@@ -605,23 +629,25 @@ function loopExtent(loop is array) returns map
     return ext;
 }
 
-// The y values where the vertical line at x crosses a polyline, ascending
-function crossings(loop is array, x is ValueWithUnits) returns array
+// How many times the vertical line at x crosses a polyline, and the lowest and highest y of those crossings
+function crossingSpan(loop is array, x is ValueWithUnits) returns map
 {
-    var ys = [];
+    var count = 0;
+    var lo = NEST_BIG;
+    var hi = -NEST_BIG;
     for (var i = 0; i + 1 < size(loop); i += 1)
     {
         const a = loop[i];
         const b = loop[i + 1];
         if ((a[0] <= x && x < b[0]) || (b[0] <= x && x < a[0]))
         {
-            ys = append(ys, a[1] + (b[1] - a[1]) * ((x - a[0]) / (b[0] - a[0])));
+            const y = a[1] + (b[1] - a[1]) * ((x - a[0]) / (b[0] - a[0]));
+            count += 1;
+            lo = minLen(lo, y);
+            hi = maxLen(hi, y);
         }
     }
-    return sort(ys, function(p, q)
-        {
-            return p - q;
-        });
+    return { "n" : count, "lo" : lo, "hi" : hi };
 }
 
 // Per 5 mm cell from x0: the lowest and highest y of a body outline (a cell with no outline stays at NEST_BIG / -NEST_BIG)
@@ -630,8 +656,8 @@ function outlineCells(loop is array, x0 is ValueWithUnits, cells is number) retu
     var samples = [];
     for (var b = 0; b <= cells; b += 1)
     {
-        const ys = crossings(loop, x0 + b * NEST_STEP);
-        samples = append(samples, size(ys) >= 2 ? { "lo" : ys[0], "hi" : ys[size(ys) - 1] } : undefined);
+        const span = crossingSpan(loop, x0 + b * NEST_STEP);
+        samples = append(samples, span.n >= 2 ? span : undefined);
     }
     var lo = makeArray(cells, NEST_BIG);
     var hi = makeArray(cells, -NEST_BIG);
@@ -660,8 +686,8 @@ function holeCells(loop is array, x0 is ValueWithUnits, cells is number) returns
     var previous = undefined;
     for (var b = bStart; b <= bEnd; b += 1)
     {
-        const ys = crossings(loop, x0 + b * NEST_STEP);
-        const current = size(ys) == 2 ? { "lo" : ys[0], "hi" : ys[1] } : undefined;
+        const span = crossingSpan(loop, x0 + b * NEST_STEP);
+        const current = span.n == 2 ? span : undefined;
         if (b > bStart && previous != undefined && current != undefined)
         {
             lo[b - 1] = maxLen(previous.lo, current.lo);
@@ -701,17 +727,13 @@ function intersectHoles(a is array, b is array) returns array
     return result;
 }
 
-// Outline envelope and holes of a flat body (a composite uses every layer: envelope = union, holes = overlap), read from
-// the largest planar face of each layer in the origin frame. Not valid for bodies without a face parallel to the XY plane.
-function nestingProfile(context is Context, body is Query, cSys is CoordSystem, bb is Box3d) returns map
+// The loops of the largest planar face of each layer of a body (a composite has several layers) in the origin frame, with
+// the index of each layer's outer loop. Not valid for a body without a face parallel to the XY plane.
+function bodyFaceData(context is Context, body is Query, cSys is CoordSystem) returns map
 {
     const isComposite = size(evaluateQuery(context, qBodyType(body, BodyType.COMPOSITE))) > 0;
     const layers = isComposite ? evaluateQuery(context, qContainedInCompositeParts(body)) : [body];
-    const x0 = bb.minCorner[0];
-    const cells = ceil((bb.maxCorner[0] - x0) / NEST_STEP);
-    var envLo = makeArray(cells, NEST_BIG);
-    var envHi = makeArray(cells, -NEST_BIG);
-    var holes = undefined;
+    var layerData = [];
     for (var layer in layers)
     {
         const faces = evaluateQuery(context, qLargest(qGeometry(qOwnedByBody(layer, EntityType.FACE), GeometryType.PLANE)));
@@ -726,30 +748,41 @@ function nestingProfile(context is Context, body is Query, cSys is CoordSystem, 
         }
         var outer = 0;
         var outerArea = -1 * meter * meter;
+        var extents = [];
         for (var i = 0; i < size(loops); i += 1)
         {
             const ext = loopExtent(loops[i]);
+            extents = append(extents, ext);
             if ((ext.x1 - ext.x0) * (ext.y1 - ext.y0) > outerArea)
             {
                 outerArea = (ext.x1 - ext.x0) * (ext.y1 - ext.y0);
                 outer = i;
             }
         }
-        const env = outlineCells(loops[outer], x0, cells);
-        var layerHoles = [];
-        for (var i = 0; i < size(loops); i += 1)
-        {
-            if (i != outer)
-            {
-                layerHoles = append(layerHoles, holeCells(loops[i], x0, cells));
-            }
-        }
+        layerData = append(layerData, { "loops" : loops, "extents" : extents, "outer" : outer });
+    }
+    return { "valid" : true, "layers" : layerData };
+}
+
+// The outline envelope of a body as a candidate for a hole (union over its layers); invalid if any strip has no outline
+function outlineEnvelope(faceData is map, bb is Box3d) returns map
+{
+    if (!faceData.valid)
+    {
+        return { "valid" : false };
+    }
+    const x0 = bb.minCorner[0];
+    const cells = ceil((bb.maxCorner[0] - x0) / NEST_STEP);
+    var envLo = makeArray(cells, NEST_BIG);
+    var envHi = makeArray(cells, -NEST_BIG);
+    for (var layer in faceData.layers)
+    {
+        const env = outlineCells(layer.loops[layer.outer], x0, cells);
         for (var k = 0; k < cells; k += 1)
         {
             envLo[k] = minLen(envLo[k], env.lo[k]);
             envHi[k] = maxLen(envHi[k], env.hi[k]);
         }
-        holes = holes == undefined ? layerHoles : intersectHoles(holes, layerHoles);
     }
     for (var k = 0; k < cells; k += 1)
     {
@@ -758,9 +791,48 @@ function nestingProfile(context is Context, body is Query, cSys is CoordSystem, 
             return { "valid" : false };
         }
     }
-    return { "valid" : true, "lo" : envLo, "hi" : envHi, "holes" : holes == undefined ? [] : holes };
+    return { "valid" : true, "lo" : envLo, "hi" : envHi };
 }
 
+// The holes of a body as per-strip free intervals (a composite keeps only what is open in every layer). Holes shorter than
+// `needLength` along X cannot take any remaining body and are left out.
+function holeProfiles(faceData is map, bb is Box3d, needLength is ValueWithUnits) returns array
+{
+    if (!faceData.valid)
+    {
+        return [];
+    }
+    const x0 = bb.minCorner[0];
+    const cells = ceil((bb.maxCorner[0] - x0) / NEST_STEP);
+    var holes = undefined;
+    for (var layer in faceData.layers)
+    {
+        var layerHoles = [];
+        for (var i = 0; i < size(layer.loops); i += 1)
+        {
+            if (i != layer.outer && layer.extents[i].x1 - layer.extents[i].x0 >= needLength - FREE_TOL)
+            {
+                layerHoles = append(layerHoles, holeCells(layer.loops[i], x0, cells));
+            }
+        }
+        holes = holes == undefined ? layerHoles : intersectHoles(holes, layerHoles);
+    }
+    return holes == undefined ? [] : holes;
+}
+
+// Can a body of length `dx` (it keeps its orientation) fit, along X, in any hole region?
+function anyRegionFitsX(regions is array, dx is ValueWithUnits, xBuffer is ValueWithUnits) returns boolean
+{
+    const needed = ceil(dx / NEST_STEP) + 2 * ceil(xBuffer / NEST_STEP);
+    for (var region in regions)
+    {
+        if (size(region.lo) >= needed)
+        {
+            return true;
+        }
+    }
+    return false;
+}
 // A hole's free intervals cut down to the cells that leave room for a body, as a region owned by item `host`
 function trimRegion(host is number, holeId is number, lo is array, hi is array, minHeight is ValueWithUnits)
 {
