@@ -250,17 +250,16 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
 
         }
 
-        annotation { "Group Name" : "Drawing Information", "Collapsed By Default" : false }
+        // The group's own checkbox is "Export drawing": the part has a drawing to export with it. Everything below
+        // (file name, Station table) applies only when it is on.
+        annotation { "Group Name" : "Drawing Information", "Driving Parameter" : "drawingOut", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "Export drawing", "Default" : false,
+            annotation { "Name" : "Export drawing", "Default" : false, "UIHint" : UIHint.ALWAYS_HIDDEN,
                         "Description" : "Intent only: the part has a drawing to export with it." }
             definition.drawingOut is boolean;
 
-            if (definition.drawingOut)
-            {
-                annotation { "Name" : "Drawing file name", "Default" : "", "MaxLength" : 128, "Description" : "Empty = the export name." }
-                definition.drawingName is string;
-            }
+            annotation { "Name" : "Drawing file name", "Default" : "", "MaxLength" : 128, "Description" : "Empty = the export name." }
+            definition.drawingName is string;
 
             annotation { "Name" : "Station table", "Default" : false,
                         "Description" : "Runs Station geometry for this part, named with the export name, so the drawing's Station table (Views containing = the export name) has its data." }
@@ -361,13 +360,15 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         // Export origin: the minimum transform, recorded; applied only to a single body copy and to the DXF faces.
         var origin = exportOrigin(context, definition, isComposite);
         // A composite cannot be copied to the export position: its DXF faces are shifted, a copy / station views on a copy are not.
-        const wantsCopy = definition.shiftCopy == true || (definition.stationTable == true && definition.stationAtExport == true);
+        const wantsCopy = definition.shiftCopy == true
+            || (definition.drawingOut == true && definition.stationTable == true && definition.stationAtExport == true);
         if (isComposite && origin.applied && wantsCopy)
         {
             warnings = append(warnings, "A composite cannot be copied to the export position: the DXF faces are shifted, but the shifted copy and the station views at the export position were NOT built.");
         }
         const copyHere = origin.applied && !isComposite && wantsCopy;
-        const stationsOnCopy = origin.applied && !isComposite && definition.stationAtExport == true;
+        const stationsOnCopy = origin.applied && !isComposite && definition.drawingOut == true && definition.stationTable == true
+            && definition.stationAtExport == true;
 
         var created = [];
         var dxf = {};
@@ -453,7 +454,8 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
 
         // Station table: run Station geometry for this part, named with the stem, so the drawing's Station table
         // (Views containing = the stem) has its data. The views are tagged composites "<stem> XY" / "<stem> XZ".
-        const stationTable = definition.stationTable == true;
+        // The Station table belongs to the drawing: it only runs when Export drawing is on.
+        const stationTable = definition.drawingOut == true && definition.stationTable == true;
         var layout = {};
         if (stationTable)
         {
