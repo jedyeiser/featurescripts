@@ -284,6 +284,10 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
 
                 annotation { "Name" : "Profile view (datum XZ)", "Default" : false }
                 definition.stationProfile is boolean;
+
+                annotation { "Name" : "Build the views at the export position", "Default" : false,
+                            "Description" : "Off: the views are built on the picked part where it is (no new part). On: they are built on a shifted copy of the part at the export origin (a new part; single bodies only). Needs an export origin." }
+                definition.stationAtExport is boolean;
             }
         }
 
@@ -356,10 +360,14 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
 
         // Export origin: the minimum transform, recorded; applied only to a single body copy and to the DXF faces.
         var origin = exportOrigin(context, definition, isComposite);
-        if (isComposite && definition.originType != ExportOriginType.NONE)
+        // A composite cannot be copied to the export position: its DXF faces are shifted, a copy / station views on a copy are not.
+        const wantsCopy = definition.shiftCopy == true || (definition.stationTable == true && definition.stationAtExport == true);
+        if (isComposite && origin.applied && wantsCopy)
         {
-            notes = append(notes, "A composite is taken as already in place: no shift.");
+            warnings = append(warnings, "A composite cannot be copied to the export position: the DXF faces are shifted, but the shifted copy and the station views at the export position were NOT built.");
         }
+        const copyHere = origin.applied && !isComposite && wantsCopy;
+        const stationsOnCopy = origin.applied && !isComposite && definition.stationAtExport == true;
 
         var created = [];
         var dxf = {};
@@ -416,9 +424,8 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         }
 
         var shiftedCopy = qNothing();
-        // The copy is also made when the Station table is on: its views are built on the copy, so every station body is born
-        // at the export position and nothing is left behind in place.
-        if ((definition.shiftCopy == true || definition.stationTable == true) && origin.applied)
+        // Made on request, or for the station views at the export position (born there, nothing left behind in place).
+        if (copyHere)
         {
             opPattern(context, id + "shiftCopy", {
                         "entities" : definition.part,
@@ -459,7 +466,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             var stationPart = definition.part;
             var stationDatum = definition.stationDatum;
             var stationFrame = qNothing();
-            if (origin.applied)
+            if (stationsOnCopy)
             {
                 stationPart = shiftedCopy;
                 var datumCs = coordSystem(vector(0, 0, 0) * meter, vector(1, 0, 0), vector(0, 0, 1));
@@ -507,12 +514,12 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                         "flatCopy" : false,
                         "printTable" : false
                     });
-            if (origin.applied)
+            if (stationsOnCopy)
             {
                 opDeleteBodies(context, id + "deleteStationDatum", { "entities" : qUnion([stationDatum, stationFrame]) });
             }
             notes = append(notes, "Station table: insert it in the drawing with Views containing = '" ~ stem ~ "'."
-                ~ (origin.applied ? " The views are built on the shifted copy." : ""));
+                ~ (stationsOnCopy ? " The views are built on the shifted copy." : ""));
 
             // Drawing layout for the API tool: what to put in each view, by body name (station ids are the body names, so
             // adding a station never re-binds another one). Ordinate dimensions run from the datum point along x; the
@@ -550,7 +557,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
                 }
 
                 layout[v.name] = { "composite" : prefix, "wires" : prefix ~ " WIRES", "datum" : prefix ~ " DATUM",
-                    "builtOnShiftedCopy" : origin.applied, "includeWires" : true, "rows" : rows };
+                    "builtOnShiftedCopy" : stationsOnCopy, "includeWires" : true, "rows" : rows };
             }
         }
 
@@ -615,7 +622,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
          "dxfPattern" : false, "patternSpacing" : ExportPatternSpacing.CLEARANCE, "patternCountX" : 1, "patternCountY" : 1,
          "clearanceX" : 10 * millimeter, "clearanceY" : 10 * millimeter, "pitchX" : 300 * millimeter, "pitchY" : 300 * millimeter,
          "exportSolid" : false, "exportDxf" : false, "stationTable" : false, "stationPlan" : true, "stationProfile" : false,
-         "stationDatum" : qNothing(), "stationDatumUses" : StationDatumUse.ORIGIN,
+         "stationDatum" : qNothing(), "stationDatumUses" : StationDatumUse.ORIGIN, "stationAtExport" : false,
          "stepOut" : false, "igesOut" : false, "stlOut" : false, "drawingOut" : false,
          "planFaces" : qNothing(), "profileFaces" : qNothing(), "originConnector" : qNothing() });
 
@@ -691,13 +698,13 @@ function memberQuery(part is Query) returns Query
 }
 
 /**
- * The minimum transform to the export origin: { applied, xf, kind, frame } where xf moves the part to the export
- * position. A composite is taken as already in place (not applied).
+ * The minimum transform to the export origin: { applied, xf, kind } where xf moves the part to the export position.
+ * It always shifts the DXF faces; a copy of the part (and station views built on it) is made for a single body only.
  */
 function exportOrigin(context is Context, definition is map, isComposite is boolean) returns map
 {
     var result = { "applied" : false, "xf" : identityTransform(), "kind" : "NONE" };
-    if (definition.originType == ExportOriginType.NONE || isComposite)
+    if (definition.originType == ExportOriginType.NONE)
     {
         return result;
     }
