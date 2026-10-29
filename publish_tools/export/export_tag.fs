@@ -392,7 +392,8 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
             const built = buildDxfFaces(context, id + view.key, definition.part, view, origin, stem, pattern);
             dxfBodies[view.key] = built.bodies;
             dxf[view.key] = { "source" : view.source == ExportDxfSource.PROJECTION ? "PROJECTION" : "SELECTION",
-                "name" : view.name, "faceCount" : size(evaluateQuery(context, built.bodies)), "pattern" : built.pattern };
+                "name" : view.name, "faceCount" : size(evaluateQuery(context, built.bodies)), "pattern" : built.pattern,
+                "composite" : definition.oneDxfComposite == true ? stem ~ " DXF" : stem ~ " " ~ view.label ~ " DXF" };
         }
 
         // Composites: one per view when it has several faces, or one for both views.
@@ -406,7 +407,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         {
             for (var key in keys(dxfBodies))
             {
-                composites = append(composites, dxfComposite(context, id + ("dxf_" ~ key), dxfBodies[key], stem ~ " " ~ (key == "plan" ? "XY" : "XZ")));
+                composites = append(composites, dxfComposite(context, id + ("dxf_" ~ key), dxfBodies[key], stem ~ " " ~ (key == "plan" ? "XY" : "XZ") ~ " DXF"));
             }
         }
         for (var key in keys(dxfBodies))
@@ -829,14 +830,14 @@ function buildDxfFaces(context is Context, vid is Id, part is Query, view is map
     for (var k = 0; k < nOriginal; k += 1)
     {
         setProperty(context, { "entities" : originals[k], "propertyType" : PropertyType.NAME,
-                    "value" : nOriginal == 1 ? stem ~ " " ~ view.label : stem ~ " " ~ view.label ~ " " ~ (k + 1) });
+                    "value" : nOriginal == 1 ? stem ~ " " ~ view.label ~ " EXPORT" : stem ~ " " ~ view.label ~ " EXPORT_" ~ (k + 1) });
     }
     for (var m = 0; m < size(copies); m += 1)
     {
         const instance = floor(m / nOriginal) + 1;
         const region = m - (instance - 1) * nOriginal + 1;
         setProperty(context, { "entities" : copies[m], "propertyType" : PropertyType.NAME,
-                    "value" : stem ~ " " ~ view.label ~ " PATTERN " ~ instance ~ (nOriginal > 1 ? " " ~ region : "") });
+                    "value" : stem ~ " " ~ view.label ~ " EXPORT_PATTERN_" ~ instance ~ (nOriginal > 1 ? "_" ~ region : "") });
     }
     return { "bodies" : qUnion(concatenateArrays([originals, copies])), "pattern" : patternData };
 }
@@ -846,10 +847,10 @@ function roundMm(length is ValueWithUnits) returns number
     return round(length / millimeter * 100) / 100;
 }
 
-/** Groups several surface bodies in a closed composite named for the view, excluded from the BOM. A single body is left alone. */
+/** Groups a view's surface bodies (one or several) in a closed composite named "<stem> XY DXF", excluded from the BOM: the one thing to export as that DXF. */
 function dxfComposite(context is Context, cid is Id, bodies is Query, name is string) returns Query
 {
-    if (size(evaluateQuery(context, bodies)) < 2)
+    if (size(evaluateQuery(context, bodies)) < 1)
     {
         return qNothing();
     }

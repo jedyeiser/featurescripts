@@ -1,0 +1,170 @@
+- generic [ref=f22e5]:
+  - navigation [ref=f22e6]:
+    - generic [ref=f22e7]:
+      - link [ref=f22e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f22e11]
+      - generic [ref=f22e13] [cursor=pointer]
+    - generic [ref=f22e16]:
+      - generic [ref=f22e18]:
+        - generic [ref=f22e19]: Publish & Drawing tools
+        - generic [ref=f22e20]: Main
+      - generic [ref=f22e22] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f22e26] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f22e30]:
+      - generic [ref=f22e44] [cursor=pointer]
+      - generic [ref=f22e50] [cursor=pointer]
+      - button "Notifications" [ref=f22e55] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f22e63]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f22e66] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f22e71] [cursor=pointer]
+      - button "Share" [ref=f22e75] [cursor=pointer]
+      - generic "Help menu" [ref=f22e77] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f22e81] [cursor=pointer]
+  - generic [ref=f22e91]:
+    - generic [ref=f22e93]:
+      - generic [ref=f22e94]:
+        - generic [ref=f22e95]:
+          - generic [ref=f22e96] [cursor=pointer]
+          - generic [ref=f22e99] [cursor=pointer]
+          - generic [ref=f22e102] [cursor=pointer]
+          - generic [ref=f22e105] [cursor=pointer]
+          - generic [ref=f22e108] [cursor=pointer]
+          - generic [ref=f22e111] [cursor=pointer]
+          - generic [ref=f22e114] [cursor=pointer]
+          - generic [ref=f22e117] [cursor=pointer]
+        - generic [ref=f22e121] [cursor=pointer]
+      - generic [ref=f22e125] [cursor=pointer]
+    - generic [ref=f22e132]:
+      - generic [ref=f22e139]:
+        - generic [ref=f22e151]:
+          - generic [ref=f22e152]: Sketch
+          - generic [ref=f22e164]:
+            - generic [ref=f22e165] [cursor=pointer]
+            - generic [ref=f22e169] [cursor=pointer]
+            - generic [ref=f22e173] [cursor=pointer]
+            - generic [ref=f22e177] [cursor=pointer]
+            - generic [ref=f22e182]:
+              - generic [ref=f22e183] [cursor=pointer]
+              - generic [ref=f22e187] [cursor=pointer]
+          - generic [ref=f22e193]:
+            - generic [ref=f22e195]:
+              - generic [ref=f22e196] [cursor=pointer]
+              - generic [ref=f22e200] [cursor=pointer]
+            - generic [ref=f22e203] [cursor=pointer]
+            - generic [ref=f22e208]:
+              - generic [ref=f22e209] [cursor=pointer]
+              - generic [ref=f22e213] [cursor=pointer]
+            - generic [ref=f22e216] [cursor=pointer]
+            - generic [ref=f22e220] [cursor=pointer]
+            - generic [ref=f22e224] [cursor=pointer]
+            - generic [ref=f22e228] [cursor=pointer]
+          - generic [ref=f22e235]:
+            - generic [ref=f22e237]:
+              - generic [ref=f22e238] [cursor=pointer]
+              - generic [ref=f22e242] [cursor=pointer]
+            - generic [ref=f22e245] [cursor=pointer]
+          - generic [ref=f22e252]:
+            - generic [ref=f22e253] [cursor=pointer]
+            - generic [ref=f22e257] [cursor=pointer]
+            - generic [ref=f22e262]:
+              - generic [ref=f22e263] [cursor=pointer]
+              - generic [ref=f22e267] [cursor=pointer]
+            - generic [ref=f22e270] [cursor=pointer]
+          - generic [ref=f22e277]:
+            - generic [ref=f22e278] [cursor=pointer]
+            - generic [ref=f22e282] [cursor=pointer]
+            - generic [ref=f22e286] [cursor=pointer]
+            - generic [ref=f22e290] [cursor=pointer]
+          - generic [ref=f22e298]:
+            - generic [ref=f22e299] [cursor=pointer]
+            - generic [ref=f22e303] [cursor=pointer]
+          - generic [ref=f22e310]:
+            - generic [ref=f22e311] [cursor=pointer]: SA
+            - generic [ref=f22e314] [cursor=pointer]
+          - generic [ref=f22e321] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f22e328] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f22e329]:
+            - generic [ref=f22e330]: alt/⌥
+            - generic [ref=f22e331]: c
+      - generic [ref=f22e335]:
+        - generic [ref=f22e338]:
+          - generic [ref=f22e340]:
+            - generic [ref=f22e341]:
+              - generic [ref=f22e343]:
+                - button [ref=f22e345] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f22e350]
+              - generic [ref=f22e351]:
+                - generic [ref=f22e352]: Features (8)
+                - button [ref=f22e353] [cursor=pointer]
+                - button [ref=f22e356] [cursor=pointer]
+                - button [ref=f22e359] [cursor=pointer]
+            - generic [ref=f22e363]:
+              - generic [ref=f22e364]:
+                - generic [ref=f22e366]:
+                  - generic [ref=f22e367] [cursor=pointer]
+                  - generic [ref=f22e370]: Default geometry
+                - generic [ref=f22e372]: Origin
+                - generic [ref=f22e382]: Top
+                - generic [ref=f22e392]: Front
+                - generic [ref=f22e402]: Right
+                - generic [ref=f22e413]:
+                  - generic [ref=f22e415] [cursor=pointer]
+                  - generic [ref=f22e418]: Derived 1
+                - generic [ref=f22e428]: Station_Definition
+                - generic [ref=f22e440]: Base_Export
+                - generic [ref=f22e447]: Core_Export
+              - list
+          - generic [ref=f22e462]:
+            - generic [ref=f22e464]:
+              - generic [ref=f22e466] [cursor=pointer]
+              - generic [ref=f22e469]: Parts (31)
+            - generic [ref=f22e473]: RD K035_SZ01 178 STK L
+            - generic [ref=f22e485]: RD K035_SZ01 178 STK R
+            - generic [ref=f22e497]: RD K035_SZ01 178 Belag_3D
+            - generic [ref=f22e509]: RD K035_SZ01 178 Belag
+            - generic [ref=f22e521]: RD K035_SZ01 178 UG_3D
+            - generic [ref=f22e533]: RD K035_SZ01 178 UG
+            - generic [ref=f22e545]: RD K035_SZ01 178 Spitze-Mat_3D
+            - generic [ref=f22e557]: RD K035_SZ01 178 Ende-Mat_3D
+            - generic [ref=f22e569]: RD K035_SZ01 178 Spitze-Mat
+            - generic [ref=f22e581]: RD K035_SZ01 178 Ende-Mat
+            - generic [ref=f22e593]: RD K035_SZ01 178 OFL_3D
+            - generic [ref=f22e605]: RD K035_SZ01 178 OG_3D
+            - generic [ref=f22e617]: RD K035_SZ01 178 OFL
+            - generic [ref=f22e629]: RD K035_SZ01 178 OG
+            - generic [ref=f22e641]: 3D HK
+            - generic [ref=f22e653]: 2D HK
+            - generic [ref=f22e665]: Part 7
+            - generic [ref=f22e677]: Long_Beech
+            - generic [ref=f22e689]: Part 7
+            - generic [ref=f22e701]: Long_Beech
+            - generic [ref=f22e713]: RD K035_SZ01 178 SW_L
+        - generic [ref=f22e726]:
+          - generic [ref=f22e728] [cursor=pointer]
+          - generic [ref=f22e732]:
+            - generic [ref=f22e734]:
+              - button [ref=f22e735] [cursor=pointer]
+              - button [ref=f22e739] [cursor=pointer]
+              - button [ref=f22e743] [cursor=pointer]
+            - generic [ref=f22e747] [cursor=pointer]
+          - generic [ref=f22e752]:
+            - generic [ref=f22e753] [cursor=pointer]
+            - generic [ref=f22e757] [cursor=pointer]
+            - generic [ref=f22e761] [cursor=pointer]
+            - generic [ref=f22e765] [cursor=pointer]
+            - generic [ref=f22e769] [cursor=pointer]
+            - generic [ref=f22e773] [cursor=pointer]
+            - generic [ref=f22e776] [cursor=pointer]
+      - generic [ref=f22e780]:
+        - img [ref=f22e783] [cursor=pointer]
+        - generic [ref=f22e785]:
+          - generic [ref=f22e786] [cursor=pointer]
+          - generic [ref=f22e790]: tests
+        - generic [ref=f22e797]:
+          - generic [ref=f22e798] [cursor=pointer]: Station tests
+          - generic [ref=f22e804] [cursor=pointer]: Primitive tests
+          - generic [ref=f22e810]: Export Tests
+          - generic [ref=f22e821] [cursor=pointer]: Autolayout_Tests
