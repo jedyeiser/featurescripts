@@ -11,7 +11,7 @@ IconNamespace::import(path : "642c7f60a7761a7a6372b089", version : "b2add4d46cb8
  * layout width and length (a full sheet starts a new one, offset along +Y), rotates bodies 90 degrees about the
  * connector Z, copies instead of moves, and wraps the result in a named composite part.
  *
- * Phase 2 (not built): internal nesting, placing small bodies inside the holes of large ones.
+ * Internal nesting (opt-in): small bodies are placed inside the holes of large ones; the outline sampling is the slow part.
  */
 
 export const AUTO_LAYOUT_BUFFER_BOUNDS =
