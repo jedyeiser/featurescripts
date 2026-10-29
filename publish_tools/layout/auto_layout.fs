@@ -530,6 +530,7 @@ function occupyRect(free is array, taken is map) returns array
 const NEST_STEP = 5 * millimeter;
 const NEST_EDGE_SAMPLE = 10 * millimeter;
 const NEST_JOIN_TOL = 1e-6 * meter;
+const NEST_BIG_M = 1000;
 const NEST_BIG = 1000 * meter;
 
 // Origin-frame transform that takes a body to its packed slot (rotation about the origin Z first, then translation)
@@ -556,8 +557,9 @@ function maxLen(a is ValueWithUnits, b is ValueWithUnits) returns ValueWithUnits
     return a > b ? a : b;
 }
 
-// The closed loops of a planar face as polylines in the origin frame (z dropped). Edges are sampled about every 10 mm and
-// come oriented with the face on their left, so each edge continues from the end of the previous one.
+// The closed loops of a planar face as polylines in the origin frame, as plain metre numbers { xs, ys } (ValueWithUnits arithmetic is
+// slow in the sampling loops). Edges are sampled about every 10 mm (a straight edge by its two ends) and come oriented with the face
+// on their left, so each edge continues from the end of the previous one.
 function faceLoops(context is Context, face is Query, cSys is CoordSystem) returns array
 {
     const edgeQuery = qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE);
@@ -610,94 +612,114 @@ function faceLoops(context is Context, face is Query, cSys is CoordSystem) retur
                     }
                 }
             }
-            loops = append(loops, loop);
+            var xs = [];
+            var ys = [];
+            for (var p in loop)
+            {
+                xs = append(xs, p[0] / meter);
+                ys = append(ys, p[1] / meter);
+            }
+            loops = append(loops, { "xs" : xs, "ys" : ys });
         }
     }
     return loops;
 }
 
-function loopExtent(loop is array) returns map
+function loopExtent(loop is map) returns map
 {
-    var ext = { "x0" : loop[0][0], "x1" : loop[0][0], "y0" : loop[0][1], "y1" : loop[0][1] };
-    for (var p in loop)
+    var ext = { "x0" : loop.xs[0], "x1" : loop.xs[0], "y0" : loop.ys[0], "y1" : loop.ys[0] };
+    for (var k = 1; k < size(loop.xs); k += 1)
     {
-        ext.x0 = minLen(ext.x0, p[0]);
-        ext.x1 = maxLen(ext.x1, p[0]);
-        ext.y0 = minLen(ext.y0, p[1]);
-        ext.y1 = maxLen(ext.y1, p[1]);
+        ext.x0 = min(ext.x0, loop.xs[k]);
+        ext.x1 = max(ext.x1, loop.xs[k]);
+        ext.y0 = min(ext.y0, loop.ys[k]);
+        ext.y1 = max(ext.y1, loop.ys[k]);
     }
     return ext;
 }
 
-// How many times the vertical line at x crosses a polyline, and the lowest and highest y of those crossings
-function crossingSpan(loop is array, x is ValueWithUnits) returns map
+// One pass over a polyline: for each vertical line at x0 + b * step (b = 0..cells) how often it crosses the polyline, and the lowest
+// and highest y of those crossings. A segment covers the lines with min(xa, xb) <= x < max(xa, xb), so every segment is visited once.
+function sweepCrossings(loop is map, x0 is number, step is number, cells is number) returns map
 {
-    var count = 0;
-    var lo = NEST_BIG;
-    var hi = -NEST_BIG;
-    for (var i = 0; i + 1 < size(loop); i += 1)
+    var count = makeArray(cells + 1, 0);
+    var lo = makeArray(cells + 1, NEST_BIG_M);
+    var hi = makeArray(cells + 1, -NEST_BIG_M);
+    for (var i = 0; i + 1 < size(loop.xs); i += 1)
     {
-        const a = loop[i];
-        const b = loop[i + 1];
-        if ((a[0] <= x && x < b[0]) || (b[0] <= x && x < a[0]))
+        const xa = loop.xs[i];
+        const xb = loop.xs[i + 1];
+        if (xa != xb)
         {
-            const y = a[1] + (b[1] - a[1]) * ((x - a[0]) / (b[0] - a[0]));
-            count += 1;
-            lo = minLen(lo, y);
-            hi = maxLen(hi, y);
+            const xmin = min(xa, xb);
+            const xmax = max(xa, xb);
+            var b = max(0, ceil((xmin - x0) / step));
+            while (b > 0 && x0 + (b - 1) * step >= xmin)
+            {
+                b -= 1;
+            }
+            while (b <= cells && x0 + b * step < xmin)
+            {
+                b += 1;
+            }
+            while (b <= cells && x0 + b * step < xmax)
+            {
+                const y = loop.ys[i] + (loop.ys[i + 1] - loop.ys[i]) * ((x0 + b * step - xa) / (xb - xa));
+                count[b] = count[b] + 1;
+                lo[b] = min(lo[b], y);
+                hi[b] = max(hi[b], y);
+                b += 1;
+            }
         }
     }
-    return { "n" : count, "lo" : lo, "hi" : hi };
+    return { "count" : count, "lo" : lo, "hi" : hi };
 }
 
 // Per 5 mm cell from x0: the lowest and highest y of a body outline (a cell with no outline stays at NEST_BIG / -NEST_BIG)
-function outlineCells(loop is array, x0 is ValueWithUnits, cells is number) returns map
+function outlineCells(loop is map, x0 is ValueWithUnits, cells is number) returns map
 {
-    var samples = [];
-    for (var b = 0; b <= cells; b += 1)
-    {
-        const span = crossingSpan(loop, x0 + b * NEST_STEP);
-        samples = append(samples, span.n >= 2 ? span : undefined);
-    }
-    var lo = makeArray(cells, NEST_BIG);
-    var hi = makeArray(cells, -NEST_BIG);
+    const sweep = sweepCrossings(loop, x0 / meter, NEST_STEP / meter, cells);
+    var lo = [];
+    var hi = [];
     for (var k = 0; k < cells; k += 1)
     {
-        for (var s in [samples[k], samples[k + 1]])
+        var cellLo = NEST_BIG_M;
+        var cellHi = -NEST_BIG_M;
+        for (var b = k; b <= k + 1; b += 1)
         {
-            if (s != undefined)
+            if (sweep.count[b] >= 2)
             {
-                lo[k] = minLen(lo[k], s.lo);
-                hi[k] = maxLen(hi[k], s.hi);
+                cellLo = min(cellLo, sweep.lo[b]);
+                cellHi = max(cellHi, sweep.hi[b]);
             }
         }
+        lo = append(lo, cellLo * meter);
+        hi = append(hi, cellHi * meter);
     }
     return { "lo" : lo, "hi" : hi };
 }
 
 // Per 5 mm cell from x0: the free interval of a hole (cells where the hole is not a single interval stay invalid)
-function holeCells(loop is array, x0 is ValueWithUnits, cells is number) returns map
+function holeCells(loop is map, x0 is ValueWithUnits, cells is number) returns map
 {
-    var lo = makeArray(cells, NEST_BIG);
-    var hi = makeArray(cells, -NEST_BIG);
-    const ext = loopExtent(loop);
-    const bStart = max(0, floor((ext.x0 - x0) / NEST_STEP));
-    const bEnd = min(cells, ceil((ext.x1 - x0) / NEST_STEP));
-    var previous = undefined;
-    for (var b = bStart; b <= bEnd; b += 1)
+    const sweep = sweepCrossings(loop, x0 / meter, NEST_STEP / meter, cells);
+    var lo = [];
+    var hi = [];
+    for (var k = 0; k < cells; k += 1)
     {
-        const span = crossingSpan(loop, x0 + b * NEST_STEP);
-        const current = span.n == 2 ? span : undefined;
-        if (b > bStart && previous != undefined && current != undefined)
+        if (sweep.count[k] == 2 && sweep.count[k + 1] == 2)
         {
-            lo[b - 1] = maxLen(previous.lo, current.lo);
-            hi[b - 1] = minLen(previous.hi, current.hi);
+            lo = append(lo, max(sweep.lo[k], sweep.lo[k + 1]) * meter);
+            hi = append(hi, min(sweep.hi[k], sweep.hi[k + 1]) * meter);
         }
-        previous = current;
+        else
+        {
+            lo = append(lo, NEST_BIG);
+            hi = append(hi, -NEST_BIG);
+        }
     }
     return { "lo" : lo, "hi" : hi };
 }
-
 // The overlap of two sets of holes (layers of a composite): every pair that still leaves room
 function intersectHoles(a is array, b is array) returns array
 {
@@ -747,7 +769,7 @@ function bodyFaceData(context is Context, body is Query, cSys is CoordSystem) re
             return { "valid" : false };
         }
         var outer = 0;
-        var outerArea = -1 * meter * meter;
+        var outerArea = -1;
         var extents = [];
         for (var i = 0; i < size(loops); i += 1)
         {
@@ -810,7 +832,7 @@ function holeProfiles(faceData is map, bb is Box3d, needLength is ValueWithUnits
         var layerHoles = [];
         for (var i = 0; i < size(layer.loops); i += 1)
         {
-            if (i != layer.outer && layer.extents[i].x1 - layer.extents[i].x0 >= needLength - FREE_TOL)
+            if (i != layer.outer && (layer.extents[i].x1 - layer.extents[i].x0) * meter >= needLength - FREE_TOL)
             {
                 layerHoles = append(layerHoles, holeCells(layer.loops[i], x0, cells));
             }
@@ -944,7 +966,6 @@ function splitRegion(region is map, cand is map, fit is map, xBuffer is ValueWit
 
 const NEST_RELAX_PASSES = 4;
 const NEST_RELAX_REACH = 40; // cells (200 mm) an occupant may slide along the hole
-const NEST_BIG_M = 1000;
 const NEST_TOL_M = 1e-8;
 
 // Occupant arrays at cell offset j (clipped, so the buffer cells past its ends repeat the end values)
