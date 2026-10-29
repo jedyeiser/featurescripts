@@ -1004,8 +1004,8 @@ function buildDxfFaces(context is Context, vid is Id, part is Query, view is map
 
 /**
  * The region where `sectionPlane` cuts the solids `solids`, carried by `lift` onto the view plane: a large plane sheet
- * with everything outside the solids removed (as Station geometry's section). Undefined, with nothing left behind,
- * when the plane misses every solid.
+ * with everything outside the solids removed (as Station geometry's section), returned as an ordinary surface body.
+ * Undefined, with nothing left behind, when the plane misses every solid.
  */
 function dxfSection(context is Context, id is Id, solids is array, sectionPlane is Plane, lift is Vector)
 {
@@ -1037,7 +1037,11 @@ function dxfSection(context is Context, id is Id, solids is array, sectionPlane 
     {
         opTransform(context, id + "lift", { "bodies" : region, "transform" : transform(lift) });
     }
-    return region;
+    // The trimmed plane sheet is still a construction plane in the tree ("Plane 1" under the feature) and is not a surface to
+    // export: copy its face into an ordinary surface body and delete the plane.
+    opExtractSurface(context, id + "surface", { "faces" : qOwnedByBody(region, EntityType.FACE) });
+    opDeleteBodies(context, id + "deletePlane", { "entities" : region });
+    return qCreatedBy(id + "surface", EntityType.BODY);
 }
 
 function roundMm(length is ValueWithUnits) returns number
