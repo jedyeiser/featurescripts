@@ -13,6 +13,7 @@ Tab folders (Onshape) -- one test artifact per purpose, rebuilt in place:
 |---|---|
 | `station_tools` | station_utils, station_definition, station_geometry, station_table + station_definition_icon.svg, station_geometry_icon.svg, station_table_icon.svg |
 | `primitive` | primitive_types, primitive_frame, primitive_profiles, primitive_footprint, primitive_baseline, primitive_table, primitive_output, export_primitive + export_primitive_icon.svg, primitive_tables_icon.svg |
+| `export` | export_tag + export_tag_icon.svg (feature "Export tag", see "Export tag" below) |
 | `tests` | "Station tests" (bb2cddb24faf53d9d043c38e; publish_tools_fixture.py), "Primitive tests" (5c3ac8fb8ec70b1f256c0e97; build_primitive_tests.py / check_primitive_tests.py) |
 | `test drawings` | "Template test 4101 (demo)" (A3), "Template test A4 (demo)", "Template test A2 (demo)" -- verify the drawing templates (devtools/onshape/templates/make_test_drawing.py, make_size_test_drawing.py) |
 
@@ -464,3 +465,61 @@ when switched on (review copies). Definitions stay in the published data. Verifi
 Note (2026-09-29): keep only ONE Export primitive instance active in "Primitive tests" (use `--keep P8`, which has every
 band incl. EI). Instances share the same position, so two active ones draw their bands and labels on top of each
 other -- it looked like missing letters.
+
+## Export tag (2026-10-28 / 29; not yet versioned)
+
+Tab `export_tag` (element 27ea220e..., folder `export`; local `publish_tools/export/export_tag.fs`; icon `export_tag_icon.svg`,
+`icons/final/export_tag_icon.svg`). Design record: `research/export_tag_handoff.md` (discussion); decisions and traps: memory
+`export-tag`; corrections 78-84. The tag tells the export app what to export for ONE body or ONE composite and builds the geometry
+the export needs. FeatureScript only records intent and builds geometry; the app (later) reads the attribute and does the exporting.
+
+Dialog groups: Part and name | Export info | Export origin | Drawing Information (its checkbox is "Export drawing").
+* Name: "Get Part Name" button (editing logic; the body cannot read names, correction 36), stored name, stale-name Ignore / Warn /
+  Error (checked only when the dialog is edited), export name (overrides), release prefix rule (V1 / V001 / R0 / R1; the app resolves it).
+* Export solid: STEP / IGES / STL booleans + file name (recorded). Export DXF: Plan (XY) and Profile (XZ), each NONE / PROJECTION /
+  SELECTION + file name; Profile outline SECTION (default, exact edges through the part's centre) / SILHOUETTE. DXF faces are real
+  SURFACE bodies lying on the export frame's XY / XZ plane: `<name> XY EXPORT` (copies `<name> XY EXPORT_PATTERN_<n>`), grouped in the
+  closed composite `<name> XY DXF` (always, even one face; "one composite" option: `<name> DXF`). Radii stay arcs (checked on three parts).
+* DXF pattern: instances in X / Y, minimum clearance or pitch (separate fields per mode), from the export origin; real bodies; capped at
+  200 copies; a composite input is taken as already patterned (warning). XZ uses X and Z.
+* Export origin: mate connector (or vertex; origin only, or origin + axes) or quadrant 1st +X+Y / 2nd -X+Y / 3rd -X-Y / 4th +X-Y with
+  X / Y / Z buffers (10 / 10 / 0 mm), translation only. It shifts the DXF faces for ANY input (composites too). "Make a shifted copy"
+  (`<name> EXPORT`) is for a single body only (warning for a composite).
+* Drawing Information (driving checkbox Export drawing): drawing file name; Station table = the tag RUNS Station geometry (prefix = the
+  export name, outline wires off, flat copy off) for the picked Station definition(s), datum and views (XY / XZ). "Build the views at the
+  export position" (default off): on = views on a shifted copy of the part (a new part; single bodies only; Station geometry's hidden
+  "Station frame" moves the absolute stations with it); off = in place on the input part. Insert the drawing's Station table with
+  "Views containing" = the export name.
+* Attribute `publishExportTag` (schema `exportTag/1`) on the tagged body + the same map in the standard output slot (variable `exportTag`,
+  queries `exportPlan`, `exportProfile`): `name` (stored, stem, versionPrefix), `part` (id, isComposite, members, membersTagged,
+  inComposites -- ids are that microversion's), `solid` (formats, name, exportBody, atExportPosition, transformNeeded), `dxf.<plan|profile>`
+  (source, name, faceCount, composite, pattern with instances), `drawing` (export, name, stationTable, stationViewFilter, stationViews,
+  layout.<XY|XZ> = composite / wires / datum body names + one row per station: body, x, lo, hi, span, for the API tool's ordinate
+  dimensions), `origin` (kind, applied, 3x3 matrix, translationMm, quadrant, bufferMm), `shiftedCopy`, `extra` (hidden JSON text, room
+  for options added later: published parameters cannot be extended safely, correction 64).
+* Warnings (not errors): stale name, composite pattern / copy not built, another tag with the same export name, a Station table filter that
+  also matches another tag's name, a second tag on the same body. Errors: nothing picked, no name, pattern over the cap, pitch smaller than
+  the part, projection of a surface (select its faces).
+
+Structure notes: Station geometry builds `<name> XY` (OPEN composite: the part + the closed `<name> XY WIRES` composite, carries the
+Station table attribute) and `<name> XY WIRES` (station lines, datum, end points). Wires cannot be merged into one body (correction 80). The
+open composite STAYS (user, 2026-10-29): a drawing view shows one part or composite, so part + station wires in one view need the composite
+that holds both; the WIRES composite alone would show only the wires. Imports: `export import` of the `station_geometry` tab, pinned by
+microversion -- re-pin after every Station geometry push (list_elements `microversionId`). Needs a Publish & Drawing tools version
+(held until the other developer is done); the tag and Station geometry must be versioned together.
+
+Tests (`devtools/onshape/export_tag_cases.py`, `build_export_tag_tests.py`, `check_export_tag_tests.py`; cases `ZT1`-`ZT8` in "Export
+Tests", named `ZT<n> <title>`; the user's own tags Base_Export / Core_Export / Export_UG are never touched):
+    PYTHONPATH=. ONSHAPE_CALLER=export_tag_build ONSHAPE_CALL_CAP=40 python devtools/onshape/build_export_tag_tests.py [ZT1 ...] [--clean]
+    PYTHONPATH=. ONSHAPE_CALLER=export_tag_check ONSHAPE_CALL_CAP=10 python devtools/onshape/check_export_tag_tests.py [--dump]
+The check is read-only (1 features GET + 1 eval): status and message, body names / kinds / lowest corners, arcs vs lines, edge counts, pattern
+steps, and "faces created == sheets" (no construction plane left behind). STATUS: the check's eval was validated on the real tags (it parses
+and reports Belag 3 faces / 3 sheets, HK 2 / 2); the BUILD script and the ZT cases have NOT been run (they write into the user's live studio:
+ask first). Station table with a Station definition (a FeatureList pick) is not covered by REST inserts: verified by hand and by eval on
+Base_Export / Core_Export (stations moved with the part at +12 / +76.1 mm, 2026-10-29).
+
+Verified live (user's "Export Tests", 2026-10-29): plan projection + quadrant + 1 x 3 pattern (pitch 142.26 mm, arcs kept), composite
+shift (user), section profile (HK XZ = 6 edges, was a silhouette of hundreds), selected flat face + pattern (UG), Station table views in
+place and on a shifted copy, composite / body names, the Export drawing gate. NOT verified: selected TILTED or CURVED faces and their
+arcs; an attribute surviving a composite rebuild / pattern copy; the dialog's rendering of every conditional (never opened by the author);
+the icon in the tree; a real drawing built from `drawing.layout`; heavy-studio regeneration time.

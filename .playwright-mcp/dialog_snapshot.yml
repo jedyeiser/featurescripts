@@ -1,0 +1,314 @@
+- generic [ref=f29e1]:
+  - generic [ref=f29e5]:
+    - navigation [ref=f29e6]:
+      - generic [ref=f29e7]:
+        - link [ref=f29e10] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f29e11]
+        - generic [ref=f29e13] [cursor=pointer]
+      - generic [ref=f29e16]:
+        - generic [ref=f29e18]:
+          - generic [ref=f29e19]: Publish & Drawing tools
+          - generic [ref=f29e20]: Main
+        - generic [ref=f29e22] [cursor=pointer]
+        - link "EOC Featurescripts" [ref=f29e26] [cursor=pointer]:
+          - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+      - generic [ref=f29e30]:
+        - generic [ref=f29e44] [cursor=pointer]
+        - generic [ref=f29e50] [cursor=pointer]
+        - button "Notifications" [ref=f29e55] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f29e63]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f29e66] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f29e71] [cursor=pointer]
+        - button "Share" [ref=f29e75] [cursor=pointer]
+        - generic "Help menu" [ref=f29e77] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f29e81] [cursor=pointer]
+    - generic [ref=f29e91]:
+      - generic [ref=f29e93]:
+        - generic [ref=f29e94]:
+          - generic [ref=f29e95]:
+            - generic [ref=f29e96] [cursor=pointer]
+            - generic [ref=f29e99] [cursor=pointer]
+            - generic [ref=f29e102] [cursor=pointer]
+            - generic [ref=f29e105] [cursor=pointer]
+            - generic [ref=f29e108] [cursor=pointer]
+            - generic [ref=f29e111] [cursor=pointer]
+            - generic [ref=f29e114] [cursor=pointer]
+            - generic [ref=f29e117] [cursor=pointer]
+          - generic [ref=f29e121] [cursor=pointer]
+        - generic [ref=f29e125] [cursor=pointer]
+      - generic [ref=f29e132]:
+        - generic [ref=f29e139]:
+          - generic [ref=f29e151]:
+            - generic [ref=f29e152]: Sketch
+            - generic [ref=f29e164]:
+              - generic [ref=f29e165] [cursor=pointer]
+              - generic [ref=f29e169] [cursor=pointer]
+              - generic [ref=f29e173] [cursor=pointer]
+              - generic [ref=f29e177] [cursor=pointer]
+              - generic [ref=f29e182]:
+                - generic [ref=f29e183] [cursor=pointer]
+                - generic [ref=f29e187] [cursor=pointer]
+            - generic [ref=f29e193]:
+              - generic [ref=f29e195]:
+                - generic [ref=f29e196] [cursor=pointer]
+                - generic [ref=f29e200] [cursor=pointer]
+              - generic [ref=f29e203] [cursor=pointer]
+              - generic [ref=f29e208]:
+                - generic [ref=f29e209] [cursor=pointer]
+                - generic [ref=f29e213] [cursor=pointer]
+              - generic [ref=f29e216] [cursor=pointer]
+              - generic [ref=f29e220] [cursor=pointer]
+              - generic [ref=f29e224] [cursor=pointer]
+              - generic [ref=f29e228] [cursor=pointer]
+            - generic [ref=f29e235]:
+              - generic [ref=f29e237]:
+                - generic [ref=f29e238] [cursor=pointer]
+                - generic [ref=f29e242] [cursor=pointer]
+              - generic [ref=f29e245] [cursor=pointer]
+            - generic [ref=f29e252]:
+              - generic [ref=f29e253] [cursor=pointer]
+              - generic [ref=f29e257] [cursor=pointer]
+              - generic [ref=f29e262]:
+                - generic [ref=f29e263] [cursor=pointer]
+                - generic [ref=f29e267] [cursor=pointer]
+              - generic [ref=f29e270] [cursor=pointer]
+            - generic [ref=f29e277]:
+              - generic [ref=f29e278] [cursor=pointer]
+              - generic [ref=f29e282] [cursor=pointer]
+              - generic [ref=f29e286] [cursor=pointer]
+              - generic [ref=f29e290] [cursor=pointer]
+            - generic [ref=f29e298]:
+              - generic [ref=f29e299] [cursor=pointer]
+              - generic [ref=f29e303] [cursor=pointer]
+            - generic [ref=f29e310]:
+              - generic [ref=f29e311] [cursor=pointer]: SA
+              - generic [ref=f29e314] [cursor=pointer]
+            - generic [ref=f29e321] [cursor=pointer]
+          - button "Search tools… alt/⌥ c" [ref=f29e328] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f29e329]:
+              - generic [ref=f29e330]: alt/⌥
+              - generic [ref=f29e331]: c
+        - generic [ref=f29e333]:
+          - generic [ref=f29e335]:
+            - generic [ref=f29e338]:
+              - generic [ref=f29e340]:
+                - generic [ref=f29e341]:
+                  - generic [ref=f29e343]:
+                    - button [ref=f29e345] [cursor=pointer]
+                    - textbox "Filter by name or type" [ref=f29e350]
+                  - generic [ref=f29e351]:
+                    - generic [ref=f29e352]: Features (10)
+                    - button [disabled] [ref=f29e353]
+                    - button [disabled] [ref=f29e356]
+                    - button [ref=f29e359] [cursor=pointer]
+                - generic [ref=f29e363]:
+                  - generic [ref=f29e364]:
+                    - generic [ref=f29e366]:
+                      - generic [ref=f29e367] [cursor=pointer]
+                      - generic [ref=f29e370]: Default geometry
+                    - generic [ref=f29e372]: Origin
+                    - generic [ref=f29e382]: Top
+                    - generic [ref=f29e392]: Front
+                    - generic [ref=f29e402]: Right
+                    - generic [ref=f29e413]:
+                      - generic [ref=f29e415] [cursor=pointer]
+                      - generic [ref=f29e418]: Derived 1
+                    - generic [ref=f29e428]: Delete part 1
+                    - generic [ref=f29e436]: Station_Definition
+                    - generic [ref=f29e448]: Base_Export
+                    - generic [ref=f29e455]: Core_Export
+                    - generic [ref=f29e462]: Export_UG
+                  - list
+              - generic [ref=f29e477]:
+                - generic [ref=f29e479]:
+                  - generic [ref=f29e481] [cursor=pointer]
+                  - generic [ref=f29e484]: Parts (31)
+                - generic [ref=f29e488]: RD K035_SZ01 178 STK L
+                - generic [ref=f29e500]: RD K035_SZ01 178 STK R
+                - generic [ref=f29e512]: RD K035_SZ01 178 Belag_3D
+                - generic [ref=f29e524]: RD K035_SZ01 178 Belag
+                - generic [ref=f29e536]: RD K035_SZ01 178 UG_3D
+                - generic [ref=f29e548]: RD K035_SZ01 178 UG
+                - generic [ref=f29e560]: RD K035_SZ01 178 Spitze-Mat_3D
+                - generic [ref=f29e572]: RD K035_SZ01 178 Ende-Mat_3D
+                - generic [ref=f29e584]: RD K035_SZ01 178 Spitze-Mat
+                - generic [ref=f29e596]: RD K035_SZ01 178 Ende-Mat
+                - generic [ref=f29e608]: RD K035_SZ01 178 OFL_3D
+                - generic [ref=f29e620]: RD K035_SZ01 178 OG_3D
+                - generic [ref=f29e632]: RD K035_SZ01 178 OFL
+                - generic [ref=f29e644]: RD K035_SZ01 178 OG
+                - generic [ref=f29e656]: 3D HK
+                - generic [ref=f29e668]: 2D HK
+                - generic [ref=f29e680]: Part 7
+                - generic [ref=f29e692]: Long_Beech
+                - generic [ref=f29e704]: Part 7
+                - generic [ref=f29e716]: Long_Beech
+                - generic [ref=f29e728]: RD K035_SZ01 178 SW_L
+            - generic [ref=f29e741]:
+              - generic [ref=f29e743] [cursor=pointer]
+              - generic [ref=f29e747]:
+                - button [ref=f29e750] [cursor=pointer]
+                - generic [ref=f29e754] [cursor=pointer]
+              - generic [ref=f29e759]:
+                - generic [ref=f29e760] [cursor=pointer]
+                - generic [ref=f29e764] [cursor=pointer]
+                - generic [ref=f29e768] [cursor=pointer]
+                - generic [ref=f29e772] [cursor=pointer]
+                - generic [ref=f29e776] [cursor=pointer]
+                - generic [ref=f29e780] [cursor=pointer]
+                - generic [ref=f29e783] [cursor=pointer]
+          - generic [ref=f29e786]:
+            - dialog [ref=f29e787]:
+              - generic [ref=f29e788]: Export_UG
+            - generic [ref=f29e799]:
+              - list [ref=f29e800]:
+                - generic [ref=f29e801]:
+                  - generic [ref=f29e803]:
+                    - generic [ref=f29e804]:
+                      - generic [ref=f29e806] [cursor=pointer]
+                      - generic [ref=f29e810] [cursor=pointer]: Part and name
+                    - generic [ref=f29e814]:
+                      - generic [ref=f29e821]:
+                        - generic [ref=f29e822]: Part
+                        - list [ref=f29e824]:
+                          - listitem [ref=f29e825]:
+                            - generic [ref=f29e826]: RD K035_SZ01 178 UG
+                            - generic [ref=f29e828] [cursor=pointer]: ×
+                      - button "Get Part Name" [ref=f29e832] [cursor=pointer]
+                      - generic [ref=f29e836]:
+                        - generic [ref=f29e837]: Export name
+                        - textbox [ref=f29e838]
+                      - generic [ref=f29e841]:
+                        - generic [ref=f29e842]: If the name changed
+                        - generic [ref=f29e844]:
+                          - generic "Select box activate" [ref=f29e846] [cursor=pointer]:
+                            - generic [ref=f29e847]: Warn
+                            - text: 
+                          - button "Select box focus" [ref=f29e850] [cursor=pointer]
+                      - generic [ref=f29e853]:
+                        - generic [ref=f29e854]: Release prefix
+                        - generic [ref=f29e856]:
+                          - generic "Select box activate" [ref=f29e858] [cursor=pointer]:
+                            - generic [ref=f29e859]: None
+                            - text: 
+                          - button "Select box focus" [ref=f29e862] [cursor=pointer]
+                  - generic [ref=f29e864]:
+                    - generic [ref=f29e865]:
+                      - generic [ref=f29e867] [cursor=pointer]
+                      - generic [ref=f29e871] [cursor=pointer]: Export info
+                    - generic [ref=f29e872]:
+                      - generic [ref=f29e879] [cursor=pointer]:
+                        - checkbox "Export solid"
+                        - generic [ref=f29e881]: Export solid
+                      - generic [ref=f29e884]:
+                        - generic [ref=f29e888] [cursor=pointer]:
+                          - checkbox "Export DXF" [checked]
+                          - generic [ref=f29e890]: Export DXF
+                        - generic [ref=f29e893]:
+                          - generic [ref=f29e894]: Plan DXF (XY)
+                          - generic [ref=f29e896]:
+                            - generic "Select box activate" [ref=f29e898] [cursor=pointer]:
+                              - generic [ref=f29e899]: Selected faces
+                              - text: 
+                            - button "Select box focus" [ref=f29e902] [cursor=pointer]
+                        - generic [ref=f29e909]:
+                          - generic [ref=f29e910]: Plan faces
+                          - list [ref=f29e912]:
+                            - listitem [ref=f29e913]:
+                              - generic [ref=f29e914]: Face of Derived 1
+                              - generic [ref=f29e916] [cursor=pointer]: ×
+                        - generic [ref=f29e919]:
+                          - generic [ref=f29e920]: Plan file name
+                          - textbox [ref=f29e921]
+                        - generic [ref=f29e924]:
+                          - generic [ref=f29e925]: Profile DXF (XZ)
+                          - generic [ref=f29e927]:
+                            - generic "Select box activate" [ref=f29e929] [cursor=pointer]:
+                              - generic [ref=f29e930]: None
+                              - text: 
+                            - button "Select box focus" [ref=f29e933] [cursor=pointer]
+                      - generic [ref=f29e936]:
+                        - generic [ref=f29e940] [cursor=pointer]:
+                          - checkbox "Pattern the DXF faces" [checked]
+                          - generic [ref=f29e942]: Pattern the DXF faces
+                        - generic [ref=f29e945]:
+                          - generic [ref=f29e946]: Spacing
+                          - generic [ref=f29e948]:
+                            - generic "Select box activate" [ref=f29e950] [cursor=pointer]:
+                              - generic [ref=f29e951]: Minimum clearance between faces
+                              - text: 
+                            - button "Select box focus" [ref=f29e954] [cursor=pointer]
+                        - generic [ref=f29e957]:
+                          - generic [ref=f29e958]: Instances in X
+                          - textbox [ref=f29e960]: "1"
+                        - generic [ref=f29e963]:
+                          - generic [ref=f29e964]: Instances in Y
+                          - textbox [ref=f29e966]: "2"
+                        - generic [ref=f29e969]:
+                          - generic [ref=f29e970]: Clearance in X
+                          - textbox [ref=f29e972]: 10 mm
+                        - generic [ref=f29e975]:
+                          - generic [ref=f29e976]: Clearance in Y
+                          - textbox [ref=f29e978]: 10 mm
+                  - generic [ref=f29e980]:
+                    - generic [ref=f29e981]:
+                      - generic [ref=f29e983] [cursor=pointer]
+                      - generic [ref=f29e987] [cursor=pointer]: Drawing Information
+                    - generic [ref=f29e988]:
+                      - generic [ref=f29e994]:
+                        - generic [ref=f29e995]: Drawing file name
+                        - textbox [ref=f29e996]
+                      - generic [ref=f29e999]:
+                        - generic [ref=f29e1003] [cursor=pointer]:
+                          - checkbox "Station table" [checked]
+                          - generic [ref=f29e1005]: Station table
+                        - generic [ref=f29e1012]:
+                          - generic [ref=f29e1013]: Station definitions
+                          - list [ref=f29e1015]:
+                            - listitem [ref=f29e1016]:
+                              - generic [ref=f29e1017]: Station_Definition
+                              - generic [ref=f29e1019] [cursor=pointer]: ×
+                        - generic [ref=f29e1026]:
+                          - generic [ref=f29e1027]: Datum (measuring origin)
+                          - list [ref=f29e1029]:
+                            - listitem [ref=f29e1030]:
+                              - generic [ref=f29e1031]: Vertex of Derived 1
+                              - generic [ref=f29e1033] [cursor=pointer]: ×
+                        - generic [ref=f29e1039]:
+                          - generic [ref=f29e1040]: Datum axes
+                          - generic [ref=f29e1042]:
+                            - generic "Select box activate" [ref=f29e1044] [cursor=pointer]:
+                              - generic [ref=f29e1045]: World axes (datum is a point only)
+                              - text: 
+                            - button "Select box focus" [ref=f29e1048] [cursor=pointer]
+                      - generic [ref=f29e1055] [cursor=pointer]:
+                        - checkbox "Plan view (datum XY)" [checked]
+                        - generic [ref=f29e1057]: Plan view (datum XY)
+                      - generic [ref=f29e1064] [cursor=pointer]:
+                        - checkbox "Profile view (datum XZ)"
+                        - generic [ref=f29e1066]: Profile view (datum XZ)
+                      - generic [ref=f29e1073] [cursor=pointer]:
+                        - checkbox "Build the views at the export position"
+                        - generic [ref=f29e1075]: Build the views at the export position
+                  - generic [ref=f29e1077]:
+                    - generic [ref=f29e1078]:
+                      - generic [ref=f29e1080] [cursor=pointer]
+                      - generic [ref=f29e1084] [cursor=pointer]: Export origin
+                    - text:  
+              - generic [ref=f29e1091] [cursor=pointer]
+        - generic [ref=f29e1095]:
+          - img [ref=f29e1098] [cursor=pointer]
+          - generic [ref=f29e1100]:
+            - generic [ref=f29e1101] [cursor=pointer]
+            - generic [ref=f29e1105]: tests
+          - generic [ref=f29e1112]:
+            - generic [ref=f29e1113] [cursor=pointer]: Station tests
+            - generic [ref=f29e1119] [cursor=pointer]: Primitive tests
+            - generic [ref=f29e1125]: Export Tests
+            - generic [ref=f29e1136] [cursor=pointer]: Autolayout_Tests
+  - alert [ref=f29e1153]:
+    - generic [ref=f29e1158]: "Tag recorded for 'RD K035_SZ01 178 UG'. XY DXF: 2 surface bodies (pattern 1 x 2, pitch 1779 x 140.06 mm)."
+    - button "Close" [ref=f29e1160] [cursor=pointer]: ×
+  - tooltip "Export_UG [Export tag]"

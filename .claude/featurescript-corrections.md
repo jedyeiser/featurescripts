@@ -100,6 +100,13 @@ first, then open only the entries whose topic matches your task. Entry bodies be
 | 75 | splines-nurbs | Fit closed curves periodic (opFitSpline, last = first); clamped closed splines are refused; use wire-body edges. | 2177 |
 | 76 | geometry-frames | Take a face's trim parameter range from its edges before gridding; the parameter box can be huge. | 2190 |
 | 77 | geometry-frames | Project a LINE to-edge with opPolyline to keep an exact line; give seam checks a 1 um tolerance. | 2197 |
+| 78 | ops | opCreateOutline refuses faces (INVALID_INPUT): opExtractSurface each face; lift a planar face parallel to the plane instead of outlining. | 2216 |
+| 79 | ops | A trimmed opPlane section stays a construction plane ("Plane 1" child): opExtractSurface its face and delete the plane. | 2224 |
+| 80 | ops | Wires: no boolean union (BOOLEAN_INPUTS_NOT_SOLID); opExtractWires joins only end-to-end chains; group many curves in a CLOSED composite. | 2232 |
+| 81 | dialog-ui | Declare a group's Driving Parameter (hidden boolean) immediately BEFORE the group annotation, not inside it. | 2239 |
+| 82 | rest-sync | The sync matches a tab by NAME: a different local file name creates a second Feature Studio; Playwright notices pane reads compile notices. | 2245 |
+| 83 | testing | getFeatureError/Warning/Info in one eval read a feature's text; eval needs makeId, match().hasMatch, rollbackBarIndex as query param. | 2252 |
+| 84 | ops | Calling a custom feature from another: export import its tab, pass every parameter, pin and re-pin; move absolute inputs (stations) with a frame. | 2259 |
 
 ## Critical top 10
 
@@ -159,9 +166,9 @@ if (entry.e_kind != Kind.A || entry.rename) { entry.e_key is string; }
 
 ---
 
-## Boolean Operation Type Enum — Wrong Name
+## Boolean Operation Type Enum ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Wrong Name
 **Date**: 2026-03-02
-**Issue**: Used `BooleanType.UNION` — this enum does not exist.
+**Issue**: Used `BooleanType.UNION` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â this enum does not exist.
 **Fix**: Use `BooleanOperationType.UNION` (and `.SUBTRACT`, `.INTERSECT`).
 ```featurescript
 // WRONG
@@ -170,7 +177,7 @@ opBoolean(context, id, { "tools": q, "operationType": BooleanType.UNION });
 opBoolean(context, id, { "tools": q, "operationType": BooleanOperationType.UNION });
 ```
 
-## opReplaceFace — oppositeSense Must Be Auto-Detected
+## opReplaceFace ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â oppositeSense Must Be Auto-Detected
 **Date**: 2026-03-02
 **Issue**: Calling `opReplaceFace` without `oppositeSense` causes `DIRECT_EDIT_REPLACE_FACE_FAILED` when the template surface normal is opposite to the original face normal.
 **Fix**: Dot the normals at face center (UV=0.5,0.5) and set `oppositeSense = dot(origNormal, templateNormal) < 0`. Pattern from `std/replaceFace.fs`.
@@ -187,9 +194,9 @@ opReplaceFace(context, id + "replace", {
 
 ---
 
-## BSpline Splitting — Control Point Index Bug in `splitCurve`
+## BSpline Splitting ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Control Point Index Bug in `splitCurve`
 **Date**: 2026-02-26
-**File**: `tools/curve_operations.fs` — `splitCurve()`
+**File**: `tools/curve_operations.fs` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â `splitCurve()`
 **Issue**: After `refineKnotVector` to multiplicity `degree+1` at `splitParam`, the CP extraction bounds for both halves were off-by-N, causing malformed BSplineCurves that pass knot count validation silently but fail `evaluateSpline` when used as input to a second `splitCurve` call.
 
 **Error triggered**:
@@ -199,13 +206,13 @@ opReplaceFace(context, id + "replace", {
 Only appears on the 2nd+ call to `splitCurveMultiple` (first split's `curveB` is invalid; the error surfaces when that invalid curve is passed to the next `splitCurve`).
 
 **Root cause** (cubic, `splitStart=4`, `splitEnd=7`, 8 CPs after refinement):
-- CPs A: `i <= splitStart` → took 5 CPs instead of 4 (included duplicate junction CP)
-- CPs B: started at `splitEnd` → took 1 CP instead of 4 (skipped junction and intermediate CPs)
+- CPs A: `i <= splitStart` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ took 5 CPs instead of 4 (included duplicate junction CP)
+- CPs B: started at `splitEnd` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ took 1 CP instead of 4 (skipped junction and intermediate CPs)
 - Knots A and B: were already correct
 
 **Fix**:
-- CPs A / weights A: change `i <= splitStart` → `i < splitStart`
-- CPs B / weights B: change starting index `splitEnd` → `splitEnd - degree`
+- CPs A / weights A: change `i <= splitStart` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ `i < splitStart`
+- CPs B / weights B: change starting index `splitEnd` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ `splitEnd - degree`
 
 Knots are unchanged. The formula `splitEnd - degree = splitStart` holds for a full `degree+1` split.
 
@@ -304,11 +311,11 @@ export predicate isClamped(curve is BSplineCurve, tolerance is number)
 {
     tolerance > 0;
 
-    var knots = curve.knots;      // ❌ ILLEGAL - standalone var
-    var p = curve.degree;          // ❌ ILLEGAL - standalone var
-    var n = size(knots);           // ❌ ILLEGAL - standalone var
+    var knots = curve.knots;      // ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ ILLEGAL - standalone var
+    var p = curve.degree;          // ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ ILLEGAL - standalone var
+    var n = size(knots);           // ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ ILLEGAL - standalone var
 
-    for (var i = 1; i <= p; i += 1)  // ✓ OK - var in loop declaration
+    for (var i = 1; i <= p; i += 1)  // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ OK - var in loop declaration
     {
         abs(knots[i] - knots[0]) < tolerance;
     }
@@ -322,9 +329,9 @@ export function isClamped(curve is BSplineCurve, tolerance is number) returns bo
     if (tolerance <= 0)
         return false;
 
-    var knots = curve.knots;      // ✓ OK in function
-    var p = curve.degree;          // ✓ OK in function
-    var n = size(knots);           // ✓ OK in function
+    var knots = curve.knots;      // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ OK in function
+    var p = curve.degree;          // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ OK in function
+    var n = size(knots);           // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ OK in function
 
     for (var i = 1; i <= p; i += 1)
     {
@@ -441,7 +448,7 @@ export function isClamped(curve is BSplineCurve, tolerance is number) returns bo
 
 ## API Usage
 
-### `evaluateSpline` — Return Type is Nested Array, Not Array of Vectors
+### `evaluateSpline` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Return Type is Nested Array, Not Array of Vectors
 **Date**: 2026-03-01
 **Issue**: `evaluateSpline` returns a nested array indexed as `[derivativeOrder][parameterIndex]`, not a flat array of Vectors. Accessing `[0]` returns an `array` (all positions), not a `Vector`.
 
@@ -517,7 +524,7 @@ var plane = measurePlane;
 var coreWidth = 10 * millimeter;
 var x = 5 * millimeter;
 
-// ❌ ERROR - Ambiguous unquoted keys
+// ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ ERROR - Ambiguous unquoted keys
 return {
     plane: plane,           // ERROR: ambiguous
     coreWidth: coreWidth    // ERROR: ambiguous
@@ -530,7 +537,7 @@ stations = append(stations, {
     preferred: false
 });
 
-// ❌ WRONG - Parentheses are for units in bounds, not disambiguation
+// ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ WRONG - Parentheses are for units in bounds, not disambiguation
 return {
     (plane): plane          // Syntax error - wrong use of parentheses
 };
@@ -541,7 +548,7 @@ var plane = measurePlane;
 var coreWidth = 10 * millimeter;
 var x = 5 * millimeter;
 
-// ✅ CORRECT - Use quoted strings for conflicting keys
+// ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ CORRECT - Use quoted strings for conflicting keys
 return {
     "plane" : plane,        // Quoted string disambiguates
     "coreWidth" : coreWidth // Quoted string disambiguates
@@ -576,7 +583,7 @@ stations = append(stations, {
 ```featurescript
 var measurePlane = plane(origin, normal);
 
-// ❌ ERROR - Unquoted key in operation parameter
+// ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ ERROR - Unquoted key in operation parameter
 opPlane(context, id + "measurePlane", {
     plane: measurePlane  // ERROR: Cannot use 'plane' as key
 });
@@ -590,7 +597,7 @@ evDistance(context, {
 ```featurescript
 var measurePlane = plane(origin, normal);
 
-// ✅ CORRECT - Always quote keys in operation parameters
+// ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ CORRECT - Always quote keys in operation parameters
 opPlane(context, id + "measurePlane", {
     "plane" : measurePlane  // Quoted key required
 });
@@ -632,7 +639,7 @@ opSplitPart(context, id, {
 ```featurescript
 for (var i = 0; i < 10; i += 1)
 {
-    // ❌ ERROR - Evaluates as (id + i) ~ "plane"
+    // ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ ERROR - Evaluates as (id + i) ~ "plane"
     opPlane(context, id + i ~ "plane", {...});
 
     // This tries to:
@@ -645,11 +652,11 @@ for (var i = 0; i < 10; i += 1)
 ```featurescript
 for (var i = 0; i < 10; i += 1)
 {
-    // ✅ CORRECT - Parentheses force string concatenation first
+    // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ CORRECT - Parentheses force string concatenation first
     opPlane(context, id + (i ~ "plane"), {...});
 
     // This correctly:
-    // 1. Concatenate number with string: i ~ "plane" → "0plane"
+    // 1. Concatenate number with string: i ~ "plane" ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ "0plane"
     // 2. Add string to Id: id + "0plane"
 }
 
@@ -677,7 +684,7 @@ var searchPlane = qCreatedBy(id + (i ~ "plane"), EntityType.BODY);
 ```featurescript
 var deltaZ = widestHighest[2] - highestWidest[2];  // ValueWithUnits
 
-// ❌ ERROR - Comparing ValueWithUnits to number
+// ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ ERROR - Comparing ValueWithUnits to number
 if (abs(deltaZ) < TOLERANCE.zeroLength)  // TOLERANCE.zeroLength is raw number
 {
     // ...
@@ -687,7 +694,7 @@ if (abs(deltaZ) < TOLERANCE.zeroLength)  // TOLERANCE.zeroLength is raw number
 ```featurescript
 var deltaZ = widestHighest[2] - highestWidest[2];  // ValueWithUnits
 
-// ✅ CORRECT - Extract numeric value first
+// ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ CORRECT - Extract numeric value first
 if (abs(deltaZ.value) < TOLERANCE.zeroLength)  // Compare number to number
 {
     // ...
@@ -721,12 +728,12 @@ if (abs(deltaZ) < (TOLERANCE.zeroLength * meter))  // Both ValueWithUnits
 // CRITICAL BUG: return executes ALWAYS, not just when converged!
 if (abs(f1) <= tol)
     println("  CONVERGED at iteration " ~ it);
-    return t1;  // ❌ ALWAYS executes! Not part of if!
+    return t1;  // ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ ALWAYS executes! Not part of if!
 
 // Another example
 for (var i = 0; i < n; i += 1)
     sum += values[i];
-    count += 1;  // ❌ ALWAYS executes! Loop only includes first line!
+    count += 1;  // ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ ALWAYS executes! Loop only includes first line!
 ```
 **Correct Pattern**:
 ```featurescript
@@ -734,14 +741,14 @@ for (var i = 0; i < n; i += 1)
 if (abs(f1) <= tol)
 {
     println("  CONVERGED at iteration " ~ it);
-    return t1;  // ✓ Both statements execute conditionally
+    return t1;  // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ Both statements execute conditionally
 }
 
 // With braces, both statements are in the loop
 for (var i = 0; i < n; i += 1)
 {
     sum += values[i];
-    count += 1;  // ✓ Both statements in loop
+    count += 1;  // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ Both statements in loop
 }
 
 // Even for single statements (recommended style)
@@ -780,12 +787,12 @@ function fitIsoCurve(context is Context, definition is map, rowPts is array, u i
 export function myEditingLogic(context is Context, id is Id, oldDefinition is map, definition is map, isCreating is boolean, specifiedParameters is map) returns map
 ```
 **Lesson Learned**:
-- **Always annotate every parameter** — `context is Context`, `id is Id`, `face is Query`, numbers as `is number`, arrays as `is array`, feature definitions as `is map`
+- **Always annotate every parameter** ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â `context is Context`, `id is Id`, `face is Query`, numbers as `is number`, arrays as `is array`, feature definitions as `is map`
 - The editing logic function signature is: `(context is Context, id is Id, oldDefinition is map, definition is map, isCreating is boolean, specifiedParameters is map) returns map`
 - This is a systematic error that LLMs produce when writing helper functions. Treat unannotated parameters as a bug, not a style issue.
 - Review ALL function signatures (not just exported ones) before finalizing any file.
 
-**Files Fixed**: gordonSurface/pullSurface.fs — isPointLocked, faceTangentAtVBoundary, fitIsoCurve, pullSurfaceEditingLogic (2026-03-01)
+**Files Fixed**: gordonSurface/pullSurface.fs ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â isPointLocked, faceTangentAtVBoundary, fitIsoCurve, pullSurfaceEditingLogic (2026-03-01)
 
 ### Export Functions by Default
 **Date**: 2026-01-30
@@ -840,15 +847,15 @@ export function buildCurveDataArray(bsplines is array) returns array
 
 ## Matrix and Array Indexing
 
-### Q Matrix Storage is 3×3, Not 6×6
+### Q Matrix Storage is 3ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â3, Not 6ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â6
 **Date**: 2026-02-10
-**Issue**: Classical Laminate Theory Q matrix is stored as 3×3 array in xSection code, not the full 6×6 matrix
+**Issue**: Classical Laminate Theory Q matrix is stored as 3ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â3 array in xSection code, not the full 6ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â6 matrix
 **Incorrect Pattern**:
 ```featurescript
 // Attempting to access Q66 shear modulus
-var G = body.Q[5][5];  // ❌ ERROR - Index out of bounds!
+var G = body.Q[5][5];  // ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ ERROR - Index out of bounds!
 
-// Assuming full 6×6 matrix layout:
+// Assuming full 6ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â6 matrix layout:
 // [[Q11, Q12, Q13, Q14, Q15, Q16],
 //  [Q21, Q22, Q23, Q24, Q25, Q26],
 //  ...
@@ -856,23 +863,23 @@ var G = body.Q[5][5];  // ❌ ERROR - Index out of bounds!
 ```
 **Correct Pattern**:
 ```featurescript
-// Q is stored as 3×3 reduced stiffness matrix
+// Q is stored as 3ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â3 reduced stiffness matrix
 // [[Q11, Q12, Q16],
 //  [Q12, Q22, Q26],
 //  [Q16, Q26, Q66]]
 
-var G = body.Q[2][2];  // ✓ Q66 is at [2][2] in 3×3 matrix
+var G = body.Q[2][2];  // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ Q66 is at [2][2] in 3ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â3 matrix
 
-// For isotropic materials: Q66 = E/(2*(1+ν))
+// For isotropic materials: Q66 = E/(2*(1+ÃƒÆ’Ã…Â½Ãƒâ€šÃ‚Â½))
 // For orthotropic materials: Q66 = G12
 ```
 **Reference**: xSectCLT.fs lines 77-87 (Q matrix documentation)
 
 **Lesson Learned**:
-- xSection code uses **3×3 reduced stiffness matrix**, not full 6×6
+- xSection code uses **3ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â3 reduced stiffness matrix**, not full 6ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â6
 - Q66 (shear modulus) is accessed at `Q[2][2]`, NOT `Q[5][5]`
 - Always check data structure documentation before accessing matrix elements
-- The 3×3 format is standard for plane stress/CLT formulations
+- The 3ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â3 format is standard for plane stress/CLT formulations
 - Indices map: Q11=[0][0], Q22=[1][1], Q66=[2][2]
 
 **Files Fixed**: xSect_GJ.fs line 193
@@ -890,7 +897,7 @@ var G = body.Q[2][2];  // ✓ Q66 is at [2][2] in 3×3 matrix
 // Assembled with: K += G * A * (dNdy[a] * dNdy[b] + dNdz[a] * dNdz[b])
 //                 f += G * A * (z_c * dNdy[a] - y_c * dNdz[a])
 
-// ❌ WRONG - Guessed units without dimensional analysis
+// ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ WRONG - Guessed units without dimensional analysis
 var K_unit = newton;                 // Wrong!
 var f_unit = newton * meter;         // Wrong!
 
@@ -900,11 +907,11 @@ f_plain[i] = f[i] / f_unit;
 **Correct Pattern**:
 ```featurescript
 // Perform dimensional analysis:
-// K: G * A * (dNdy)² = (N/m²) * m² * (1/m)² = N/m²
-// f: G * A * distance * dNdy = (N/m²) * m² * m * (1/m) = N
+// K: G * A * (dNdy)ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² = (N/mÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²) * mÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² * (1/m)ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² = N/mÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²
+// f: G * A * distance * dNdy = (N/mÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²) * mÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² * m * (1/m) = N
 
-var K_unit = newton / (meter * meter);  // ✓ N/m²
-var f_unit = newton;                     // ✓ N
+var K_unit = newton / (meter * meter);  // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ N/mÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²
+var f_unit = newton;                     // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ N
 
 K_plain[i][j] = K[i][j] / K_unit;
 f_plain[i] = f[i] / f_unit;
@@ -914,11 +921,11 @@ f_plain[i] = f[i] / f_unit;
 **Lesson Learned**:
 - **Never guess units** - always perform dimensional analysis
 - Write out the calculation chain: `quantity = A * B * C`
-- Track units through each step: `[N/m²] * [m²] * [1/m²] = [N/m²]`
+- Track units through each step: `[N/mÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²] * [mÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²] * [1/mÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²] = [N/mÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â²]`
 - Add comments showing the dimensional analysis
 - Common mistake: simplifying unit expressions mentally without checking
 - Shape function gradients have units `[1/length]`
-- For FEM: Stiffness ~ G*A*grad², Load ~ G*A*distance*grad
+- For FEM: Stiffness ~ G*A*gradÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â², Load ~ G*A*distance*grad
 
 **Files Fixed**: xSect_GJ.fs lines 354-357
 
@@ -927,17 +934,17 @@ f_plain[i] = f[i] / f_unit;
 **Issue**: Polar moment calculation requires all six cross-product terms, not just three
 **Incorrect Pattern**:
 ```featurescript
-// ❌ INCOMPLETE - Missing y1*y3 and z1*z3 cross terms
+// ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ INCOMPLETE - Missing y1*y3 and z1*z3 cross terms
 var y_cross = y1*y2 + y2*y3 + y3*y1;  // Only 3 terms
 var z_cross = z1*z2 + z2*z3 + z3*z1;  // Only 3 terms
 var Jp = (A / 6.0) * (y_sq + z_sq + y_cross + z_cross);
 ```
 **Correct Pattern**:
 ```featurescript
-// ✓ CORRECT - All six cross terms for each axis
+// ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ CORRECT - All six cross terms for each axis
 // Jp = Iy + Iz where:
-//   Iy = ∫z² dA = (A/6) * (z1² + z2² + z3² + z1*z2 + z1*z3 + z2*z3)
-//   Iz = ∫y² dA = (A/6) * (y1² + y2² + y3² + y1*y2 + y1*y3 + y2*y3)
+//   Iy = ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã¢â‚¬Â Ãƒâ€šÃ‚Â«zÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² dA = (A/6) * (z1ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² + z2ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² + z3ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² + z1*z2 + z1*z3 + z2*z3)
+//   Iz = ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã¢â‚¬Â Ãƒâ€šÃ‚Â«yÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² dA = (A/6) * (y1ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² + y2ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² + y3ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² + y1*y2 + y1*y3 + y2*y3)
 
 var Iy = (A / 6.0) * (z1*z1 + z2*z2 + z3*z3 + z1*z2 + z1*z3 + z2*z3);
 var Iz = (A / 6.0) * (y1*y1 + y2*y2 + y3*y3 + y1*y2 + y1*y3 + y2*y3);
@@ -952,22 +959,22 @@ var Jp_e = Iy + Iz;
 - The pattern i*j + j*k + k*i is the **same set** (just reordered), but less clear
 - Better to write as two separate formulas (Iy and Iz) for clarity
 - Verify closed-form formulas against textbook references
-- Second moment formulas: n² terms + n(n-1)/2 cross terms = n(n+1)/2 total
+- Second moment formulas: nÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â² terms + n(n-1)/2 cross terms = n(n+1)/2 total
 
 **Files Fixed**: xSect_GJ.fs lines 456-462
 
 ---
 
-### No pow() Function — Use ^ Operator
+### No pow() Function ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Use ^ Operator
 **Date**: 2026-02-18
 **Issue**: `pow(base, exponent)` does not exist in FeatureScript. Calling it with 2 arguments throws "function pow with 2 arguments not found".
 **Incorrect Pattern**:
 ```featurescript
-var magnitude = pow(10, exponent);  // ❌ ERROR - no pow() function
+var magnitude = pow(10, exponent);  // ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ ERROR - no pow() function
 ```
 **Correct Pattern**:
 ```featurescript
-var magnitude = 10 ^ exponent;  // ✅ Use ^ operator for exponentiation
+var magnitude = 10 ^ exponent;  // ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Use ^ operator for exponentiation
 ```
 **Lesson Learned**:
 - FeatureScript uses `^` for exponentiation (not `**` or `pow()`)
@@ -978,19 +985,19 @@ var magnitude = 10 ^ exponent;  // ✅ Use ^ operator for exponentiation
 
 ---
 
-## Reserved Variable Names — Built-in Type Identifiers
+## Reserved Variable Names ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Built-in Type Identifiers
 
 **Date**: 2026-03-14
-**Issue**: Certain lowercase identifiers are reserved in FeatureScript and cannot be used as variable names. `box` is the most surprising — it is a built-in mutable reference type (used as `new box(undefined)`). Assigning `var box = ...` causes a parse error: `mismatched input 'box' expecting ID`.
+**Issue**: Certain lowercase identifiers are reserved in FeatureScript and cannot be used as variable names. `box` is the most surprising ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â it is a built-in mutable reference type (used as `new box(undefined)`). Assigning `var box = ...` causes a parse error: `mismatched input 'box' expecting ID`.
 
 **Known reserved identifiers** (cannot be used as variable names):
-- `box` — built-in mutable reference type
-- `line` — std function that constructs a `Line` value (from `std/line.fs`)
-- `plane` — std function that constructs a `Plane` value (from `std/coordSystem.fs`)
-- `transform` — std function that constructs a `Transform` value
-- `array`, `map`, `string`, `number`, `boolean`, `function`, `undefined`, `builtin` — primitive type keywords
+- `box` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â built-in mutable reference type
+- `line` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â std function that constructs a `Line` value (from `std/line.fs`)
+- `plane` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â std function that constructs a `Plane` value (from `std/coordSystem.fs`)
+- `transform` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â std function that constructs a `Transform` value
+- `array`, `map`, `string`, `number`, `boolean`, `function`, `undefined`, `builtin` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â primitive type keywords
 
-**Type names** (PascalCase) are also reserved: `Box3d`, `Line`, `Plane`, `Path`, `Query`, `Context`, `Id`, `Vector`, `BSplineCurve`, etc. — do not use these as variable names.
+**Type names** (PascalCase) are also reserved: `Box3d`, `Line`, `Plane`, `Path`, `Query`, `Context`, `Id`, `Vector`, `BSplineCurve`, etc. ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â do not use these as variable names.
 
 **Fix**: Use a descriptive prefix or suffix. Examples:
 ```featurescript
@@ -1050,14 +1057,14 @@ if (shape.kind == "arc") { ... }
 ## Annotations Must Use Printable ASCII Only
 
 **Date**: 2026-03-14
-**Issue**: Unicode characters in `"Name"`, `"Description"`, or any annotation string cause a compile error: `Invalid character in '...' annotation: only printable ASCII allowed`. Common offenders: `–` (en dash U+2013), `−` (minus U+2212), `…` (ellipsis U+2026), `"` / `"` (smart quotes).
-**Fix**: Use only plain ASCII: `-` not `–` or `−`, `...` not `…`, `"` not smart quotes.
+**Issue**: Unicode characters in `"Name"`, `"Description"`, or any annotation string cause a compile error: `Invalid character in '...' annotation: only printable ASCII allowed`. Common offenders: `ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ` (en dash U+2013), `ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢` (minus U+2212), `ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦` (ellipsis U+2026), `"` / `"` (smart quotes).
+**Fix**: Use only plain ASCII: `-` not `ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ` or `ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢`, `...` not `ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦`, `"` not smart quotes.
 ```featurescript
-// WRONG — Unicode en dash / minus sign
-annotation { "Name" : "Step (1–6)" }           // U+2013 en dash
-annotation { "Description" : "x = a − b" }    // U+2212 minus
+// WRONG ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Unicode en dash / minus sign
+annotation { "Name" : "Step (1ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ6)" }           // U+2013 en dash
+annotation { "Description" : "x = a ÃƒÆ’Ã‚Â¢Ãƒâ€¹Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ b" }    // U+2212 minus
 
-// CORRECT — plain ASCII
+// CORRECT ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â plain ASCII
 annotation { "Name" : "Step (1-6)" }
 annotation { "Description" : "x = a - b" }
 ```
@@ -2205,3 +2212,55 @@ Also in `linearRegionMove`: anchor on the MIDDLE probe, judge probes by foot arc
 give the seam checks `CM_SEAM_TOL` (1 um), so an arc ending exactly on a reference vertex (FCP / ACP) is not rejected by rounding.
 Verified in a scratch copy of the K2 ski doc: 39 splines -> 33 circles (FCP..ACP wrapped + both offsets); the tip/tail
 splines stay (they bend onto the curved profile). Needs a curveMapping version, then repin public wrapAndLoft + the Design doc.
+
+## Correction 78: opCreateOutline refuses faces (INVALID_INPUT); copy them as sheets first (2026-10-29)
+
+`opCreateOutline` takes bodies, not faces: a face selection as `tools` gives INVALID_INPUT (Export tag, selected-faces
+DXF). Copy each face with `opExtractSurface({ "faces" : face })` (a normal sheet body). A PLANAR face parallel to the
+target plane is its own outline: translate the copy along the plane normal onto the plane (`opTransform`) and skip the
+outline; any other face goes to `opCreateOutline` as a sheet, then delete the copies. Planar test:
+`evSurfaceDefinition(face) is Plane && abs(abs(dot(normal, targetNormal)) - 1) < 1e-9`.
+
+## Correction 79: a plane sheet trimmed into a section is still a construction plane -- extract it (2026-10-29)
+
+`opPlane` + `opBoolean` SUBTRACT_COMPLEMENT leaves the section region as a plane-typed sheet: the tree shows a child "Plane 1"
+under the feature, the region is not a normal surface to export, and the plane cannot be deleted without losing the region.
+Copy its face with `opExtractSurface({ "faces" : qOwnedByBody(region, EntityType.FACE) })` and `opDeleteBodies` the plane;
+the extract is an ordinary sheet and the child disappears. Check: faces created by the feature == sheets expected
+(check_export_tag_tests.py "faces_equal_sheets"). Station geometry's own `sectionRegion` still returns the plane sheet.
+
+## Correction 80: wires cannot be unioned, and opExtractWires merges only connected chains (2026-10-29)
+
+`opBoolean` UNION on wire bodies: BOOLEAN_INPUTS_NOT_SOLID. `opExtractWires` joins edges that meet END TO END into one wire
+body; edges that overlap or touch mid-edge (station lines ending on an outline) give EXTRACT_WIRES_OVERLAPPING_EDGES, and
+disjoint edges come back as one body each (probed: 3 disjoint lines -> 3 bodies). One parts-list entry for many curves is a
+CLOSED composite (`opCreateCompositePart`, `closed : true`); an open composite lists its members.
+
+## Correction 81: a group's driving parameter is declared immediately BEFORE the group (2026-10-29)
+
+`annotation { "Group Name" : "X", "Driving Parameter" : "flag" }` fails with "Parameter group must be immediately preceded
+by its driving parameter" when the boolean is declared inside the group. Declare it right before the group annotation (hidden,
+`UIHint.ALWAYS_HIDDEN`); the group header then shows the checkbox and the contents apply only when it is on.
+
+## Correction 82: the sync matches a tab by NAME; a different file name creates a second element (2026-10-28)
+
+`pushproject <project> --files export_tag.fs` looked for a tab named `export_tag`, found none next to the user's empty
+`Export_Tag`, and created a new Feature Studio. Name the local file exactly like the tab, or move the new tab by hand
+(the user moved it; the old empty one was deleted). `--check` needs the sync tool's own browser login; the Playwright
+notices pane (click the notices icon in the studio toolbar) reads the same compile notices without it.
+
+## Correction 83: read a feature's message and body facts with one eval (2026-10-29)
+
+The features GET carries only the status. In an eval, `getFeatureError(context, makeId(featureId))`, `getFeatureWarning`
+and `getFeatureInfo` return the text (undefined when none). Eval-script traps: there is no `id` (use `makeId("name")`),
+`match(s, regex)` returns a map (test `.hasMatch`), `indexOf(s, sub)` is the string search, strings have no `.length`, and
+`rollbackBarIndex` is a QUERY parameter (correction 67). Scratch scripts: devtools/onshape/check_export_tag_tests.py.
+
+## Correction 84: calling a custom feature from another feature (2026-10-28)
+
+`stationGeometry(context, id + "stations", { ... })` works from a feature body when (a) the caller `export import`s the
+callee's tab (an enum used as a parameter type must be exported: "Enum used as parameter type must be exported"),
+(b) the definition map carries every parameter the callee reads, (c) FeatureList values are passed through as given.
+Pin the import by microversion and re-pin after every change to the callee. A callee that reads ABSOLUTE positions (a Station
+definition's stations) must be told to move them when it is run on a shifted copy: Station geometry has a hidden
+"Station frame" mate connector (the image of the world frame under the shift) for that.
