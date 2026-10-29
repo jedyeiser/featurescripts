@@ -775,37 +775,72 @@ function originData(definition is map, origin is map) returns map
  */
 function buildDxfFaces(context is Context, vid is Id, part is Query, view is map, origin is map, stem is string, pattern is map) returns map
 {
-    var tools = qNothing();
+    const worldPlane = plane(vector(0, 0, 0) * meter, view.normal, view.xAxis);
+    const targetPlane = origin.applied ? inverse(origin.xf) * worldPlane : worldPlane;
+
+    // What is outlined and what already lies flat. A solid is outlined directly. A selected face is copied as a sheet
+    // (opCreateOutline refuses faces: INVALID_INPUT, 2026-10-29); a planar face parallel to the plane is its own outline
+    // and is only lifted onto the plane, any other face is outlined as a sheet.
+    var outlineTools = [];
+    var flatSheets = [];
     if (view.source == ExportDxfSource.PROJECTION)
     {
-        tools = qBodyType(memberQuery(part), BodyType.SOLID);
-        if (isQueryEmpty(context, tools))
+        const solids = qBodyType(memberQuery(part), BodyType.SOLID);
+        if (isQueryEmpty(context, solids))
         {
             throw regenError(view.label ~ " projection needs a solid. For a surface, select its faces.", [view.key ~ "Source"]);
         }
+        outlineTools = [solids];
     }
     else
     {
-        tools = view.faces;
-        if (isQueryEmpty(context, tools))
+        const faces = evaluateQuery(context, view.faces);
+        if (size(faces) == 0)
         {
             throw regenError("Select the faces for the " ~ view.label ~ " DXF.", [view.key ~ "Faces"]);
         }
+        for (var i = 0; i < size(faces); i += 1)
+        {
+            const surface = evSurfaceDefinition(context, { "face" : faces[i] });
+            const extractId = vid + ("face" ~ i);
+            opExtractSurface(context, extractId, { "faces" : faces[i] });
+            const sheet = qCreatedBy(extractId, EntityType.BODY);
+            if (surface is Plane && abs(abs(dot(surface.normal, targetPlane.normal)) - 1) < 1e-9)
+            {
+                const lift = targetPlane.normal * dot(targetPlane.origin - surface.origin, targetPlane.normal);
+                if (norm(lift) > TOLERANCE.zeroLength * meter)
+                {
+                    opTransform(context, vid + ("lift" ~ i), { "bodies" : sheet, "transform" : transform(lift) });
+                }
+                flatSheets = append(flatSheets, sheet);
+            }
+            else
+            {
+                outlineTools = append(outlineTools, sheet);
+            }
+        }
     }
 
-    const worldPlane = plane(vector(0, 0, 0) * meter, view.normal, view.xAxis);
-    const targetPlane = origin.applied ? inverse(origin.xf) * worldPlane : worldPlane;
-    opPlane(context, vid + "target", { "plane" : targetPlane, "width" : DXF_PLANE_SIZE, "height" : DXF_PLANE_SIZE });
-    const target = qCreatedBy(vid + "target", EntityType.FACE);
-    opCreateOutline(context, vid + "outline", { "tools" : tools, "target" : target });
-    opDeleteBodies(context, vid + "deleteTarget", { "entities" : qCreatedBy(vid + "target", EntityType.BODY) });
+    var regionList = flatSheets;
+    if (size(outlineTools) > 0)
+    {
+        opPlane(context, vid + "target", { "plane" : targetPlane, "width" : DXF_PLANE_SIZE, "height" : DXF_PLANE_SIZE });
+        const target = qCreatedBy(vid + "target", EntityType.FACE);
+        opCreateOutline(context, vid + "outline", { "tools" : qUnion(outlineTools), "target" : target });
+        opDeleteBodies(context, vid + "deleteTarget", { "entities" : qCreatedBy(vid + "target", EntityType.BODY) });
+        if (view.source == ExportDxfSource.SELECTION)
+        {
+            opDeleteBodies(context, vid + "deleteSheets", { "entities" : qUnion(outlineTools) });
+        }
+        regionList = append(regionList, qCreatedBy(vid + "outline", EntityType.BODY));
+    }
 
     // Overlapping regions (several faces) are merged so no internal lines remain.
-    var regions = qCreatedBy(vid + "outline", EntityType.BODY);
+    var regions = qUnion(regionList);
     if (size(evaluateQuery(context, regions)) > 1)
     {
         opBoolean(context, vid + "unite", { "tools" : regions, "operationType" : BooleanOperationType.UNION });
-        regions = qUnion([regions]);
+        regions = qUnion(regionList);
     }
     if (origin.applied)
     {

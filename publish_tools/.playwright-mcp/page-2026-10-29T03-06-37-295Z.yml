@@ -1,0 +1,240 @@
+- generic [ref=f8e1]:
+  - generic [ref=f8e5]:
+    - navigation [ref=f8e6]:
+      - generic [ref=f8e7]:
+        - link [ref=f8e10] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f8e11]
+        - generic [ref=f8e13] [cursor=pointer]
+      - generic [ref=f8e16]:
+        - generic [ref=f8e18]:
+          - generic [ref=f8e19]: Publish & Drawing tools
+          - generic [ref=f8e20]: Main
+        - generic [ref=f8e22] [cursor=pointer]
+        - link "EOC Featurescripts" [ref=f8e26] [cursor=pointer]:
+          - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+      - generic [ref=f8e30]:
+        - generic [ref=f8e44] [cursor=pointer]
+        - generic [ref=f8e50] [cursor=pointer]
+        - button "Notifications" [ref=f8e55] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f8e63]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f8e66] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f8e71] [cursor=pointer]
+        - button "Share" [ref=f8e75] [cursor=pointer]
+        - generic "Help menu" [ref=f8e77] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f8e81] [cursor=pointer]
+    - generic [ref=f8e91]:
+      - generic [ref=f8e93]:
+        - generic [ref=f8e94]:
+          - generic [ref=f8e95]:
+            - generic [ref=f8e96] [cursor=pointer]
+            - generic [ref=f8e99] [cursor=pointer]
+            - generic [ref=f8e102] [cursor=pointer]
+            - generic [ref=f8e105] [cursor=pointer]
+            - generic [ref=f8e108] [cursor=pointer]
+            - generic [ref=f8e111] [cursor=pointer]
+            - generic [ref=f8e114] [cursor=pointer]
+            - generic [ref=f8e117] [cursor=pointer]
+          - generic [ref=f8e121] [cursor=pointer]
+        - generic [ref=f8e125] [cursor=pointer]
+      - generic [ref=f8e132]:
+        - generic [ref=f8e139]:
+          - generic [ref=f8e143] [cursor=pointer]
+          - generic [ref=f8e151]:
+            - generic [ref=f8e152]: Sketch
+            - generic [ref=f8e164]:
+              - generic [ref=f8e165] [cursor=pointer]
+              - generic [ref=f8e169] [cursor=pointer]
+              - generic [ref=f8e173] [cursor=pointer]
+              - generic [ref=f8e177] [cursor=pointer]
+              - generic [ref=f8e182]:
+                - generic [ref=f8e183] [cursor=pointer]
+                - generic [ref=f8e187] [cursor=pointer]
+            - generic [ref=f8e193]:
+              - generic [ref=f8e195]:
+                - generic [ref=f8e196] [cursor=pointer]
+                - generic [ref=f8e200] [cursor=pointer]
+              - generic [ref=f8e203] [cursor=pointer]
+              - generic [ref=f8e208]:
+                - generic [ref=f8e209] [cursor=pointer]
+                - generic [ref=f8e213] [cursor=pointer]
+              - generic [ref=f8e216] [cursor=pointer]
+              - generic [ref=f8e220] [cursor=pointer]
+              - generic [ref=f8e224] [cursor=pointer]
+              - generic [ref=f8e228] [cursor=pointer]
+            - generic [ref=f8e235]:
+              - generic [ref=f8e237]:
+                - generic [ref=f8e238] [cursor=pointer]
+                - generic [ref=f8e242] [cursor=pointer]
+              - generic [ref=f8e245] [cursor=pointer]
+            - generic [ref=f8e252]:
+              - generic [ref=f8e253] [cursor=pointer]
+              - generic [ref=f8e257] [cursor=pointer]
+              - generic [ref=f8e262]:
+                - generic [ref=f8e263] [cursor=pointer]
+                - generic [ref=f8e267] [cursor=pointer]
+              - generic [ref=f8e270] [cursor=pointer]
+            - generic [ref=f8e277]:
+              - generic [ref=f8e278] [cursor=pointer]
+              - generic [ref=f8e282] [cursor=pointer]
+              - generic [ref=f8e286] [cursor=pointer]
+              - generic [ref=f8e290] [cursor=pointer]
+            - generic [ref=f8e298]:
+              - generic [ref=f8e299] [cursor=pointer]
+              - generic [ref=f8e303] [cursor=pointer]
+            - generic [ref=f8e310]:
+              - generic [ref=f8e311] [cursor=pointer]: SA
+              - generic [ref=f8e314] [cursor=pointer]
+            - generic [ref=f8e321] [cursor=pointer]
+          - button "Search tools… alt/⌥ c" [ref=f8e328] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f8e329]:
+              - generic [ref=f8e330]: alt/⌥
+              - generic [ref=f8e331]: c
+        - generic [ref=f8e333]:
+          - generic [ref=f8e335]:
+            - generic [ref=f8e338]:
+              - generic [ref=f8e340]:
+                - generic [ref=f8e341]:
+                  - generic [ref=f8e343]:
+                    - button [ref=f8e345] [cursor=pointer]
+                    - textbox "Filter by name or type" [ref=f8e350]
+                  - generic [ref=f8e351]:
+                    - generic [ref=f8e352]: Features (6)
+                    - button [disabled] [ref=f8e353]
+                    - button [disabled] [ref=f8e356]
+                    - button [ref=f8e359] [cursor=pointer]
+                - generic [ref=f8e363]:
+                  - generic [ref=f8e364]:
+                    - generic [ref=f8e366]:
+                      - generic [ref=f8e367] [cursor=pointer]
+                      - generic [ref=f8e370]: Default geometry
+                    - generic [ref=f8e372]: Origin
+                    - generic [ref=f8e382]: Top
+                    - generic [ref=f8e392]: Front
+                    - generic [ref=f8e402]: Right
+                    - generic [ref=f8e413]:
+                      - generic [ref=f8e415] [cursor=pointer]
+                      - generic [ref=f8e418]: Derived 1
+                    - generic [ref=f8e428]: Auto layout plus 1
+                  - list
+              - generic [ref=f8e443]:
+                - generic [ref=f8e445]:
+                  - generic [ref=f8e447] [cursor=pointer]
+                  - generic [ref=f8e450]: Parts (8)
+                - generic [ref=f8e454]: RD K035_SZ01 178_KF_SL2
+                - generic [ref=f8e466]: RD K035_SZ01 178_KF_SL3
+                - generic [ref=f8e478]: RD K035_SZ01 178_KF_SZ
+                - generic [ref=f8e490]: RD K035_SZ01 178_KF_SL1
+                - generic [ref=f8e502]: RD K035_SZ01 178_KF_SL2
+                - generic [ref=f8e514]: RD K035_SZ01 178_KF_SL3
+                - generic [ref=f8e526]: RD K035_SZ01 178_KF_SL2
+                - generic [ref=f8e538]: RD K035_SZ01 178_KF_SL3
+                - generic [ref=f8e551]:
+                  - generic [ref=f8e553] [cursor=pointer]
+                  - generic [ref=f8e556]: Composite parts (3)
+            - generic [ref=f8e561]:
+              - generic [ref=f8e563] [cursor=pointer]
+              - generic [ref=f8e567]:
+                - button [ref=f8e840] [cursor=pointer]
+                - generic [ref=f8e582] [cursor=pointer]
+              - generic [ref=f8e587]:
+                - generic [ref=f8e588] [cursor=pointer]
+                - generic [ref=f8e592] [cursor=pointer]
+                - generic [ref=f8e596] [cursor=pointer]
+                - generic [ref=f8e600] [cursor=pointer]
+                - generic [ref=f8e604] [cursor=pointer]
+                - generic [ref=f8e608] [cursor=pointer]
+                - generic [ref=f8e611] [cursor=pointer]
+          - generic [ref=f8e672]:
+            - dialog [ref=f8e673]:
+              - generic [ref=f8e674]: Auto layout plus 1
+            - generic [ref=f8e685]:
+              - list [ref=f8e686]:
+                - generic [ref=f8e687]:
+                  - generic [ref=f8e688]:
+                    - generic [ref=f8e695]:
+                      - generic [ref=f8e696]: Bodies to lay out
+                      - list [ref=f8e698]:
+                        - listitem [ref=f8e699]:
+                          - generic [ref=f8e700]: RD K035_SZ01 178_KF_SZ
+                          - generic [ref=f8e702] [cursor=pointer]: ×
+                        - listitem [ref=f8e703]:
+                          - generic [ref=f8e704]: RD K035_SZ01 178_KF_SL1
+                          - generic [ref=f8e706] [cursor=pointer]: ×
+                        - listitem [ref=f8e707]:
+                          - generic [ref=f8e708]: RD K035_SZ01 178_KF_SL3
+                          - generic [ref=f8e710] [cursor=pointer]: ×
+                        - listitem [ref=f8e711]:
+                          - generic [ref=f8e712]: RD K035_SZ01 178_KF_SL2
+                          - generic [ref=f8e714] [cursor=pointer]: ×
+                        - listitem [ref=f8e715]:
+                          - generic [ref=f8e716]: RD K035_SZ01 178_KF_SL2
+                          - generic [ref=f8e718] [cursor=pointer]: ×
+                        - listitem [ref=f8e719]:
+                          - generic [ref=f8e720]: RD K035_SZ01 178_KF_SL3
+                          - generic [ref=f8e722] [cursor=pointer]: ×
+                        - listitem [ref=f8e723]:
+                          - generic [ref=f8e724]: RD K035_SZ01 178_KF_SL2
+                          - generic [ref=f8e726] [cursor=pointer]: ×
+                        - listitem [ref=f8e727]:
+                          - generic [ref=f8e728]: RD K035_SZ01 178_KF_SL3
+                          - generic [ref=f8e730] [cursor=pointer]: ×
+                    - generic [ref=f8e738]:
+                      - generic [ref=f8e739]: Pattern origin
+                      - list [ref=f8e741]:
+                        - listitem [ref=f8e742]:
+                          - generic [ref=f8e743]: Mate connector
+                          - generic [ref=f8e748] [cursor=pointer]: ×
+                    - generic [ref=f8e754]:
+                      - generic [ref=f8e755]: X buffer
+                      - textbox [ref=f8e757]: 10 mm
+                    - generic [ref=f8e760]:
+                      - generic [ref=f8e761]: Y buffer
+                      - textbox [ref=f8e763]: 10 mm
+                  - generic [ref=f8e764]:
+                    - generic [ref=f8e768] [cursor=pointer]:
+                      - checkbox "Limit layout width" [checked]
+                      - generic [ref=f8e770]: Limit layout width
+                    - generic [ref=f8e773]:
+                      - generic [ref=f8e774]: Layout width (Y)
+                      - textbox [ref=f8e776]: 700 mm
+                  - generic [ref=f8e781] [cursor=pointer]:
+                    - checkbox "Limit layout length"
+                    - generic [ref=f8e783]: Limit layout length
+                  - generic [ref=f8e788] [cursor=pointer]:
+                    - checkbox "Allow 90 degree rotation"
+                    - generic [ref=f8e790]: Allow 90 degree rotation
+                  - generic [ref=f8e795] [cursor=pointer]:
+                    - checkbox "Nest bodies inside holes" [checked] [active]
+                    - generic [ref=f8e797]: Nest bodies inside holes
+                  - generic [ref=f8e802] [cursor=pointer]:
+                    - checkbox "Place on origin plane" [checked]
+                    - generic [ref=f8e804]: Place on origin plane
+                  - generic [ref=f8e809] [cursor=pointer]:
+                    - checkbox "Copy bodies"
+                    - generic [ref=f8e811]: Copy bodies
+                  - generic [ref=f8e812]:
+                    - generic [ref=f8e816] [cursor=pointer]:
+                      - checkbox "Create composite part" [checked]
+                      - generic [ref=f8e818]: Create composite part
+                    - generic [ref=f8e821]:
+                      - generic [ref=f8e822]: Composite name
+                      - textbox [ref=f8e823]
+                  - generic [ref=f8e828] [cursor=pointer]:
+                    - checkbox "Show layout preview"
+                    - generic [ref=f8e830]: Show layout preview
+              - generic [ref=f8e837] [cursor=pointer]
+        - generic [ref=f8e615]:
+          - img [ref=f8e618] [cursor=pointer]
+          - generic [ref=f8e620]:
+            - generic [ref=f8e621] [cursor=pointer]
+            - generic [ref=f8e625]: tests
+          - generic [ref=f8e632]:
+            - generic [ref=f8e633] [cursor=pointer]: Station tests
+            - generic [ref=f8e639] [cursor=pointer]: Primitive tests
+            - generic [ref=f8e645] [cursor=pointer]: Export Tests
+            - generic [ref=f8e656]: Autolayout_Tests
+  - alert [ref=f8e844]:
+    - generic [ref=f8e849]: 5 bodies were nested inside holes.
+    - button "Close" [ref=f8e851] [cursor=pointer]: ×
