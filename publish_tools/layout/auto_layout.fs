@@ -4,9 +4,10 @@ import(path : "onshape/std/common.fs", version : "3095.0");
 IconNamespace::import(path : "642c7f60a7761a7a6372b089", version : "b2add4d46cb8621a3e29dab8");
 
 /**
- * Auto layout plus: lays selected solids, surfaces and composite parts out in rows on the XY plane of an origin
- * mate connector. Bounding boxes are measured in the connector's frame and packed in shelf rows; x_buffer and
- * y_buffer are the gaps between bodies and the margin from the connector. Optionally limits the row width,
+ * Auto layout plus: lays selected solids, surfaces and composite parts out on the XY plane of an origin
+ * mate connector. Length is X, width is Y. Bounding boxes are measured in the connector's frame and packed in
+ * columns: the width (Y) is filled first, then a new column starts further along the length (X). x_buffer and
+ * y_buffer are the gaps between bodies and the margin from the connector. Optionally limits the layout width,
  * rotates bodies 90 degrees about the connector Z, copies instead of moves, and wraps the result in a composite.
  *
  * v1: bounding-box packing only. Internal nesting (placing small bodies inside the holes of large ones) is phase 2.
@@ -29,8 +30,9 @@ export const AUTO_LAYOUT_WIDTH_BOUNDS =
 } as LengthBoundSpec;
 
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Auto layout plus",
-        "Feature Type Description" : "Lays out solids, surfaces and composite parts in rows on the XY plane of a " ~
-        "mate connector, with x and y buffers between bodies. Bodies keep their orientation (optional 90 degree " ~
+        "Feature Type Description" : "Lays out solids, surfaces and composite parts on the XY plane of a " ~
+        "mate connector. Fills the width (Y) first, then starts a new column along the length (X). " ~
+        "Bodies are packed by bounding box, with x and y buffers between them. Bodies keep their orientation (optional 90 degree " ~
         "rotation). Can move or copy the bodies and group the result in a composite part." }
 export const autoLayoutPlus = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -115,24 +117,8 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
             const bb is Box3d = evBox3d(context, { "topology" : body, "cSys" : cSys });
             const dx = bb.maxCorner[0] - bb.minCorner[0];
             const dy = bb.maxCorner[1] - bb.minCorner[1];
-            // Long side along X by default; with a width limit, a body too wide for it turns so its length runs along Y
-            var rotate = definition.allowRotation && dy > dx;
-            if (definition.allowRotation && definition.limitWidth)
-            {
-                const room = definition.layoutWidth - 2 * definition.xBuffer + TOLERANCE.zeroLength * meter;
-                if (dx > room && dy <= room)
-                {
-                    rotate = true;
-                }
-                else if (dy > room && dx <= room)
-                {
-                    rotate = false;
-                }
-                else if (dx > room && dy > room)
-                {
-                    rotate = dy < dx;
-                }
-            }
+            // Length is X, width is Y: the long side runs along X, which keeps the Y extent (the limited one) smallest
+            const rotate = definition.allowRotation && dy > dx;
             items = append(items, {
                         "body" : body,
                         "bb" : bb,
@@ -142,36 +128,37 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
                     });
         }
 
-        // Tallest first gives tidy shelves
+        // Longest first: each column then starts with its longest body
         items = sort(items, function(a, b)
             {
-                return b.h - a.h;
+                return b.w - a.w;
             });
 
-        // Shelf packing in the origin frame
+        // Column packing in the origin frame: fill the width (Y) first; when it is used up, start a new column
+        // further along the length (X)
         var x = definition.xBuffer;
         var y = definition.yBuffer;
-        var rowHeight = 0 * meter;
+        var columnLength = 0 * meter;
         var tooWide = 0;
         for (var i = 0; i < size(items); i += 1)
         {
-            const fitsRow = x + items[i].w + definition.xBuffer <= definition.layoutWidth + TOLERANCE.zeroLength * meter;
-            if (definition.limitWidth && !fitsRow && x > definition.xBuffer + TOLERANCE.zeroLength * meter)
+            const overflows = y + items[i].h + definition.yBuffer > definition.layoutWidth + TOLERANCE.zeroLength * meter;
+            if (definition.limitWidth && overflows && y > definition.yBuffer + TOLERANCE.zeroLength * meter)
             {
-                x = definition.xBuffer;
-                y += rowHeight + definition.yBuffer;
-                rowHeight = 0 * meter;
+                x += columnLength + definition.xBuffer;
+                y = definition.yBuffer;
+                columnLength = 0 * meter;
             }
-            if (definition.limitWidth && x + items[i].w + definition.xBuffer > definition.layoutWidth + TOLERANCE.zeroLength * meter)
+            if (definition.limitWidth && y + items[i].h + definition.yBuffer > definition.layoutWidth + TOLERANCE.zeroLength * meter)
             {
                 tooWide += 1;
             }
             items[i].x = x;
             items[i].y = y;
-            x += items[i].w + definition.xBuffer;
-            if (items[i].h > rowHeight)
+            y += items[i].h + definition.yBuffer;
+            if (items[i].w > columnLength)
             {
-                rowHeight = items[i].h;
+                columnLength = items[i].w;
             }
         }
 
@@ -189,7 +176,7 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
             if (definition.limitWidth)
             {
                 debug(context, box3d(vector(0 * meter, 0 * meter, 0 * meter),
-                        vector(definition.layoutWidth, y + rowHeight + definition.yBuffer, 0 * meter)), cSys, DebugColor.MAGENTA);
+                        vector(x + columnLength + definition.xBuffer, definition.layoutWidth, 0 * meter)), cSys, DebugColor.MAGENTA);
             }
         }
 
@@ -238,7 +225,7 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
         if (tooWide > 0)
         {
             reportFeatureWarning(context, id, tooWide ~ " bod" ~ (tooWide == 1 ? "y is" : "ies are")
-                    ~ " wider than the layout width and sit alone in their row.");
+                    ~ " wider than the layout width (Y) and sit alone in their column.");
         }
 
         if (definition.createComposite)
