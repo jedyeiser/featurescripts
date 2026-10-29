@@ -275,15 +275,15 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
 
         if (definition.createComposite)
         {
-            // A composite part cannot contain another composite part or a body that already belongs to one
+            // A composite part cannot contain another composite part: laid-out composites (and, in copy mode, the
+            // constituents that came with them) stay as they are; every other body goes into the new composite
             const placedComposites = qBodyType(placed, BodyType.COMPOSITE);
-            const inComposites = qContainedInCompositeParts(qBodyType(qEverything(EntityType.BODY), BodyType.COMPOSITE));
-            const toGroup = qSubtraction(placed, qUnion([placedComposites, inComposites]));
+            const toGroup = qSubtraction(placed, qUnion([placedComposites, qContainedInCompositeParts(placedComposites)]));
             const grouped = size(evaluateQuery(context, toGroup));
-            const skipped = size(evaluateQuery(context, qSubtraction(placed, qUnion([toGroup, qContainedInCompositeParts(placedComposites)]))));
+            const skipped = size(evaluateQuery(context, placedComposites));
             if (grouped == 0)
             {
-                reportFeatureWarning(context, id, "Composite part not created: every laid-out body is already a composite part or belongs to one.");
+                reportFeatureWarning(context, id, "Composite part not created: every laid-out body is already a composite part.");
             }
             else
             {
@@ -301,7 +301,7 @@ export const autoLayoutPlus = defineFeature(function(context is Context, id is I
                 }
                 if (skipped > 0)
                 {
-                    reportFeatureWarning(context, id, skipped ~ " laid-out composite part(s) or composite constituent(s) stay separate: "
+                    reportFeatureWarning(context, id, skipped ~ " laid-out composite part(s) stay separate: "
                             ~ "a composite part cannot contain another composite part.");
                 }
             }
