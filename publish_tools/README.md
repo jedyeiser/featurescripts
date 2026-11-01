@@ -476,7 +476,7 @@ the export needs. FeatureScript only records intent and builds geometry; the app
 Dialog groups: Part and name | Export info | Export origin | Drawing Information (its checkbox is "Station table").
 * Name: "Get Part Name" button (editing logic; the body cannot read names, correction 36), stored name, stale-name Ignore / Warn /
   Error (checked only when the dialog is edited), export name (overrides), release prefix rule (V1 / V001 / R0 / R1; the app resolves it).
-* Export solid: STEP / IGES / STL booleans + file name (recorded). Export DXF: Plan (XY) and Profile (XZ), each NONE / PROJECTION /
+* Export solid: STEP / IGES / STL / Parasolid (.x_t) booleans + file name (recorded). Export DXF: Plan (XY) and Profile (XZ), each NONE / PROJECTION /
   SELECTION + file name; Profile outline SECTION (default, exact edges through the part's centre) / SILHOUETTE. DXF faces are real
   SURFACE bodies lying on the export frame's XY / XZ plane: `<name> XY EXPORT` (copies `<name> XY EXPORT_PATTERN_<n>`), grouped in the
   closed composite `<name> XY DXF` (always, even one face; "one composite" option: `<name> DXF`). Radii stay arcs (checked on three parts).

@@ -113,7 +113,7 @@ const DXF_PLANE_SIZE = 20 * meter;
  *
  *   - captures the body's name (Get name button, editing logic -- the feature body cannot read names) and
  *     warns when it goes stale;
- *   - solid formats (STEP / IGES / STL), a drawing flag and the naming rule are only RECORDED;
+ *   - solid formats (STEP / IGES / STL / Parasolid), a drawing flag and the naming rule are only RECORDED;
  *   - the export origin (a mate connector, or a quadrant with buffers) is solved as the minimum transform
  *     and recorded; optionally a shifted COPY of a single body is made (a composite input is taken as
  *     already in place);
@@ -177,6 +177,9 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
 
                 annotation { "Name" : "STL", "Default" : false }
                 definition.stlOut is boolean;
+
+                annotation { "Name" : "Parasolid (.x_t)", "Default" : false }
+                definition.parasolidOut is boolean;
 
                 annotation { "Name" : "Solid file name", "Default" : "", "MaxLength" : 128,
                             "Description" : "Empty = the export name." }
@@ -475,6 +478,10 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
         {
             solidFormats = append(solidFormats, "STL");
         }
+        if (definition.exportSolid && definition.parasolidOut)
+        {
+            solidFormats = append(solidFormats, "PARASOLID");
+        }
 
         // Station table: run Station geometry for this part, named with the stem, so the drawing's Station table
         // (Views containing = the stem) has its data. The views are tagged composites "<stem> XY" / "<stem> XZ".
@@ -683,7 +690,7 @@ export const exportTag = defineFeature(function(context is Context, id is Id, de
          "clearanceX" : 10 * millimeter, "clearanceY" : 10 * millimeter, "pitchX" : 300 * millimeter, "pitchY" : 300 * millimeter,
          "exportSolid" : false, "exportDxf" : false, "stationTable" : false, "stationPlan" : true, "stationProfile" : false,
          "stationDatum" : qNothing(), "stationDatumUses" : StationDatumUse.ORIGIN, "stationAtExport" : false,
-         "stepOut" : false, "igesOut" : false, "stlOut" : false,
+         "stepOut" : false, "igesOut" : false, "stlOut" : false, "parasolidOut" : false,
          "planFaces" : qNothing(), "profileFaces" : qNothing(), "originConnector" : qNothing() });
 
 /**
