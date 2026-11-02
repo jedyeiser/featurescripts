@@ -142,6 +142,16 @@ export const extractVariables = defineFeature(function(context is Context, id is
             }
         }
 
+        annotation { "Name" : "Get variables from a derived Part Studio", "Default" : false,
+                    "Description" : "Set every variable that the Part Studio you derive from lists in its exportVariables map (Add variables for derive, or Variable + with Export for derive). Same names; an existing variable of that name is overwritten." }
+        definition.fromDerive is boolean;
+
+        if (definition.fromDerive)
+        {
+            annotation { "Name" : "Derived Part Studio", "UIHint" : UIHint.SHOW_INLINE_CONFIG_INPUTS }
+            definition.deriveStudio is PartStudioData;
+        }
+
         annotation { "Name" : "Print keys", "Default" : false, "Description" : "Print every key the sources offer to the FeatureScript notices." }
         definition.printKeys is boolean;
 
@@ -205,6 +215,22 @@ export const extractVariables = defineFeature(function(context is Context, id is
             }
         }
 
+        if (definition.fromDerive == true)
+        {
+            const derived = readDerivedVariables(definition.deriveStudio);
+            for (var derivedName, derivedValue in derived)
+            {
+                verifyVariableNameIsValid(derivedName, "deriveStudio");
+                if (published[derivedName] == true)
+                {
+                    throw regenError("'" ~ derivedName ~ "' comes from the derived Part Studio and is also published by an entry.", ["deriveStudio"]);
+                }
+                published[derivedName] = true;
+                setVariable(context, derivedName, derivedValue, "From derived Part Studio");
+                manifest.variables[derivedName] = derivedValue;
+            }
+        }
+
         if (definition.manifest != "")
         {
             if (published[definition.manifest] == true)
@@ -234,8 +260,42 @@ export const extractVariables = defineFeature(function(context is Context, id is
             "prefix" : "",
             "extractEntries" : [],
             "printKeys" : false,
-            "manifest" : ""
+            "manifest" : "",
+            "fromDerive" : false
         });
+
+/** The registry variable that Add variables for derive / Variable + (Export for derive) write in the source Part Studio. */
+const EXPORT_REGISTRY = "exportVariables";
+
+/** getVariable's default for a name that is not set (no value of the model is this map). */
+const REGISTRY_NOT_SET = { "notSet" : "extract_variables" };
+
+/**
+ * Builds the picked Part Studio's context and returns its exportVariables map (name -> value).
+ * The Derived feature has its own build of the same studio; this is one extra regeneration of it.
+ */
+function readDerivedVariables(studio is PartStudioData) returns map
+{
+    if (studio.buildFunction == undefined)
+    {
+        throw regenError("Pick the Part Studio you derive from.", ["deriveStudio"]);
+    }
+    const otherContext = @convert(studio.buildFunction(studio.configuration), undefined);
+    if (otherContext == undefined)
+    {
+        throw regenError("The Part Studio could not be built.", ["deriveStudio"]);
+    }
+    const registry = getVariable(otherContext, EXPORT_REGISTRY, REGISTRY_NOT_SET);
+    if (registry == REGISTRY_NOT_SET)
+    {
+        throw regenError("The Part Studio has no '" ~ EXPORT_REGISTRY ~ "' variable. Add an 'Add variables for derive' feature, or tick Export for derive on a Variable +.", ["deriveStudio"]);
+    }
+    if (!(registry is map))
+    {
+        throw regenError("'" ~ EXPORT_REGISTRY ~ "' in the Part Studio is not a map.", ["deriveStudio"]);
+    }
+    return registry;
+}
 
 /** Colours for shown entries whose producer gives none, cycled by entry. */
 const SHOW_COLORS = [DebugColor.RED, DebugColor.GREEN, DebugColor.BLUE, DebugColor.MAGENTA, DebugColor.ORANGE, DebugColor.CYAN, DebugColor.YELLOW];

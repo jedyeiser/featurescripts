@@ -480,6 +480,10 @@ export const assignVariable = defineFeature(function(context is Context, id is I
 
         annotation { "Name" : "Description", "MaxLength" : 256, "Default" : "" }
         definition.description is string;
+
+        annotation { "Name" : "Export for derive", "Default" : false,
+                    "Description" : "Adds this variable to the exportVariables map, so a Part Studio that derives from this one can fetch it with Extract variables." }
+        definition.exportForDerive is boolean;
     }
     {
         if (definition.name == '' && isAtVersionOrLater(context, FeatureScriptVersionNumber.V2995_REMOVE_NAME_WORKAROUND))
@@ -812,11 +816,16 @@ export const assignVariable = defineFeature(function(context is Context, id is I
 
         verifyVariableName(context, definition.name, "name");
         publishVariableValue(definition.name, context, id, value, definition.description);
+        if (definition.exportForDerive == true)
+        {
+            addToExportRegistry(context, definition.name, value);
+        }
     },
     {
         // Default mode is ASSIGNED.
         mode : VariableMode.ASSIGNED,
         description : "",
+        exportForDerive : false,
         variableType : VariableType.ANY,
 
         // If mode is set to MEASURED, the default measurement mode is DISTANCE.
@@ -1032,6 +1041,30 @@ function publishVariableValue(name is string, context is Context, id is Id, valu
     setVariable(context, name, value, (description is string) ? description : "");
     const quotedValue = (value is string) ? ('"' ~ value ~ '"') : value;
     setFeatureComputedParameter(context, id, { "name" : "value", "value" : quotedValue });
+}
+
+/**
+ * Adds `name` -> `value` to the `exportVariables` map variable (created if missing), the registry a Part
+ * Studio that derives from this one reads with Extract variables. Overwrites an earlier entry of the same name.
+ */
+function addToExportRegistry(context is Context, name is string, value)
+{
+    const registryName = "exportVariables";
+    if (name == registryName)
+    {
+        throw regenError("'" ~ registryName ~ "' is the registry itself and cannot be exported.", ["name"]);
+    }
+    if (value == undefined || value is Query)
+    {
+        throw regenError("Only an ordinary value can be exported for derive.", ["exportForDerive"]);
+    }
+    var registry = getVariable(context, registryName, {});
+    if (!(registry is map))
+    {
+        registry = {};
+    }
+    registry[name] = value;
+    setVariable(context, registryName, registry, "Variables a derived Part Studio can fetch");
 }
 
 /**

@@ -12,11 +12,12 @@ const NOT_SET = { "notSet" : "add_variables_for_derive" };
  *
  * Put this in the SOURCE Part Studio, after the variables it lists. It reads the current value of each named
  * variable and stores them together in one variable called `exportVariables` (a map of name -> value).
- * The feature "Get variables from derive", in the studio that derives from this one, reads that map from
- * this studio's context and sets every entry as an ordinary variable there.
+ * Extract variables, in the studio that derives from this one, reads that map from this studio's
+ * context and sets every entry as an ordinary variable there.
  *
- * One per studio: it replaces the whole `exportVariables` map each time it regenerates. Values are
- * snapshots taken at this feature's position in the tree. Query variables cannot be exported.
+ * It adds to the `exportVariables` map (Variable + with "Export for derive" does the same), and a name
+ * listed twice is overwritten by the later one. Values are snapshots taken at the feature's position in
+ * the tree. Query variables cannot be exported.
  */
 annotation { "Feature Type Name" : "Add variables for derive",
         "Feature Type Description" : "Lists the variables of this Part Studio that a Part Studio deriving from it can fetch with Get variables from derive.",
@@ -34,7 +35,12 @@ export const addVariablesForDerive = defineFeature(function(context is Context, 
         }
     }
     {
-        var registry = {};
+        // Merge into the registry: Variable + (Export for derive) and other producers add to it too.
+        var registry = getVariable(context, EXPORT_REGISTRY, {});
+        if (!(registry is map))
+        {
+            registry = {};
+        }
         for (var i, entry in definition.exportEntries)
         {
             const parameterId = faultyArrayParameterId("exportEntries", i, "exportName");
