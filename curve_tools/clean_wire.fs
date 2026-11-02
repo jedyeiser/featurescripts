@@ -97,6 +97,12 @@ export enum CleanApproximation
  */
 export const CleanWireSliverBounds = { (millimeter) : [0.01, 0.5, 20] } as LengthBoundSpec;
 
+/**
+ * An edge shorter than this (the lower bound of the sliver length) carries no geometry: its direction
+ * cannot be measured, so it never makes a run of its own between two edges that line up.
+ */
+const CLEAN_MICRO_EDGE = 0.01 * millimeter;
+
 /** Curvature stations per edge for the sampling density. */
 export const CURVATURE_STATIONS = 32;
 
@@ -1563,8 +1569,24 @@ function buildRuns(definition is map, chain is map, joints is array, groupOfEdge
         // the run before it: two groups that end and start either side of a 0.09 mm
         // fragment did not mean to leave it on its own.
         const before = (first == 0) ? undefined : joints[first - 1];
-        if (length < sliverMax && size(runs) > 0 && before != undefined
-            && before.kind != "corner" && before.userBreak != true)
+        var joinsPrevious = (length < sliverMax && size(runs) > 0 && before != undefined
+            && before.kind != "corner" && before.userBreak != true);
+
+        // A micro edge -- a few microns -- cannot carry a corner: its own direction is not
+        // measurable, so a "corner" read at either end of it is noise, and the break that
+        // follows from it would leave a piece the driven offset cannot frame (the offset on
+        // the outside of the turn then loses a run and the wire opens). Whatever decided the
+        // joints on either side of it, it joins the run before it when the edges either side
+        // of it line up.
+        if (!joinsPrevious && length < CLEAN_MICRO_EDGE && size(runs) > 0 && before != undefined
+            && before.userBreak != true && i + 1 < size(chain.edges))
+        {
+            const across = jointRecord(definition, chain.edges[first - 1].endTangent,
+                chain.edges[i + 1].startTangent, true, "");
+            joinsPrevious = across.kind != "corner";
+        }
+
+        if (joinsPrevious)
         {
             const previous = runs[size(runs) - 1];
             runs[size(runs) - 1] = mergeMaps(previous, { "last" : i });

@@ -1,0 +1,206 @@
+- generic [ref=f15e1]:
+  - generic [ref=f15e5]:
+    - navigation [ref=f15e6]:
+      - generic [ref=f15e7]:
+        - link [ref=f15e10] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f15e11]
+        - generic [ref=f15e13] [cursor=pointer]
+      - generic [ref=f15e16]:
+        - generic [ref=f15e18]:
+          - generic [ref=f15e19]: Variable_Tools
+          - generic [ref=f15e20]: Main
+        - generic [ref=f15e22] [cursor=pointer]
+        - link "EOC Featurescripts" [ref=f15e26] [cursor=pointer]:
+          - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+      - generic [ref=f15e30]:
+        - generic [ref=f15e33] [cursor=pointer]
+        - generic [ref=f15e39] [cursor=pointer]
+        - button "Notifications" [ref=f15e44] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f15e52]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f15e55] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f15e60] [cursor=pointer]
+        - button "Share" [ref=f15e64] [cursor=pointer]
+        - generic "Help menu" [ref=f15e66] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f15e70] [cursor=pointer]
+    - generic [ref=f15e80]:
+      - generic [ref=f15e82]:
+        - generic [ref=f15e83]:
+          - generic [ref=f15e84]:
+            - generic [ref=f15e85] [cursor=pointer]
+            - generic [ref=f15e88] [cursor=pointer]
+            - generic [ref=f15e91] [cursor=pointer]
+            - generic [ref=f15e94] [cursor=pointer]
+            - generic [ref=f15e97] [cursor=pointer]
+            - generic [ref=f15e100] [cursor=pointer]
+            - generic [ref=f15e103] [cursor=pointer]
+            - generic [ref=f15e106] [cursor=pointer]
+          - generic [ref=f15e110] [cursor=pointer]
+        - generic [ref=f15e114] [cursor=pointer]
+      - generic [ref=f15e121]:
+        - generic [ref=f15e124]:
+          - generic [ref=f15e128]:
+            - generic [ref=f15e140]:
+              - generic [ref=f15e141]: New feature
+              - generic [ref=f15e437]:
+                - generic [ref=f15e438] [cursor=pointer]: Length parameter
+                - generic [ref=f15e440] [cursor=pointer]
+              - generic [ref=f15e164]:
+                - generic [ref=f15e165] [cursor=pointer]
+                - generic [ref=f15e169] [cursor=pointer]
+              - generic [ref=f15e172]: Commit
+            - button "Search tools… alt/⌥ c" [ref=f15e183] [cursor=pointer]:
+              - text: Search tools…
+              - generic [ref=f15e184]:
+                - generic [ref=f15e185]: alt/⌥
+                - generic [ref=f15e186]: c
+            - generic [ref=f15e187]:
+              - switch "Co-complete" [disabled] [ref=f15e189] [cursor=pointer]
+              - generic [ref=f15e190]: Co-complete
+          - generic [ref=f15e195]:
+            - generic [ref=f15e196]: Monitor Examples
+            - generic [ref=f15e208]: Module outline
+            - generic [ref=f15e243]: Line 1 , Column 1
+        - generic [ref=f15e444]:
+          - textbox "Cursor at row 1" [active] [ref=f15e445]: FeatureScript 3083;
+          - generic [ref=f15e447]:
+            - generic [aria-hidden] [ref=f15e448]: "1"
+            - generic [aria-hidden] [ref=f15e449]: "2"
+            - generic [aria-hidden] [ref=f15e450]: "3"
+            - generic [aria-hidden] [ref=f15e451]: "4"
+            - generic [aria-hidden] [ref=f15e452]: "5"
+            - generic [aria-hidden] [ref=f15e453]: "6"
+            - generic [aria-hidden] [ref=f15e454]: "7"
+            - generic [aria-hidden] [ref=f15e455]: "8"
+            - generic [ref=f15e456]:
+              - text: "9"
+              - button [expanded] [ref=f15e457] [cursor=pointer]
+            - generic [aria-hidden] [ref=f15e458]: "10"
+            - generic [aria-hidden] [ref=f15e459]: "11"
+            - generic [aria-hidden] [ref=f15e460]: "12"
+            - generic [ref=f15e461]:
+              - text: "13"
+              - button [expanded] [ref=f15e462] [cursor=pointer]
+            - generic [aria-hidden] [ref=f15e463]: "14"
+            - generic [aria-hidden] [ref=f15e464]: "15"
+            - generic [aria-hidden] [ref=f15e465]: "16"
+            - generic [ref=f15e466]:
+              - text: "17"
+              - button [expanded] [ref=f15e467] [cursor=pointer]
+            - generic [ref=f15e468]:
+              - text: "18"
+              - button [expanded] [ref=f15e469] [cursor=pointer]
+            - generic [aria-hidden] [ref=f15e470]: "19"
+            - generic [aria-hidden] [ref=f15e471]: "20"
+            - generic [aria-hidden] [ref=f15e472]: "21"
+            - generic [aria-hidden] [ref=f15e473]: "22"
+            - generic [aria-hidden] [ref=f15e474]: "23"
+            - generic [ref=f15e475]:
+              - text: "24"
+              - button [expanded] [ref=f15e476] [cursor=pointer]
+            - generic [aria-hidden] [ref=f15e477]: "25"
+            - generic [aria-hidden] [ref=f15e478]: "26"
+            - generic [aria-hidden] [ref=f15e479]: "27"
+            - generic [aria-hidden] [ref=f15e480]: "28"
+            - generic [aria-hidden] [ref=f15e481]: "29"
+            - generic [aria-hidden] [ref=f15e482]: "30"
+            - generic [aria-hidden] [ref=f15e483]: "31"
+            - generic [aria-hidden] [ref=f15e484]: "32"
+            - generic [ref=f15e485]:
+              - text: "33"
+              - button [expanded] [ref=f15e486] [cursor=pointer]
+            - generic [aria-hidden] [ref=f15e487]: "34"
+            - generic [aria-hidden] [ref=f15e488]: "35"
+            - generic [aria-hidden] [ref=f15e489]: "36"
+            - generic [aria-hidden] [ref=f15e490]: "37"
+            - generic [aria-hidden] [ref=f15e491]: "38"
+            - generic [aria-hidden] [ref=f15e492]: "39"
+            - generic [aria-hidden] [ref=f15e493]: "40"
+            - generic [ref=f15e494]:
+              - text: "41"
+              - button [expanded] [ref=f15e495] [cursor=pointer]
+            - generic [aria-hidden] [ref=f15e496]: "42"
+            - generic [aria-hidden] [ref=f15e497]: "43"
+            - generic [aria-hidden] [ref=f15e498]: "44"
+            - generic [aria-hidden] [ref=f15e499]: "45"
+            - generic [aria-hidden] [ref=f15e500]: "46"
+            - generic [aria-hidden] [ref=f15e501]: "47"
+            - generic [aria-hidden] [ref=f15e502]: "48"
+            - generic [aria-hidden] [ref=f15e503]: "49"
+            - generic [aria-hidden] [ref=f15e504]: "50"
+            - generic [aria-hidden] [ref=f15e505]: "51"
+            - generic [aria-hidden] [ref=f15e506]: "52"
+            - generic [aria-hidden] [ref=f15e507]: "53"
+          - generic [ref=f15e509]:
+            - generic:
+              - generic: FeatureScript 3083;
+              - generic: "import(path : \"onshape/std/common.fs\", version : \"3083.0\");"
+              - generic: "// IMPORT: extract_variables_utils.fs (re-exports extract_outputs.fs)"
+              - generic: "export import(path : \"a4dcd70ce9ceec588536fb0c\", version : \"16969bd79ed1ef79531eb7e0\");"
+              - generic: "// IMPORT: extract_variables_icon.svg (feature icon)"
+              - generic: "IconNamespace::import(path : \"1fec12e049522ab98f8177ff\", version : \"9c7ddae6a84d0131481b57c4\");"
+              - generic: /**
+              - generic: "* Extract variables."
+              - generic: "*"
+              - generic: "* One per block of the tree. Takes the block's features as sources and publishes what later"
+              - generic: "* features need -- ordinary variables (`#name`) and query variables (pickable in any native"
+              - generic: "* dialog) -- so the block's hand-made Query Variable features can go."
+              - generic: "*"
+              - generic: "* Sources need not be producers: every source offers the standard keys output /"
+              - generic: "* outputFaces / outputEdges / outputVertices (embedded by a producer, else what the feature"
+              - generic: "* created), and modifiedFaces / modifiedEdges / modifiedVertices (what it created or last"
+              - generic: "* modified -- the only way to reach what an in-place feature like Move boundary changed)."
+              - generic: "* Producers add their own keys. \"Add keys from sources\" lists them all."
+              - generic: "*"
+              - generic: "* Entry types: a source key as is; filtered (entity type, body type, name, largest N);"
+              - generic: "* closest to a point; edges shared by two sources; a chain end; the edges of a chain"
+              - generic: "* between two points; bridging curve input (the end edge and its vertex); a region (the faces"
+              - generic: "* around a point, flood-filled up to boundary edges, or that region's boundary). Composed entries"
+              - generic: "* hold the entities present now (std robust freeze); a source key may re-evaluate on use."
+              - generic: "* \"Track\" adds a tracking query to the freeze, so the variable follows its entities through"
+              - generic: "* later splits and in-place edits."
+              - generic: "*"
+              - generic: "* Names: `<prefix>_<name>`, the name defaulting to the key (\"output@2\" -> \"output_2\")."
+              - generic: "* Notices: one per regeneration; a warning only when an entry could not be published."
+              - generic: "*/"
+              - generic: "annotation { \"Icon\" : IconNamespace::BLOB_DATA,"
+              - generic: "\"Feature Type Name\" : \"Extract variables\","
+              - generic: "\"Feature Type Description\" : \"Publish variables and query variables from a block of features: their standard outputs, embedded keys, or composed selections.\","
+              - generic: "\"UIHint\" : UIHint.NO_PREVIEW_PROVIDED,"
+              - generic: "\"Editing Logic Function\" : \"extractVariablesEditLogic\""
+              - generic: "}"
+              - generic: export const extractVariables = defineFeature(function(context is Context, id is Id, definition is map)
+              - generic: precondition
+              - generic: "{"
+              - generic: "annotation { \"Name\" : \"Sources\", \"Description\" : \"The features of this block. Any feature works; producers add their own keys.\" }"
+              - generic: definition.sources is FeatureList;
+              - generic: "annotation { \"Name\" : \"Prefix\", \"Default\" : \"\", \"MaxLength\" : 256, \"Description\" : \"Put in front of every published name, joined with an underscore. Empty = none.\" }"
+              - generic: definition.prefix is string;
+              - generic:
+                - generic: "annotation { \"Name\" : \"Add keys from sources\", \"Description\" : \"Add a Source key entry for every key the sources offer that is not listed yet (faces, vertices and inputs excepted)."
+                - generic: "Existing entries are kept.\" }"
+              - generic: isButton(definition.addKeys);
+              - generic: "annotation { \"Name\" : \"Entries\", \"Item name\" : \"entry\", \"Item label template\" : \"#x_name #x_sourceKey\" }"
+              - generic: definition.extractEntries is array;
+              - generic: for (var entry in definition.extractEntries)
+            - generic [ref=f15e510]:
+              - generic [ref=f15e511]: extract_variables_utils
+              - generic [ref=f15e513]: extract_variables_icon.svg
+        - generic [ref=f15e353]:
+          - img [ref=f15e356] [cursor=pointer]
+          - generic [ref=f15e359]:
+            - generic [ref=f15e360] [cursor=pointer]: Part Studio 1
+            - generic [ref=f15e366] [cursor=pointer]: Assembly 1
+            - generic [ref=f15e372] [cursor=pointer]: extract_outputs
+            - generic [ref=f15e378] [cursor=pointer]: extract_variables_utils
+            - generic [ref=f15e384]: extract_variables
+            - generic [ref=f15e390] [cursor=pointer]: variable_tools_tests
+            - generic [ref=f15e396] [cursor=pointer]: Examples
+            - generic [ref=f15e402] [cursor=pointer]: extract_variables_icon.svg
+            - generic [ref=f15e408] [cursor=pointer]: Tracking tests
+            - generic [ref=f15e414] [cursor=pointer]: add_variables_for_derive
+            - generic [ref=f15e420] [cursor=pointer]: get_variables_from_derive
+          - generic [ref=f15e426]:
+            - listitem [ref=f15e427]
+            - listitem [ref=f15e431]
+  - img "Generic thumbnail image for a document without a preview image." [ref=f15e532]

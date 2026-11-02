@@ -1,0 +1,205 @@
+- generic [ref=f15e5]:
+  - navigation [ref=f15e6]:
+    - generic [ref=f15e7]:
+      - link [ref=f15e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f15e11]
+      - generic [ref=f15e13] [cursor=pointer]
+    - generic [ref=f15e16]:
+      - generic [ref=f15e18]:
+        - generic [ref=f15e19]: Variable_Tools
+        - generic [ref=f15e20]: Main
+      - generic [ref=f15e22] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f15e26] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f15e30]:
+      - generic [ref=f15e33] [cursor=pointer]
+      - generic [ref=f15e39] [cursor=pointer]
+      - button "Notifications" [ref=f15e44] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f15e52]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f15e55] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f15e60] [cursor=pointer]
+      - button "Share" [ref=f15e64] [cursor=pointer]
+      - generic "Help menu" [ref=f15e66] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f15e70] [cursor=pointer]
+  - generic [ref=f15e80]:
+    - generic [ref=f15e82]:
+      - generic [ref=f15e83]:
+        - generic [ref=f15e84]:
+          - generic [ref=f15e85] [cursor=pointer]
+          - generic [ref=f15e88] [cursor=pointer]
+          - generic [ref=f15e91] [cursor=pointer]
+          - generic [ref=f15e94] [cursor=pointer]
+          - generic [ref=f15e97] [cursor=pointer]
+          - generic [ref=f15e100] [cursor=pointer]
+          - generic [ref=f15e103] [cursor=pointer]
+          - generic [ref=f15e106] [cursor=pointer]
+        - generic [ref=f15e110] [cursor=pointer]
+      - generic [ref=f15e114] [cursor=pointer]
+    - generic [ref=f15e121]:
+      - generic [ref=f15e124]:
+        - generic [ref=f15e128]:
+          - generic [ref=f15e140]:
+            - generic [ref=f15e141]: New feature
+            - generic [ref=f15e154]:
+              - generic [ref=f15e155] [cursor=pointer]: Length parameter
+              - generic [ref=f15e157] [cursor=pointer]
+            - generic [ref=f15e164]:
+              - generic [ref=f15e165] [cursor=pointer]
+              - generic [ref=f15e169] [cursor=pointer]
+            - generic [ref=f15e172]: Commit
+          - button "Search tools… alt/⌥ c" [ref=f15e183] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f15e184]:
+              - generic [ref=f15e185]: alt/⌥
+              - generic [ref=f15e186]: c
+          - generic [ref=f15e187]:
+            - switch "Co-complete" [disabled] [ref=f15e189] [cursor=pointer]
+            - generic [ref=f15e190]: Co-complete
+        - generic [ref=f15e195]:
+          - generic [ref=f15e196]: Monitor Examples
+          - generic [ref=f15e208]: Module outline
+          - generic [ref=f15e243]: Line 1 , Column 1
+      - generic [ref=f15e250]:
+        - textbox "Cursor at row 1" [active] [ref=f15e251]: FeatureScript 3083;
+        - generic [ref=f15e253]:
+          - generic [aria-hidden] [ref=f15e254]: "1"
+          - generic [aria-hidden] [ref=f15e255]: "2"
+          - generic [aria-hidden] [ref=f15e256]: "3"
+          - generic [aria-hidden] [ref=f15e257]: "4"
+          - generic [aria-hidden] [ref=f15e258]: "5"
+          - generic [aria-hidden] [ref=f15e259]: "6"
+          - generic [aria-hidden] [ref=f15e260]: "7"
+          - generic [aria-hidden] [ref=f15e261]: "8"
+          - generic [aria-hidden] [ref=f15e262]: "9"
+          - generic [ref=f15e263]:
+            - text: "10"
+            - button [expanded] [ref=f15e264] [cursor=pointer]
+          - generic [aria-hidden] [ref=f15e265]: "11"
+          - generic [aria-hidden] [ref=f15e266]: "12"
+          - generic [aria-hidden] [ref=f15e267]: "13"
+          - generic [aria-hidden] [ref=f15e268]: "14"
+          - generic [aria-hidden] [ref=f15e269]: "15"
+          - generic [aria-hidden] [ref=f15e270]: "16"
+          - generic [aria-hidden] [ref=f15e271]: "17"
+          - generic [aria-hidden] [ref=f15e272]: "18"
+          - generic [aria-hidden] [ref=f15e273]: "19"
+          - generic [aria-hidden] [ref=f15e274]: "20"
+          - generic [aria-hidden] [ref=f15e275]: "21"
+          - generic [ref=f15e276]:
+            - text: "22"
+            - button [expanded] [ref=f15e277] [cursor=pointer]
+          - generic [aria-hidden] [ref=f15e278]: "23"
+          - generic [aria-hidden] [ref=f15e279]: "24"
+          - generic [aria-hidden] [ref=f15e280]: "25"
+          - generic [aria-hidden] [ref=f15e281]: "26"
+          - generic [ref=f15e282]:
+            - text: "27"
+            - button [expanded] [ref=f15e283] [cursor=pointer]
+          - generic [aria-hidden] [ref=f15e284]: "28"
+          - generic [aria-hidden] [ref=f15e285]: "29"
+          - generic [aria-hidden] [ref=f15e286]: "30"
+          - generic [ref=f15e287]:
+            - text: "31"
+            - button [expanded] [ref=f15e288] [cursor=pointer]
+          - generic [aria-hidden] [ref=f15e289]: "32"
+          - generic [aria-hidden] [ref=f15e290]: "33"
+          - generic [aria-hidden] [ref=f15e291]: "34"
+          - generic [aria-hidden] [ref=f15e292]: "35"
+          - generic [aria-hidden] [ref=f15e293]: "36"
+          - generic [ref=f15e294]:
+            - text: "37"
+            - button [expanded] [ref=f15e295] [cursor=pointer]
+          - generic [aria-hidden] [ref=f15e296]: "38"
+          - generic [aria-hidden] [ref=f15e297]: "39"
+          - generic [aria-hidden] [ref=f15e298]: "40"
+          - generic [ref=f15e299]:
+            - text: "41"
+            - button [expanded] [ref=f15e300] [cursor=pointer]
+          - generic [aria-hidden] [ref=f15e301]: "42"
+          - generic [aria-hidden] [ref=f15e302]: "43"
+          - generic [aria-hidden] [ref=f15e303]: "44"
+          - generic [ref=f15e304]:
+            - text: "45"
+            - button [expanded] [ref=f15e305] [cursor=pointer]
+          - generic [aria-hidden] [ref=f15e306]: "46"
+          - generic [aria-hidden] [ref=f15e307]: "47"
+          - generic [aria-hidden] [ref=f15e308]: "48"
+          - generic [aria-hidden] [ref=f15e309]: "49"
+          - generic [ref=f15e310]:
+            - text: "50"
+            - button [expanded] [ref=f15e311] [cursor=pointer]
+          - generic [aria-hidden] [ref=f15e312]: "51"
+          - generic [aria-hidden] [ref=f15e313]: "52"
+          - generic [aria-hidden] [ref=f15e314]: "53"
+          - generic [aria-hidden] [ref=f15e315]: "54"
+        - generic [ref=f15e317]:
+          - generic:
+            - generic: FeatureScript 3083;
+            - generic: "import(path : \"onshape/std/common.fs\", version : \"3083.0\");"
+            - generic: /** The registry variable the consumer ("Get variables from derive") looks for in the source Part Studio. */
+            - generic: const EXPORT_REGISTRY = "exportVariables";
+            - generic: /** Returned by getVariable for a name that is not set (no value of the model is this map). */
+            - generic: "const NOT_SET = { \"notSet\" : \"add_variables_for_derive\" };"
+            - generic: /**
+            - generic: "* Add variables for derive."
+            - generic: "*"
+            - generic: "* Put this in the SOURCE Part Studio, after the variables it lists. It reads the current value of each named"
+            - generic: "* variable and stores them together in one variable called `exportVariables` (a map of name -> value)."
+            - generic: "* Extract variables, in the studio that derives from this one, reads that map from this studio's"
+            - generic: "* context and sets every entry as an ordinary variable there."
+            - generic: "*"
+            - generic: "* It adds to the `exportVariables` map (Variable + with \"Export for derive\" does the same), and a name"
+            - generic: "* listed twice is overwritten by the later one. Values are snapshots taken at the feature's position in"
+            - generic: "* the tree. Query variables cannot be exported."
+            - generic: "*/"
+            - generic: "annotation { \"Feature Type Name\" : \"Add variables for derive\","
+            - generic: "\"Feature Type Description\" : \"Lists the variables of this Part Studio that a Part Studio deriving from it can fetch with Get variables from derive.\","
+            - generic: "\"UIHint\" : UIHint.NO_PREVIEW_PROVIDED }"
+            - generic: export const addVariablesForDerive = defineFeature(function(context is Context, id is Id, definition is map)
+            - generic: precondition
+            - generic: "{"
+            - generic: "annotation { \"Name\" : \"Variables\", \"Item name\" : \"variable\", \"Item label template\" : \"#exportName\" }"
+            - generic: definition.exportEntries is array;
+            - generic: for (var entry in definition.exportEntries)
+            - generic: "{"
+            - generic: "annotation { \"Name\" : \"Variable name\", \"Default\" : \"\", \"MaxLength\" : 10000, \"UIHint\" : [UIHint.VARIABLE_NAME, UIHint.SHOW_LABEL],"
+            - generic: "\"Description\" : \"The name of a variable set earlier in this Part Studio, without the #.\" }"
+            - generic: entry.exportName is string;
+            - generic: "}"
+            - generic: "}"
+            - generic: "{"
+            - generic: "// Merge into the registry: Variable + (Export for derive) and other producers add to it too."
+            - generic: "var registry = getVariable(context, EXPORT_REGISTRY, {});"
+            - generic: if (!(registry is map))
+            - generic: "{"
+            - generic: "registry = {};"
+            - generic: "}"
+            - generic: for (var i, entry in definition.exportEntries)
+            - generic: "{"
+            - generic: const parameterId = faultyArrayParameterId("exportEntries", i, "exportName");
+            - generic: const name = entry.exportName;
+            - generic: verifyVariableNameIsValid(name, parameterId);
+            - generic: if (name == EXPORT_REGISTRY)
+            - generic: "{"
+            - generic: throw regenError("'" ~ name ~ "' is the registry itself and cannot be exported.", [parameterId]);
+            - generic: "}"
+            - generic: const value = getVariable(context, name, NOT_SET);
+            - generic: if (value == NOT_SET)
+      - generic [ref=f15e353]:
+        - img [ref=f15e356] [cursor=pointer]
+        - generic [ref=f15e359]:
+          - generic [ref=f15e360] [cursor=pointer]: Part Studio 1
+          - generic [ref=f15e366] [cursor=pointer]: Assembly 1
+          - generic [ref=f15e372] [cursor=pointer]: extract_outputs
+          - generic [ref=f15e378] [cursor=pointer]: extract_variables_utils
+          - generic [ref=f15e384] [cursor=pointer]: extract_variables
+          - generic [ref=f15e390] [cursor=pointer]: variable_tools_tests
+          - generic [ref=f15e396] [cursor=pointer]: Examples
+          - generic [ref=f15e402] [cursor=pointer]: extract_variables_icon.svg
+          - generic [ref=f15e408] [cursor=pointer]: Tracking tests
+          - generic [ref=f15e414]: add_variables_for_derive
+          - generic [ref=f15e420] [cursor=pointer]: get_variables_from_derive
+        - generic [ref=f15e426]:
+          - listitem [ref=f15e427]
+          - listitem [ref=f15e431]

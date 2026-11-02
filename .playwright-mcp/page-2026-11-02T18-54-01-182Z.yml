@@ -1,0 +1,243 @@
+- generic [active] [ref=f27e1]:
+  - generic [ref=f27e5]:
+    - navigation [ref=f27e6]:
+      - generic [ref=f27e7]:
+        - link [ref=f27e10] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f27e11]
+        - generic [ref=f27e13] [cursor=pointer]
+      - generic [ref=f27e16]:
+        - generic [ref=f27e18]:
+          - generic [ref=f27e19]: RD 25ONE 28 178 (K032_V06)
+          - generic [ref=f27e20]: Main
+        - generic [ref=f27e22] [cursor=pointer]
+        - link "Stray 101 (K032)" [ref=f27e26] [cursor=pointer]:
+          - /url: /documents?nodeId=b699be802bb8e35e2302da57&resourceType=folder
+      - generic [ref=f27e30]:
+        - generic [ref=f27e38] [cursor=pointer]
+        - button "Notifications" [ref=f27e43] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f27e51]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f27e54] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f27e59] [cursor=pointer]
+        - button "Share" [ref=f27e63] [cursor=pointer]
+        - generic "Help menu" [ref=f27e65] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f27e69] [cursor=pointer]
+    - generic [ref=f27e79]:
+      - generic [ref=f27e81]:
+        - generic [ref=f27e82]:
+          - generic [ref=f27e83]:
+            - generic [ref=f27e84] [cursor=pointer]
+            - generic [ref=f27e87] [cursor=pointer]
+            - generic [ref=f27e90] [cursor=pointer]
+            - generic [ref=f27e93] [cursor=pointer]
+            - generic [ref=f27e96] [cursor=pointer]
+            - generic [ref=f27e99] [cursor=pointer]
+            - generic [ref=f27e102] [cursor=pointer]
+            - generic [ref=f27e105] [cursor=pointer]
+          - generic [ref=f27e109] [cursor=pointer]
+        - generic [ref=f27e113] [cursor=pointer]
+      - generic [ref=f27e118]:
+        - generic [ref=f27e120]:
+          - generic [ref=f27e127]:
+            - generic [ref=f27e139]:
+              - generic [ref=f27e140]: Sketch
+              - generic [ref=f27e152]:
+                - generic [ref=f27e153] [cursor=pointer]
+                - generic [ref=f27e157] [cursor=pointer]
+                - generic [ref=f27e161] [cursor=pointer]
+                - generic [ref=f27e165] [cursor=pointer]
+                - generic [ref=f27e170]:
+                  - generic [ref=f27e171] [cursor=pointer]
+                  - generic [ref=f27e175] [cursor=pointer]
+              - generic [ref=f27e181]:
+                - generic [ref=f27e183]:
+                  - generic [ref=f27e184] [cursor=pointer]
+                  - generic [ref=f27e188] [cursor=pointer]
+                - generic [ref=f27e191] [cursor=pointer]
+                - generic [ref=f27e196]:
+                  - generic [ref=f27e197] [cursor=pointer]
+                  - generic [ref=f27e201] [cursor=pointer]
+                - generic [ref=f27e204] [cursor=pointer]
+                - generic [ref=f27e208] [cursor=pointer]
+                - generic [ref=f27e212] [cursor=pointer]
+                - generic [ref=f27e216] [cursor=pointer]
+              - generic [ref=f27e223]:
+                - generic [ref=f27e225]:
+                  - generic [ref=f27e226] [cursor=pointer]
+                  - generic [ref=f27e230] [cursor=pointer]
+                - generic [ref=f27e233] [cursor=pointer]
+              - generic [ref=f27e240]:
+                - generic [ref=f27e241] [cursor=pointer]
+                - generic [ref=f27e245] [cursor=pointer]
+                - generic [ref=f27e250]:
+                  - generic [ref=f27e251] [cursor=pointer]
+                  - generic [ref=f27e255] [cursor=pointer]
+                - generic [ref=f27e258] [cursor=pointer]
+              - generic [ref=f27e265]:
+                - generic [ref=f27e266] [cursor=pointer]
+                - generic [ref=f27e270] [cursor=pointer]
+                - generic [ref=f27e274] [cursor=pointer]
+                - generic [ref=f27e278] [cursor=pointer]
+              - generic [ref=f27e677]:
+                - generic [ref=f27e678] [cursor=pointer]
+                - generic [ref=f27e682] [cursor=pointer]
+              - generic [ref=f27e298]:
+                - generic [ref=f27e299] [cursor=pointer]: SA
+                - generic [ref=f27e302] [cursor=pointer]
+              - generic [ref=f27e309] [cursor=pointer]
+            - button "Search tools… alt/⌥ c" [ref=f27e316] [cursor=pointer]:
+              - text: Search tools…
+              - generic [ref=f27e317]:
+                - generic [ref=f27e318]: alt/⌥
+                - generic [ref=f27e319]: c
+          - generic [ref=f27e323]:
+            - generic [ref=f27e326]:
+              - generic [ref=f27e328]:
+                - generic [ref=f27e329]:
+                  - generic [ref=f27e331]:
+                    - button [ref=f27e333] [cursor=pointer]
+                    - textbox "Filter by name or type" [ref=f27e338]
+                  - generic [ref=f27e339]:
+                    - button [ref=f27e340] [cursor=pointer]
+                    - generic [ref=f27e343]: Features (202)
+                    - button [ref=f27e344] [cursor=pointer]
+                    - button [ref=f27e347] [cursor=pointer]
+                    - button [ref=f27e350] [cursor=pointer]
+                - generic [ref=f27e354]:
+                  - generic [ref=f27e355]:
+                    - generic [ref=f27e357]:
+                      - generic [ref=f27e358] [cursor=pointer]
+                      - generic [ref=f27e361]: Default geometry
+                    - generic [ref=f27e363]: Origin
+                    - generic [ref=f27e373]: Top
+                    - generic [ref=f27e383]: Front
+                    - generic [ref=f27e393]: Right
+                    - generic [ref=f27e404]:
+                      - generic [ref=f27e406] [cursor=pointer]
+                      - generic [ref=f27e409]: Setup (14)
+                    - generic [ref=f27e415]:
+                      - generic [ref=f27e417] [cursor=pointer]
+                      - generic [ref=f27e420]: Tail_Notch (7)
+                    - generic [ref=f27e426]:
+                      - generic [ref=f27e428] [cursor=pointer]
+                      - generic [ref=f27e431]: Profiles (34)
+                    - generic [ref=f27e437]:
+                      - generic [ref=f27e439] [cursor=pointer]
+                      - generic [ref=f27e442]: Tip/Tail Blocks (40)
+                    - generic [ref=f27e448]:
+                      - generic [ref=f27e450] [cursor=pointer]
+                      - generic [ref=f27e453]: Primative_Surfaces (18)
+                    - generic [ref=f27e459]:
+                      - generic [ref=f27e461] [cursor=pointer]
+                      - generic [ref=f27e464]: Part_Trims (24)
+                    - generic [ref=f27e470]:
+                      - generic [ref=f27e472] [cursor=pointer]
+                      - generic [ref=f27e475]: SW_Rout_Surf (11)
+                    - generic [ref=f27e481]:
+                      - generic [ref=f27e483] [cursor=pointer]
+                      - generic [ref=f27e486]: Cap_Wall_Surf (14)
+                    - generic [ref=f27e493]:
+                      - generic [ref=f27e495] [cursor=pointer]
+                      - generic [ref=f27e498]: simple_top_Surf (10)
+                    - generic [ref=f27e504]:
+                      - generic [ref=f27e506] [cursor=pointer]
+                      - generic [ref=f27e509]: Skin_Features (22)
+                    - generic [ref=f27e515]:
+                      - generic [ref=f27e517] [cursor=pointer]
+                      - generic [ref=f27e520]: VOLUME (4)
+                  - list
+              - generic [ref=f27e529]:
+                - generic [ref=f27e531]:
+                  - generic [ref=f27e533] [cursor=pointer]
+                  - generic [ref=f27e536]: Parts (0)
+                - generic [ref=f27e540]:
+                  - generic [ref=f27e542] [cursor=pointer]
+                  - generic [ref=f27e545]: Composite parts (1)
+                - generic [ref=f27e550]:
+                  - generic [ref=f27e552] [cursor=pointer]
+                  - generic [ref=f27e555]: Surfaces (15)
+                - generic [ref=f27e560]:
+                  - generic [ref=f27e562] [cursor=pointer]
+                  - generic [ref=f27e565]: Curves (25)
+            - generic [ref=f27e570]:
+              - generic [ref=f27e572] [cursor=pointer]
+              - generic [ref=f27e576]:
+                - generic [ref=f27e578]:
+                  - button [ref=f27e579] [cursor=pointer]
+                  - button [ref=f27e583] [cursor=pointer]
+                  - button [ref=f27e587] [cursor=pointer]
+                - generic [ref=f27e591] [cursor=pointer]
+              - generic [ref=f27e596]:
+                - generic [ref=f27e597] [cursor=pointer]
+                - generic [ref=f27e601] [cursor=pointer]
+                - generic [ref=f27e605] [cursor=pointer]
+                - generic [ref=f27e609] [cursor=pointer]
+                - generic [ref=f27e613] [cursor=pointer]
+                - generic [ref=f27e617] [cursor=pointer]
+                - generic [ref=f27e621] [cursor=pointer]
+                - generic [ref=f27e624] [cursor=pointer]
+          - generic [ref=f27e628]:
+            - img [ref=f27e631] [cursor=pointer]
+            - generic [ref=f27e634]:
+              - generic [ref=f27e635] [cursor=pointer]: Setup
+              - generic [ref=f27e641]: Design Master
+              - generic [ref=f27e652] [cursor=pointer]: Tooling
+              - generic [ref=f27e658] [cursor=pointer]: Parts & Layup
+              - generic [ref=f27e664] [cursor=pointer]: 3D_Ski
+              - generic [ref=f27e670] [cursor=pointer]: BeamSimulator
+        - generic [ref=f27e690]:
+          - generic [ref=f27e691]:
+            - generic [ref=f27e692]:
+              - heading "FeatureScript notices" [level=4] [ref=f27e693]
+              - generic [ref=f27e695]:
+                - button [ref=f27e697] [cursor=pointer]
+                - textbox "Filter notices" [ref=f27e702]
+            - button [ref=f27e703] [cursor=pointer]
+          - generic [ref=f27e704]:
+            - generic [ref=f27e705]: Monitor
+            - generic [ref=f27e715] [cursor=pointer]: 3D_Ski
+          - generic [ref=f27e719]:
+            - generic [ref=f27e720]: Monitor
+            - generic [ref=f27e730] [cursor=pointer]: Baseline
+          - generic [ref=f27e734]:
+            - generic [ref=f27e735]: Monitor
+            - generic [ref=f27e745] [cursor=pointer]: Design Master
+            - generic [ref=f27e749]:
+              - table [ref=f27e750]:
+                - rowgroup [ref=f27e751]:
+                  - row [ref=f27e752] [cursor=pointer]:
+                    - cell [ref=f27e753]
+                    - cell [ref=f27e757]
+                    - cell "Variable K032 not found." [ref=f27e759]
+                  - row [ref=f27e761] [cursor=pointer]:
+                    - cell [ref=f27e762]
+                    - cell [ref=f27e763]
+                    - cell [ref=f27e764]
+                    - 'cell "General (Variable : Value)" [ref=f27e765]'
+                  - row [ref=f27e767] [cursor=pointer]:
+                    - cell [ref=f27e768]
+                    - cell [ref=f27e769]
+                    - cell [ref=f27e770]
+                    - cell "General" [ref=f27e771]
+                  - row [ref=f27e773] [cursor=pointer]:
+                    - cell [ref=f27e774]
+                    - cell [ref=f27e775]
+                    - cell [ref=f27e776]
+                    - cell "Design Master (Variable Studio reference)" [ref=f27e777]
+              - generic [ref=f27e779]: "NOTE: profile break at -740.000 mm taken as the source vertex 0.112 mm away. NOTE: profile break at 740.000 mm taken as the source vertex 0.206 mm away. WARNING: a run of 97 points starting at 305.0 0.0 6.7 mm reached the cap of 15 control points 0.0982 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. WARNING: a run of 97 points starting at 305.0 0.0 6.7 mm reached the cap of 15 control points 0.0947 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. WARNING: a run of 97 points starting at 305.0 18.1 6.7 mm reached the cap of 15 control points 0.0947 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. WARNING: a run of 97 points starting at 305.0 36.3 6.7 mm reached the cap of 15 control points 0.0947 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. WARNING: a run of 97 points starting at 305.0 54.4 6.7 mm reached the cap of 15 control points 0.0947 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. WARNING: a run of 97 points starting at 305.0 72.5 6.7 mm reached the cap of 15 control points 0.0947 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. WARNING: a run of 171 points starting at 125.4 75.0 9.1 mm reached the cap of 15 control points 1.1528 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. WARNING: a run of 171 points starting at 125.4 65.0 9.1 mm reached the cap of 15 control points 1.1520 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. WARNING: a run of 171 points starting at 126.7 59.2 25.0 mm reached the cap of 15 control points 1.1919 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. NOTE: a 0.0137 mm fragment at 145.2, 60.8, 8.9 mm was absorbed: the edges either side of it line up. WARNING: a run of 97 points starting at 151.4 60.0 7.8 mm reached the cap of 20 control points 0.4283 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. NOTE: run 6 spans 0.000000 mm and was not emitted; a profile break coincides with a source edge boundary there. WARNING: a run of 97 points starting at 151.5 57.8 13.8 mm reached the cap of 20 control points 0.4274 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 29 points starting at 1631.3 62.0 16.2 mm reached the cap of 20 control points 0.0697 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 97 points starting at 151.4 60.0 7.8 mm reached the cap of 20 control points 0.4281 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 97 points starting at 151.5 57.8 13.8 mm reached the cap of 20 control points 0.4278 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. NOTE: the kernel refused an exact patch ({ message : CANNOT_MAKE_BSPLINESURFACE }); falling back to a loft for it. Result: Regeneration complete"
+          - generic [ref=f27e780]:
+            - generic [ref=f27e781]: Monitor
+            - generic [ref=f27e791] [cursor=pointer]: General
+          - generic [ref=f27e795]:
+            - generic [ref=f27e796]: Monitor
+            - generic [ref=f27e806] [cursor=pointer]: Layup
+          - generic [ref=f27e810]:
+            - generic [ref=f27e811]: Monitor
+            - generic [ref=f27e821] [cursor=pointer]: Parts
+          - generic [ref=f27e825]:
+            - generic [ref=f27e826]: Monitor
+            - generic [ref=f27e836] [cursor=pointer]: Tolerancing
+          - generic [ref=f27e840]:
+            - generic [ref=f27e841]: Monitor
+            - generic [ref=f27e851] [cursor=pointer]: Tooling
+  - tooltip "FeatureScript notices"

@@ -1375,6 +1375,8 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
     // First pass: corner fillers, collapsed runs, and what each surviving run is made of.
     var live = [];
     var items = [];
+    // Places where one run ends and the next starts somewhere else with nothing between them.
+    var openJoints = [];
 
     for (var r = 0; r < size(runs); r += 1)
     {
@@ -1431,6 +1433,21 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
         const leadFill = (run.fill != undefined) ? run.fill : carriedFill;
         const previous = (size(live) > 0) ? live[size(live) - 1] : undefined;
 
+        // A joint that neither meets nor carries a filler leaves the wire in two pieces. "Open"
+        // asks for that at corners; anywhere else it is a run that was dropped (or an end that
+        // was never extended) and the neighbours do not cover the position after all.
+        if (previous != undefined && leadFill == undefined && previous.linkIndex == run.linkIndex
+            && definition.cornerGapMode != CornerGapMode.OPEN)
+        {
+            const jointGap = norm(runPoints[0] - previous.lastPoint);
+            if (jointGap >= OFFSET_GEOM_TOL)
+            {
+                openJoints = append(openJoints, "run " ~ toString(previous.r) ~ " ends at ("
+                    ~ trim(fmtVec(previous.lastPoint / millimeter, 1, 0)) ~ ") mm and run " ~ toString(r)
+                    ~ " starts " ~ trim(fmtMM(jointGap, 2, 0)) ~ " mm away");
+            }
+        }
+
         items = append(items, {
                     "points" : runPoints,
                     // Each end takes the slope of the profile edge its station belongs to, which
@@ -1453,6 +1470,14 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
                     "leadFill" : leadFill
                 });
         carriedFill = undefined;
+    }
+
+    if (size(openJoints) > 0)
+    {
+        println("WARNING: the offset wire is open: " ~ join(openJoints, "; ")
+            ~ ". A run between them collapsed to nothing and the corner treatment left no filler.");
+        reportFeatureWarning(context, id, "The offset wire has " ~ toString(size(openJoints))
+            ~ " open joint(s), first: " ~ openJoints[0] ~ ".");
     }
 
     const shapes = shapeRuns(items, {

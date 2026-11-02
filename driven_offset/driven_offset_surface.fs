@@ -1912,7 +1912,23 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
             // honest test of whether it ran.
             if (size(evaluateQuery(context, qCreatedBy(patchId, EntityType.BODY))) == 0)
             {
-                refused = append(refused, (atCorner ? "corner " : "") ~ toString(slot.cell) ~ ":" ~ toString(members));
+                // What each member brought to the loft, so the warning says whether the pair was
+                // lopsided (a member that carried an overhang is several edges and much longer
+                // than its partner) without the debug switch.
+                var brought = [];
+                for (var k = 0; k < size(patch); k += 1)
+                {
+                    if (corners[k].kind == "point")
+                    {
+                        brought = append(brought, "vertex");
+                        continue;
+                    }
+                    const pieceEdges = qEntityFilter(patch[k], EntityType.EDGE);
+                    brought = append(brought, toString(size(evaluateQuery(context, pieceEdges))) ~ " edge(s) "
+                        ~ trim(fmtMM(evLength(context, { "entities" : pieceEdges }), 1, 0)) ~ " mm");
+                }
+                refused = append(refused, (atCorner ? "corner " : "") ~ toString(slot.cell) ~ ":" ~ toString(members)
+                    ~ " (" ~ join(brought, " vs ") ~ ")");
 
                 // The refusal is the trigger, not a toggle: this is the one patch worth
                 // seeing in full, and it is only ever a handful of curves.
