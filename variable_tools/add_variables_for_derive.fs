@@ -28,7 +28,7 @@ export const addVariablesForDerive = defineFeature(function(context is Context, 
         definition.exportEntries is array;
         for (var entry in definition.exportEntries)
         {
-            annotation { "Name" : "Variable name", "Default" : "", "MaxLength" : 256,
+            annotation { "Name" : "Variable name", "Default" : "", "MaxLength" : 10000, "UIHint" : [UIHint.VARIABLE_NAME, UIHint.SHOW_LABEL],
                         "Description" : "The name of a variable set earlier in this Part Studio, without the #." }
             entry.exportName is string;
         }

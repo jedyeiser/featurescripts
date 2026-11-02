@@ -1,0 +1,17 @@
+- generic [ref=f11e4]:
+  - generic [ref=f11e12]:
+    - generic [ref=f11e13]: Sign in to K2 Sports - Elevate Outdoor Collective
+    - generic [ref=f11e14]: k2-sports.onshape.com
+  - generic [ref=f11e18]:
+    - generic [ref=f11e19]:
+      - generic [ref=f11e20]:
+        - textbox "Email" [active] [ref=f11e22]
+        - generic [ref=f11e25]:
+          - textbox "Password" [ref=f11e26]
+          - generic [ref=f11e27] [cursor=pointer]
+      - generic [ref=f11e31]:
+        - button "Sign in" [disabled]
+        - generic [ref=f11e32]: Forgot your password?
+    - link "Onshape Terms & Privacy Policy" [ref=f11e34] [cursor=pointer]:
+      - /url: https://www.onshape.com/en/legal
+    - generic [ref=f11e35]: Not a member of this enterprise? Go to cad.onshape.com
