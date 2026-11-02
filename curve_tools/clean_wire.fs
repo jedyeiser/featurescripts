@@ -1864,6 +1864,30 @@ function emitFittedRun(context is Context, runId is Id, definition is map, chain
         throw regenError("The fitter returned a rational curve, which this feature does not expect.");
     }
 
+    // A run that holds a micro edge is the rare, delicate case: name what the kernel is about to
+    // be handed, so a refusal (BAD_GEOMETRY names nothing) can be read.
+    var holdsMicroEdge = false;
+    for (var k = run.first; k <= run.last; k += 1)
+    {
+        if (chain.edges[k].length < CLEAN_MICRO_EDGE)
+        {
+            holdsMicroEdge = true;
+        }
+    }
+    if (holdsMicroEdge)
+    {
+        const lastPoint = size(points) - 1;
+        const lastCP = size(curve.controlPoints) - 1;
+        println("[micro] run edges " ~ toString(run.first) ~ ".." ~ toString(run.last) ~ "  samples " ~ toString(size(points))
+            ~ "  degree " ~ toString(curve.degree) ~ "  CPs " ~ toString(size(curve.controlPoints))
+            ~ "\n  point 0  " ~ fmtVec(points[0] / millimeter, 4, 12) ~ "\n  point 1  " ~ fmtVec(points[min(1, lastPoint)] / millimeter, 4, 12)
+            ~ "\n  point n-1" ~ fmtVec(points[max(0, lastPoint - 1)] / millimeter, 4, 12) ~ "\n  point n  " ~ fmtVec(points[lastPoint] / millimeter, 4, 12)
+            ~ "\n  CP 0     " ~ fmtVec(curve.controlPoints[0] / millimeter, 4, 12) ~ "\n  CP 1     " ~ fmtVec(curve.controlPoints[min(1, lastCP)] / millimeter, 4, 12)
+            ~ "\n  CP n-1   " ~ fmtVec(curve.controlPoints[max(0, lastCP - 1)] / millimeter, 4, 12) ~ "\n  CP n     " ~ fmtVec(curve.controlPoints[lastCP] / millimeter, 4, 12)
+            ~ "\n  startTangent " ~ fmtVec(first.startTangent, 4, 10) ~ "  endTangent " ~ fmtVec(last.endTangent, 4, 10)
+            ~ "\n  knots " ~ toString(curve.knots));
+    }
+
     emitFittedCurve(context, runId, curve, points, settings);
 
     return { "kind" : "fit", "edges" : edgeCount, "first" : run.first, "last" : run.last,
