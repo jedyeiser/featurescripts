@@ -1179,6 +1179,46 @@ function describeChain(context is Context, edges is Query) returns map
                 });
     }
 
+    // A micro edge's two ends are both within the path tolerance of the joint it sits at, so the
+    // path cannot say which way it runs: it came back traversed against the chain, its tangent
+    // pointing backwards, and both joints either side of it read as 180 degree corners -- which
+    // kept a 3.4 micron sliver as a run of its own and then handed the fitter an end tangent
+    // pointing the wrong way (BAD_GEOMETRY). Orient it by which of its ends meets the
+    // neighbouring edge, and take its tangents from the neighbours: a direction measured over
+    // microns carries nothing the edges either side do not.
+    for (var i = 0; i < size(described); i += 1)
+    {
+        const micro = described[i];
+        const hasPrevious = i > 0;
+        const hasNext = i + 1 < size(described);
+        if (micro.length >= CLEAN_MICRO_EDGE || (!hasPrevious && !hasNext))
+        {
+            continue;
+        }
+
+        const kept = (hasPrevious ? norm(micro.startPoint - described[i - 1].endPoint) : 0 * meter)
+            + (hasNext ? norm(micro.endPoint - described[i + 1].startPoint) : 0 * meter);
+        const swapped = (hasPrevious ? norm(micro.endPoint - described[i - 1].endPoint) : 0 * meter)
+            + (hasNext ? norm(micro.startPoint - described[i + 1].startPoint) : 0 * meter);
+
+        var oriented = micro;
+        if (swapped < kept)
+        {
+            oriented = mergeMaps(micro, {
+                        "flipped" : !micro.flipped,
+                        "startPoint" : micro.endPoint,
+                        "endPoint" : micro.startPoint,
+                        "startTangent" : -1 * micro.endTangent,
+                        "endTangent" : -1 * micro.startTangent
+                    });
+        }
+
+        described[i] = mergeMaps(oriented, {
+                    "startTangent" : hasPrevious ? described[i - 1].endTangent : oriented.startTangent,
+                    "endTangent" : hasNext ? described[i + 1].startTangent : oriented.endTangent
+                });
+    }
+
     return { "edges" : described, "closed" : path.closed };
 }
 
