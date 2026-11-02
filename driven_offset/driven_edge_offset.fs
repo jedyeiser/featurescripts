@@ -1443,8 +1443,9 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
             if (jointGap >= OFFSET_GEOM_TOL)
             {
                 openJoints = append(openJoints, "run " ~ toString(previous.r) ~ " ends at ("
-                    ~ trim(fmtVec(previous.lastPoint / millimeter, 1, 0)) ~ ") mm and run " ~ toString(r)
-                    ~ " starts " ~ trim(fmtMM(jointGap, 2, 0)) ~ " mm away");
+                    ~ fmtMM(previous.lastPoint[0], 1, 0) ~ ", " ~ fmtMM(previous.lastPoint[1], 1, 0) ~ ", "
+                    ~ fmtMM(previous.lastPoint[2], 1, 0) ~ ") mm and run " ~ toString(r)
+                    ~ " starts " ~ fmtMM(jointGap, 2, 0) ~ " mm away");
             }
         }
 

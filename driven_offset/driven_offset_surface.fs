@@ -1925,7 +1925,7 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
                     }
                     const pieceEdges = qEntityFilter(patch[k], EntityType.EDGE);
                     brought = append(brought, toString(size(evaluateQuery(context, pieceEdges))) ~ " edge(s) "
-                        ~ trim(fmtMM(evLength(context, { "entities" : pieceEdges }), 1, 0)) ~ " mm");
+                        ~ fmtMM(evLength(context, { "entities" : pieceEdges }), 1, 0) ~ " mm");
                 }
                 refused = append(refused, (atCorner ? "corner " : "") ~ toString(slot.cell) ~ ":" ~ toString(members)
                     ~ " (" ~ join(brought, " vs ") ~ ")");
