@@ -2264,3 +2264,17 @@ callee's tab (an enum used as a parameter type must be exported: "Enum used as p
 Pin the import by microversion and re-pin after every change to the callee. A callee that reads ABSOLUTE positions (a Station
 definition's stations) must be told to move them when it is run on a shifted copy: Station geometry has a hidden
 "Station frame" mate connector (the image of the world frame under the shift) for that.
+
+## Correction 85: a micro-edge (microns) must never be its own run; read the real wires, not the story (2026-11-02, RD 25ONE 28, Cap_Wall_Surface)
+
+**Symptom**: Driven offset surface refused patches (`The loft refused 1 of 6 patches ... run:profiles 5:[ 0 , 1 ]`, earlier `Every patch was refused`). Notices: fit warnings `reached the cap of 20 control points 0.43 mm`, `run 6 spans 0.000000 mm and was not emitted`, `CANNOT_MAKE_BSPLINESURFACE`, then `LOFT_INVALID`.
+
+**Cause chain (measured by read-only evals at rollbackBarIndex 149/150/159)**: Clean wire 1's output already held a 0.0034 mm edge at x=1624.72 between a 6.33 mm edge and a 201 mm tail, tangents agreeing to 0.35 deg (not a geometric corner). One offset (ltc) kept it as a 3.4 um run; the other (lbc) collapsed it to 0 span, `emitRuns` / `sectionPlan` dropped the run, and the offset wire opened a 7.3 mm gap (two wire bodies). `loftColumns` then carried ltc's overhang (6.31 mm + 3.4 um + 199.5 mm tail, 205.8 mm) into the end patch against lbc's 5.8 mm piece (35:1, rulings nearly parallel) and the kernel refused it.
+
+**Why the Clean wire kept it (NOT confirmed)**: `buildRuns` merges a sliver-only run into the previous run only when the break in front is not a "corner" and not a user break; here something fired. The joint printout (`debugPrintJoints`) would name it.
+
+**Fix**: clean_wire.fs `buildRuns` -- an edge shorter than CLEAN_MICRO_EDGE (0.01 mm) joins the previous run whenever the edges either side line up, whatever decided its joints. Diagnostics only in driven_edge_offset.fs (`emitRuns` warns `The offset wire has N open joint(s)` with the location) and driven_offset_surface.fs (the refusal warning now names each member's edge count and length).
+
+**Not done (decide after the Clean wire fix is seen)**: bridging a real wire gap, guarding overhang absorption by length ratio, using every stretch instead of `longestSpan`. Agent reports: scratchpad agent_A..D (diagnosis, fit, fallback ladder, preflight).
+
+**Rule**: a wire with a micro-edge is an input defect Clean wire must remove; downstream features should report open joints, not fail silently. Verify with the actual wires (eval at a rollback index) before naming a corner or a turn: two claims in this session ("90 degree turn", "caps are a limit of this feature") came from reading notes, not geometry.

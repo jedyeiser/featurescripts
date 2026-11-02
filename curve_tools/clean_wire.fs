@@ -1660,10 +1660,32 @@ function runSamples(context is Context, chain is map, run is map, tolerance is V
 {
     var points = [];
     var perEdge = [];
+    // Where a micro edge at either end of the run puts the run's end. See below.
+    var headPoint = undefined;
+    var tailPoint = undefined;
 
     for (var i = run.first; i <= run.last; i += 1)
     {
         const edge = chain.edges[i];
+
+        // A micro edge inside a longer run is not sampled at all: two samples microns apart
+        // beside millimetre spacing, with an end tangent prescribed on the last of them, is a
+        // spline the kernel refuses (BAD_GEOMETRY). It still moves the run's END to where the
+        // micro edge ends, so the curve meets the next run without a gap of a few microns.
+        if (edge.length < CLEAN_MICRO_EDGE && run.last > run.first)
+        {
+            if (i == run.last)
+            {
+                tailPoint = chain.plane == undefined ? edge.endPoint : projectOnto(edge.endPoint, chain.plane);
+            }
+            else if (i == run.first)
+            {
+                headPoint = chain.plane == undefined ? edge.startPoint : projectOnto(edge.startPoint, chain.plane);
+            }
+            perEdge = append(perEdge, 0);
+            continue;
+        }
+
         const stationCount = size(edge.curvatures);
         const step = edge.length / (stationCount - 1);
 
@@ -1716,6 +1738,15 @@ function runSamples(context is Context, chain is map, run is map, tolerance is V
             points = append(points, chain.plane == undefined ? tangentLine.origin : projectOnto(tangentLine.origin, chain.plane));
         }
         perEdge = append(perEdge, count);
+    }
+
+    if (tailPoint != undefined && size(points) > 0)
+    {
+        points[size(points) - 1] = tailPoint;
+    }
+    if (headPoint != undefined && size(points) > 0)
+    {
+        points[0] = headPoint;
     }
 
     return { "points" : points, "perEdge" : perEdge };

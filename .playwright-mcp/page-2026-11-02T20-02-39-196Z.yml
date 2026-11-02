@@ -1,0 +1,15 @@
+- generic [ref=f31e3]:
+  - navigation [ref=f31e29]:
+    - generic [ref=f31e30]:
+      - link [ref=f31e33] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f31e34]
+      - generic [ref=f31e36] [cursor=pointer]
+    - generic [ref=f31e44]:
+      - button "Notifications" [ref=f31e46] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f31e54]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f31e57] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f31e62] [cursor=pointer]
+      - generic "Help menu" [ref=f31e66] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f31e70] [cursor=pointer]
+  - paragraph [ref=f31e23]: Loading workspace…

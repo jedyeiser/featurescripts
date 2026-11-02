@@ -1,0 +1,185 @@
+- generic [ref=f32e3]:
+  - navigation [ref=f32e29]:
+    - generic [ref=f32e30]:
+      - link [ref=f32e33] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f32e34]
+      - generic [ref=f32e36] [cursor=pointer]
+    - generic [ref=f32e39]:
+      - generic [ref=f32e41]:
+        - generic [ref=f32e42]: RD 25ONE 28 178 (K032_V06)
+        - generic [ref=f32e43]: Main
+      - generic [ref=f32e45] [cursor=pointer]
+      - link "Stray 101 (K032)" [ref=f32e49] [cursor=pointer]:
+        - /url: /documents?nodeId=b699be802bb8e35e2302da57&resourceType=folder
+    - generic [ref=f32e53]:
+      - generic [ref=f32e61] [cursor=pointer]
+      - button "Notifications" [ref=f32e66] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f32e74]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f32e77] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f32e82] [cursor=pointer]
+      - button "Share" [ref=f32e86] [cursor=pointer]
+      - generic "Help menu" [ref=f32e88] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f32e92] [cursor=pointer]
+  - generic [ref=f32e7]:
+    - generic [ref=f32e9]:
+      - generic [ref=f32e10]:
+        - generic [ref=f32e99]:
+          - generic [ref=f32e100] [cursor=pointer]
+          - generic [ref=f32e103] [cursor=pointer]
+          - generic [ref=f32e106] [cursor=pointer]
+          - generic [ref=f32e109] [cursor=pointer]
+          - generic [ref=f32e112] [cursor=pointer]
+          - generic [ref=f32e115] [cursor=pointer]
+          - generic [ref=f32e118] [cursor=pointer]
+          - generic [ref=f32e121] [cursor=pointer]
+        - generic [ref=f32e124] [cursor=pointer]
+      - generic [ref=f32e128] [cursor=pointer]
+    - generic [ref=f32e16]:
+      - generic [ref=f32e137]:
+        - generic [ref=f32e149]:
+          - generic [ref=f32e150]: Sketch
+          - generic [ref=f32e162]:
+            - generic [ref=f32e163] [cursor=pointer]
+            - generic [ref=f32e167] [cursor=pointer]
+            - generic [ref=f32e171] [cursor=pointer]
+            - generic [ref=f32e175] [cursor=pointer]
+            - generic [ref=f32e180]:
+              - generic [ref=f32e181] [cursor=pointer]
+              - generic [ref=f32e185] [cursor=pointer]
+          - generic [ref=f32e191]:
+            - generic [ref=f32e193]:
+              - generic [ref=f32e194] [cursor=pointer]
+              - generic [ref=f32e198] [cursor=pointer]
+            - generic [ref=f32e201] [cursor=pointer]
+            - generic [ref=f32e206]:
+              - generic [ref=f32e207] [cursor=pointer]
+              - generic [ref=f32e211] [cursor=pointer]
+            - generic [ref=f32e214] [cursor=pointer]
+            - generic [ref=f32e218] [cursor=pointer]
+            - generic [ref=f32e222] [cursor=pointer]
+            - generic [ref=f32e226] [cursor=pointer]
+          - generic [ref=f32e233]:
+            - generic [ref=f32e235]:
+              - generic [ref=f32e236] [cursor=pointer]
+              - generic [ref=f32e240] [cursor=pointer]
+            - generic [ref=f32e243] [cursor=pointer]
+          - generic [ref=f32e250]:
+            - generic [ref=f32e251] [cursor=pointer]
+            - generic [ref=f32e255] [cursor=pointer]
+            - generic [ref=f32e260]:
+              - generic [ref=f32e261] [cursor=pointer]
+              - generic [ref=f32e265] [cursor=pointer]
+            - generic [ref=f32e268] [cursor=pointer]
+          - generic [ref=f32e275]:
+            - generic [ref=f32e276] [cursor=pointer]
+            - generic [ref=f32e280] [cursor=pointer]
+            - generic [ref=f32e284] [cursor=pointer]
+            - generic [ref=f32e288] [cursor=pointer]
+          - generic [ref=f32e296]:
+            - generic [ref=f32e297] [cursor=pointer]
+            - generic [ref=f32e301] [cursor=pointer]
+          - generic [ref=f32e308]:
+            - generic [ref=f32e309] [cursor=pointer]: SA
+            - generic [ref=f32e312] [cursor=pointer]
+          - generic [ref=f32e319] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f32e326] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f32e327]:
+            - generic [ref=f32e328]: alt/⌥
+            - generic [ref=f32e329]: c
+      - generic [ref=f32e24]:
+        - generic [ref=f32e333]:
+          - generic [ref=f32e335]:
+            - generic [ref=f32e336]:
+              - generic [ref=f32e338]:
+                - button [ref=f32e340] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f32e345]
+              - generic [ref=f32e346]:
+                - button [ref=f32e347] [cursor=pointer]
+                - generic [ref=f32e350]: Features (202)
+                - button [ref=f32e351] [cursor=pointer]
+                - button [ref=f32e354] [cursor=pointer]
+                - button [ref=f32e357] [cursor=pointer]
+            - generic [ref=f32e361]:
+              - generic [ref=f32e362]:
+                - generic [ref=f32e364]:
+                  - generic [ref=f32e365] [cursor=pointer]
+                  - generic [ref=f32e368]: Default geometry
+                - generic [ref=f32e370]: Origin
+                - generic [ref=f32e380]: Top
+                - generic [ref=f32e390]: Front
+                - generic [ref=f32e400]: Right
+                - generic [ref=f32e411]:
+                  - generic [ref=f32e413] [cursor=pointer]
+                  - generic [ref=f32e416]: Setup (14)
+                - generic [ref=f32e422]:
+                  - generic [ref=f32e424] [cursor=pointer]
+                  - generic [ref=f32e427]: Tail_Notch (7)
+                - generic [ref=f32e433]:
+                  - generic [ref=f32e435] [cursor=pointer]
+                  - generic [ref=f32e438]: Profiles (34)
+                - generic [ref=f32e444]:
+                  - generic [ref=f32e446] [cursor=pointer]
+                  - generic [ref=f32e449]: Tip/Tail Blocks (40)
+                - generic [ref=f32e455]:
+                  - generic [ref=f32e457] [cursor=pointer]
+                  - generic [ref=f32e460]: Primative_Surfaces (18)
+                - generic [ref=f32e466]:
+                  - generic [ref=f32e468] [cursor=pointer]
+                  - generic [ref=f32e471]: Part_Trims (24)
+                - generic [ref=f32e477]:
+                  - generic [ref=f32e479] [cursor=pointer]
+                  - generic [ref=f32e482]: SW_Rout_Surf (11)
+                - generic [ref=f32e488]:
+                  - generic [ref=f32e490] [cursor=pointer]
+                  - generic [ref=f32e493]: Cap_Wall_Surf (14)
+                - generic [ref=f32e500]:
+                  - generic [ref=f32e502] [cursor=pointer]
+                  - generic [ref=f32e505]: simple_top_Surf (10)
+                - generic [ref=f32e511]:
+                  - generic [ref=f32e513] [cursor=pointer]
+                  - generic [ref=f32e516]: Skin_Features (22)
+                - generic [ref=f32e522]:
+                  - generic [ref=f32e524] [cursor=pointer]
+                  - generic [ref=f32e527]: VOLUME (4)
+              - list
+          - generic [ref=f32e536]:
+            - generic [ref=f32e538]:
+              - generic [ref=f32e540] [cursor=pointer]
+              - generic [ref=f32e543]: Parts (0)
+            - generic [ref=f32e547]:
+              - generic [ref=f32e549] [cursor=pointer]
+              - generic [ref=f32e552]: Composite parts (1)
+            - generic [ref=f32e557]:
+              - generic [ref=f32e559] [cursor=pointer]
+              - generic [ref=f32e562]: Surfaces (14)
+            - generic [ref=f32e567]:
+              - generic [ref=f32e569] [cursor=pointer]
+              - generic [ref=f32e572]: Curves (20)
+        - generic [ref=f32e25]:
+          - generic [ref=f32e578] [cursor=pointer]
+          - generic [ref=f32e26]:
+            - generic [ref=f32e583]:
+              - button [ref=f32e584] [cursor=pointer]
+              - button [ref=f32e588] [cursor=pointer]
+              - button [ref=f32e592] [cursor=pointer]
+            - generic [ref=f32e596] [cursor=pointer]
+          - generic [ref=f32e601]:
+            - generic [ref=f32e602] [cursor=pointer]
+            - generic [ref=f32e606] [cursor=pointer]
+            - generic [ref=f32e610] [cursor=pointer]
+            - generic [ref=f32e614] [cursor=pointer]
+            - generic [ref=f32e618] [cursor=pointer]
+            - generic [ref=f32e622] [cursor=pointer]
+            - generic [ref=f32e626] [cursor=pointer]
+            - generic [ref=f32e629] [cursor=pointer]
+      - generic [ref=f32e633]:
+        - img [ref=f32e636] [cursor=pointer]
+        - generic [ref=f32e639]:
+          - generic [ref=f32e640] [cursor=pointer]: Setup
+          - generic [ref=f32e646]: Design Master
+          - generic [ref=f32e657] [cursor=pointer]: Tooling
+          - generic [ref=f32e663] [cursor=pointer]: Parts & Layup
+          - generic [ref=f32e669] [cursor=pointer]: 3D_Ski
+          - generic [ref=f32e675] [cursor=pointer]: BeamSimulator
