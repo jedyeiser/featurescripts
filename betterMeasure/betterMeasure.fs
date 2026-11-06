@@ -379,11 +379,17 @@ export const assignVariable = defineFeature(function(context is Context, id is I
                     definition.measureFromAxis is boolean;
                 }
 
-                annotation { "Name" : "Coordinate system", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
-                            "Description" : "Optional mate connector. Components along X, Y and Z are then measured in its frame and are signed." }
-                definition.distanceFrame is Query;
+                annotation { "Name" : "Custom coordinate system", "Default" : false,
+                            "Description" : "Measure components along the X, Y and Z axes of a mate connector instead of the world axes. Components are then signed." }
+                definition.distanceUseFrame is boolean;
 
-                annotation { "Name" : "Output", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL],
+                if (definition.distanceUseFrame)
+                {
+                    annotation { "Name" : "Coordinate system", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                    definition.distanceFrame is Query;
+                }
+
+                annotation { "Name" : "Output", "UIHint" : UIHint.SHOW_LABEL,
                             "Description" : "Map records distance, delta (a vector of lengths), first and second (end points). Read them as #name.delta[0] and so on." }
                 definition.distanceOutput is VariableOutputType;
 
@@ -490,17 +496,23 @@ export const assignVariable = defineFeature(function(context is Context, id is I
                 annotation { "Name" : "Point", "Filter" : (EntityType.VERTEX || BodyType.MATE_CONNECTOR) && AllowFlattenedGeometry.YES, "MaxNumberOfPicks" : 1 }
                 definition.coordinateEntity is Query;
 
-                annotation { "Name" : "Coordinate system", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
-                            "Description" : "Optional mate connector. The point is then expressed in its frame." }
-                definition.coordinateFrame is Query;
+                annotation { "Name" : "Custom coordinate system", "Default" : false,
+                            "Description" : "Express the point in the frame of a mate connector instead of the world frame." }
+                definition.coordinateUseFrame is boolean;
 
-                annotation { "Name" : "Output", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL],
+                if (definition.coordinateUseFrame)
+                {
+                    annotation { "Name" : "Coordinate system", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                    definition.coordinateFrame is Query;
+                }
+
+                annotation { "Name" : "Output", "UIHint" : UIHint.SHOW_LABEL,
                             "Description" : "Map records point (a vector of lengths). Read it as #name.point[0] and so on." }
                 definition.coordinateOutput is VariableOutputType;
 
                 if (definition.coordinateOutput == VariableOutputType.SINGLE)
                 {
-                    annotation { "Name" : "Component", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+                    annotation { "Name" : "Component", "UIHint" : UIHint.SHOW_LABEL }
                     definition.coordinateComponent is PointComponent;
                 }
 
@@ -731,7 +743,11 @@ export const assignVariable = defineFeature(function(context is Context, id is I
                     verifyNonemptyQuery(context, definition, "customDirection", ErrorStringEnum.VARIABLE_SELECT_CUSTOM_DIRECTION);
                 }
 
-                const frame = frameFromQuery(context, definition.distanceFrame, "distanceFrame");
+                if (definition.distanceUseFrame)
+                {
+                    verifyNonemptyQuery(context, definition, "distanceFrame", "Pick a mate connector as the coordinate system.");
+                }
+                const frame = definition.distanceUseFrame ? frameFromQuery(context, definition.distanceFrame, "distanceFrame") : undefined;
 
                 var distanceResultMap = measureDistance(context, {
                             entities : definition.entityCouple,
@@ -875,7 +891,11 @@ export const assignVariable = defineFeature(function(context is Context, id is I
             else if (definition.measurementMode == VariableMeasurementMode.COORDINATE)
             {
                 verifyNonemptyQuery(context, definition, "coordinateEntity", ErrorStringEnum.VARIABLE_SELECT_ENTITY_TO_MEASURE);
-                const coordFrame = frameFromQuery(context, definition.coordinateFrame, "coordinateFrame");
+                if (definition.coordinateUseFrame)
+                {
+                    verifyNonemptyQuery(context, definition, "coordinateFrame", "Pick a mate connector as the coordinate system.");
+                }
+                const coordFrame = definition.coordinateUseFrame ? frameFromQuery(context, definition.coordinateFrame, "coordinateFrame") : undefined;
                 var coordPoint = pointFromEntity(context, definition.coordinateEntity);
                 if (coordFrame != undefined)
                 {
@@ -923,6 +943,7 @@ export const assignVariable = defineFeature(function(context is Context, id is I
         yOffset : 0 * meter,
         zOffset : 0 * meter,
         customOffset : 0 * meter,
+        distanceUseFrame : false,
         distanceFrame : qNothing(),
         distanceOutput : VariableOutputType.SINGLE,
 
@@ -944,6 +965,7 @@ export const assignVariable = defineFeature(function(context is Context, id is I
 
         coordinateEntity : qNothing(),
         coordinateComponent : PointComponent.X,
+        coordinateUseFrame : false,
         coordinateFrame : qNothing(),
         coordinateOutput : VariableOutputType.SINGLE,
         coordX : 0 * meter,
