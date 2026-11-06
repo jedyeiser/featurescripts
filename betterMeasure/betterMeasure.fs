@@ -75,7 +75,20 @@ export enum AxisWithCustom
     annotation { "Name" : "Along Z" }
     Z,
     annotation { "Name" : "Along custom" }
-    CUSTOM
+    CUSTOM,
+    annotation { "Name" : "Delta (vector)" }
+    DELTA
+}
+
+/**
+ * Whether a measurement records one value or a map of values (read as `#name.key` in other features).
+ */
+export enum VariableOutputType
+{
+    annotation { "Name" : "Single value" }
+    SINGLE,
+    annotation { "Name" : "Map" }
+    MAP
 }
 
 /**
@@ -111,7 +124,9 @@ export enum PointComponent
     annotation { "Name" : "Y" }
     Y,
     annotation { "Name" : "Z" }
-    Z
+    Z,
+    annotation { "Name" : "Vector (X, Y, Z)" }
+    VECTOR
 }
 
 /**
@@ -364,30 +379,41 @@ export const assignVariable = defineFeature(function(context is Context, id is I
                     definition.measureFromAxis is boolean;
                 }
 
+                annotation { "Name" : "Coordinate system", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                            "Description" : "Optional mate connector. Components along X, Y and Z are then measured in its frame and are signed." }
+                definition.distanceFrame is Query;
+
+                annotation { "Name" : "Output", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL],
+                            "Description" : "Map records distance, delta (a vector of lengths), first and second (end points). Read them as #name.delta[0] and so on." }
+                definition.distanceOutput is VariableOutputType;
+
                 annotation { "Group Name" : "Axis measurements", "Collapsed By Default" : true }
                 {
                     annotation { "Name" : "Distance", "UIHint" : UIHint.READ_ONLY }
                     isLength(definition.distance, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
 
                     annotation { "Name" : "Along X", "UIHint" : UIHint.READ_ONLY }
-                    isLength(definition.xOffset, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
+                    isLength(definition.xOffset, LENGTH_BOUNDS);
 
                     annotation { "Name" : "Along Y", "UIHint" : UIHint.READ_ONLY }
-                    isLength(definition.yOffset, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
+                    isLength(definition.yOffset, LENGTH_BOUNDS);
 
                     annotation { "Name" : "Along Z", "UIHint" : UIHint.READ_ONLY }
-                    isLength(definition.zOffset, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
+                    isLength(definition.zOffset, LENGTH_BOUNDS);
 
-                    annotation { "Name" : "Value to record", "UIHint" : UIHint.SHOW_LABEL }
-                    definition.componentSelector is AxisWithCustom;
-
-                    if (definition.componentSelector == AxisWithCustom.CUSTOM)
+                    if (definition.distanceOutput == VariableOutputType.SINGLE)
                     {
-                        annotation { "Name" : "Custom direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1 }
-                        definition.customDirection is Query;
+                        annotation { "Name" : "Value to record", "UIHint" : UIHint.SHOW_LABEL }
+                        definition.componentSelector is AxisWithCustom;
 
-                        annotation { "Name" : "Along custom", "UIHint" : UIHint.READ_ONLY }
-                        isLength(definition.customOffset, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
+                        if (definition.componentSelector == AxisWithCustom.CUSTOM)
+                        {
+                            annotation { "Name" : "Custom direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1 }
+                            definition.customDirection is Query;
+
+                            annotation { "Name" : "Along custom", "UIHint" : UIHint.READ_ONLY }
+                            isLength(definition.customOffset, NONNEGATIVE_ZERO_DEFAULT_LENGTH_BOUNDS);
+                        }
                     }
                 }
             }
@@ -464,8 +490,19 @@ export const assignVariable = defineFeature(function(context is Context, id is I
                 annotation { "Name" : "Point", "Filter" : (EntityType.VERTEX || BodyType.MATE_CONNECTOR) && AllowFlattenedGeometry.YES, "MaxNumberOfPicks" : 1 }
                 definition.coordinateEntity is Query;
 
-                annotation { "Name" : "Component", "UIHint" : UIHint.HORIZONTAL_ENUM }
-                definition.coordinateComponent is PointComponent;
+                annotation { "Name" : "Coordinate system", "Filter" : BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                            "Description" : "Optional mate connector. The point is then expressed in its frame." }
+                definition.coordinateFrame is Query;
+
+                annotation { "Name" : "Output", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL],
+                            "Description" : "Map records point (a vector of lengths). Read it as #name.point[0] and so on." }
+                definition.coordinateOutput is VariableOutputType;
+
+                if (definition.coordinateOutput == VariableOutputType.SINGLE)
+                {
+                    annotation { "Name" : "Component", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+                    definition.coordinateComponent is PointComponent;
+                }
 
                 annotation { "Name" : "X", "UIHint" : UIHint.READ_ONLY }
                 isLength(definition.coordX, LENGTH_BOUNDS);
@@ -687,30 +724,63 @@ export const assignVariable = defineFeature(function(context is Context, id is I
                     }
                 }
 
-                if (definition.componentSelector == AxisWithCustom.CUSTOM)
+                const mapOutput = definition.distanceOutput == VariableOutputType.MAP;
+                const customSelected = !mapOutput && definition.componentSelector == AxisWithCustom.CUSTOM;
+                if (customSelected)
                 {
                     verifyNonemptyQuery(context, definition, "customDirection", ErrorStringEnum.VARIABLE_SELECT_CUSTOM_DIRECTION);
                 }
 
-                const distanceResultMap = measureDistance(context, {
+                const frame = frameFromQuery(context, definition.distanceFrame, "distanceFrame");
+
+                var distanceResultMap = measureDistance(context, {
                             entities : definition.entityCouple,
                             measureFromAxis : definition.measureFromAxis,
                             customDirection : definition.customDirection,
                             extendEntities : definition.extendEntities,
                             maximum : definition.minmax == VariableMinMaxSelection.MAXIMUM
                         });
-                value = selectDistanceComponent(distanceResultMap, definition.componentSelector);
+
+                // Signed displacement and end points, in the chosen frame (world when none is picked).
+                var firstPoint = distanceResultMap.firstPoint;
+                var secondPoint = distanceResultMap.secondPoint;
+                if (frame != undefined)
+                {
+                    firstPoint = fromWorld(frame, firstPoint);
+                    secondPoint = fromWorld(frame, secondPoint);
+                }
+                const delta = secondPoint - firstPoint;
+                distanceResultMap.delta = delta;
+                if (frame != undefined)
+                {
+                    // Frame components are signed; the world-frame components stay unsigned for existing features.
+                    distanceResultMap.xOffset = delta[0];
+                    distanceResultMap.yOffset = delta[1];
+                    distanceResultMap.zOffset = delta[2];
+                }
+
+                if (mapOutput)
+                {
+                    value = { "distance" : distanceResultMap.distance, "delta" : delta, "first" : firstPoint, "second" : secondPoint };
+                }
+                else
+                {
+                    value = selectDistanceComponent(distanceResultMap, definition.componentSelector);
+                }
 
                 if (!hasFlatEntities)
                 {
                     try silent
                     {
                         addDebugLine(context, distanceResultMap.firstPoint, distanceResultMap.secondPoint, DebugColor.MAGENTA);
-                        if (definition.componentSelector != AxisWithCustom.DISTANCE && definition.componentSelector != AxisWithCustom.CUSTOM)
+                        if (mapOutput || (definition.componentSelector != AxisWithCustom.DISTANCE && definition.componentSelector != AxisWithCustom.CUSTOM))
                         {
-                            addAxisDecompositionDebugLines(context, distanceResultMap.firstPoint, distanceResultMap.secondPoint);
+                            if (frame != undefined)
+                                addFrameDecompositionDebugLines(context, distanceResultMap.firstPoint, delta, frame);
+                            else
+                                addAxisDecompositionDebugLines(context, distanceResultMap.firstPoint, distanceResultMap.secondPoint);
                         }
-                        if (definition.componentSelector == AxisWithCustom.CUSTOM)
+                        if (customSelected)
                         {
                             var customDirection = extractDirection(context, definition.customDirection);
                             if (dot(customDirection, normalize(distanceResultMap.secondPoint - distanceResultMap.firstPoint)) < 0)
@@ -727,7 +797,7 @@ export const assignVariable = defineFeature(function(context is Context, id is I
                 setFeatureComputedParameter(context, id, { "name" : "xOffset", "value" : selectDistanceComponent(distanceResultMap, AxisWithCustom.X) });
                 setFeatureComputedParameter(context, id, { "name" : "yOffset", "value" : selectDistanceComponent(distanceResultMap, AxisWithCustom.Y) });
                 setFeatureComputedParameter(context, id, { "name" : "zOffset", "value" : selectDistanceComponent(distanceResultMap, AxisWithCustom.Z) });
-                if (definition.componentSelector == AxisWithCustom.CUSTOM)
+                if (customSelected)
                 {
                     setFeatureComputedParameter(context, id, { "name" : "customOffset", "value" : selectDistanceComponent(distanceResultMap, AxisWithCustom.CUSTOM) });
                 }
@@ -805,11 +875,27 @@ export const assignVariable = defineFeature(function(context is Context, id is I
             else if (definition.measurementMode == VariableMeasurementMode.COORDINATE)
             {
                 verifyNonemptyQuery(context, definition, "coordinateEntity", ErrorStringEnum.VARIABLE_SELECT_ENTITY_TO_MEASURE);
-                const coordPoint = pointFromEntity(context, definition.coordinateEntity);
+                const coordFrame = frameFromQuery(context, definition.coordinateFrame, "coordinateFrame");
+                var coordPoint = pointFromEntity(context, definition.coordinateEntity);
+                if (coordFrame != undefined)
+                {
+                    coordPoint = fromWorld(coordFrame, coordPoint);
+                }
                 setFeatureComputedParameter(context, id, { "name" : "coordX", "value" : coordPoint[0] });
                 setFeatureComputedParameter(context, id, { "name" : "coordY", "value" : coordPoint[1] });
                 setFeatureComputedParameter(context, id, { "name" : "coordZ", "value" : coordPoint[2] });
-                value = selectCoordinate(coordPoint, definition.coordinateComponent);
+                if (definition.coordinateOutput == VariableOutputType.MAP)
+                {
+                    value = { "point" : coordPoint };
+                }
+                else if (definition.coordinateComponent == PointComponent.VECTOR)
+                {
+                    value = coordPoint;
+                }
+                else
+                {
+                    value = selectCoordinate(coordPoint, definition.coordinateComponent);
+                }
                 setHighlightedEntities(context, { "entities": definition.coordinateEntity });
             }
         }
@@ -837,6 +923,8 @@ export const assignVariable = defineFeature(function(context is Context, id is I
         yOffset : 0 * meter,
         zOffset : 0 * meter,
         customOffset : 0 * meter,
+        distanceFrame : qNothing(),
+        distanceOutput : VariableOutputType.SINGLE,
 
         entityCouple : qNothing(),
         lengthEntities : qNothing(),
@@ -856,6 +944,8 @@ export const assignVariable = defineFeature(function(context is Context, id is I
 
         coordinateEntity : qNothing(),
         coordinateComponent : PointComponent.X,
+        coordinateFrame : qNothing(),
+        coordinateOutput : VariableOutputType.SINGLE,
         coordX : 0 * meter,
         coordY : 0 * meter,
         coordZ : 0 * meter,
@@ -1147,8 +1237,27 @@ export function selectDistanceComponent(distanceMap is map, componentSelector is
                 AxisWithCustom.X : distanceMap.xOffset,
                 AxisWithCustom.Y : distanceMap.yOffset,
                 AxisWithCustom.Z : distanceMap.zOffset,
-                AxisWithCustom.CUSTOM : distanceMap.customOffset
+                AxisWithCustom.CUSTOM : distanceMap.customOffset,
+                AxisWithCustom.DELTA : distanceMap.delta
             };
+}
+
+/**
+ * The coordinate system of the single mate connector in `frameQuery`, or `undefined` when nothing is picked.
+ * Whatever entity of the connector was picked is resolved to its owning connector body (correction 44).
+ */
+function frameFromQuery(context is Context, frameQuery, faultyParameter is string)
+{
+    if (!(frameQuery is Query) || isQueryEmpty(context, frameQuery))
+    {
+        return undefined;
+    }
+    const connectors = evaluateQuery(context, qBodyType(qOwnerBody(frameQuery), BodyType.MATE_CONNECTOR));
+    if (size(connectors) != 1)
+    {
+        throw regenError("Pick a single mate connector as the coordinate system.", [faultyParameter]);
+    }
+    return evMateConnector(context, { "mateConnector" : connectors[0] });
 }
 
 /** Measure the diameter (or radius) of the selected entity.
@@ -1309,6 +1418,7 @@ function addAxisDecomposition(context is Context, distanceMap is map) returns ma
         "yOffset" : 0 * meter,
         "zOffset" : 0 * meter,
         "customOffset" : 0 * meter,
+        "delta" : distanceMap.secondPoint - distanceMap.firstPoint,
         "pointA" : undefined,
         "pointB" : undefined
     };
@@ -1346,6 +1456,21 @@ function addAxisDecompositionDebugLines(context is Context, from is Vector, to i
     {
         var next = current;
         next[axis] += difference[axis];
+        addDebugLine(context, current, next, AXIS_COLORS[axis]);
+        current = next;
+    }
+}
+
+/**
+ * Draws the displacement `delta` (expressed in `frame`) as three legs along the frame axes, starting at the world point `from`.
+ */
+function addFrameDecompositionDebugLines(context is Context, from is Vector, delta is Vector, frame is CoordSystem)
+{
+    const axes = [frame.xAxis, frame.yAxis, frame.zAxis];
+    var current = from;
+    for (var axis = 0; axis < 3; axis += 1)
+    {
+        const next = current + delta[axis] * axes[axis];
         addDebugLine(context, current, next, AXIS_COLORS[axis]);
         current = next;
     }
