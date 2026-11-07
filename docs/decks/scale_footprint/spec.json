@@ -48,7 +48,11 @@
         ],
         [
           "Reference RSL line",
-          "FCP = its lower-X end."
+          "FCP = its lower-X end (unless Reference FCP is picked)."
+        ],
+        [
+          "Reference FCP (optional)",
+          "Vertex or mate connector: the RSL end nearest it is the FCP, so the tip may point to +X."
         ],
         [
           "New RSL line",
@@ -141,7 +145,7 @@
         {
           "kind": "limit",
           "head": "World axes",
-          "body": "Works in world XY with the FCP at the lower-X end of each RSL line."
+          "body": "Works in world XY; the FCP is the lower-X end of each RSL line unless Reference FCP is picked."
         },
         {
           "kind": "limit",

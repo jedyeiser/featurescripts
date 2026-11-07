@@ -43,16 +43,16 @@
       "image": "docs/explainers/curve_mapping/img/fig05_offset_edges.png",
       "points": [
         {
-          "head": "'Normal offset'",
+          "head": "'Out of plane'",
           "body": "Moves OUT of the chain's plane (a line in XY offsets along Z)."
         },
         {
-          "head": "'Binormal offset'",
+          "head": "'In plane'",
           "body": "Moves WITHIN the plane, toward / away from the centre of curvature."
         },
         {
           "head": "Names",
-          "body": "The reverse of Frenet naming: describe results physically."
+          "body": "Dialog labels say what the offset does; the internal enum names are still the reverse of Frenet naming."
         }
       ]
     },
@@ -74,8 +74,8 @@
           "Reverse the distance direction (+ Show direction indicator)."
         ],
         [
-          "Flip normal",
-          "Reverse the out-of-plane direction (Flip binormal likewise)."
+          "Flip out-of-plane direction",
+          "Reverse the out-of-plane direction (Flip in-plane direction likewise)."
         ],
         [
           "Source arcs",

@@ -130,7 +130,8 @@ test drawings in tab folder `test drawings` replace them). Findings:
 
 `station_table.fs` (tab 07f13dc8a33435e0fb1c5a7f): custom table "Station table". Station geometry tags each view
 composite with attribute `publishStationTable` ({schema stationTable/1, title, prefix, view, rows}); the table finds
-them with qHasAttribute and returns one table per view, rows sorted by x (Station | x from datum | Width /
+them with qHasAttribute and returns one table per PART (the Station geometry prefix; since 2026-09-30 a part with plan and
+profile gets ONE table, Width and Thickness columns merged by station id; this paragraph said per view before), rows sorted by x (Station | x from datum | Width /
 Thickness / Span | From | To). Parameter "Views containing" (case-sensitive) filters by view name -- needed in
 drawings, because inserting a custom table brings every table it returns. Verified: Part Studio table panel, and
 drawing "4101 PLAN + table (demo)" (Custom table > Part Studio 1 > Station table, Views containing = 4101 PLAN; drawing
@@ -199,7 +200,7 @@ Tabs in tab folder `primitive` (local `publish_tools/primitive/`):
 | export_primitive | 3ce76ee786987ef00917b9b2 | feature "Export primitive"; target EI via xSection V58 xSectBeamAnalysis (getEIFromEdges, computeBeamStiffness) |
 | primitive_table | 4e49f8a0b8f0c2bd75c919e7 | custom table "Primitive tables" |
 
-Use: Export primitive (dialog groups, 2026-09-28: Inputs (open), Sources, Key locations, Plot, Stiffness, Tooling blocks,
+Updated 2026-11-06: the dialog also has the groups Cavity depth and Profile, baseline and footprint source, and Plot > Auto scale (default on) with\nthe band heights; Table 6 gains a cavity depth column (German Minicaphoehe) when a cavity profile is picked; the baseline and profile bands are\nz-scaled -- see "Cavity depth + scaled baseline / profile bands" below. The text in this block describes the 2026-09-28 state.\n\nUse: Export primitive (dialog groups, 2026-09-28: Inputs (open), Sources, Key locations, Plot, Stiffness, Tooling blocks,
 Data table, Output; parameter ids unchanged) -> Volume (the ski solid), FCP, ACP (vertex / point / mate connector), optional MP(s), optional
 Datum (empty = world origin, world axes; X along the ski, Z up, profiles in its XZ plane) + Datum uses: ORIGIN
 (default; a vertex / point / MC whose ORIGIN moves the frame, axes stay world X/Y/Z, so x is measured along world X
@@ -252,7 +253,7 @@ and in the producer slot (Extract variables keys: primitive, rsl, averageRadius,
 naturalRadiusInflection, taperAngleWidest, taperAngleInflection, deflection, stiffness (0 = no target EI), swRoutAngle,
 swRoutStepIn, swRoutDistAboveBase, swRoutStartX, swRoutStartS, swRoutStopX, swRoutStopS (0 = no rout surface / not
 measured); queries primitive, baseline, profileBottom,
-profileTop, footprint, radius or curvature). Tables: add "Primitive tables" (filter "Primitives containing", pick "Table"; the data table is "6 RSL data", "4 SW rout" exists only with a SW rout surface).
+profileTop, footprint, radius or curvature; since 2026-11-06 also profileCavity when a cavity profile is picked). Tables: add "Primitive tables" (filter "Primitives containing", pick "Table"; the data table is "6 RSL data", "4 SW rout" exists only with a SW rout surface).
 
 Definitions: x from the datum; s = distance along the bottom wire from the datum, same direction as x (signed arc
 length, zero at the bottom-wire point at x = 0, ds/dx > 0 whichever way the tip points; past an end of the wire it runs
@@ -260,7 +261,7 @@ on along that end's tangent; MCl's s is measured the same way, not taken from an
 Key locations and Data rows sorted by x ascending, `station` 0.. from the lowest x (stored always; the # column only
 on table 6, see below); h along the bottom wire's normal into the
 ski; XS1 / XS2 halfway FCP..MRS / MRS..ACP in x; RSL = |x(ACP) - x(FCP)| in the datum; ski_thck = normal thickness;
-baseline_height = baseline above the straight line through its FCP / ACP points; Table 1 top lengths run between
+baseline_height = the baseline's own height (z) in the local frame, above the datum XY plane (`primitiveBaselineZ`, primitive_baseline.fs; since 2026-10-01 -- it was above the FCP / ACP chord before, which made it 0 at FCP / ACP; the chord version `primitiveBaselineHeights` is now only the flatness test); Table 1 top lengths run between
 the bottom stations carried to the top along the normal.
 
 Rows (2026-09-28 decisions): only rows with data are stored and shown, and a table without rows is not returned.
@@ -510,8 +511,7 @@ Dialog groups: Part and name | Export info | Export origin | Drawing Information
   SELECTION + file name; Profile outline SECTION (default, exact edges through the part's centre) / SILHOUETTE. DXF faces are real
   SURFACE bodies lying on the export frame's XY / XZ plane: `<name> XY EXPORT` (copies `<name> XY EXPORT_PATTERN_<n>`), grouped in the
   closed composite `<name> XY DXF` (always, even one face; "one composite" option: `<name> DXF`). Radii stay arcs (checked on three parts).
-* DXF pattern: instances in X / Y, minimum clearance or pitch (separate fields per mode), from the export origin; real bodies; capped at
-  200 copies; a composite input is taken as already patterned (warning). XZ uses X and Z.
+* DXF pattern: instances in X / Y, minimum clearance or pitch (separate fields per mode), from the export origin; real bodies. Each count input\n  (X, Y) allows 1 to 500, but the PRODUCT X * Y is capped at 200 copies (`PATTERN_MAX_INSTANCES`; more is an error naming both counts), so e.g. 500 x 1 is\n  refused; a composite input is taken as already patterned (warning). XZ uses X and Z.
 * Export origin: mate connector (or vertex; origin only, or origin + axes) or quadrant 1st +X+Y / 2nd -X+Y / 3rd -X-Y / 4th +X-Y with
   X / Y / Z buffers (10 / 10 / 0 mm), translation only. It shifts the DXF faces for ANY input (composites too). "Make a shifted copy"
   (`<name> EXPORT`) is for a single body only (warning for a composite).

@@ -36,8 +36,12 @@
           "FCP to ACP."
         ],
         [
+          "FCP (optional)",
+          "Vertex or mate connector: the RSL end nearest it is the FCP; the tip is on its side."
+        ],
+        [
           "Tip toward +X",
-          "Off: the tip is the lower-X end; on: the higher-X end."
+          "Used only with no FCP picked. Off: the tip is the lower-X end; on: the higher-X end."
         ],
         [
           "Include Points",
@@ -86,7 +90,7 @@
         {
           "kind": "tip",
           "head": "Tip at +X",
-          "body": "Turn on Tip toward +X; tip and tail swap with their origins (GP2)."
+          "body": "Pick the FCP (or turn on Tip toward +X); tip and tail swap with their origins (GP2). Point lists run in ascending world X; Flip reverses them."
         },
         {
           "kind": "limit",

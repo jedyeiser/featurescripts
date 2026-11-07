@@ -45,7 +45,11 @@
         ],
         [
           "Keep opposite side",
-          "(Trim) keep the other piece (default: end side)."
+          "(Trim) keep the other piece (default: end side). Not used in Distance mode."
+        ],
+        [
+          "Side to keep",
+          "(Trim, Distance mode) Toward point (default) keeps the side holding the From point; Away from point keeps the far side."
         ],
         [
           "Debug",
@@ -130,7 +134,7 @@
         {
           "kind": "limit",
           "head": "Trim",
-          "body": "Uses only the first cut."
+          "body": "Uses only the first cut. Trims in place when safe (references survive); otherwise the source is replaced."
         },
         {
           "kind": "limit",

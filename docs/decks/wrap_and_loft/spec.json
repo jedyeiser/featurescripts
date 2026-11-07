@@ -83,7 +83,7 @@
       "points": [
         {
           "head": "Planar shortcut",
-          "body": "Planar sources: From edge(s) disappears; the From path is the To chain projected onto the source plane (wraps, not drapes)."
+          "body": "Planar sources: From edge(s) disappears; the From path is the To chain projected onto the source plane (wraps, not drapes). A source that closes on itself wraps as a periodic ring, split at two points so it has vertices."
         },
         {
           "head": "Welds",

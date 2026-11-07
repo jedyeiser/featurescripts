@@ -25,11 +25,11 @@
       "points": [
         {
           "head": "Average",
-          "body": "Mean of R at 200 X stations between the inflections -- independent of how the edges are split."
+          "body": "Arc-length weighted mean of R between the inflections (parts flatter than R 100 m left out) -- independent of how the edges are split."
         },
         {
           "head": "Natural",
-          "body": "One circle through inflection - waist - inflection (or widest - waist - widest)."
+          "body": "The arc through the two inflection points (or the two widest points) tangent to the waist line."
         },
         {
           "head": "They differ",
@@ -114,6 +114,10 @@
         [
           "sidecutRadius",
           "The average radius."
+        ],
+        [
+          "naturalRadiusWidest, naturalRadiusInflection",
+          "The natural radii; 0 when there is no valid arc."
         ],
         [
           "output",

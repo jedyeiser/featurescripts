@@ -3,6 +3,8 @@
 *Extract variables and the producer library behind it (Onshape document **Variable_tools**). Written 2026-09-25
 against the code as it stands that day. Draft for review.*
 
+*Update 2026-11-06 (additions only, existing text untouched): the derive option of Extract variables, Add variables for derive and Variable + are covered in 2.1 to 2.3 below. Feature sheets: `docs/sheets/extract_variables`, `add_variables_for_derive`, `variable_plus`. The derive path is pushed to the workspace but has not been run live.*
+
 1. **The idea** -- producers, the one consumer, and how a name keeps pointing at the right thing.
 2. **The feature** -- Extract variables' dialog, entry types, messages.
 3. **The code** -- files, versions, tests.
@@ -19,6 +21,9 @@ The appendix lists things that looked unclear. Figures are in `img/` (made by `i
   - [1.3 Addresses: key and key@n](#13-addresses-key-and-keyn)
   - [1.4 Hold, Track, Evaluate on use](#14-hold-track-evaluate-on-use)
 - [Part 2: Extract variables](#part-2-extract-variables)
+  - [2.1 Variables across a derive (Extract variables option)](#21-variables-across-a-derive-extract-variables-option)
+  - [2.2 Add variables for derive](#22-add-variables-for-derive)
+  - [2.3 Variable +](#23-variable-)
 - [Part 3: The code](#part-3-the-code)
 - [Appendix](#appendix-unclear-or-contradictory-items)
 
@@ -113,6 +118,7 @@ set the `startCut` / `endCut` entries to Evaluate on use off, Track on.
   / **Evaluate on use**.
 - **Print keys** -- list every address, with its description.
 - **Manifest** -- optionally one map variable listing everything published (for API readers).
+- **Get variables from a derived Part Studio** (default off, added 2026-11-02) -- see 2.1.
 
 **Entry types.**
 
@@ -137,6 +143,7 @@ Composed types (everything but Source key) are always held, never evaluated on u
 | Info "Nothing published yet: press Add keys..." | A new feature. |
 | Warning "Entry k (key): reason." | That entry was not published: unknown or ambiguous key (the choices are listed), a value where geometry was expected, a missing point, a closed chain with no end, edges that are not one chain ... |
 | Error (a name used twice) | Two entries publish the same name. |
+| Error "'x' comes from the derived Part Studio and is also published by an entry." | A derived name collides with an entry's name (2.1). Rename one. |
 
 **Example** (Variable_tools "Examples" studio, *Extract variables: box bands*). Sources: the Box and a split of
 its faces into bands. Prefix `box`; entries publish the body (`output@1`), the two largest faces (Filtered, keep 2),
@@ -148,6 +155,51 @@ the moved edge; `modifiedEdges` of the Move boundary gives the moved edge and it
 surface on the tracked edge regenerates. Region tests (6/6, `variable_tools_tests`): a split cube's bounded faces,
 boundary, both, the whole patch, and the error without a point.
 
+## 2.1 Variables across a derive (Extract variables option)
+
+![Sources and the derive input](../../sheets/extract_variables/img/sources_and_derive.png)
+
+A **Derived** Part Studio brings geometry across, not variables. The producer side lives in the *source* studio, the consumer is Extract variables in the *deriving* studio:
+
+1. In the source studio, **Add variables for derive** (2.2) or **Variable +** with *Export for derive* (2.3) write a map variable named `exportVariables` (name to value).
+2. In the deriving studio, add the Derived feature as usual, then Extract variables with **Get variables from a derived Part Studio** ticked and the source studio picked in **Derived Part Studio**.
+3. For every entry of the source's map, Extract variables sets an ordinary variable of the **same name** (`#length`), with description "From derived Part Studio". An existing variable of that name is overwritten. The names are also added to the optional manifest.
+
+How it reads the map: the feature builds the picked studio's context once more (`studio.buildFunction(studio.configuration)`, so one extra regeneration of that studio per regeneration here, with the configuration picked in the field) and reads `exportVariables` from it. Values only; query variables cannot cross.
+
+| Message | Meaning |
+|---|---|
+| Error "Pick the Part Studio you derive from." / "The Part Studio could not be built." | The field is empty, or the studio does not regenerate. |
+| Error "The Part Studio has no 'exportVariables' variable. Add an 'Add variables for derive' feature, or tick Export for derive on a Variable +." | The source has neither producer, or they sit later than the point the studio is built to. |
+| Error "'exportVariables' in the Part Studio is not a map." | Something else set that name. |
+| Error "'x' comes from the derived Part Studio and is also published by an entry." | Rename the entry or the variable. |
+
+**Status.** Pushed to the Variable_tools workspace only (not versioned) and **not run live**: unverified are that a custom feature can build the other studio, that variables set by Variable + / Add variables for derive are visible in that context, and configured studios. Test it in a scratch source + deriving pair first.
+
+## 2.2 Add variables for derive
+
+*Source `variable_tools/add_variables_for_derive.fs`; sheet `docs/sheets/add_variables_for_derive/`.* Put it in the **source** studio, after the variables it lists. Parameter: a list **Variables**; each item is one **Variable name** (a variable set earlier in this studio, without the `#`; autocomplete on). The feature reads each variable's current value and merges it into `exportVariables`. Other producers merge into the same map (Variable +, Export for derive); a name listed twice is overwritten by the later one.
+
+Values are snapshots at the feature's position in the tree: a variable edited later is not seen. Only ordinary values travel (numbers, lengths, angles, text, maps).
+
+| Message | Meaning |
+|---|---|
+| Info "Exporting N variable(s) in 'exportVariables'." | Normal (N counts the whole registry). |
+| Error "Variable 'x' is not set before this feature (query variables cannot be exported)." | Move the feature below the variable, or fix the name. |
+| Error "Variable 'x' is a query; only ordinary variables can be exported." | Remove it from the list. |
+| Error "'exportVariables' is the registry itself and cannot be exported." | Remove that name. |
+
+It has no outputs for Extract variables of its own; the product is the `exportVariables` variable.
+
+## 2.3 Variable +
+
+*Source `betterMeasure/betterMeasure.fs` (Onshape document **betterMeasure**, not Variable_tools; sheet `docs/sheets/variable_plus/`).* A variable feature that can also measure: Mode **Assigned** / **Measured** / **From import**; measurements Distance, Length, Diameter, Angle, Radius of curvature, Point coordinate. Added 2026-11-01 (live-tested 8/8 on 2026-11-05 for the frame and Map output; the Export for derive tick is not covered by that run):
+
+- **Custom coordinate system** (distance and point coordinate): pick one mate connector; X / Y / Z / Delta are then expressed along its axes and are signed.
+- **Output** = *Single value* or *Map*. Distance Map: `#name.distance`, `.delta` (vector of lengths), `.first`, `.second` (the end points). Coordinate Map: `#name.point`. Index it in any dialog (`#d.delta[0]`).
+- **Export for derive** (boolean): adds the value to `exportVariables` (2.2). Only an ordinary value can be exported (a Map is untested); the name `exportVariables` itself is refused.
+
+Without a frame the old behaviour is kept (single-value Along X/Y/Z unsigned) so existing features do not change. A user version of betterMeasure is needed before other documents see these options.
 ---
 
 # Part 3: The code
@@ -156,7 +208,8 @@ boundary, both, the whole patch, and the error without a point.
 |---|---|
 | `variable_tools/extract_outputs.fs` | The producer library: `embedStandardOutputs`, `extractableVariable`, `extractableQuery`, `optionalVariable`. The ONE tab producers in any document import, by Variable_tools version. |
 | `extract_variables_utils.fs` | The consumer: `readSources`, addresses (`lookupKey`), `resolveEntry` and the composed types (`filteredEntities`, `chainEnd`, `edgesBetween`, `regionAround`), publishing (Hold / Track / Evaluate on use). |
-| `extract_variables.fs` | The feature: dialog, Add keys editing logic, notices. |
+| `extract_variables.fs` | The feature: dialog, Add keys editing logic, notices, the derive option (`readDerivedVariables`). |
+| `add_variables_for_derive.fs` | The source-studio producer of `exportVariables` (2.2). |
 
 Versions: V1 (producers pin its `extract_outputs`), V2 (Region entry, Track, modified* keys, Show). Producers
 built against V1 need no re-pin: `extract_outputs` has not changed since.
@@ -167,7 +220,7 @@ Which features publish (and their keys): see each family's explainer -- Referenc
 
 # Appendix: unclear or contradictory items
 
-1. **`variable_tools/extract_variables_schema.md` is stale**: it still names the old driven_offset files, lists the
+1. **Updated 2026-11-06:** `variable_tools/extract_variables_schema.md` was brought up to date (files, producer-key pointer, Track, modified* keys, derive). Earlier it was stale: it still named the old driven_offset files, lists the
    2026-09-23 producers, and does not mention Track or the modified* keys.
 2. **"7 entry types"** in older notes: there are 8 (Region was added 2026-09-24).
 3. **"Body name contains"** (Filtered) reads part names during regeneration, which correction 36 says can fail; no

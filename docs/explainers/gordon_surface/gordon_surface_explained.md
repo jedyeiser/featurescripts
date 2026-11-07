@@ -1,13 +1,16 @@
 # Gordon surface tools, explained
 
 *Gordon Surface, Interior curves, Scaled Curve, Modify curve end, Pull surface, Simplify surface and
-makeCurvesCompitable (Onshape document **gordonSurface**). Written 2026-09-26 against the code as it stands that day.
-Draft for review.*
+makeCurvesCompitable (Onshape document **gordonSurface**). Written 2026-09-26; refreshed 2026-11-06 for the later
+2026-09-26/27 rework of Scaled Curve, Modify curve end, Pull surface and Interior curves. Draft for review.*
+
+Source folder `gordonSurface/` is labelled archived in CLAUDE.md, but its tabs were still being reworked and pushed
+after this explainer was written, so it is treated as live here.
 
 These are NURBS curve and surface tools for freeform surfacing that native Onshape does poorly. They were written
 for snowboard-binding surfacing and follow Piegl & Tiller's *The NURBS Book*. The "Gordon tools tests" studio covers
-Modify curve end, Scaled Curve and Pull surface: 40 cases, all passing on 2026-09-26. Gordon Surface, Interior
-curves and Simplify surface have no test fixture yet.
+Modify curve end, Scaled Curve and Pull surface: the suite passed in full on 2026-09-27 (cases listed in Part 3).
+Gordon Surface, Interior curves and Simplify surface have no test fixture yet.
 
 1. **The idea**: compatible curves, and how a Gordon surface passes through a whole network.
 2. **The features**: each tool, its dialog, and an example.
@@ -120,7 +123,7 @@ P(u, v) = (1−v)U0(u) + vU1(u) + (1−u)V0(v) + uV1(v) − (the bilinear corner
 
 | Parameter | Meaning |
 |---|---|
-| **U0, U1, V0, V1** | The boundary chains (several edges each are joined). |
+| **U0, U1, V0, V1** | The boundary chains (several edges each, in any order, are joined along a native path and fitted; a single edge is used exactly, arcs included). |
 | **Interior U / V curve count** | 3 each (1-15). The dialog spells it "cure count". |
 | **Debug & Details** | Print curve data. Its "Scaled tolerance" and "Scaled curve degree" are not used. |
 
@@ -138,35 +141,44 @@ P(u, v) = (1−v)U0(u) + vU1(u) + (1−u)V0(v) + uV1(v) − (the bilinear corner
 
 **A curve between two rails whose position varies along its length**, for example from 30 % to 70 % of the way
 across. At each position s, the result is (1 − f) x Group 0 + f x Group 1, where f runs from the initial to the final
-scale factor along a transition shape. The scale factors are entered on [−0.5, 0.5]: −0.5 is on Group 0, 0 is
-halfway, +0.5 is on Group 1.
+scale factor along a transition shape (by arc length along Group 1). The scale factors are entered on [−0.5, 0.5]:
+−0.5 is on Group 0, 0 is halfway, +0.5 is on Group 1.
+
+Each group (edges in any order, open or closed) is read as one native path, so both rails are matched by **arc-length
+fraction**, whatever their parameterisation. Group 1 sets the direction; Group 0 is paired to it automatically
+(open: the nearer end pairing; closed: the same direction of travel, with the seam aligned).
 
 | Parameter | Meaning |
 |---|---|
-| **Group 0** + **Flip?** | The first rail (edges joined into one); Flip reverses it. |
+| **Group 0** + **Reverse Group 0** | The first rail; Reverse Group 0 flips the automatic pairing. |
 | **Group 1** | The second rail. |
-| **Initial / Final curve scalefactor** | Start and end position, [−0.5, 0.5], default 0. |
-| **Transition Type** | Linear / Sinusoidal / Logistic: how the position travels from initial to final. |
+| **Initial / Final curve scale factor** | Position at the start / end of Group 1, [−0.5, 0.5], default 0. |
+| **Transition type** | Linear / Sinusoidal / Logistic / Smootherstep: how the position travels from initial to final. |
 | **Curve name** | Names the wire. |
-| **Project onto surface?** | + face: drop the result onto a face. |
-| **Debug & Details** | Show endpoints and curves; print; output samples (15), tolerance (0.001 mm), degree (3); per-rail input samples and tolerance. |
+| **Project onto surface?** | + **Projection face** (required when on): each sample is moved to the nearest point of the face. |
+| **Debug & Details** | Show endpoints and curves; print (+ Data depth). Details: Minimum samples (15), Scaled tolerance (0.001 mm), Scaled curve degree (3), **Sample spacing** (5 mm, along the longer group). |
+
+The sample count is the larger of Minimum samples and length / Sample spacing + 1, capped at 1000 (an info note says
+when the cap is hit). Both groups must be open, or both closed (error otherwise). Closed groups with equal initial and
+final factors give a periodic closed curve; with different factors the result is open and an info note says so.
 
 **Examples.**
 
 - SC0: lines y = 0 and y = 100 give the midline y = 50.
-- SC3: arcs R100 and R200 give an exact R150 arc (within 0.00062 mm).
+- SC3: arcs R100 and R200 give an exact R150 arc.
 - SC2: output degree 5 when asked.
-
-**Bug.** On arc inputs the result covers only the **first radian** of each arc. SC3's R150 result is 150.0 mm long
-instead of a quarter circle's 235.6 mm. The arc's parameter is its angle, but the rails are sampled on [0, 1]. SC3
-passes because it checks the radius only.
+- SC4: Group 0 drawn right-to-left is paired automatically (straight diagonal).
+- SC5: concentric circles R100 / R200 give one closed curve of radius 150.
+- SC6: a circle with a line (closed / open) is an error.
+- SC7: Sample spacing 60 with Minimum samples 5 reports the deviation between samples as an info note.
 
 **Limits.**
 
-- The rails are matched by parameter, not by length, so uneven parameterisation skews the blend.
-- Orientation is not automatic; use Flip.
-- No closed curves.
+- Between the samples the curve is a fit; if it is more than twice the fit tolerance from the exact blend, an info
+  note reports the deviation and suggests a smaller Sample spacing.
 - Projection can move the ends.
+- The old "first radian of each arc" bug no longer applies: the rails are now arc-length parameterised (rewrite of
+  2026-09-26).
 
 ## 2.4 Modify curve end
 
@@ -196,8 +208,8 @@ or a hold point. Optionally, match the moved end to a reference.
 | **Edges or wire to modify** | An edge, a chain (any pick order) or a wire; open, unbranched. |
 | **Modified end** | The end to move (empty = the chain's end, with a note). |
 | **To point** | Where it goes (empty = the end stays, or snaps onto the reference). |
-| **Hold part of the curve** | Hold by **Point** (pick) or **Distance** (arc length from the modified end, 50 mm). |
-| **Parameters** | **Transition type** (Logistic). **Continuity at fixed end / hold point** (G0 / G1 / G2). **Endpoint continuity ref?** with Endpoint continuity ref. (edge, face or mate connector), **Opposite direction**, **Match** (G0 / G1 / G2), **End curvature** (Match / Zero / Radius) and **End radius** (100 mm). Offset frame no longer has any effect. |
+| **Hold part of the curve** | Hold by **Point** (pick) or **Distance** (arc length from the modified end, 50 mm). **Remove hold knot** (off by default): after the edit, take the hold knot back down (by 1 for G1, 2 for G2), giving fewer control points on the same curve; a removal is kept only where it moves the curve less than 1 nm, with an info note when it is skipped or partial. |
+| **Parameters** | **Carry offset along the curve (transport)** (off: every point moves by the same vector, faded by the transition; on: the offset is carried back along the curve by parallel transport, so it turns with the curve, and the end still lands on To). **Transition type** (Logistic; Linear / Sinusoidal / Logistic / Smootherstep). **Continuity at fixed end / hold point** (G0 / G1 / G2). **Endpoint continuity ref?** with Endpoint continuity ref. (edge, face or mate connector), **Opposite direction**, **Match** (G0 / G1 / G2), **End curvature** (Match / Zero / Radius) and **End radius** (100 mm). Offset frame no longer has any effect. |
 | **Project onto surface?** | + face: only the part after the hold is projected and refit. It stays G1 at the hold; end curvature cannot be kept. |
 | **Debug, Details** | Spline degree and tolerance, Max control points (the cap for a merged chain), Sampling multiple (projection), print. |
 
@@ -246,17 +258,21 @@ normal. The result is a new sheet built from the face's **own control net**, not
 - **Offsets.** Every free control point moves along the face normal. The amount is interpolated smoothly between the
   handles and solved so that the surface passes through each handle's offset.
 - **Refinement.** Knots are added exactly when any offset is non-zero, so there are enough control points to move.
+- **Closed faces and poles.** In a direction where the face meets itself (a full cylinder) nothing is locked, the
+  handles wrap, and the result stays closed. A pole (sphere cap, cone apex) is fixed like an edge.
 
 | Parameter | Meaning |
 |---|---|
-| **Face** | The face to pull (it is not replaced). |
-| **U / V curve count** | Handles each way, edges included (2-20, default 4). |
+| **Face** | The face to pull (it is not replaced unless Replace face is on). |
+| **Replace face** | Off by default. Put the pulled surface in place of the face in its own body instead of making a new sheet. A solid stays solid when the kernel can re-fit the neighbouring faces; a one-face sheet is replaced by the pulled sheet (new body). Errors: a sketch region or a face the feature may not change; a face that is not part of a solid or surface body. |
+| **U / V curve count** | Handles each way, edges included (2-20, default 4). With One handle per control point: the minimum number of control points each way. |
 | **Continuity** | G0 / G1 / G2 along the edges. G1 needs at least 5 handles each way before any is free, G2 at least 7. |
+| **One handle per control point** | Off by default. A handle at every free control point (at its Greville point) instead of the U / V grid; an offset moves that control point along the normal, with no handle solve. |
 | **Active offsets** | U, V and Offset per handle; filled by dragging; 0 removes one. |
 | **Debug** | Iso-curves, keep U / V curves and grid points, show the handle grid and offset vectors, print. |
 | **Approximation** | Degree (a minimum, up to 5); Tolerance (how exactly the face is read). |
 
-**Output.** A new sheet `pullSurf` (key `output`). Notes include:
+**Output.** A new sheet `pullSurf` (key `output`), or, with Replace face, the modified body. Notes include:
 
 - no handle is free (too few for the continuity);
 - holes are not kept;
@@ -269,6 +285,8 @@ normal. The result is a new sheet built from the face's **own control net**, not
   and the normals along the whole boundary are unchanged.
 - P1: G0, 4 x 4.
 - P3: a planar control case.
+- P4: G2, 7 x 7. P5 / P6: Replace face on a cylinder sheet / on a solid. P7: one handle per control point.
+  P8: a full closed cylinder. P9: a hemisphere (pole unchanged).
 
 ## 2.6 Simplify surface
 
@@ -312,7 +330,7 @@ unchanged. The name is misspelled and the description is empty.
 | `gordonSurface.fs` | Gordon Surface: crossings, skinning, tensor surface, surface compatibility, sum. |
 | `gordonCurveCompat.fs` | Curve compatibility (degree elevation, knot union) and the makeCurvesCompitable feature. |
 | `interiorCurves.fs` | Interior curves (feature symbol `myFeature`). |
-| `scaledCurve.fs` | Scaled Curve; chain joining used by the others. |
+| `scaledCurve.fs` | Scaled Curve: native-path rails, automatic pairing, one fit. (The chain-joining helper `joinCurveSegments` is gone; Interior curves has its own `boundaryCurve`.) |
 | `modifyCurveEnd.fs` | Modify curve end: hold, blend, end conditions, projection. |
 | `pullSurface.fs` | Pull surface: control-net edit, locks, handle solve. |
 | `simplifySurface.fs` | Simplify surface. |
@@ -322,7 +340,9 @@ The shared `tools/` library supplies degree elevation, knot insertion, arc lengt
 functions.
 
 **Tests.** `devtools/onshape/build_gordon_tests.py` builds "Gordon tools tests", and `check_gordon_tests.py` checks
-it. Cases: T01-T40 for Modify curve end, SC0-SC3 for Scaled Curve, P1-P3 for Pull surface. All passed on 2026-09-26.
+it. Cases: T01-T43 for Modify curve end (T42 smootherstep, T43 hold-knot removal), SC0-SC7 for Scaled Curve, P1-P9
+for Pull surface. The whole suite passed on 2026-09-27; the test script was touched again on 2026-09-30 (not re-run
+for this refresh).
 
 **Icons.** Gordon Surface, Modify curve end, Pull surface and Scaled Curve have icons. The other three don't; their
 decks use a generic mark.
@@ -331,15 +351,13 @@ decks use a generic mark.
 
 # Appendix: bugs and open items
 
-1. **Scaled Curve on arcs** covers only the first radian of each arc (2.3). The test SC3 checks only the radius; it
-   should also check the extent.
+1. **Scaled Curve on arcs** (first-radian bug): fixed by the 2026-09-26 rewrite (2.3); removed from this list.
 2. **Dead parameters.**
    - Gordon Surface: Sample factor, Sampled spline tol.
    - Interior curves: Scaled tolerance, Scaled curve degree, and the hidden Blend Mode.
    - Modify curve end: Offset frame.
    - Simplify surface: G2 mode.
 3. **Gordon Surface** does not report a U / V pair that doesn't cross; the midpoint of the closest points is used.
-4. **Typos in the UI.** "Interior U cure count"; "Desription" (Scaled Curve, Interior curves); Scaled Curve's Group 1
-   tolerance description says "Group 0"; "makeCurvesCompitable".
+4. **Typos in the UI.** "Interior U cure count"; "Desription" (Interior curves only; fixed in Scaled Curve); "makeCurvesCompitable".
 5. **No fixture** for Gordon Surface, Interior curves or Simplify surface.
 6. The test names **T04 / T05** ("G2 best effort / exact") refer to an option that no longer exists.

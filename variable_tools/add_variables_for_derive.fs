@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
-/** The registry variable the consumer ("Get variables from derive") looks for in the source Part Studio. */
+/** The registry variable the consumer (Extract variables, option "Get variables from a derived Part Studio") looks for in the source Part Studio. */
 const EXPORT_REGISTRY = "exportVariables";
 
 /** Returned by getVariable for a name that is not set (no value of the model is this map). */

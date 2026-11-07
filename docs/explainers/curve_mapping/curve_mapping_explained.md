@@ -90,6 +90,8 @@ gap.
 - Only To can be flipped; From's direction comes from its chain.
 - An off-centre From reference, or unequal chain lengths, push points past an end, where they extrapolate.
 - Samples are uniform in each source curve's parameter.
+- A source span that closes on itself (a full circle as one span) is wrapped as a **periodic** spline through its points
+  (since 2026-10-17); a clamped open spline closed on itself is refused by the kernel (BAD_GEOMETRY).
 - Older models may need Flip normal toggled after the 2026-09-23 change to transported frames.
 
 ## 2.2 Wrap and Loft
@@ -108,6 +110,11 @@ surfaces that follow rocker and camber.
   edges meet without a gap. Without it, a 1 deg normal jump at a line / arc seam opened about 0.35 mm at a 20 mm
   offset.
 - **Clustering fix** (on by default) merges spans shorter than 0.25 mm.
+- **Closed curves and lines** (since 2026-10-17). A source curve that closes on itself gives a periodic wrapped curve and
+  periodic offset curves; each ring is split at its seam and the opposite point so it has vertices to loft against. In
+  the planar shortcut a true line among the To edges is projected as a true line (not refitted as a spline), so the
+  fast path that keeps lines and arcs exact can still apply, and the plane normal is taken from the best-conditioned
+  pair of sample points (on a closed curve the first and last points coincide).
 - **Exact ruled surface** (off) builds an exact ruled B-spline from the wrapped and offset curves where possible,
   instead of a loft. It changes face identities.
 
@@ -123,28 +130,38 @@ surfaces that follow rocker and camber.
 
 **Bend a whole body, or selected faces, onto the profile**: a flat-modelled insert, a core feature, a tip protector.
 
-1. All vertices are mapped in one batch.
+1. All vertices are mapped in one batch (mapped vertices within 5 microns of each other become one vertex).
 2. Each edge is mapped (the rigid fast path where possible), sampled and refit with its ends snapped to the mapped
-   vertices.
-3. Each face is rebuilt as a fill surface through its mapped boundary, optionally with mapped guide points.
+   vertices. **Edge accuracy** can refit an edge with more samples and control points until it follows the exact image
+   of its source edge closely enough.
+3. Each face is rebuilt according to **Face builder**: a fill through its mapped boundary (optionally with mapped guide
+   points), or -- the default, **Map the surface of every face (test)** -- the source face's own surface carried
+   through the map and trimmed to the wrapped outline, so its shape and tangency come with it. "Map the surface of long
+   thin faces" does that only for long thin faces and fills the rest. A long thin filled face that strays from the
+   mapped shape by more than **Face accuracy** is cut into shorter pieces and rebuilt.
 4. The faces are unioned; a solid input is closed into a solid.
 
 | Parameter | Meaning |
 |---|---|
-| **Mode** | Bodies (one solid or sheet) / Faces. |
+| **Mode** | Bodies (one or more solids or sheets, each deformed separately into its own result) / Faces. |
+| **Mate connectors to deform** | Connectors carried through the same deform with their orientation rotated to match; one lying on a deformed source body (within 0.01 mm) is attached to that body's result, any other stays stand-alone. |
 | **From / To / Frame orientation** | As in Wrap Curve. |
-| **Setup** | Sampling, degree, max control points, tolerance. **Use face guide points** (u / v multiplier 3) helps fills follow the face. **Keep wires**. |
-| **Debug** | Create the wires / faces / bodies stages; show frames. |
+| **Setup** | Sampling, degree, max control points, tolerance. **Face accuracy** (0 = off) and **Edge accuracy** (0 = off), **Face builder** (Fill / Map the surface of long thin faces / Map the surface of every face (test); default every face), **Mapped surface accuracy** (0.002 mm). **Use face guide points** (u / v multiplier 3) helps fills follow the face and is offered only when the builder is not "every face". **Keep wires**. |
+| **Naming** | **Name suffix** (default " (deformed)") is appended to each source body's name for its result; blank leaves results unnamed. |
+| **Debug** | Create the wires / faces / bodies stages; Boundary surface faces (test); Report face accuracy (prints per face to the notices console); show frames. |
 
-**Output.** A new body; the source stays. Diagnostics go to the console only.
+**Output.** A new body per source body; the source stays. Face failures are warnings on the feature; the detailed diagnostics go to the console.
 
 **Limits.**
 
-- **Every face becomes a fill surface**: planes and cylinders are not kept as such.
+- With **Face builder = Fill** every face becomes a fill surface: planes and cylinders are not kept as such. The default
+  (every face mapped) carries each face's own surface instead, at a cost in interpreter steps per mapped point.
 - Inner loops may fail.
 - It is the heaviest feature here.
-- A failed face is reported on the console only. Check the result for a missing face, or a sheet where a solid was
-  expected.
+- A face that cannot be rebuilt (or has no edges to rebuild from, e.g. a full sphere) is now a feature **warning** ("N face(s)
+  ... could not be rebuilt and are missing from the result") with the faces highlighted; if the rebuilt faces cannot be
+  joined the warning says they are left as separate sheets (raise the maximum control points). Check the result for a
+  missing face, or a sheet where a solid was expected.
 
 ## 2.4 Measure curve distance
 
@@ -176,10 +193,11 @@ a sidecut or an edge line, including sharp corners.
 
 **Directions, physically.** For a chain that lies in a plane:
 
-- **"Normal offset"** moves **out of that plane**: the tests show a line in XY offset along +Z.
-- **"Binormal offset"** moves **within the plane**, toward or away from the curve's centre of curvature.
+- **"Out of plane"** (the region's Offset type; internally NORMAL) moves **out of that plane**: the tests show a line in XY offset along +Z. Its fields are "Start / End out-of-plane offset"; the flip is **Flip out-of-plane direction** (the path frame's T x N axis).
+- **"In plane"** (internally BINORMAL) moves **within the plane**, toward or away from the curve's centre of curvature. Its fields are "Start / End in-plane offset"; the flip is **Flip in-plane direction** (the path frame's transported normal).
+- **"Both"** applies the two together.
 
-The names are the reverse of the usual Frenet naming. Describe results by these physical directions.
+Since the labels were renamed (2026-09-26, "path-frame labels") the dialog says what the offset does; internally the names are still the reverse of the usual Frenet naming, so a saved feature or a script still reads NORMAL = out of plane.
 
 **Arcs.** **Source arcs** chooses:
 
@@ -231,8 +249,8 @@ have no test studio.
 
 1. **UI text** for Wrap Curve and Wrap and Loft still says Frenet "can flip at inflections"; it no longer does.
    Deform's text is corrected.
-2. **Offset edges direction names** are swapped relative to their physical meaning (2.5).
+2. **Offset edges** internal enum names (NORMAL / BINORMAL) are still swapped relative to the physical meaning; the dialog labels are now "Out of plane" / "In plane" (2.5).
 3. **Pending re-pin** of the public tabs to a newer engine version (uncommitted at the time of writing).
-4. **Deform** turns every face into a fill.
+4. **Deform** fills faces only when Face builder = Fill; the default maps every face's surface, and is labelled "(test)" in the dialog.
 5. **Measure curve distance**: its directional modes are unverified, and deleted features' rows persist.
 6. The public features have **no tests**.

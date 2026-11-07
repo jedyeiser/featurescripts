@@ -25,23 +25,23 @@
       "params": [
         [
           "Group 0",
-          "First rail (edges joined); Flip? reverses it."
+          "First rail (edges joined, open or closed); Reverse Group 0 flips the automatic pairing."
         ],
         [
           "Group 1",
-          "Second rail."
+          "Second rail; sets the direction."
         ],
         [
-          "Initial curve scalefactor",
+          "Initial curve scale factor",
           "-0.5 = on Group 0, 0 = halfway, +0.5 = on Group 1."
         ],
         [
-          "Final curve scalefactor",
+          "Final curve scale factor",
           "The value at the end."
         ],
         [
-          "Transition Type",
-          "Linear / Sinusoidal / Logistic."
+          "Transition type",
+          "Linear / Sinusoidal / Logistic / Smootherstep."
         ],
         [
           "Curve name",
@@ -49,11 +49,11 @@
         ],
         [
           "Project onto surface?",
-          "+ face: drop the result onto it."
+          "+ Projection face: each sample moves to the nearest point of the face."
         ],
         [
           "Debug & Details",
-          "Show ends / curves; output samples, tolerance, degree; input sampling."
+          "Show ends / curves; print; Minimum samples, Scaled tolerance, degree, Sample spacing."
         ]
       ]
     },
@@ -62,7 +62,7 @@
       "title": "Example: SC3",
       "image": "docs/explainers/gordon_surface/img/fig04_scaled_curve.png",
       "head": "Arcs R100 and R200, scale factor 0",
-      "body": "An exact R150 arc (within 0.00062 mm) -- but only its first radian: the known arc bug. SC0: lines y = 0 and y = 100 -> y = 50; SC2: output degree 5."
+      "body": "An exact R150 arc (the whole arc since the 2026-09-26 rewrite). SC0: lines y = 0 and y = 100 -> y = 50; SC2: output degree 5; SC5: concentric circles -> one closed R150 curve."
     },
     {
       "type": "outputs",
@@ -75,9 +75,14 @@
       ],
       "messages": [
         [
-          "(none)",
-          "",
-          ""
+          "Info",
+          "Sampling capped; closed groups with different factors give an open curve; deviation between samples.",
+          "Appears only when relevant."
+        ],
+        [
+          "Error",
+          "Group 0 and Group 1 must both be closed or both be open.",
+          "Mixed open / closed rails."
         ]
       ]
     },
@@ -86,13 +91,13 @@
       "items": [
         {
           "kind": "limit",
-          "head": "Arcs: first radian only",
-          "body": "On arc rails the result stops after 1 rad of each arc (bug; SC3 checks only the radius)."
+          "head": "Matched by length",
+          "body": "Rails are paired by arc-length fraction and oriented automatically; Reverse Group 0 overrides."
         },
         {
           "kind": "limit",
-          "head": "Matched by parameter",
-          "body": "Not by length: uneven rails skew the blend. Orientation is manual (Flip)."
+          "head": "Between samples",
+          "body": "The curve is a fit; a smaller Sample spacing tightens it (an info note reports the deviation)."
         },
         {
           "kind": "limit",
@@ -114,7 +119,7 @@
         ],
         [
           "Tests",
-          "Gordon tools tests: SC0-SC3"
+          "Gordon tools tests: SC0-SC7"
         ],
         [
           "Examples",

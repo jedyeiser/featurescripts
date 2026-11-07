@@ -91,7 +91,8 @@ edge split.
 | **Curves to adjust** | Wire bodies (not sketch). |
 | **Cut location** | See the list below. |
 | **Return single wire** | (Split) Keep one wire with more edges, split in place. Off: each piece becomes its own wire and the source is deleted, so downstream references to the source break. |
-| **Keep opposite side** | (Trim) By default the end-side piece is kept. |
+| **Keep opposite side** | (Trim, every cut location except Distance from point) By default the end-side piece is kept. |
+| **Side to keep** | (Trim, Distance from point only; since 2026-10) **Toward point** (default) keeps the side of the cut that contains the From point; **Away from point** keeps the far side and removes the stretch between the point and the cut. Replaces Keep opposite side in this mode. |
 | **Debug** | Print the inflection solve; print the cuts. |
 
 **Cut location.**
@@ -99,7 +100,7 @@ edge split.
 - **At points** (default): the **Cut points**. A pick off the curve is projected onto it; the preview draws a dashed
   line.
 - **Up to entity**: where the curve meets an entity.
-- **Distance from point**: a **From point** and a signed **Distance** (+ **Opposite direction**). In Split, add
+- **Distance from point**: a **From point** and a signed **Distance** (+ **Opposite direction**). In Trim, **Side to keep** picks which side survives. In Split, add
   **Additional distances** and **Also split at reference point**.
 - **Even division**:
   - **Between two points**: segments; this also cuts at both points.
@@ -140,6 +141,7 @@ edge split.
 **Limits.**
 
 - Trim uses only the first cut.
+- Trim removes the cut-off part from the wire **in place** (the wire body, and references to it, survive) when that is safe; if the cutting plane crosses the wire more than once, or the two ends are nearly equally far from the cut, it falls back to extracting the kept piece as a new wire and deleting the source, so references to the source can break. If the wrong side was kept in place it errors "Trim kept the wrong side of the curve. Try the other Keep setting."
 - Distance mode's positive direction is the path direction, but Spacing mode goes away from the midpoint by default.
 - Spacing cuts past an end are dropped silently; Distance cuts past an end error.
 - Up to entity uses each edge's nearest point, so an entity that never touches the curve still cuts at the nearest

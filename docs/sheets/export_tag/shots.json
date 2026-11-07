@@ -4,10 +4,10 @@
     "shots":  [
                   {
                       "elem":  "40ddd837fc2586ab9a75239f",
+                      "wait":  25,
                       "dialog":  "docs/sheets/export_tag/shots/dialog.png",
-                      "featurePrefix":  "ZT1",
                       "graphics":  "docs/sheets/export_tag/shots/graphics.png",
-                      "wait":  25
+                      "feature":  "Base_Export"
                   }
               ]
 }

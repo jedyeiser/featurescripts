@@ -1,7 +1,7 @@
 {
  "doc": "69ab3696c014c05409202108", "ws": "c176011bc60a3f918e673d98",
  "shots": [
-  {"elem": "6f6663471943470d21a4ffe3", "feature": "S4 full solid strips, width 10, thickness 2 mid-plane", "view": "iso", "fit": true, "wait": 30,
+  {"elem": "6f6663471943470d21a4ffe3", "featurePrefix": "S3 half sheet strips, width 16, wires kept", "view": "iso", "fit": true, "wait": 30,
    "dialog": "docs/sheets/evenly_divide_surface/shots/dialog_strips.png",
    "graphics": "docs/sheets/evenly_divide_surface/shots/render_strips.png"}
  ]

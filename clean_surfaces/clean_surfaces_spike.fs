@@ -70,7 +70,7 @@ export const cleanSurfacesSpike = defineFeature(function(context is Context, id 
                     break;
                 }
             }
-            println("S" ~ k ~ " " ~ info ~ " | REPLACE " ~ rres);
+            say("S" ~ k ~ " " ~ info ~ " | REPLACE " ~ rres);
             opDeleteBodies(context, rid + "del", { "entities" : rb });
 
             // ---- void + fill ----
@@ -98,7 +98,7 @@ export const cleanSurfacesSpike = defineFeature(function(context is Context, id 
                     try
                     {
                         opBoolean(context, fid + "join", { "tools" : qUnion([fill, fb]), "operationType" : BooleanOperationType.UNION });
-                        fres = fres ~ "; sewn: " ~ stats(context, qCreatedBy(fid + "join", EntityType.BODY));
+                        fres = fres ~ "; sewn: " ~ stats(context, qBodyType(qCreatedBy(fid, EntityType.BODY), BodyType.SHEET));
                     }
                     catch (e)
                     {
@@ -110,12 +110,25 @@ export const cleanSurfacesSpike = defineFeature(function(context is Context, id 
                     fres = fres ~ "; fill " ~ mode ~ " " ~ e.message;
                 }
             }
-            println("S" ~ k ~ " VOID+FILL " ~ fres);
+            say("S" ~ k ~ " VOID+FILL " ~ fres);
             opDeleteBodies(context, fid + "cleanup", { "entities" : qCreatedBy(fid, EntityType.BODY) });
         }
     });
 
-/** One line about a face: width, area, perimeter, whether any of its edges is naked, surface type. */
+/** println in 60-character pieces (the notices monitor truncates long console lines). */
+function say(text is string)
+{
+    var s = text;
+    while (length(s) > 0)
+    {
+        const n = min(60, length(s));
+        println("  ." ~ substring(s, 0, n));
+        s = substring(s, n);
+    }
+}
+
+/** One line about a face:
+ width, area, perimeter, whether any of its edges is naked, surface type. */
 function sliverInfo(context is Context, face is Query) returns string
 {
     const area = evArea(context, { "entities" : face }) / millimeter ^ 2;

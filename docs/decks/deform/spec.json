@@ -44,7 +44,11 @@
       "params": [
         [
           "Mode",
-          "Bodies (one solid or sheet) / Faces."
+          "Bodies (one or more, each its own result) / Faces."
+        ],
+        [
+          "Mate connectors to deform",
+          "Carried through the same deform; one on a source body goes onto its result."
         ],
         [
           "From data",
@@ -60,7 +64,11 @@
         ],
         [
           "Setup",
-          "Sampling, degree, max control points, tolerance; Use face guide points; Keep wires."
+          "Sampling, degree, max control points, tolerance; Face / Edge accuracy (0 = off); Face builder (default: map every face); Mapped surface accuracy; Use face guide points (not with map-every-face); Keep wires."
+        ],
+        [
+          "Naming",
+          "Name suffix appended to each source name (default \" (deformed)\")."
         ],
         [
           "Debug",
@@ -74,14 +82,14 @@
       "keys": [
         [
           "(body)",
-          "A new body (the source stays); solids closed into solids."
+          "A new body per source body (the source stays); solids closed into solids."
         ]
       ],
       "messages": [
         [
           "Console",
-          "per-face WARNING / ERROR, OPEN END reports",
-          "Check for a missing face or a sheet instead of a solid."
+          "per-face WARNING / ERROR, OPEN END reports; accuracy report (debug)",
+          "Faces that cannot be rebuilt are also a feature warning, highlighted. Check for a missing face or a sheet instead of a solid."
         ]
       ]
     },
@@ -90,13 +98,13 @@
       "items": [
         {
           "kind": "limit",
-          "head": "Every face is a fill",
-          "body": "Planes and cylinders are not kept as such; inner loops may fail."
+          "head": "Fill loses plane / cylinder",
+          "body": "With Face builder = Fill, planes and cylinders are not kept as such. The default maps every face's own surface (labelled test); inner loops may fail."
         },
         {
           "kind": "tip",
           "head": "Guide points",
-          "body": "Turn on Use face guide points when fills do not follow the face."
+          "body": "With Fill, turn on Use face guide points when fills do not follow the face."
         },
         {
           "kind": "limit",

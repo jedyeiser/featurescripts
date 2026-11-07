@@ -65,7 +65,7 @@ constant offset of a planar sketch curve or a face offset.
 DEO (DEO:53-82; predicates EOU:2795-2988): Measure along World X / Along source (default) / Along reference; Name;
 Offset spacing definition group (Along reference only): Reference wire, Offset delta (-50..50 mm, 0), Flip offset
 delta, Hold length in the reference surface (off); Offset alignment Along (default) / World; Break output at Every
-source edge (default) / Corners and offset breaks; Offset edges; Offset profile; Corners group: Where the offset gaps
+source edge (default) / Corners and offset breaks; Varying offset on arcs Spline (default) / Biarc fit (added 2026-09-25: where the offset edges are arcs and the offset changes along them the result is not an arc; Spline = one spline per run, Biarc fit = two or more tangent circular arcs per run within the approximation tolerance, a spline where that would take more than 8; a constant offset on an arc is an exact arc either way; shared predicate offsetArcFitPredicate EOU:2943, DEO:92, key arcSourceFit); Offset edges; Offset profile; Corners group: Where the offset gaps
 Round with an arc (default) / Extend to a sharp corner / Leave open; Where the offset crosses Trim to the crossing
 (default) / Leave crossing; Ends group: Start plane (MC or planar face), Start direction, End plane, End direction,
 Allow extension (on); Zero point (MC or vertex); Spacing & approximation: Offset spacing Control points (multiplier
@@ -76,7 +76,7 @@ chain ends (green start red end), Visualize continuity, Print offset table, Prin
 (DEO:91-96) back-fills joinTangentRuns, runBreakMode.
 DOS (DOS:110-201): Surface Ruled from offset (default) / Connect source to offset / Loft between profiles; Name; Offset
 edges, Zero point, Measure along, reference group, Offset alignment; Break output at (local, default Every source edge
--- changing once re-ran SW_Rout_Surface with 3 runs instead of 7, DOS:126-134, correction 25); Offsets array (Offset
+-- changing once re-ran SW_Rout_Surface with 3 runs instead of 7, DOS:126-134, correction 25); Varying offset on arcs Spline (default) / Biarc fit (same predicate as DEO, DOS:136); Offsets array (Offset
 profile, Name); Ruled: Rule along Width / Height, Distance (+-10 m, 10 mm), Both directions, Sections across the
 ruling (2..25, 5; reference only); Loft: Blend through profiles (off -> ruled patches between adjacent profiles); Keep
 offset wires (off); Corners, Ends, Spacing, Debug as DEO; Surface debug: Print surface, Only run (-1 all), Keep
@@ -88,7 +88,7 @@ measurements, Print profile table). Keys match DEO so one definition means the s
 frames depend on it) (EO:89).
 CoP (CoP:88-250): Mode Regions (default) / Points. Regions array: Name (editing logic fills "Region n"); Start station
 Enter X / At point (Start X, or Start point + Start offset along X); End station same; Shape Constant / Linear
-(default) / Smooth; Constant -> Width, Height; else Start/End width, Start/End height, Start/End buffer (>=0).
+(default) / Smooth / Quadratic (a parabola flat at one end, chosen by Flat at Start (default) / End; offset_profile_core.fs:48-56, 148-155); Constant -> Width, Height; else Start/End width, Start/End height, Start/End buffer (>=0).
 Intersections array (auto, one per consecutive pair): First/Second region (read-only), Blend (off) -> Continuity with
 first (G1) + Distance into first, Continuity with second (G1) + Distance into second. Points array: Station (Enter X /
 At point), X or point + offset, Width, Height, To next point Smooth (default) / Linear / Hold. Debug: Print segments.
@@ -97,9 +97,9 @@ start keeping settings when names match. Manipulators: two drag arrows per blend
 region B start +X), clamped, magenta points (CoP:359-413).
 
 ## 4 Outputs
-DEO: one wire per chain link (joined) or loose curves, named (DEO:1313-1330). Keys (publishOutputs DEO:1350-1393):
-curveCount, start/endAction, start/endDistance, start/endSquareness, start/endKink, cornerArcCount, cornerArcRadii
-(+ standard output, outputFaces/Edges/Vertices, inputs). Notices: regenError "The offset profile does not reach any
+DEO: one wire per chain link (joined) or loose curves, named (DEO:1313-1330). Keys (embedStandardOutputs, DEO:1620; corrected 2026-11-06 -- the earlier list (curveCount,
+start/endAction, Distance, Squareness, Kink, cornerArcCount, cornerArcRadii) is not published): queries only, no variables --
+startVertex, endVertex, startEdge, endEdge, cornerArcs (+ standard output, outputFaces/Edges/Vertices, inputs). Notices: regenError "The offset profile does not reach any
 of the offset edges" (DEO:324); NOTE break snapped to vertex, zero-length run not emitted (DEO:985-1004, 1262); ORT
 WARNING corner / short run / "lies past its terminal" / extension over budget; NOTE folds, extension off; regenError
 "runs parallel to its terminal plane", "direction lies in the terminal plane" (ORT:211-607).
@@ -109,8 +109,8 @@ two offsets", named break "inside a run of 'X'" (DOS:329), "No run is covered by
 separate stretches; this mode used the longest" (DOS:1106); WARNING "The loft refused k of n patches... hole at
 run:profiles..." (DOS:1932); NOTE "kernel refused an exact patch... falling back to a loft".
 EO: one wire per continuous piece; lines where straight else spline; no arcs, no end derivatives (EO:866-909). Keys
-pieceCount, breakCount, breakStations, startStation, endStation, measuredStations, stationCount; piece1..N,
-startVertex, endVertex, breakVertices (EO:911-961). NOTE dropped stations past the centre of curvature (EO:682).
+(embedStandardOutputs, EO:998; corrected 2026-11-06) variables breakStations, startStation, endStation; queries piece1..N,
+startVertex, endVertex, breakVertices. No pieceCount, breakCount, measuredStations or stationCount. NOTE dropped stations past the centre of curvature (EO:682).
 CoP: one wire per piece; each segment its own exact Bezier edge joined by opExtractWires (CoP:998-1052); blend edges
 magenta while editing. Keys pieceCount, breakCount, breakStations, start/endStation, piece1..N,
 startVertex/endVertex, breakVertices (CoP:1057-1095). No Name param. Errors (CoP:269, 469, 554-559, 755, 776, 809,
@@ -138,7 +138,7 @@ EO: describeTargets (EO:185; non-rational, correction 39) -> offsetStationBase/F
 (EO:545) rejects wrong-side cuts -> measuredRows (EO:643; w = (P-O).W, h = (P-O).H) -> buildPieces (EO:699) ->
 emitPieces -> publish.
 CoP: resolveStations (CoP:447) -> regionPieces (CoP:745) / pointPieces (CoP:873): segments = polynomial in x: constant
-buffer deg 1; linear deg 1; smootherstep 6u^5 - 15u^4 + 10u^3 deg 5 (CoP:506-516); Hermite blend with analytic
+buffer deg 1; linear deg 1; smootherstep 6u^5 - 15u^4 + 10u^3 deg 5 (CoP:506-516); quadratic u^2 or 2u - u^2 deg 2 (offset_profile_core.fs:477-500); Hermite blend with analytic
 derivatives deg n0+n1+1 (CoP:611-680) -> bernsteinOf (CoP:971; exact Bezier) -> buildPiece (CoP:998) -> publish.
 
 ## 6 Examples

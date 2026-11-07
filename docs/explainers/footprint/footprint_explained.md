@@ -319,7 +319,9 @@ region's origin (tip -> FCP, RSL -> MRS, tail -> ACP).
 | `arcFit.fs` | Arc fit; also used by Integrate (Strict) and Scale (Strict arcs). |
 | `getFootprintPoints.fs` | Generate Footprint Points and the "Footprint Points" table. |
 
-`footprintAnalytics.fs` (an older analyzer) and `footprint_config.fs` are unused.
+`footprintAnalytics.fs` (an older analyzer) was deleted on 2026-09-26 (copy:
+`archive/deleted_tabs_2026-09-26/footprint/footprintAnalytics.fs.txt`); `footprint_config.fs` is not imported by any
+footprint file. CLAUDE.md lists `footprint/` as archived, yet its tabs were still edited and pushed up to 2026-10-06.
 
 **Tests.** `devtools/onshape/build_footprint_tests.py` builds the "Footprint tests" studio from analytic fixtures
 (FX1-FX12). `check_footprint_tests.py` measures every case: AF1-7, GP1-3, AR1-4, IF1-8, SF1/2/5. It passed 25/25 on

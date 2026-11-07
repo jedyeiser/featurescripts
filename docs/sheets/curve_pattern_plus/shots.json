@@ -1,0 +1,8 @@
+{
+ "doc": "6bb5012bb1984f39a42c080e", "ws": "294e252e6c71add20fdb720d",
+ "shots": [
+  {"elem": "447e4d08b17a7e2798876176", "feature": "Curve pattern plus 1", "view": "iso", "wait": 30,
+   "dialog": "docs/sheets/curve_pattern_plus/shots/dialog_pattern.png",
+   "graphics": "docs/sheets/curve_pattern_plus/shots/render_copies.png"}
+ ]
+}
