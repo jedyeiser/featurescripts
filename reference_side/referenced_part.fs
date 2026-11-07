@@ -4,7 +4,7 @@ import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: reference_side_utils.fs
 import(path : "9aebe5ead538258b285aec19", version : "51d2aab9634029141009803d");
 // IMPORT: offset_plus.fs (Offset+, every surface offset)
-import(path : "742e5b3f04cc9115de8b6d8a", version : "0b41870364cf9b0f0e7c8cd3");
+import(path : "742e5b3f04cc9115de8b6d8a", version : "b2fa75b6c09738d8bdf54e9e");
 // IMPORT: split_plus.fs (Split+, periphery and cap cuts)
 import(path : "637854639ad04840dc6f998d", version : "f803257d22d5a7ba34163ec7");
 // IMPORT: thicken_plus.fs (Thicken+, the Thickened mode)
