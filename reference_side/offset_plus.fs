@@ -74,6 +74,30 @@ export enum SurfaceOffsetDirection
     TANGENT
 }
 
+/**
+ * How a SURFACE offset is built (2026-11-06). The built-in surface offset fails for some distances and surfaces (a zero-area
+ * sliver face, a tight concave patch, or no obvious reason: on one surface +0.95 mm failed while +1.5 mm worked).
+ * Thickening the surface by the same distance and keeping the cap on the offset side gives the offset surface in those cases.
+ */
+export enum OffsetMethod
+{
+    annotation { "Name" : "Auto" }
+    AUTO,
+    annotation { "Name" : "Direct" }
+    DIRECT,
+    annotation { "Name" : "Thicken" }
+    THICKEN
+}
+
+/** A face smaller than this is a sliver: the surface offset cannot place its offset face. */
+const SLIVER_AREA = 0.1 * millimeter ^ 2;
+
+/** Face samples per parameter direction for the concavity check. */
+const CURVATURE_SAMPLES = 6;
+
+/** The per-face retry that hints at the failing faces runs for surfaces of at most this many faces. */
+const PER_FACE_RETRY_LIMIT = 150;
+
 /** Junctions with a tangent break below this are smooth, not corners. */
 export const G1_JUNCTION_ANGLE = 0.5 * degree;
 
@@ -97,6 +121,10 @@ export const offsetPlus = defineFeature(function(context is Context, id is Id, d
             annotation { "Name" : "Faces and surfaces to offset",
                         "Filter" : (EntityType.FACE || (EntityType.BODY && BodyType.SHEET)) && ConstructionObject.NO && SketchObject.NO }
             definition.surfaces is Query;
+
+            annotation { "Name" : "Offset method", "Default" : OffsetMethod.AUTO, "UIHint" : UIHint.SHOW_LABEL,
+                        "Description" : "Direct: the built-in surface offset. Thicken: thicken each surface by the distance and keep the cap on the offset side. Auto: Direct, and where it fails, Thicken (a warning names the surfaces). When both fail the faces that cause it are shown in red." }
+            definition.offsetMethod is OffsetMethod;
         }
         else
         {
@@ -175,6 +203,7 @@ export const offsetPlus = defineFeature(function(context is Context, id is Id, d
         }
     }, {
         "offsetType" : OffsetPlusType.SURFACE,
+        "offsetMethod" : OffsetMethod.AUTO,
         "frameMode" : OffsetFrameMode.TRANSPORT,
         "surfaceDirection" : SurfaceOffsetDirection.NORMAL,
         "normalSurface" : qNothing(),

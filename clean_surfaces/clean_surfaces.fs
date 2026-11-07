@@ -76,7 +76,7 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
         opPattern(context, id + "copy", {
                     "entities" : qUnion(sources),
                     "transforms" : [identityTransform()],
-                    "instanceNames" : ["Clean surfaces diagnose"]
+                    "instanceNames" : ["Clean_surfaces_diagnose"]
                 });
         const copy = qCreatedBy(id + "copy", EntityType.BODY);
 
