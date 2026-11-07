@@ -4,7 +4,7 @@
   "tagline": "Flip surfaces so their normals point toward -- or away from -- a reference, so every feature downstream that follows the normal keeps working whatever happens upstream.",
   "document": "Reference_Side_Features",
   "icon": "icons/final/orient_to_reference_icon.svg",
-  "status": "Draft 2026-09-25",
+  "status": "Draft 2026-09-25 (reviewed 2026-11-06, no change needed)",
   "slides": [
     {
       "type": "why",

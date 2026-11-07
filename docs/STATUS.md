@@ -26,18 +26,18 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 
 | id | title | state | flags | file | last change |
 |---|---|---|---|---|---|
-| d_mutual_trim_plus | Mutual Trim+ | **draft** | code changed since written | `docs/decks/mutual_trim_plus/mutual_trim_plus.pptx` | 2026-09-25 written by Claude |
-| d_split_plus | Split+ | **draft** | code changed since written | `docs/decks/split_plus/split_plus.pptx` | 2026-09-25 written by Claude |
-| d_offset_plus | Offset+ | **draft** | code changed since written | `docs/decks/offset_plus/offset_plus.pptx` | 2026-09-25 written by Claude |
-| d_thicken_plus | Thicken+ | **draft** | code changed since written | `docs/decks/thicken_plus/thicken_plus.pptx` | 2026-09-25 written by Claude |
-| d_orient_to_reference | Orient to reference | **draft** | code changed since written | `docs/decks/orient_to_reference/orient_to_reference.pptx` | 2026-09-25 written by Claude |
+| d_mutual_trim_plus | Mutual Trim+ | **draft** | - | `docs/decks/mutual_trim_plus/mutual_trim_plus.pptx` | 2026-11-06 written by Claude |
+| d_split_plus | Split+ | **draft** | - | `docs/decks/split_plus/split_plus.pptx` | 2026-11-06 written by Claude |
+| d_offset_plus | Offset+ | **draft** | - | `docs/decks/offset_plus/offset_plus.pptx` | 2026-11-06 written by Claude |
+| d_thicken_plus | Thicken+ | **draft** | - | `docs/decks/thicken_plus/thicken_plus.pptx` | 2026-11-06 written by Claude |
+| d_orient_to_reference | Orient to reference | **draft** | - | `docs/decks/orient_to_reference/orient_to_reference.pptx` | 2026-11-06 written by Claude |
 | d_clean_wire | Clean wire | **draft** | - | `docs/decks/clean_wire/clean_wire.pptx` | 2026-11-06 written by Claude |
 | d_map_curve | Map curve | **draft** | - | `docs/decks/map_curve/map_curve.pptx` | 2026-11-06 written by Claude |
 | d_merge_curve | Merge curve | **draft** | - | `docs/decks/merge_curve/merge_curve.pptx` | 2026-09-25 written by Claude |
 | d_evaluate_profiles | Evaluate profiles | **draft** | - | `docs/decks/evaluate_profiles/evaluate_profiles.pptx` | 2026-11-06 written by Claude |
 | d_fillet_wire | Fillet wire | **draft** | - | `docs/decks/fillet_wire/fillet_wire.pptx` | 2026-09-25 written by Claude |
 | d_recognize_arcs | Recognize arcs | **draft** | - | `docs/decks/recognize_arcs/recognize_arcs.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_extract_variables | Extract variables | **draft** | code changed since written | `docs/decks/extract_variables/extract_variables.pptx` | 2026-09-25 written by Claude |
+| d_extract_variables | Extract variables | **draft** | - | `docs/decks/extract_variables/extract_variables.pptx` | 2026-11-06 written by Claude |
 | d_case_pattern | Case pattern (Define case, Case, Close case) | **draft** | - | `docs/decks/case_pattern/case_pattern.pptx` | 2026-09-29 written by Claude |
 | d_driven_edge_offset | Driven edge offset | **planned** | - | `docs/decks/driven_edge_offset/driven_edge_offset.pptx` |   |
 | d_driven_offset_surface | Driven offset surface | **planned** | - | `docs/decks/driven_offset_surface/driven_offset_surface.pptx` |   |

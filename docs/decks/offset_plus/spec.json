@@ -4,7 +4,7 @@
   "tagline": "Offset surfaces, or curves, toward the side a reference is on -- surfaces of opposite orientation all move the same way, and curves offset in the frame you choose.",
   "document": "Reference_Side_Features",
   "icon": "icons/final/offset_plus_icon.svg",
-  "status": "Draft 2026-09-25",
+  "status": "Draft 2026-09-25 (text refreshed 2026-11-06)",
   "slides": [
     {
       "type": "why",
@@ -77,8 +77,12 @@
           "Each body is offset toward the reference's side of THAT body."
         ],
         [
+          "Offset method",
+          "Auto (default): the built-in offset, and where it fails, thicken by the distance and keep the cap on the offset side (an info note names the surfaces). Direct: the built-in offset only. Thicken: thicken only."
+        ],
+        [
           "Distance",
-          "Offset distance."
+          "Signed. Positive: toward the reference (without one: along the normal). Negative: the other way. 0: an unmoved copy."
         ],
         [
           "Side reference",
@@ -87,6 +91,10 @@
         [
           "Offset toward reference",
           "The arrow. On: toward the reference. Off: away from it."
+        ],
+        [
+          "Output name",
+          "Optional. Names the offset bodies."
         ],
         [
           "Debug",
@@ -111,12 +119,8 @@
       },
       "params": [
         [
-          "Offset type",
-          "CURVE."
-        ],
-        [
-          "Curves and edges to offset",
-          "Connected edges form one chain; each chain becomes one wire."
+          "Offset type / Curves and edges to offset",
+          "CURVE. Connected edges form one chain; each chain becomes one wire."
         ],
         [
           "Frame",
@@ -128,7 +132,7 @@
         ],
         [
           "Distance",
-          "Offset distance."
+          "Signed: negative goes the other way; 0 gives the chain's own edges as a wire."
         ],
         [
           "Side reference",
@@ -137,6 +141,10 @@
         [
           "Offset toward reference",
           "The arrow: toward / away."
+        ],
+        [
+          "Output name",
+          "Optional. Names the offset wires."
         ],
         [
           "Fit",
@@ -212,9 +220,19 @@
           "The corner counts are reported here only (not published)."
         ],
         [
+          "Info",
+          "The direct offset failed on surface k; it was built by thickening ...",
+          "Offset method Auto fell back to Thicken for those surfaces; the feature stays clean. Check the result where the surface folds."
+        ],
+        [
           "Warning",
           "N corner(s) could not be closed ... The wire has a gap at each.",
           "A corner sharper than the offset allows, or skew 3D pieces. Reduce the distance or split the chain there."
+        ],
+        [
+          "Error",
+          "Offsetting surface k by d mm failed (...)",
+          "Every allowed method failed. The message names the cause; the faces that cause it are shown in red (slivers, faces concave on the offset side with radius under the distance)."
         ],
         [
           "Error",

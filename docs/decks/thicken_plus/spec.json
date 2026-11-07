@@ -4,7 +4,7 @@
   "tagline": "Onshape's Thicken, with the two thicknesses named 'toward reference' and 'away from reference' instead of by the face normal -- the boolean step unchanged.",
   "document": "Reference_Side_Features",
   "icon": "icons/final/thicken_plus_icon.svg",
-  "status": "Draft 2026-09-25",
+  "status": "Draft 2026-09-25 (text refreshed 2026-11-06)",
   "slides": [
     {
       "type": "why",
@@ -74,8 +74,8 @@
           "The arrow: exchange the two thicknesses."
         ],
         [
-          "Keep tools",
-          "Keep the input surfaces."
+          "Keep tools / Output name",
+          "Keep the input surfaces. Output name (only with Creation type New): optional, names the new bodies."
         ],
         [
           "Advanced",
@@ -114,19 +114,19 @@
       "keys": [
         [
           "output",
-          "The thickened bodies (or the parts they merged into)."
+          "The thickened bodies (or the parts they merged into; with Remove / Intersect, the parts the boolean changed)."
         ],
         [
           "towardFaces",
-          "The faces on the reference's side (at the Toward thickness)."
+          "The faces on the reference's side: the cap of the thicken at the Toward thickness."
         ],
         [
           "awayFaces",
-          "The faces on the other side (on the input surface when Away is 0)."
+          "The faces on the other side: the other cap (it sits on the input surface when Away is 0)."
         ],
         [
           "sideFaces",
-          "The faces around the edges of the thickened surfaces."
+          "The remaining faces: those around the edges of the thickened surfaces."
         ]
       ],
       "messages": [

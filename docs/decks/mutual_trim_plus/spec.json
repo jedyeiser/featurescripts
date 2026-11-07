@@ -4,7 +4,7 @@
   "tagline": "Onshape's mutual trim, with the side to keep on each surface named by a reference instead of by a flip -- so the trim keeps the right corner whatever the surfaces' orientations.",
   "document": "Reference_Side_Features",
   "icon": "icons/final/mutual_trim_plus_icon.svg",
-  "status": "Draft 2026-09-25",
+  "status": "Draft 2026-09-25 (text refreshed 2026-11-06)",
   "slides": [
     {
       "type": "why",
@@ -126,7 +126,7 @@
         ],
         [
           "trimEdges",
-          "The intersection edges the trim left -- where to fillet. Tracked through the merge."
+          "The trim curve only -- the intersection edges where to fillet (not the pieces of a sheet's outer boundary the extended imprint split). Tracked through the merge."
         ],
         [
           "keptFaces1",

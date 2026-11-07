@@ -1,22 +1,22 @@
 {
   "slug": "split_plus",
   "title": "Split+",
-  "tagline": "Split parts, surfaces, curves or faces with several tools. Optionally supply reference geometry from which we can establish a more stable definition of which side of the geometry to split we intend to keep or remove",
+  "tagline": "Split parts, surfaces, curves or faces at a start tool and an optional end tool. Pieces are named inside / outside (start, end) from geometry you pick, so the side to keep does not depend on any normal.",
   "document": "Reference_Side_Features",
   "icon": "icons/final/split_plus_icon.svg",
-  "status": "Draft 2026-09-25 (review 1 applied)",
+  "status": "Draft 2026-09-25 (text refreshed 2026-11-06 for Split+ v2)",
   "slides": [
     {
       "type": "why",
       "title": "What it does",
-      "problem": "The built-in Split keeps \"front\" or \"back\" of one tool. That choice is tied to the tool's normal, which flips whenever an upstream loft, offset, mirror or sketch changes. Split+ splits by many tools at once and names the side to keep with geometry: a reference that lies on that side.",
+      "problem": "The built-in Split keeps \"front\" or \"back\" of one tool. That choice is tied to the tool's normal, which flips whenever an upstream loft, offset, mirror or sketch changes. Split+ cuts at a start tool and an optional end tool and names every piece inside or outside -- with an inside reference, inside is the side of each tool that reference is on.",
       "useWhen": [
-        "A body must be cut by several planes or surfaces in one step",
-        "You keep one side, and the tools' normals may change upstream",
-        "Later features need the pieces by position: start, middle, end"
+        "A body must be cut by two planes or surfaces in one step",
+        "You keep the inside or the outside, and the tools' normals may change upstream",
+        "Later features need the pieces by name: inside, start, end"
       ],
       "image": "docs/decks/split_plus/shots/hero.png",
-      "caption": "Split+ open on a ski topsheet: the target and the two tools (Station A and B) highlight."
+      "caption": "Split+ open on a ski topsheet: the target and the two tools (Station A = start tool, B = end tool) highlight."
     },
     {
       "type": "concept",
@@ -33,7 +33,7 @@
         },
         {
           "head": "Drop-in",
-          "body": "With no reference, Split+ behaves exactly like the built-in Split."
+          "body": "With one tool and no reference, inside is the tool's front, as in the built-in Split (an info notice says so)."
         }
       ]
     },
@@ -47,37 +47,37 @@
           "body": "For each tool: s = (P - C) . n at the closest point. s > 0: the reference is in front of the tool."
         },
         {
-          "head": "Per tool",
-          "body": "Each tool keeps the reference's side (box on) or the other side (box off). What survives is on the reference's side of every tool."
+          "head": "Inside = the reference's side of every tool",
+          "body": "With an inside reference, inside is the side of each tool it is on; outside is everything else."
         },
         {
           "head": "No reference",
-          "body": "Behaves like the built-in: on = each tool's front, off = its back."
+          "body": "Two tools: inside is between the cuts. One tool: inside is the tool's front (info notice)."
         }
       ]
     },
     {
       "type": "concept",
-      "title": "Regions are named by position",
+      "title": "Regions: inside, start, end",
       "image": "docs/explainers/reference_side/img/fig03_split_regions.png",
       "points": [
         {
-          "head": "Pick tools in order",
-          "body": "1 tool: near / far (or front / back). 2 tools: start, middle, end. 3+: start, middle1..N-1, end."
+          "head": "Start tool, optional end tool",
+          "body": "Start = beyond the start tool, end = beyond the end tool, outside = start + end. Inside is what is on the inside of every tool."
         },
         {
           "head": "Orientation never matters",
-          "body": "'Forward' for each tool is the side the next tool is on."
+          "body": "The names follow the reference (or the other tool), not the normals, and not the order Onshape returns several tools in."
         },
         {
           "head": "Crossing tools",
-          "body": "The split is made as asked; region keys are published empty, with an info notice."
+          "body": "A piece beyond both tools counts as outside only (in neither start nor end), with an info notice."
         }
       ]
     },
     {
       "type": "dialogshot",
-      "title": "The dialog: split, keep both sides",
+      "title": "The dialog: split, keep both",
       "screenshot": "docs/decks/split_plus/shots/dialog_both.png",
       "params": [
         [
@@ -86,53 +86,50 @@
         ],
         [
           "Parts, surfaces, or curves to split",
-          "The targets. Every target is split by every tool."
+          "The targets. Every target is split by the tools."
         ],
         [
-          "Entities to split with",
-          "Surfaces, faces, planes or mate connectors, in pick order. Pick them in order along the part: region names follow it."
+          "Start tool",
+          "A surface, face, plane or mate connector. What lies beyond it is the start region; its cut is startCut."
         ],
         [
-          "Keep tools",
-          "Keep sheet-body tools after the split."
+          "End tool",
+          "Optional second cut (endCut). Inside is then between the two tools."
+        ],
+        [
+          "Inside reference",
+          "Geometry in the region you call inside. Needed with one tool to name the sides."
+        ],
+        [
+          "Bodies to keep",
+          "Both (default): every piece is kept and sorted into regions. Inside / Outside: the other region is deleted (next slide)."
         ],
         [
           "Trim to face boundaries",
           "A single-face tool cuts only within its own boundary, as the built-in."
         ],
         [
-          "Keep both sides",
-          "On (default): every piece is kept and sorted into regions. Off: keep one side per tool (next slide)."
-        ],
-        [
-          "Debug",
-          "Print sides: which side of each tool the reference is on, and what was kept."
+          "Keep tools",
+          "Keep sheet-body tools after the split."
         ]
       ]
     },
     {
       "type": "dialogshot",
-      "title": "The dialog: keep one side",
+      "title": "The dialog: keep inside only",
       "screenshot": "docs/decks/split_plus/shots/dialog_one_side.png",
-      "positions": {
-        "Keep side nearest reference": [
-          0.93,
-          0.78,
-          "right"
-        ]
-      },
       "params": [
         [
-          "Keep both sides",
-          "Off: each tool keeps one side."
+          "Bodies to keep",
+          "Inside: the pieces on the inside of every tool survive; the rest is deleted. Outside: the reverse."
         ],
         [
-          "Side reference",
-          "Geometry on the side to keep -- best a mate connector or vertex inside the region you want. Here: Mid (x 900)."
+          "Inside reference",
+          "Geometry inside the region you want -- best a mate connector or vertex. Here: Mid (x 900)."
         ],
         [
-          "Keep side nearest reference",
-          "The arrow. On: keep the side of each tool the reference is on. Off: keep the other side. Without a reference: each tool's front / back."
+          "Debug",
+          "Print sides: which side of each tool is inside and how that was decided, and the pieces of each region."
         ]
       ],
       "note": "Result: only the region between Station A and B survives, whatever way the two planes face (example 2)."
@@ -151,32 +148,32 @@
           "The faces to split. Planes and mate connectors cut them infinitely; surfaces cut as they are."
         ],
         [
-          "Side reference",
-          "Optional. With one tool it names the two regions near / far; it never removes anything here."
+          "Inside reference",
+          "Optional. With one tool it names the inside / outside regions; it never removes anything here."
         ]
       ],
-      "note": "Regions are published as faces: pick 'middle' in Extract variables to fillet or offset only those faces."
+      "note": "Regions are published as faces: pick 'inside' in Extract variables to fillet or offset only those faces."
     },
     {
       "type": "example",
       "title": "Example 1: three regions",
       "image": "docs/decks/split_plus/shots/regions_plan.png",
-      "head": "Topsheet split at Station A (x 300) and B (x 1500), Keep both sides on",
-      "body": "Nothing is removed. The three pieces are published as start (x -19..300), middle (300..1500) and end (1500..1799), and the cut edges as splitEdges -- one edge per cut: 9 edges, 5 at A and 4 at B."
+      "head": "Topsheet split at Station A (x 300, start tool) and B (x 1500, end tool), Bodies to keep: Both",
+      "body": "Nothing is removed. The three pieces are published as start (x -19..300), inside (300..1500) and end (1500..1799), and the cut edges as splitEdges -- one edge per cut: 9 edges, 5 at A and 4 at B."
     },
     {
       "type": "example",
       "title": "Example 2: keep only the middle",
       "image": "docs/decks/split_plus/shots/volume_plan.png",
-      "head": "VOLUME_STD split at Station A and B, Keep both sides off, Side reference = Mid (x 900)",
-      "body": "Each station plane keeps the side Mid is on, so only the part between A and B survives (green); the tip and tail pieces (grey) are removed. Flipping either plane's normal changes nothing -- which the built-in 'keep front / back' cannot promise."
+      "head": "VOLUME_STD split at Station A and B, Bodies to keep: Inside, Inside reference = Mid (x 900)",
+      "body": "Inside is the side of each station plane that Mid is on, so only the part between A and B survives (green); the tip and tail pieces (grey) are removed. Flipping either plane's normal changes nothing -- which the built-in 'keep front / back' cannot promise."
     },
     {
       "type": "example",
       "title": "Example 3: split faces, not bodies",
       "image": "docs/decks/split_plus/shots/faces_plan.png",
       "head": "Face split: the SW_SHELF faces (the shelf along the sidewall) cut at Station A and B",
-      "body": "Nothing is removed and no new body is made: the shelf faces are divided at A and B and published as regions -- start 4 faces, middle 9, end 4. A later feature (a fillet, an offset, a Thicken+) can then work on 'middle' alone, and keeps working when the stations move."
+      "body": "Nothing is removed and no new body is made: the shelf faces are divided at A and B and published as regions -- start 4 faces, inside 9, end 4. A later feature (a fillet, an offset, a Thicken+) can then work on 'inside' alone, and keeps working when the stations move."
     },
     {
       "type": "outputs",
@@ -184,35 +181,31 @@
       "keys": [
         [
           "output",
-          "Every resulting piece."
+          "The pieces kept (faces in a Face split)."
         ],
         [
-          "near / far, start / middle* / end",
-          "The pieces in each region: bodies (solids, surfaces or curves) in a Part split, faces in a Face split."
+          "inside, outside, start, end",
+          "The pieces in each region: bodies (solids, surfaces or curves) in a Part split, faces in a Face split. outside = start + end (and any piece beyond both tools)."
         ],
         [
           "<region>Edges",
           "A region's edges except the cuts (for a surface: its open boundary)."
         ],
         [
-          "outside / inside (+ Edges)",
-          "start + end together / every middle region together."
+          "startCut / endCut",
+          "The cut each tool made: the edge on a kept piece (the inside piece, or the outside piece when keeping only outside). Topsheet example: startCut = the 5 edges at x 300."
         ],
         [
           "splitEdges",
-          "The NEW edges along each cut line -- where a tool crosses a target. Keeping both sides leaves two coincident copies of every cut edge; only one is published. Input edges that were merely cut in two are not included."
-        ],
-        [
-          "cut, startCut / endCut, cut1..N",
-          "splitEdges sorted by the tool that made them (each edge goes to its nearest tool): 1 tool: cut; 2 tools: startCut, endCut; 3+: cut1..cutN. Topsheet example: startCut = the 5 edges at x 300."
+          "Every cut: one edge per cut, on a kept piece. Keeping both sides leaves two coincident copies of every cut edge; only one is published. Input edges that were merely cut in two are not included."
         ],
         [
           "splitFaces",
           "The cap faces the split created on solids (empty for surfaces and in a Face split)."
         ],
         [
-          "pieceCount, regionCount",
-          "Numbers: pieces left; regions the tools define (N + 1 for N tools)."
+          "pieceCount",
+          "Number: the pieces kept. Every key is always present, empty when it does not apply."
         ]
       ]
     },
@@ -222,23 +215,28 @@
       "messages": [
         [
           "Error",
-          "A tool is also a target",
-          "Pick it only once."
+          "The start and end tools are the same / A tool is also a target",
+          "Pick a different end tool; pick each body only once, as target or tool."
         ],
         [
           "Error",
-          "The keep side reference lies on tool k",
-          "Move the reference clearly to one side of that tool."
+          "The inside reference lies on the start / end tool",
+          "The reference has no side of that tool. Move it clearly to one side."
         ],
         [
           "Error",
-          "Nothing is left",
-          "No part of the targets is on the kept side of every tool."
+          "The start and end tools meet or cross ... pick an inside reference",
+          "Without a reference, 'between' is not defined."
+        ],
+        [
+          "Error",
+          "Nothing is left: no piece lies inside / outside",
+          "Bodies to keep removed everything."
         ],
         [
           "Info",
-          "Split done; regions not published: ...",
-          "Tools cross, or were picked out of order. The split itself is fine."
+          "Inside is the start tool's front ... / N piece(s) lie beyond both tools",
+          "One tool and no reference: the names follow the tool's normal. Crossing tools: such pieces count as outside, in neither start nor end."
         ]
       ]
     },
@@ -248,17 +246,17 @@
         {
           "kind": "tip",
           "head": "Use a local reference",
-          "body": "A mate connector or vertex inside the region to keep. A far plane can read the wrong side where the part curves."
+          "body": "A mate connector or vertex inside the region you call inside. A far plane can read the wrong side where the part curves."
         },
         {
           "kind": "tip",
-          "head": "Pick tools along the part",
-          "body": "Region names follow pick order."
+          "head": "Start tool first",
+          "body": "Start = beyond the start tool; the optional end tool gives end. Region names follow which tool is which."
         },
         {
           "kind": "tip",
           "head": "Reference regions, not indices",
-          "body": "Extract variables can publish 'middle' or 'startCut'; those names survive changes upstream."
+          "body": "Extract variables can publish 'inside' or 'startCut'; those names survive changes upstream."
         },
         {
           "kind": "limit",
@@ -273,7 +271,7 @@
         {
           "kind": "limit",
           "head": "How pieces are sorted into regions",
-          "body": "Split+ checks which side of each tool ONE point of each piece lies on (its centre; for a face, the nearest point on the face). A piece that curls back across a tool's extended plane could land in the wrong region -- check regions with Show in Extract variables."
+          "body": "Split+ checks which side of each tool one point of each piece lies on (a point on one of its faces). A piece that curls back across a tool's extended plane could land in the wrong region -- check regions with Show in Extract variables."
         }
       ]
     },

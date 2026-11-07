@@ -97,10 +97,15 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "6c4dca69379e",
-      "sources_hash": "674443fca4c8"
+      "written_hash": "caed8dc76097",
+      "sources_hash": "2119d3f88f17"
     },
     {
       "id": "d_split_plus",
@@ -132,10 +137,15 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "22c94bfb709e",
-      "sources_hash": "0604bc613be4"
+      "written_hash": "62e5ee406b76",
+      "sources_hash": "e621c082f706"
     },
     {
       "id": "d_offset_plus",
@@ -162,10 +172,15 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "59dd87aee042",
-      "sources_hash": "875c06cfa11a"
+      "written_hash": "fcfd4c8b17bc",
+      "sources_hash": "e34212ba0ee8"
     },
     {
       "id": "d_thicken_plus",
@@ -187,10 +202,15 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "6448f2c8e8b8",
-      "sources_hash": "fb236558ef78"
+      "written_hash": "24202623ba04",
+      "sources_hash": "e417dad19417"
     },
     {
       "id": "d_orient_to_reference",
@@ -212,10 +232,15 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "0c7de63e193f",
-      "sources_hash": "79198617a57b"
+      "written_hash": "0062e9c956ba",
+      "sources_hash": "705855a5b4dd"
     },
     {
       "id": "x_curve_tools",
@@ -454,10 +479,15 @@
           "date": "2026-09-25",
           "state": "draft",
           "note": "written by Claude"
+        },
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
         }
       ],
-      "written_hash": "66003c3bd088",
-      "sources_hash": "1439705e2efb"
+      "written_hash": "18690e125359",
+      "sources_hash": "4536691c08f5"
     },
     {
       "id": "x_case_pattern",

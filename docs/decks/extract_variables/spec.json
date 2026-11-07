@@ -1,10 +1,10 @@
 {
   "slug": "extract_variables",
   "title": "Extract variables",
-  "tagline": "One feature per block of the tree that turns what its features produced into named variables and query variables -- regions, cuts, chain ends, the largest faces -- instead of a query variable per name.",
+  "tagline": "One feature per block of the tree that turns what its features produced into named variables and query variables -- regions, cuts, chain ends, the largest faces -- instead of a query variable per name. Can also set variables across a Derive.",
   "document": "Variable_tools",
   "icon": "icons/final/extract_variables_icon.svg",
-  "status": "Draft 2026-09-25",
+  "status": "Updated 2026-11-06 (derive path not run live)",
   "slides": [
     {
       "type": "why",
@@ -59,7 +59,7 @@
     {
       "type": "dialogshot",
       "title": "The dialog",
-      "screenshot": "docs/decks/extract_variables/shots/dialog.png",
+      "screenshot": "docs/sheets/extract_variables/shots/dialog_bands.png",
       "params": [
         [
           "Sources",
@@ -75,7 +75,11 @@
         ],
         [
           "Entries",
-          "Per name: Type, Source key, Published name, Show, Track / Evaluate on use; Filtered adds entity type, body type, name, largest N."
+          "Per name: Type, Source key, Published name, Show, Evaluate on use, Track; Filtered adds entity type, body type, name, largest N."
+        ],
+        [
+          "Get variables from a derived Part Studio",
+          "Default off. On: shows Derived Part Studio (and its configuration) and sets that studio's exported variables here."
         ],
         [
           "Print keys",
@@ -83,7 +87,7 @@
         ],
         [
           "Manifest",
-          "Optional: one map variable listing everything published."
+          "Optional: one map variable listing everything published, derived names included."
         ]
       ],
       "note": "Entry types: Source key, Filtered, Closest to point, Shared edges, Chain end, Edges between points, Bridging curve input, Region."
@@ -91,9 +95,82 @@
     {
       "type": "example",
       "title": "Example: box bands",
-      "image": "docs/decks/extract_variables/shots/hero.png",
+      "image": "docs/sheets/extract_variables/shots/render_bands.png",
       "head": "Sources: a Box and a split of its faces into bands; prefix 'box'",
       "body": "Entries publish the body (output@1), the two largest faces (Filtered, keep 2), the edges at a corner (Closest to point), shared edges and two regions -- 6 names, plus a manifest. With Show on, the published body and cuts are highlighted."
+    },
+    {
+      "type": "concept",
+      "title": "Across a Derive: the two sides",
+      "image": "docs/sheets/add_variables_for_derive/img/derive_flow.png",
+      "points": [
+        {
+          "head": "Source studio (producer)",
+          "body": "Add variables for derive or Variable + with Export for derive write one map variable, exportVariables (name to value)."
+        },
+        {
+          "head": "Deriving studio (consumer)",
+          "body": "Extract variables with \"Get variables from a derived Part Studio\" ticked and the source picked: it sets an ordinary variable of the same name for each entry."
+        },
+        {
+          "head": "Status",
+          "body": "Not run live: pushed to the workspace only, unverified end to end."
+        }
+      ]
+    },
+    {
+      "type": "dialog",
+      "title": "Add variables for derive (producer)",
+      "params": [
+        [
+          "Where",
+          "Source studio, after the variables it lists."
+        ],
+        [
+          "Variables",
+          "List; each item is a Variable name (set earlier in this studio, no #; autocomplete)."
+        ],
+        [
+          "Effect",
+          "Reads each current value and merges it into exportVariables; a name listed twice: the later wins."
+        ],
+        [
+          "Snapshot",
+          "Value at the feature's position; later edits are not seen. Numbers, lengths, angles, text, maps only."
+        ],
+        [
+          "Info",
+          "Exporting N variable(s) in 'exportVariables'."
+        ],
+        [
+          "Error",
+          "Variable 'x' is not set before this feature / is a query / 'exportVariables' is the registry itself."
+        ]
+      ]
+    },
+    {
+      "type": "dialogshot",
+      "title": "Variable + (Export for derive)",
+      "screenshot": "docs/sheets/variable_plus/shots/dialog_single.png",
+      "params": [
+        [
+          "Modes",
+          "Assigned / Measured / From import; Distance, Length, Diameter, Angle, Radius of curvature, Point coordinate."
+        ],
+        [
+          "Custom coordinate system",
+          "Distance and point coordinate: one mate connector; X/Y/Z/Delta signed along its axes."
+        ],
+        [
+          "Output",
+          "Single value, or Map (#name.distance, .delta, .first, .second; #name.point)."
+        ],
+        [
+          "Export for derive",
+          "Boolean: adds the value to exportVariables. A Map export is untested; live tests (8/8) did not cover this tick."
+        ]
+      ],
+      "note": "Lives in the betterMeasure document; a user version is needed before other documents see these options."
     },
     {
       "type": "outputs",
@@ -109,6 +186,10 @@
         [
           "manifest (optional)",
           "One map variable listing everything published."
+        ],
+        [
+          "#<name> (from derive)",
+          "Derive option: one ordinary variable per entry of the source studio's exportVariables map, same name, description \"From derived Part Studio\"; an existing variable of that name is overwritten."
         ]
       ],
       "messages": [
@@ -131,6 +212,21 @@
           "Error",
           "a name used twice",
           "Two entries publish the same name."
+        ],
+        [
+          "Error",
+          "Pick the Part Studio you derive from. / The Part Studio could not be built.",
+          "Derived Part Studio field empty, or the studio does not regenerate."
+        ],
+        [
+          "Error",
+          "The Part Studio has no 'exportVariables' variable...",
+          "Source has neither Add variables for derive nor Variable + with Export for derive (or they come after the point the studio is built to)."
+        ],
+        [
+          "Error",
+          "'x' comes from the derived Part Studio and is also published by an entry.",
+          "Rename the entry or the variable."
         ]
       ]
     },
@@ -151,6 +247,16 @@
           "kind": "limit",
           "head": "Adding a source",
           "body": "Every source offers output: a second source makes the bare 'output' ambiguous -- use output@1."
+        },
+        {
+          "kind": "limit",
+          "head": "Derive: values only",
+          "body": "Only ordinary values cross a Derive; query variables cannot. Snapshots taken at the producer's position in the source studio. Costs one extra regeneration of the source studio."
+        },
+        {
+          "kind": "limit",
+          "head": "Derive path: not run live",
+          "body": "Pushed to the Variable_tools workspace, not versioned. Unverified: a custom feature building the other studio, producer variables visible there, configured studios. Try a scratch pair first."
         }
       ]
     },
@@ -159,11 +265,11 @@
       "rows": [
         [
           "Document",
-          "Variable_tools (a47f90bfa6b17a59e20cebd0), V2"
+          "Variable_tools (a47f90bfa6b17a59e20cebd0), V2 + unversioned derive additions; Variable + lives in betterMeasure"
         ],
         [
           "Tabs",
-          "extract_variables, extract_variables_utils, extract_outputs (the producer library, pinned by every producer)"
+          "extract_variables, extract_variables_utils, extract_outputs (producer library, pinned by every producer), add_variables_for_derive"
         ],
         [
           "Tests",
@@ -180,6 +286,10 @@
         [
           "Related",
           "Every producer: Split+, Mutual Trim+, Offset+, Thicken+, Orient to reference, Clean wire, Map / Merge curve, ..."
+        ],
+        [
+          "Sheets",
+          "docs/sheets/extract_variables, add_variables_for_derive, variable_plus"
         ]
       ]
     }

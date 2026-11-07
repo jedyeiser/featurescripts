@@ -44,6 +44,18 @@ export const ShortEdgeBounds =
     (yard)       : 0.00001
 } as LengthBoundSpec;
 
+/** Max tangent change: 0.01 deg min, 0.5 deg default, 15 deg max. Two edges either side of a short edge "line up" within this. */
+export const MaxTangentBounds =
+{
+    (degree) : [0.01, 0.5, 15],
+    (radian) : 0.0087
+} as AngleBoundSpec;
+
+/** Short edges are listed (and tested for alignment) below this many times the Short edge threshold. */
+const SHORT_EDGE_LIST_FACTOR = 10;
+/** Rows of short edges printed. */
+const EDGE_ROWS = 30;
+
 /** Face colours: severity levels 0..4 (ok, watch, bad, critical, degenerate), 5 = keep, 6 = outside "Faces to clean". */
 const LEVEL_COLORS = [
     color(0.80, 0.80, 0.80),
@@ -85,6 +97,9 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
 
         annotation { "Name" : "Short edge" }
         isLength(definition.shortEdge, ShortEdgeBounds);
+
+        annotation { "Name" : "Max tangent change" }
+        isAngle(definition.maxTangent, MaxTangentBounds);
     }
     {
         const sources = evaluateQuery(context, qBodyType(definition.surfaces, BodyType.SHEET));
@@ -121,6 +136,7 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
 
         // Shortest edge per face: one length per edge, pushed to the faces that use it (only edges below the watch band matter).
         var minEdge = {};
+        var shortEdges = [];
         const edgeWatch = 50 * edgeCrit;
         for (var e in evaluateQuery(context, qOwnedByBody(copy, EntityType.EDGE)))
         {
@@ -128,6 +144,10 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
             if (len >= edgeWatch)
             {
                 continue;
+            }
+            if (len < SHORT_EDGE_LIST_FACTOR * edgeCrit)
+            {
+                shortEdges = append(shortEdges, { "edge" : e, "len" : len });
             }
             for (var f in evaluateQuery(context, qAdjacent(e, AdjacencyType.EDGE, EntityType.FACE)))
             {
@@ -240,11 +260,113 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
                     ~ " P=" ~ roundToPrecision(r.per, 2) ~ " minEdge=" ~ roundToPrecision(r.edge, 4)
                     ~ (r.wmax == undefined ? "" : " wmax=" ~ roundToPrecision(r.wmax, 4) ~ " taper=" ~ roundToPrecision(r.taper, 2) ~ " at " ~ r.where));
         }
-        reportFeatureInfo(context, id, size(faces) ~ " faces: ok " ~ counts[0] ~ " | watch " ~ counts[1] ~ " | bad " ~ counts[2]
+        // Short edges: where they are, what they touch, and whether the edges either side line up (mergeable).
+        shortEdges = sort(shortEdges, function(a, b)
+            {
+                return a.len - b.len;
+            });
+        var mergeable = [];
+        var corners = [];
+        const tangentDeg = definition.maxTangent / degree;
+        for (var i = 0; i < size(shortEdges); i += 1)
+        {
+            const s = shortEdges[i];
+            const rep = edgeReport(context, s.edge, keepSet, cleanSet, hasScope);
+            const isMergeable = rep.angle != undefined && rep.angle <= tangentDeg;
+            if (isMergeable)
+            {
+                mergeable = append(mergeable, s.edge);
+            }
+            else
+            {
+                corners = append(corners, s.edge);
+            }
+            if (i < EDGE_ROWS)
+            {
+                println("EDGE " ~ roundToPrecision(s.len, 4) ~ " mm at " ~ rep.where ~ " faces " ~ rep.faces ~ " valence " ~ rep.valence
+                        ~ (rep.angle == undefined ? " no through-edge" : " align " ~ roundToPrecision(rep.angle, 2) ~ " deg")
+                        ~ (isMergeable ? " MERGEABLE" : " corner"));
+            }
+        }
+        if (size(mergeable) > 0)
+        {
+            addDebugEntities(context, qUnion(mergeable), DebugColor.GREEN);
+        }
+        if (size(corners) > 0)
+        {
+            addDebugEntities(context, qUnion(corners), DebugColor.RED);
+        }
+        println("SHORTEDGES " ~ size(shortEdges) ~ " mergeable " ~ size(mergeable) ~ " corner " ~ size(corners));
+
+        reportFeatureInfo(context, id, size(shortEdges) ~ " short edges (" ~ size(mergeable) ~ " line up within " ~ roundToPrecision(tangentDeg, 2)
+                ~ " deg: green; " ~ size(corners) ~ " corners: red). " ~ size(faces) ~ " faces: ok " ~ counts[0] ~ " | watch " ~ counts[1] ~ " | bad " ~ counts[2]
                 ~ " | critical " ~ counts[3] ~ " | degenerate " ~ counts[4] ~ " | keep " ~ counts[LEVEL_KEEP] ~ " | outside " ~ counts[LEVEL_OUTSIDE]
                 ~ ". Colours: grey ok, yellow watch, orange bad, red critical, violet degenerate, blue keep, dark grey outside the faces to clean."
                 ~ " Original is unchanged; hide it to see the copy.");
     });
+
+/**
+ * Report on one short edge: its middle (mm), the classes of the faces it touches (K keep, O outside, C clean), the number of
+ * edges at each end vertex, and the best alignment angle (deg) of an edge leaving one end with an edge leaving the other
+ * (0 = they continue through the short edge as one smooth curve; undefined when an end has no other edge).
+ */
+function edgeReport(context is Context, edge is Query, keepSet is map, cleanSet is map, hasScope is boolean) returns map
+{
+    const mid = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 }).origin / millimeter;
+    var classes = [];
+    for (var f in evaluateQuery(context, qAdjacent(edge, AdjacencyType.EDGE, EntityType.FACE)))
+    {
+        const key = transientQueriesToStrings(f);
+        classes = append(classes, keepSet[key] != undefined ? "K" : (hasScope && cleanSet[key] == undefined ? "O" : "C"));
+    }
+    const verts = evaluateQuery(context, qAdjacent(edge, AdjacencyType.VERTEX, EntityType.VERTEX));
+    var result = {
+        "where" : "(" ~ roundToPrecision(mid[0], 1) ~ ", " ~ roundToPrecision(mid[1], 1) ~ ", " ~ roundToPrecision(mid[2], 1) ~ ")",
+        "faces" : joinArray(classes, "/"),
+        "valence" : "?",
+        "angle" : undefined
+    };
+    if (size(verts) != 2)
+    {
+        return result;
+    }
+    var away = [[], []];
+    for (var v = 0; v < 2; v += 1)
+    {
+        const p = evVertexPoint(context, { "vertex" : verts[v] });
+        for (var o in evaluateQuery(context, qSubtraction(qAdjacent(verts[v], AdjacencyType.VERTEX, EntityType.EDGE), edge)))
+        {
+            const t0 = evEdgeTangentLine(context, { "edge" : o, "parameter" : 0 });
+            const t1 = evEdgeTangentLine(context, { "edge" : o, "parameter" : 1 });
+            away[v] = append(away[v], norm(t0.origin - p) <= norm(t1.origin - p) ? t0.direction : -t1.direction);
+        }
+    }
+    result["valence"] = (size(away[0]) + 1) ~ "/" ~ (size(away[1]) + 1);
+    var best = -2;
+    for (var a in away[0])
+    {
+        for (var b in away[1])
+        {
+            best = max(best, dot(a, -b));
+        }
+    }
+    if (best > -2)
+    {
+        result["angle"] = acos(clamp(best, -1, 1)) / degree;
+    }
+    return result;
+}
+
+/** Strings of an array joined with a separator. */
+function joinArray(parts is array, separator is string) returns string
+{
+    var s = "";
+    for (var i = 0; i < size(parts); i += 1)
+    {
+        s = s ~ (i == 0 ? "" : separator) ~ parts[i];
+    }
+    return s;
+}
 
 /** The faces of `selection` (on the source surfaces) as a map keyed by the matching COPY face; the copy is checked by area. */
 function copyKeys(context is Context, selection is Query, srcIndex is map, srcFaces is array, copyFaces is array) returns map
