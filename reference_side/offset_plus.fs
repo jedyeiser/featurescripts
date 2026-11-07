@@ -235,6 +235,7 @@ function offsetSurfaces(context is Context, id is Id, definition is map, probe)
         throw regenError(ErrorStringEnum.DIRECT_EDIT_MOVE_FACE_CREATE_SELECT, ["surfaces"]);
     }
 
+    var thickened = [];
     for (var i = 0; i < size(bodies); i += 1)
     {
         const bodyFaces = qIntersection([faces, qOwnedByBody(bodies[i], EntityType.FACE)]);
@@ -253,11 +254,41 @@ function offsetSurfaces(context is Context, id is Id, definition is map, probe)
         {
             println("[offset+] surface " ~ (i + 1) ~ ": " ~ (direction > 0 ? "along" : "against") ~ " its normal.");
         }
-        opExtractSurface(context, id + ("surface" ~ i), {
-                    "faces" : bodyFaces,
-                    "offset" : definition.distance * direction,
-                    "useFacesAroundToTrimOffset" : false
-                });
+        const signed = definition.distance * direction;
+        var built = false;
+        if (definition.offsetMethod != OffsetMethod.THICKEN)
+        {
+            try silent
+            {
+                opExtractSurface(context, id + ("surface" ~ i), {
+                            "faces" : bodyFaces,
+                            "offset" : signed,
+                            "useFacesAroundToTrimOffset" : false
+                        });
+                built = true;
+            }
+        }
+        if (!built && definition.offsetMethod != OffsetMethod.DIRECT)
+        {
+            built = thickenOffset(context, id + ("thicken" ~ i), bodyFaces, signed);
+            if (built && definition.offsetMethod == OffsetMethod.AUTO)
+            {
+                thickened = append(thickened, i + 1);
+            }
+        }
+        if (!built)
+        {
+            const problem = offsetProblemFaces(context, id + ("probe" ~ i), bodyFaces, signed);
+            const tried = definition.offsetMethod == OffsetMethod.DIRECT ? "the direct offset" :
+                (definition.offsetMethod == OffsetMethod.THICKEN ? "thickening" : "the direct offset and thickening");
+            throw regenError("Offsetting surface " ~ (i + 1) ~ " by " ~ roundToPrecision(signed / millimeter, 4) ~ " mm failed (" ~ tried ~ "). " ~ problem.reason,
+                ["distance"], problem.faces);
+        }
+    }
+    if (size(thickened) > 0)
+    {
+        reportFeatureWarning(context, id, "The direct offset failed on surface " ~ join(mapArray(thickened, function(n) { return "" ~ n; }), ", ") ~
+            "; it was built by thickening and keeping the offset-side cap. Check the result where the surface folds.");
     }
 
     if (definition.outputName != "")
@@ -272,6 +303,158 @@ function offsetSurfaces(context is Context, id is Id, definition is map, probe)
                 "queries" : offsetPlusQueries(context, [], [], [],
                         qEdgeTopologyFilter(qOwnedByBody(qCreatedBy(id, EntityType.BODY), EntityType.EDGE), EdgeTopology.ONE_SIDED))
             }));
+}
+
+/**
+ * The offset by thickening (2026-11-06): opThicken the faces by |signed| on the offset side only, keep the cap on that side
+ * as a new sheet (opExtractSurface at no offset) and delete the solid. opThicken puts its START cap on the thickness1 side
+ * (along the normal) and its END cap on the thickness2 side (against it), so the offset cap is START for a positive
+ * `signed` and END for a negative one. This is the "thicken, delete the side faces, delete the other cap" sequence done as
+ * one extraction. Returns whether the offset surface was built (nothing is left behind when it was not).
+ */
+function thickenOffset(context is Context, id is Id, faces is Query, signed is ValueWithUnits) returns boolean
+{
+    const along = signed > 0 * meter;
+    const thickness = abs(signed);
+    if (thickness < TOLERANCE.zeroLength * meter)
+    {
+        return false;
+    }
+    var solid = false;
+    try silent
+    {
+        opThicken(context, id + "solid", {
+                    "entities" : faces,
+                    "thickness1" : along ? thickness : 0 * meter,
+                    "thickness2" : along ? 0 * meter : thickness
+                });
+        solid = true;
+    }
+    if (!solid)
+    {
+        return false;
+    }
+    var extracted = false;
+    try silent
+    {
+        opExtractSurface(context, id + "cap", { "faces" : qCapEntity(id + "solid", along ? CapType.START : CapType.END, EntityType.FACE) });
+        extracted = true;
+    }
+    opDeleteBodies(context, id + "deleteSolid", { "entities" : qCreatedBy(id + "solid", EntityType.BODY) });
+    return extracted;
+}
+
+/**
+ * The faces to show in red when a surface offset fails (2026-11-06): slivers (area under SLIVER_AREA), faces concave on the
+ * offset side with a radius under the distance (the offset folds there), and the faces that fail when offset alone. The
+ * last is only a hint -- on some surfaces every single face fails alone while the whole surface offsets -- so it is
+ * dropped when it names all of them. With none found, every face of the surface. Returns { faces (a Query), reason }.
+ */
+function offsetProblemFaces(context is Context, id is Id, faces is Query, signed is ValueWithUnits) returns map
+{
+    const list = evaluateQuery(context, faces);
+    var slivers = [];
+    for (var face in list)
+    {
+        if (evArea(context, { "entities" : face }) < SLIVER_AREA)
+        {
+            slivers = append(slivers, face);
+        }
+    }
+    const concave = concaveFaces(context, list, abs(signed), signed > 0 * meter);
+    var alone = [];
+    if (size(list) > 1 && size(list) <= PER_FACE_RETRY_LIMIT)
+    {
+        for (var k = 0; k < size(list); k += 1)
+        {
+            const tid = id + ("face" ~ k);
+            var ok = false;
+            try silent
+            {
+                opExtractSurface(context, tid, { "faces" : list[k], "offset" : signed, "useFacesAroundToTrimOffset" : false });
+                ok = true;
+            }
+            if (ok)
+            {
+                opDeleteBodies(context, tid + "delete", { "entities" : qCreatedBy(tid, EntityType.BODY) });
+            }
+            else
+            {
+                alone = append(alone, list[k]);
+            }
+        }
+        if (size(alone) == size(list))
+        {
+            alone = [];
+        }
+    }
+    const found = concatenateArrays([slivers, concave, alone]);
+    var parts = [];
+    if (size(slivers) > 0)
+    {
+        parts = append(parts, size(slivers) ~ " sliver face(s)");
+    }
+    if (size(concave) > 0)
+    {
+        parts = append(parts, size(concave) ~ " face(s) concave with a radius under the distance");
+    }
+    if (size(alone) > 0)
+    {
+        parts = append(parts, size(alone) ~ " face(s) that fail when offset alone");
+    }
+    if (size(found) == 0)
+    {
+        return { "faces" : faces, "reason" : "No single face could be isolated: the whole surface is shown in red. Try a different distance or direction." };
+    }
+    return { "faces" : qUnion(found), "reason" : "Red: " ~ join(parts, ", ") ~ "." };
+}
+
+/**
+ * The faces of `faces` (an array) with a point on the side being offset whose radius of curvature is under `distance`: the
+ * offset surface folds there. evFaceCurvature is positive when the centre of curvature is AGAINST the normal, so the side
+ * along the normal is concave where the curvature is negative and the other side where it is positive (as in Thicken+).
+ */
+function concaveFaces(context is Context, faces is array, distance is ValueWithUnits, alongNormal is boolean) returns array
+{
+    var parameters = [];
+    for (var i = 0; i < CURVATURE_SAMPLES; i += 1)
+    {
+        for (var j = 0; j < CURVATURE_SAMPLES; j += 1)
+        {
+            parameters = append(parameters, vector((i + 0.5) / CURVATURE_SAMPLES, (j + 0.5) / CURVATURE_SAMPLES));
+        }
+    }
+    var bad = [];
+    for (var face in faces)
+    {
+        const curvatures = try silent(evFaceCurvatures(context, { "face" : face, "parameters" : parameters }));
+        if (curvatures == undefined)
+        {
+            continue;
+        }
+        var planes = undefined;
+        for (var k = 0; k < size(parameters); k += 1)
+        {
+            const c = curvatures[k];
+            const curvature = alongNormal ? -c.minCurvature : c.maxCurvature;
+            if (curvature <= 0 / meter || 1 / curvature >= distance)
+            {
+                continue;
+            }
+            // grid points can fall outside a trimmed face: only a point on the face counts
+            if (planes == undefined)
+            {
+                planes = try silent(evFaceTangentPlanes(context, { "face" : face, "parameters" : parameters }));
+            }
+            if (planes != undefined && evDistance(context, { "side0" : planes[k].origin, "side1" : face }).distance > 1e-6 * meter)
+            {
+                continue;
+            }
+            bad = append(bad, face);
+            break;
+        }
+    }
+    return bad;
 }
 
 // ============================================================================

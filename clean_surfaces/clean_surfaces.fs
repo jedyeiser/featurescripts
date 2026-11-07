@@ -1,5 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+// IMPORT: clean_surfaces_icon.svg (feature icon)
+IconNamespace::import(path : "d4ae9caa9e5c8491cb5feb50", version : "c2a9472c4a1c1f94745df11f");
 
 /**
  * Clean surfaces (milestone 1: Diagnose).
@@ -53,7 +55,7 @@ const NEEDLE_ASPECT = 5000;
 /** Rows printed to the console. */
 const PRINT_ROWS = 25;
 
-annotation { "Feature Type Name" : "Clean surfaces" }
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Clean surfaces" }
 export const cleanSurfaces = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
@@ -168,6 +170,8 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
             named += 1;
         }
 
+        println("COUNTS faces " ~ size(faces) ~ " ok " ~ counts[0] ~ " watch " ~ counts[1] ~ " bad " ~ counts[2]
+                ~ " critical " ~ counts[3] ~ " degenerate " ~ counts[4]);
         for (var i = 0; i < min(PRINT_ROWS, size(rows)); i += 1)
         {
             const r = rows[i];
