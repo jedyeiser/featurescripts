@@ -111,7 +111,7 @@
       "type": "example",
       "title": "Example: ROY_Test, 35 stations",
       "image": "docs/explainers/xsection/img/fig04_roy_results.png",
-      "head": "EI peaks at 390 N m^2 under the foot; GJ follows (453); the neutral axis sits near mid-thickness",
+      "head": "EI peaks at 390 N m^2 under the foot; GJ followed (453 with the pre-2026-09-26 GJ formula; not re-measured); the neutral axis sits near mid-thickness",
       "body": "Summary: 20.7 lb/in and 81.3 mm under 30 kg (variable EI); 16.2 lb/in prismatic. The stations cut 4 bodies with micron gaps, repaired (info)."
     },
     {
@@ -153,12 +153,12 @@
       "messages": [
         [
           "Info",
-          "Repaired N body section outline(s)...",
-          "Duplicate edges or micron gaps closed; details on the console."
+          "Repaired or adjusted N body section(s)...",
+          "Duplicate edges or micron gaps closed, or a station plane shifted to intersect; details on the console."
         ],
         [
           "Warning",
-          "N body section(s) between FCP and ACP could not be closed or came out with no area",
+          "N body section(s) between FCP and ACP could not be intersected, could not be closed, or came out with no area",
           "EI is low there."
         ]
       ]

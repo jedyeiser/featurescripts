@@ -5,6 +5,9 @@
                   {
                       "dialog":  "docs/sheets/export_primitive/shots/dialog.png",
                       "filter":  "P20",
+                      "expand":  [
+                                     "Cavity depth"
+                                 ],
                       "graphics":  "docs/sheets/export_primitive/shots/graphics.png",
                       "wait":  30,
                       "elem":  "5c3ac8fb8ec70b1f256c0e97",

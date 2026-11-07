@@ -41,7 +41,7 @@
         ],
         [
           "Add plate/mounting conditions?",
-          "Plate stiffness edge, reaction moment (N m, positive) and its x."
+          "Plate stiffness edge, reaction moment (N m, positive) and its x, optional FCP (the moment presses the FCP-side end down; else the higher-X end)."
         ],
         [
           "Applied load data",

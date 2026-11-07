@@ -55,13 +55,13 @@
         },
         {
           "kind": "limit",
-          "head": "FCP before ACP",
-          "body": "If FCP is not before ACP in X nothing is computed, silently."
+          "head": "FCP at either end",
+          "body": "The tip may be at either X end. If FCP and ACP are at the same X nothing is computed, silently."
         },
         {
           "kind": "tip",
           "head": "Short curves",
-          "body": "An EI curve shorter than FCP-ACP is extended to reach them."
+          "body": "An EI curve shorter than FCP-ACP is held flat at its end values beyond its ends (no extrapolation)."
         }
       ]
     },

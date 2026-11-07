@@ -35,53 +35,22 @@ export const cleanSurfacesSpike = defineFeature(function(context is Context, id 
         opDeleteBodies(context, id + "probeDel", { "entities" : qCreatedBy(id + "probe", EntityType.BODY) });
         println("slivers " ~ nSliv);
 
+        // spike 4: delete the sliver TOGETHER WITH its neighbour faces, fill the bigger hole, sew, measure.
         for (var k = 0; k < nSliv; k += 1)
         {
-            // ---- replace: try each neighbour as the template ----
-            const rid = id + ("r" ~ k);
-            opPattern(context, rid, { "entities" : src, "transforms" : [identityTransform()], "instanceNames" : ["R" ~ k] });
-            const rb = qCreatedBy(rid, EntityType.BODY);
-            const sf = findSlivers(context, rb)[k];
-            const info = sliverInfo(context, sf);
-            const pts = edgePoints(context, sf);
-            const nbs = evaluateQuery(context, qAdjacent(sf, AdjacencyType.EDGE, EntityType.FACE));
-            var rres = "no neighbour worked (" ~ size(nbs) ~ " tried)";
-            for (var n = 0; n < size(nbs); n += 1)
-            {
-                var ok = false;
-                for (var sense in [false, true])
-                {
-                    if (ok)
-                    {
-                        break;
-                    }
-                    try
-                    {
-                        opReplaceFace(context, rid + ("x" ~ n ~ (sense ? "t" : "f")), { "replaceFaces" : sf, "templateFace" : nbs[n], "oppositeSense" : sense });
-                        ok = true;
-                        rres = "OK template " ~ n ~ "/" ~ size(nbs) ~ " (" ~ surfType(context, nbs[n]) ~ ") dev " ~ roundToPrecision(maxDist(context, pts, rb) / millimeter, 5) ~ " mm; " ~ stats(context, rb);
-                    }
-                    catch (e)
-                    {
-                    }
-                }
-                if (ok)
-                {
-                    break;
-                }
-            }
-            say("S" ~ k ~ " " ~ info ~ " | REPLACE " ~ rres);
-            opDeleteBodies(context, rid + "del", { "entities" : rb });
-
-            // ---- void + fill ----
-            const fid = id + ("f" ~ k);
-            opPattern(context, fid, { "entities" : src, "transforms" : [identityTransform()], "instanceNames" : ["F" ~ k] });
+            const fid = id + ("c" ~ k);
+            opPattern(context, fid, { "entities" : src, "transforms" : [identityTransform()], "instanceNames" : ["C" ~ k] });
             const fb = qCreatedBy(fid, EntityType.BODY);
-            const sf2 = findSlivers(context, fb)[k];
+            const sf = findSlivers(context, fb)[k];
+            const info = sliverInfo(context, sf);
+            const nbs = evaluateQuery(context, qAdjacent(sf, AdjacencyType.EDGE, EntityType.FACE));
+            const region = qUnion([sf, qUnion(nbs)]);
+            const pts = regionPoints(context, region);
             const nakedBefore = evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(fb, EntityType.EDGE), EdgeTopology.ONE_SIDED));
-            opDeleteFace(context, fid + "del", { "deleteFaces" : sf2, "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
+            const areaBefore = evArea(context, { "entities" : region }) / millimeter ^ 2;
+            opDeleteFace(context, fid + "del", { "deleteFaces" : region, "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
             const hole = qSubtraction(qEdgeTopologyFilter(qOwnedByBody(fb, EntityType.EDGE), EdgeTopology.ONE_SIDED), qUnion(nakedBefore));
-            var fres = "hole edges " ~ size(evaluateQuery(context, hole));
+            var res = "region " ~ (size(nbs) + 1) ~ " faces A " ~ roundToPrecision(areaBefore, 2) ~ "; hole edges " ~ size(evaluateQuery(context, hole));
             var filled = false;
             for (var mode in ["G1", "G0"])
             {
@@ -94,27 +63,51 @@ export const cleanSurfacesSpike = defineFeature(function(context is Context, id 
                     opFillSurface(context, fid + ("fill" ~ mode), mode == "G1" ? { "edgesG1" : hole } : { "edgesG0" : hole });
                     const fill = qCreatedBy(fid + ("fill" ~ mode), EntityType.BODY);
                     filled = true;
-                    fres = fres ~ "; fill " ~ mode ~ " OK dev " ~ roundToPrecision(maxDist(context, pts, fill) / millimeter, 5) ~ " mm";
+                    res = res ~ "; fill " ~ mode ~ " OK, " ~ size(pts) ~ " pts dev " ~ roundToPrecision(maxDist(context, pts, fill) / millimeter, 4) ~ " mm";
                     try
                     {
                         opBoolean(context, fid + "join", { "tools" : qUnion([fill, fb]), "operationType" : BooleanOperationType.UNION });
-                        fres = fres ~ "; sewn: " ~ stats(context, qBodyType(qCreatedBy(fid, EntityType.BODY), BodyType.SHEET));
+                        res = res ~ "; sewn: " ~ stats(context, qBodyType(qCreatedBy(fid, EntityType.BODY), BodyType.SHEET));
                     }
                     catch (e)
                     {
-                        fres = fres ~ "; sew FAILED " ~ e.message;
+                        res = res ~ "; sew FAILED " ~ e.message;
                     }
                 }
                 catch (e)
                 {
-                    fres = fres ~ "; fill " ~ mode ~ " " ~ e.message;
+                    res = res ~ "; fill " ~ mode ~ " " ~ e.message;
                 }
             }
-            say("S" ~ k ~ " VOID+FILL " ~ fres);
+            say("S" ~ k ~ " " ~ info ~ " | CLUSTER " ~ res);
             opDeleteBodies(context, fid + "cleanup", { "entities" : qCreatedBy(fid, EntityType.BODY) });
         }
     });
 
+/** Grid points inside every face of the region (5 x 5 UV, undefined outside the trim dropped), plus 3 points per edge. */
+function regionPoints(context is Context, region is Query) returns array
+{
+    var params = [];
+    for (var i = 1; i < 6; i += 1)
+    {
+        for (var j = 1; j < 6; j += 1)
+        {
+            params = append(params, vector(i / 6, j / 6));
+        }
+    }
+    var pts = [];
+    for (var f in evaluateQuery(context, region))
+    {
+        for (var pl in evFaceTangentPlanes(context, { "face" : f, "parameters" : params, "returnUndefinedOutsideFace" : true }))
+        {
+            if (pl != undefined)
+            {
+                pts = append(pts, pl.origin);
+            }
+        }
+    }
+    return pts;
+}
 /** println in 60-character pieces (the notices monitor truncates long console lines). */
 function say(text is string)
 {

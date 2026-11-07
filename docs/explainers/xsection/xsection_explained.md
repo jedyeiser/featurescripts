@@ -1,8 +1,10 @@
 # xSection, explained
 
 *EI and Cross Section, Solve GJ, Generate baseline, Analyze baseline, Estimate Stiffness, Estimate Deflection and
-Update profile (Onshape document **xSection**, "Stiffness Tools"). Written 2026-09-25 against the code as it stands
-that day. Draft for review. Numbers come from the document's own studios: ROY_Test, Test, Test2 and xSection tests.*
+Update profile (Onshape document **xSection**, "Stiffness Tools"). Written 2026-09-25; refreshed 2026-11-06 for the
+code changes of 2026-09-26 to 10-10 (new GJ solver, Solve GJ retired, tip toward either X end, plane nudging, Analyze
+baseline definitions). Draft for review. Numbers come from the document's own studios: ROY_Test, Test, Test2 and
+xSection tests; values marked "before 2026-09-26" were measured with the old GJ formula and are not re-measured.*
 
 1. **The idea**: turn a CAD layup into a stiffness profile, then use that profile.
 2. **The features**: what each one does, its dialog, and an example.
@@ -24,7 +26,7 @@ the document).
   - [1.6 Flex numbers](#16-flex-numbers)
 - [Part 2: The features](#part-2-the-features)
   - [2.1 EI and Cross Section](#21-ei-and-cross-section)
-  - [2.2 Solve GJ (legacy)](#22-solve-gj-legacy)
+  - [2.2 Solve GJ (retired)](#22-solve-gj-retired)
   - [2.3 Estimate Stiffness](#23-estimate-stiffness)
   - [2.4 Estimate Deflection](#24-estimate-deflection)
   - [2.5 Generate baseline](#25-generate-baseline)
@@ -66,7 +68,8 @@ EI and Cross Section writes several such curves: `<name>_EI`, `_GJ` (Z mm = N m^
 
 **Conventions.**
 
-- The ski runs along world **+X**.
+- The ski runs along world X; the tip may be at either end (FCP can be the low-X or the high-X end). Stations stay
+  in ascending X, and their numbers count from FCP.
 - FCP / ACP (front / aft contact points) and the mount point count only by their X.
 - A planar face given as FCP or ACP must face along X.
 
@@ -77,9 +80,12 @@ EI and Cross Section writes several such curves: `<name>_EI`, `_GJ` (Z mm = N m^
 With FCP and ACP given, **Number of cross sections** stations are spaced evenly from FCP to ACP, one exactly at each.
 The tip and tail get up to 4 extra stations each at about the same spacing, and the outermost are pulled in slightly
 so the plane still cuts material. Stations are numbered 0 at FCP; the tip gets negative numbers and the tail
-continues past the ACP. Without FCP and ACP, the stations are spread evenly along the whole path.
+continues past the ACP (when FCP is the high-X end, the labels are mirrored, the positions are not). Without FCP and
+ACP, the stations are spread evenly along the whole path.
 
-Each body is cut by all the planes in one intersection. The outlines are cleaned (duplicate edges removed, micron
+Each body is cut by all the planes in one intersection. If that op makes nothing, the stations are split in halves
+and retried; a single plane that still fails (for example one lying on a planar end face) is shifted along its normal
+by a small nudge, up to 0.1 mm, and the shift is reported. The outlines are cleaned (duplicate edges removed, micron
 gaps closed), triangulated, and their area, centroid and second moment are integrated from the outline.
 
 ## 1.4 EI of a laminate
@@ -101,11 +107,20 @@ checks cases like this against their analytic values.
 
 ## 1.5 GJ
 
-GJ uses thin-plate Saint-Venant torsion over the triangulated section: GJ = 4 sum G Iz, where Iz is each triangle's
-second moment through the thickness about the G-weighted centroid. G is each body's **Q66** (an isotropic override
-uses E / 2.66). The formula is exact for a wide flat section (b/t >> 1) and about 10 % off at b/t ~ 7.
+Since 2026-09-26 GJ uses a one-dimensional Reissner-Mindlin plate-torsion reduction across the width (`xSect_GJ.fs`,
+400 width bins). In each bin D = integral of G (z - c)^2 dz about the bin's own G-weighted centroid, and the
+transverse shear stiffness S = 5/6 t^2 / (integral of dz / G). The rotation of the normal is solved for unit twist with
+free edges, so the twisting moment dies away within about 0.3 t of each free edge. With S very large this reduces to
+the thin-plate 4 x integral of D dy. It replaced the old thin-plate form GJ = 4 sum G Iz about one global centroid,
+which over-predicted a real ski section by 1.6-2x (mostly through the steel edges).
 
-GJ is computed inside EI and Cross Section. The **Solve GJ** feature is redundant (2.2).
+G is each body's **Q66** (an isotropic override uses E / 2.66); the through-thickness shear is taken equal to it.
+The material intervals come from the body outlines (even-odd, so holes are open), not from the triangulation. Bodies
+without material data count as voids. Accuracy (code header, against an exact 2D Saint-Venant solve): 0.04 % on a
+homogeneous rectangle, within 2 % on idealised ski, stepped and voided sections; on stored real sections ROY
+underfoot +13 % and Test -25 % (a 1 MPa full-width rubber layer).
+
+GJ is computed inside EI and Cross Section (step 3b). The **Solve GJ** feature was retired (2.2).
 
 ## 1.6 Flex numbers
 
@@ -158,25 +173,22 @@ The stiff middle carries most of the moment, so the variable-EI ski is stiffer t
 **Messages.**
 
 - Info "Repaired N body section outline(s)..." when the cut left duplicate edges or micron gaps that were fixed.
-- **Warning** when a body section between FCP and ACP could not be closed or has no area: EI is low there.
+- Info "Repaired or adjusted N body section(s)..." also covers a station plane that had to be shifted to intersect.
+- **Warning** when a body section between FCP and ACP could not be intersected (even shifted up to 0.1 mm), could not
+  be closed, or has no area: EI is low there.
 
 **Example (ROY_Test, 35 stations).** EI peaks at 390 N m^2 under the foot and falls to about 50 at the contact
-points. GJ follows it (453 peak). The neutral axis sits at about half the thickness (7.1 of 14.7 mm at the centre).
+points. GJ followed it (453 peak) with the old GJ formula (before 2026-09-26); the new solver gives different values
+(not re-measured here). The neutral axis sits at about half the thickness (7.1 of 14.7 mm at the centre).
 The summary is 20.7 lb/in (variable EI).
 
-## 2.2 Solve GJ (legacy)
+## 2.2 Solve GJ (retired)
 
-Recomputes GJ for an existing EI and Cross Section feature and writes it back to the stored data and the table.
-Its one parameter is **Cross section feature**. EI and Cross Section already computes GJ with the same solver, so
-this feature changes nothing on a current model. It is kept for old documents.
-
-Fixed 2026-09-25:
-
-- The recomputed values were written to a copy and lost; they are now stored.
-- An empty selection now gives the error "Select the cross section feature."
-- Errors are no longer swallowed.
-
-Test: SG1 in xSection tests stores GJ 125.31.
+**Retired 2026-09-26.** `GJ_Feature.fs`, `gjAnalysis.fs` and `gjDataAccess.fs` were deleted (copies under
+`archive/deleted_tabs_2026-09-26/`); EI and Cross Section computes GJ itself (1.5). Old features of this type in
+existing documents have no tab behind them. The earlier 2026-09-25 fixes (stored write-back, the empty-selection
+error) no longer apply. The test SG1 (GJ 125.31) belongs to the old solver. The "xSection tests" feature names still
+carry old GJ numbers.
 
 ## 2.3 Estimate Stiffness
 
@@ -185,7 +197,9 @@ The four flex numbers for any EI curve. Parameters: **EI Edges**, **FCP**, **ACP
 **Recalculate**.
 
 Everything happens in the dialog when you press Recalculate: the numbers are not updated when the geometry changes.
-If FCP is not before ACP in X, nothing is computed and no message is shown. The feature itself builds nothing.
+FCP may be at either end (the span is min / max of the two X values). If FCP and ACP are at the same X, nothing is
+computed and no message is shown. The Stiffness estimates group is now expanded by default. The feature itself builds
+nothing.
 
 ## 2.4 Estimate Deflection
 
@@ -212,7 +226,7 @@ shape.
 | **Number of evaluation points** | 20-500 (100); also the EI samples per edge. |
 | **Show shear/moment diagrams** | Draw V and M. |
 | **Alter deformed beam curvature** | Drag curvature handles; outputs the EI that would give that shape (`altered_EI`). |
-| **Add plate/mounting conditions?** | Plate stiffness (an EI-format edge added over its X range), reaction moment (N m, positive only) and its x. |
+| **Add plate/mounting conditions?** | Plate stiffness (an EI-format edge added over its X range), reaction moment (N m, positive only) and its x, and an optional **FCP** (vertex or mate connector). The reaction moment presses the tip side down and loads the tip-side support more; the tip is the FCP-side end of the EI profile when FCP is picked, else the higher-X end. A mirrored ski with FCP picked deflects as the mirror image. |
 | **Applied load data** | Applied load 3-600 N (80). Balance (share on load 1 when there are two). Each load: location (query or x), shape, width. |
 | **Support load data** | Supports 1, 2 (optional 3), each: location, shape, width. |
 | **Output Options** | Output span (full EI / support span); curve Fit or Approximate. |
@@ -295,9 +309,9 @@ Measures an existing side profile, for example to compare a physical ski with it
 - **Baseline edges** (a tangent chain) and **FCP / ACP**.
 - The read-only **Calculated data**:
   - forebody / aftbody minimum and the max camber point;
-  - camber height;
-  - FRCP and its length and tangent line, and FCPH;
-  - ARCP and its length and tangent line, and ACPH.
+  - camber height, MCl x and MCl s;
+  - FRCP and its length (FRCPL), tangent line, FCPH and FB roll;
+  - ARCP and its length (ARCPL), tangent line, ACPH and AB roll.
 - **Output measurement sketch** and **Recalculate**.
 
 **Method.**
@@ -305,8 +319,13 @@ Measures an existing side profile, for example to compare a physical ski with it
 1. Sample the chain.
 2. Find the lowest point in each half.
 3. Camber = the largest perpendicular distance from the line between those minima.
-4. FRCP / ARCP = the lowest inflection in each half.
+4. FRCP / ARCP = in each half, the inflection closest to that half's minimum, on the side of the minimum toward MRS
+   (definition of 2026-09-28; on a Generate baseline curve this is the camber / rocker join).
 5. FCPH / ACPH = the perpendicular distance from the tip to the tangent line at FRCP / ARCP.
+6. FRCPL / ARCPL = |dx| from FCP / ACP to FRCP / ARCP; FB roll / AB roll = |dx| from the minimum to FRCP / ARCP;
+   MCl x / MCl s = world X of the max camber point and its arc length from MRS (positive toward the tip).
+
+FCP may be on either side of ACP; every range is min / max.
 
 The optional sketch on the XZ plane draws the chords, tangent lines and normals.
 
@@ -369,39 +388,40 @@ In every mode, a new thickness outside 0.1-200 mm is reset to the old one.
 | `core/xSectUtils.fs`, `core/xSectReferencePoints.fs` | Station layout; FCP / ACP / mount to X. |
 | `section/xSectProcessing.fs`, `section/xSect_Triangulation.fs` | Batch cut, outline repair, triangulation, section properties. |
 | `materials/xSectCLT.fs` | Materials, E-based EI and neutral axis (and the unused A/B/D). |
-| `section/xSect_GJ.fs`, `section/gjAnalysis.fs`, `section/gjDataAccess.fs` | GJ; Solve GJ's recompute and write-back. |
+| `section/xSect_GJ.fs` | GJ (Mindlin width reduction). `gjAnalysis.fs`, `gjDataAccess.fs` and `features/GJ_Feature.fs` (Solve GJ) were deleted 2026-09-26. |
 | `beam/xSectBeamAnalysis.fs` | Flex numbers (prismatic, Mohr); EI-edge decoding. |
 | `core/xSectStorage.fs`, `section/xSectVisualization.fs` | The stored attribute and table data; the output curves. |
-| `features/generateBaseline.fs`, `beam/generateBaselineSolver.fs`, `beam/baselineCore.fs` | Generate baseline. |
+| `features/generateBaseline.fs`, `beam/generateBaselineSolver.fs`, `baselineCore.fs` (document root) | Generate baseline. |
 | `beam/analyzeBaseline.fs` | Analyze baseline. |
 | `features/estimateDeflection.fs`, `beam/estimateDeflectionSolver.fs` | Estimate Deflection. |
 | `features/estimateStiffness.fs` | Estimate Stiffness. |
 | `features/updateProfile.fs`, `tables/profileUpdatesTable.fs` | Update profile. |
-| `features/GJ_Feature.fs` | Solve GJ. |
 | `tables/xSectionAnalysisTable.fs` | Cross-Section Analysis tables (every EI feature in the document). |
 
 **Tests.**
 
 - `devtools/onshape/build_xsection_tests.py` / `check_xsection_tests.py` build and check the "xSection tests" studio:
   analytic EI, neutral axis and GJ for rectangles, holes and a circle, isotropic and orthotropic.
-- `build_solve_gj_test.py` adds SG1.
+- `build_solve_gj_test.py` adds SG1 (belongs to the retired Solve GJ).
+- GJ oracle and section checks: `devtools/xsection/gj_oracle.py` (mirrors `xSect_GJ.fs`), `real_section_check.py`.
 - There are no tests for the baseline, deflection, stiffness or profile features.
 
-**Icons.** EI and Cross Section, Generate baseline and Solve GJ have icons. The other four have deck-only drafts in
+**Icons.** EI and Cross Section, Generate baseline and (retired) Solve GJ have icons. The other four have deck-only drafts in
 `docs/decks/_icons/`, not installed.
 
 ---
 
 # Appendix: bugs and unclear items
 
-1. **Estimate Deflection load shapes (bug).** `loadIntensityAt` (beam/estimateDeflectionSolver.fs:197) compares the
+1. **Estimate Deflection load shapes (bug).** `loadIntensityAt` (beam/estimateDeflectionSolver.fs:210; still present 2026-11-06) compares the
    shape with strings (`shape == "CONSTANT"`). Callers pass `LoadType` enum values, and in FeatureScript an enum
    never equals its name string (checked 2026-09-25: `BodyType.WIRE == "WIRE"` is false). So every distributed load
    uses the Logistic profile. Fix: compare with `LoadType.CONSTANT`... Not changed (docs-only session).
 2. **Test2 "Generate baseline 1"** ("Testing!") regenerates OK, but no wire of that name exists in the studio. Not
    investigated.
-3. **File headers are stale.** xSectCLT.fs still says Q11, and says GJ moved to a separate feature.
-   generateBaseline.fs describes an outer bisection. The solver header lists functions that no longer exist.
+3. **File headers are stale.** xSectCLT.fs still says Q11. generateBaseline.fs still describes an outer bisection
+   (step 4). The solver header lists functions that no longer exist. (The GJ-moved-to-separate-feature comment in
+   xSectCLT.fs was corrected.)
 4. **Stored bounding box**: `width` is the thickness and `height` is the width (xSectStorage.fs).
 5. **Inert inputs**: Update profile's Measured thickness edges and its Recalculate button; the unused
    AlterMeshingPredicate.

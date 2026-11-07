@@ -32,7 +32,7 @@
         ],
         [
           "Calculated data",
-          "Read-only: FB / AB minimum, max camber point, camber height, FRCP, FRCPL, FRCP tangent, FCPH, ARCP, ARCPL, ARCP tangent, ACPH."
+          "Read-only: FB / AB minimum, max camber point, camber height, MCl x / MCl s, FRCP, FRCPL, FRCP tangent, FCPH, FB roll, ARCP, ARCPL, ARCP tangent, ACPH, AB roll."
         ],
         [
           "Output measurement sketch",
@@ -55,7 +55,7 @@
         },
         {
           "head": "FRCP / ARCP",
-          "body": "The lowest inflection in each half; FRCPL = its distance from FCP."
+          "body": "The inflection closest to each half's minimum, toward MRS; FRCPL = its |dx| from FCP."
         },
         {
           "head": "FCPH / ACPH",

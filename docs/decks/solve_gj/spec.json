@@ -1,7 +1,7 @@
 {
   "slug": "solve_gj",
   "title": "Solve GJ",
-  "tagline": "Legacy: recompute the torsional stiffness GJ of an existing EI and Cross Section feature and write it back to its stored data and table.",
+  "tagline": "Retired 2026-09-26: this feature recomputed the torsional stiffness GJ of an EI and Cross Section feature. EI and Cross Section now computes GJ itself.",
   "document": "xSection",
   "icon": "icons/final/solve_gj_icon.svg",
   "status": "Draft 2026-09-25",
@@ -9,7 +9,7 @@
     {
       "type": "why",
       "title": "What it does",
-      "problem": "GJ used to be a separate step. EI and Cross Section now computes GJ itself with the same solver, so Solve GJ changes nothing on a current model. It is kept so older documents still regenerate.",
+      "problem": "GJ used to be a separate step. EI and Cross Section now computes GJ itself (step 3b, a Reissner-Mindlin width reduction, xSect_GJ.fs), and the Solve GJ tab, GJ_Feature.fs, gjAnalysis.fs and gjDataAccess.fs were deleted on 2026-09-26.",
       "useWhen": [
         "An older document still has it in the tree",
         "Not needed for new work"
@@ -27,7 +27,7 @@
           "One EI and Cross Section feature."
         ]
       ],
-      "note": "GJ = 4 x sum(G x Iz) over the section's triangles, G = each body's Q66 (thin-plate Saint-Venant)."
+      "note": "Historical: the old formula was GJ = 4 x sum(G x Iz) over the section's triangles (G = Q66). The current solver is a 1D Reissner-Mindlin reduction across the width (400 bins)."
     },
     {
       "type": "outputs",
@@ -56,13 +56,13 @@
       "items": [
         {
           "kind": "tip",
-          "head": "Fixed 2026-09-25",
-          "body": "The recomputed GJ was written to a copy and lost; errors were swallowed. Both fixed."
+          "head": "Retired",
+          "body": "Old features of this type have no tab behind them; remove them from old models."
         },
         {
           "kind": "limit",
           "head": "Redundant",
-          "body": "Safe to delete from new models."
+          "body": "GJ is part of every EI and Cross Section result."
         }
       ]
     },

@@ -56,11 +56,11 @@
         ],
         [
           "Hold part of the curve",
-          "Hold by Point or Distance (arc length from the modified end)."
+          "Hold by Point or Distance (arc length from the modified end); optional Remove hold knot (fewer control points, same curve)."
         ],
         [
           "Parameters",
-          "Transition type; continuity at the fixed end / hold (G0 / G1 / G2); end reference."
+          "Carry offset along the curve (transport); Transition type (incl. Smootherstep); continuity at the fixed end / hold (G0 / G1 / G2); end reference."
         ],
         [
           "Project onto surface?",
@@ -176,7 +176,7 @@
         ],
         [
           "Tests",
-          "Gordon tools tests: T01-T40 (all pass)"
+          "Gordon tools tests: T01-T43 (all passed 2026-09-27)"
         ],
         [
           "Examples",

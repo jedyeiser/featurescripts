@@ -1,0 +1,12 @@
+{
+ "doc": "f2aa0d88aa9af672efd57487", "ws": "5a0fcb2078f784d26eaec662",
+ "shots": [
+  {"elem": "1fb88803c2253af7409a8fdc", "featurePrefix": "v2 distance", "wait": 30, "view": "iso",
+   "dialog": "docs/sheets/variable_plus/shots/dialog_distance_map.png"},
+  {"elem": "1fb88803c2253af7409a8fdc", "featurePrefix": "v6 coordinate",
+   "dialog": "docs/sheets/variable_plus/shots/dialog_coord_map.png",
+   "graphics": "docs/sheets/variable_plus/shots/render_frame.png"},
+  {"elem": "1fb88803c2253af7409a8fdc", "featurePrefix": "v3 distance",
+   "dialog": "docs/sheets/variable_plus/shots/dialog_single.png"}
+ ]
+}

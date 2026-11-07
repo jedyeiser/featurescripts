@@ -44,7 +44,11 @@
       "params": [
         [
           "Face",
-          "The face to pull (kept; the result is a new sheet)."
+          "The face to pull (kept unless Replace face is on; the result is a new sheet)."
+        ],
+        [
+          "Replace face",
+          "Put the pulled surface in place of the face in its body (solid or surface)."
         ],
         [
           "U curve count",
@@ -57,6 +61,10 @@
         [
           "Continuity",
           "G0 / G1 / G2 along the edges."
+        ],
+        [
+          "One handle per control point",
+          "A handle at every free control point instead of the U / V grid."
         ],
         [
           "Active offsets",
@@ -100,6 +108,11 @@
           "kind": "limit",
           "head": "Trims",
           "body": "Holes are dropped; edges trimmed inside the face hold continuity only approximately."
+        },
+        {
+          "kind": "tip",
+          "head": "Closed faces and poles",
+          "body": "A closed direction (full cylinder) locks nothing and stays closed; a pole is fixed like an edge."
         }
       ]
     },
@@ -116,7 +129,7 @@
         ],
         [
           "Tests",
-          "Gordon tools tests: P1-P3"
+          "Gordon tools tests: P1-P9"
         ],
         [
           "Examples",

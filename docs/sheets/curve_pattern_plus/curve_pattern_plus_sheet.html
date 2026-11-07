@@ -31,7 +31,7 @@
 &bull; <b>Open paths start at the end nearest the seed</b> (closed paths: the seed's reference geometry picks the start). Reverse path direction flips it. Mate connectors have no seed: the path starts at the first end of the edge.<br/>
 &bull; Closed path: no end offset, and the last instance is one spacing short of the start, so none doubles up.</p>
 
-<img src="docs/sheets/curve_pattern_plus/img/cpp_orient.png" width="400"/>
+<table class="shots"><tr><td><img src="docs/sheets/curve_pattern_plus/img/cpp_orient.png" width="200"/></td><td><img src="docs/sheets/curve_pattern_plus/shots/render_copies.png" width="90"/><p class="cap">Mate connectors on a curve (Onshape)</p></td><td><img src="docs/sheets/curve_pattern_plus/shots/dialog_pattern.png" width="35"/><p class="cap">Dialog</p></td></tr></table>
 <p class="cap">Follow path turns each copy with the path (no roll); Keep seed orientation only moves copies.</p>
 
 <h2>Messages and fixes</h2>
@@ -75,5 +75,9 @@
 &bull; Imports pin Variable_tools and curve_pattern tabs by version; a new tab version needs the user to re-pin.<br/>
 &bull; Credit: spacing model and last-instance queries adapted from Linear pattern plus by Evan Reese (MIT, used with permission).</p>
 
-<p class="foot">More: <code>curve_pattern/</code> (curve_pattern_spacing.fs, curve_pattern_frames.fs, curve_pattern_plus.fs, curve_pattern_tests.fs). No explainer or deck exists yet. Dialog screenshot: not yet captured.</p>
+<p class="foot">More: <code>curve_pattern/</code> (curve_pattern_spacing.fs, curve_pattern_frames.fs, curve_pattern_plus.fs, curve_pattern_tests.fs). No explainer or deck exists yet. Dialog and render: Onshape, document curve pattern, Part Studio 1 (Mate connectors only mode).</p>
+
+
+
+
 
