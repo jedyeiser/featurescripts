@@ -12,7 +12,7 @@ undefined there -- confirm it exists before changing code.
 
 1. **Export by default** - Always use `export` for functions, constants, and enums in utility files
 2. **No namespace imports** - FeatureScript does NOT support `import ... as namespace` or `::` qualification
-3. **Check corrections log** - Before generating code read the top of `.claude/featurescript-corrections.md` (Critical top 10 + Quick index, ~1k tokens), then open only the entries for your topic; do NOT read the whole 2200-line file
+3. **Check corrections log** - Before generating code read the top of `.claude/featurescript-corrections.md` (Critical top 10 + Quick index, ~1k tokens), then open only the entries for your topic; do NOT read the whole ~1835-line file
 4. **Prefer native Onshape** - Use built-in `op*` and `ev*` functions over custom implementations
 
 ## Project Structure
@@ -25,8 +25,19 @@ gordonSurface/ - Gordon surface interpolation feature (archived)
 driven_offset/ - Driven edge offset / surface (Design_Master document) -- read driven_offset/DOCUMENT_MAP.md first
 curve_tools/   - Curve_tools document: curve_core + Clean wire, Map curve, Merge curve, Evaluate profiles, fillet_wire
 variable_tools/- Variable_tools document: Extract variables + extract_outputs (producer library)
-reference_side/- Reference_Side_Features document: Mutual Trim+, Split+, Offset+, Thicken+ (tests in-tree: devtools/onshape/*_reference_side_tests.py)
-publish_tools/ - Publish & Drawing tools document: station-geometry / drawing composites (test doc 73271cfc)
+reference_side/- Reference_Side_Features document: Mutual Trim+, Split+, Offset+, Thicken+, Orient to reference, Move face+, Enclose+, Join profile surfaces, Referenced part (tests in-tree: devtools/onshape/*_reference_side_tests.py)
+publish_tools/ - Publish & Drawing tools document (test doc 73271cfc): station_tools/ (Station definition, Station geometry), export/ (Export tag), layout/ (Auto layout plus), primitive/ (Export primitive), research/
+betterMeasure/ - betterMeasure document: Variable + (distance / coordinate frame + Map output, Export for derive)
+curve_pattern/ - "curve pattern +" document: Curve pattern plus (FS 3095, adapted from Evan Reese's Linear pattern plus)
+evenly_divide_surface/ - roving seed surface -> evenly divided wires (+ strips); design in DESIGN.md
+composite_part_tools/ - Composite boolean / Composite intersection / Subtract Composite
+bodyRename/, curveExport/ - Simple Body Rename / Name Bodies (legacy); Export Curve
+wrapAndLoft/ - Wrap and Loft feature (wrapOntoAndLoft.fs)
+geometryManipulators/ - Deform Geometry, Face Curvatures, Explore Edges
+solvers/ - Iterative solve, Part_Vol, solver_core
+materialData/ - material library CSV/JSON + Python scripts (clt.py, populate_onshape_data.py); no .fs
+mbd_probe/ - MBD probe feature (probe for MBD dimensions; MBD work dropped)
+join_profiles/ - only a .document.json (no .fs); the Join profile surfaces feature lives in reference_side/
 devtools/onshape/ - eval API runner, feature-insertion helpers (fsapi.py), build_/check_ live test pairs, repin, Design_Master fingerprint
 curveMapping/, curveMapping_public/ - wrapAndLoft, wrapCurve, deform + core (private dev document / public copy)
 smallTools/, case_pattern/, xSection/, qcTable/, example_1/ - other documents; see docs/STATUS.md and the memory index
@@ -132,8 +143,9 @@ Clean means "worth pushing", not "correct".
 `devtools/onshape/build_<x>_tests.py` inserts real test features into the document's test Part Studio (features named by
 case + expected result); `check_<x>_tests.py` regenerates and reads results with one FeatureScript eval per batch.
 Run as `PYTHONPATH=. python devtools/onshape/<script>.py` from the repo root (`FS_SYNC_TIMEOUT=120` for heavy studios).
-Pairs: arc_tangency(+deo), auto_layout, case_pattern, composite, deo_regions, evaluate_offset, evaluate_profiles, extract_tracking,
-fillet_wire (check only), footprint, gordon, move_along_edge, offset_edges, offset_profile, primitive, reference_side,
+Pairs: arc_tangency(+deo), auto_layout, case_pattern, composite, deform (+ check_deform_stress), deo_regions, evaluate_offset, evaluate_profiles,
+evenly_divide, export_tag, extract_tracking,
+fillet_wire (check only), footprint, gordon, move_along_edge, offset_edges, offset_profile, primitive (+ cavity_depth_tests.py, one script), reference_side,
 trim_curve_plus, unwrap(+hole_face, parts), utility, xsection. Build once, check often; both cost API calls -- see
 "Onshape API budget" above. Tests live in the feature tree, not in harness tabs (memory: feedback_tests_in_feature_tree).
 Cross-document imports are pinned by VERSION and only the user creates versions; to test unversioned library code,

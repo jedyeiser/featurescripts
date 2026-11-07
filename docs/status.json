@@ -580,9 +580,9 @@
       "title": "Publish & drawing tools",
       "path": "docs/explainers/publish_tools/publish_tools_explained.md",
       "sources": [
-        "publish_tools/station_definition.fs",
-        "publish_tools/station_geometry.fs",
-        "publish_tools/station_utils.fs"
+        "publish_tools/station_tools/station_definition.fs",
+        "publish_tools/station_tools/station_geometry.fs",
+        "publish_tools/station_tools/station_utils.fs"
       ],
       "state": "planned",
       "history": []
@@ -594,7 +594,7 @@
       "title": "Station definition",
       "path": "docs/decks/station_definition/station_definition.pptx",
       "sources": [
-        "publish_tools/station_definition.fs"
+        "publish_tools/station_tools/station_definition.fs"
       ],
       "state": "planned",
       "history": []
@@ -606,7 +606,7 @@
       "title": "Station geometry",
       "path": "docs/decks/station_geometry/station_geometry.pptx",
       "sources": [
-        "publish_tools/station_geometry.fs"
+        "publish_tools/station_tools/station_geometry.fs"
       ],
       "state": "planned",
       "history": []
@@ -905,10 +905,8 @@
       "title": "Footprint",
       "path": "docs/explainers/footprint/footprint_explained.md",
       "sources": [
-        "footprint/Feature_Studio_1.fs",
         "footprint/analyzeFootprint.fs",
         "footprint/arcFit.fs",
-        "footprint/footprintAnalytics.fs",
         "footprint/footprint_config.fs",
         "footprint/footprint_math.fs",
         "footprint/fpt_analyze.fs",
@@ -1066,8 +1064,6 @@
       "path": "docs/explainers/gordon_surface/gordon_surface_explained.md",
       "sources": [
         "gordonSurface/constEnums.fs",
-        "gordonSurface/continuityTools.fs",
-        "gordonSurface/curveOps.fs",
         "gordonSurface/debugTools.fs",
         "gordonSurface/gordonCurveCompat.fs",
         "gordonSurface/gordonSurface.fs",
@@ -1281,7 +1277,6 @@
         "xSection/core/xSectReferencePoints.fs",
         "xSection/core/xSectStorage.fs",
         "xSection/core/xSectUtils.fs",
-        "xSection/features/GJ_Feature.fs",
         "xSection/features/estimateDeflection.fs",
         "xSection/features/estimateStiffness.fs",
         "xSection/features/generateBaseline.fs",
@@ -1290,8 +1285,6 @@
         "xSection/materials/xSectCLT.fs",
         "xSection/materials/xSectComposites.fs",
         "xSection/materials/xSectMaterials.fs",
-        "xSection/section/gjAnalysis.fs",
-        "xSection/section/gjDataAccess.fs",
         "xSection/section/xSectProcessing.fs",
         "xSection/section/xSectVisualization.fs",
         "xSection/section/xSect_GJ.fs",
@@ -1337,7 +1330,7 @@
       "title": "Solve GJ",
       "path": "docs/decks/solve_gj/solve_gj.pptx",
       "sources": [
-        "xSection/features/GJ_Feature.fs"
+        "xSection/section/xSect_GJ.fs"
       ],
       "state": "draft",
       "history": [
@@ -1455,6 +1448,416 @@
       ],
       "written_hash": "8cbd539404dc",
       "sources_hash": "46e876cadc1f"
+    },
+    {
+      "id": "s_case_pattern",
+      "kind": "sheet",
+      "title": "Case pattern (feature sheet)",
+      "path": "docs/sheets/case_pattern/case_pattern_sheet.pdf",
+      "sources": [
+        "case_pattern/case_pattern.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "d5bb848ef1d8",
+      "sources_hash": "e8f6a7545ff5"
+    },
+    {
+      "id": "s_add_variables_for_derive",
+      "kind": "sheet",
+      "title": "Add variables for derive (feature sheet)",
+      "path": "docs/sheets/add_variables_for_derive/add_variables_for_derive_sheet.pdf",
+      "sources": [
+        "variable_tools/add_variables_for_derive.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "5d4e12fe3fa7",
+      "sources_hash": "acd4c1fc89ee"
+    },
+    {
+      "id": "s_auto_layout_plus",
+      "kind": "sheet",
+      "title": "Auto layout plus (feature sheet)",
+      "path": "docs/sheets/auto_layout_plus/auto_layout_plus_sheet.pdf",
+      "sources": [
+        "publish_tools/layout/auto_layout.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "efa25d8ce2a2",
+      "sources_hash": "7e02ba539a8f"
+    },
+    {
+      "id": "s_create_offset_profile",
+      "kind": "sheet",
+      "title": "Create offset profile (feature sheet)",
+      "path": "docs/sheets/create_offset_profile/create_offset_profile_sheet.pdf",
+      "sources": [
+        "driven_offset/create_offset_profile.fs",
+        "driven_offset/offset_profile_core.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "7ac065ae051d",
+      "sources_hash": "40dfcc1a1595"
+    },
+    {
+      "id": "s_curve_pattern_plus",
+      "kind": "sheet",
+      "title": "Curve pattern plus (feature sheet)",
+      "path": "docs/sheets/curve_pattern_plus/curve_pattern_plus_sheet.pdf",
+      "sources": [
+        "curve_pattern/curve_pattern_plus.fs",
+        "curve_pattern/curve_pattern_frames.fs",
+        "curve_pattern/curve_pattern_spacing.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "af85a7409e8e",
+      "sources_hash": "527ca16c1329"
+    },
+    {
+      "id": "s_driven_edge_offset",
+      "kind": "sheet",
+      "title": "Driven edge offset (feature sheet)",
+      "path": "docs/sheets/driven_edge_offset/driven_edge_offset_sheet.pdf",
+      "sources": [
+        "driven_offset/driven_edge_offset.fs",
+        "driven_offset/edge_offset_utils.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "04bad7c8f2ed",
+      "sources_hash": "d6f6ccee36f3"
+    },
+    {
+      "id": "s_driven_offset_surface",
+      "kind": "sheet",
+      "title": "Driven offset surface (feature sheet)",
+      "path": "docs/sheets/driven_offset_surface/driven_offset_surface_sheet.pdf",
+      "sources": [
+        "driven_offset/driven_offset_surface.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "aaa773f3b6f9",
+      "sources_hash": "12ff4962a6dc"
+    },
+    {
+      "id": "s_enclose_plus",
+      "kind": "sheet",
+      "title": "Enclose+ (feature sheet)",
+      "path": "docs/sheets/enclose_plus/enclose_plus_sheet.pdf",
+      "sources": [
+        "reference_side/enclose_plus.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "a23ea2c62d94",
+      "sources_hash": "feeb684df15a"
+    },
+    {
+      "id": "s_evaluate_offset",
+      "kind": "sheet",
+      "title": "Evaluate offset (feature sheet)",
+      "path": "docs/sheets/evaluate_offset/evaluate_offset_sheet.pdf",
+      "sources": [
+        "driven_offset/evaluate_offset.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "e50d2e7c67ea",
+      "sources_hash": "de13ea1df8ea"
+    },
+    {
+      "id": "s_evenly_divide_surface",
+      "kind": "sheet",
+      "title": "Evenly divide surface (feature sheet)",
+      "path": "docs/sheets/evenly_divide_surface/evenly_divide_surface_sheet.pdf",
+      "sources": [
+        "evenly_divide_surface/evenly_divide_surface.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "6c4e74b490aa",
+      "sources_hash": "e56b0f8e06a5"
+    },
+    {
+      "id": "s_export_primitive",
+      "kind": "sheet",
+      "title": "Export primitive (feature sheet)",
+      "path": "docs/sheets/export_primitive/export_primitive_sheet.pdf",
+      "sources": [
+        "publish_tools/primitive/export_primitive.fs",
+        "publish_tools/primitive/primitive_profiles.fs",
+        "publish_tools/primitive/primitive_table.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "09330d712607",
+      "sources_hash": "69062f52805c"
+    },
+    {
+      "id": "s_export_tag",
+      "kind": "sheet",
+      "title": "Export tag (feature sheet)",
+      "path": "docs/sheets/export_tag/export_tag_sheet.pdf",
+      "sources": [
+        "publish_tools/export/export_tag.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "7a493db49cdd",
+      "sources_hash": "48ee850efc48"
+    },
+    {
+      "id": "s_extract_variables",
+      "kind": "sheet",
+      "title": "Extract variables (feature sheet)",
+      "path": "docs/sheets/extract_variables/extract_variables_sheet.pdf",
+      "sources": [
+        "variable_tools/extract_variables.fs",
+        "variable_tools/extract_variables_utils.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "f927419c698f",
+      "sources_hash": "564db1048745"
+    },
+    {
+      "id": "s_join_profile_surfaces",
+      "kind": "sheet",
+      "title": "Join profile surfaces (feature sheet)",
+      "path": "docs/sheets/join_profile_surfaces/join_profile_surfaces_sheet.pdf",
+      "sources": [
+        "reference_side/join_profile_surfaces.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "bec58f053284",
+      "sources_hash": "ae92c0e0e86a"
+    },
+    {
+      "id": "s_measure_curve_distance",
+      "kind": "sheet",
+      "title": "Measure curve distance (feature sheet)",
+      "path": "docs/sheets/measure_curve_distance/measure_curve_distance_sheet.pdf",
+      "sources": [
+        "curveMapping_public/measureBetweenCurves.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "773ac5c805fb",
+      "sources_hash": "ac6aeade1e77"
+    },
+    {
+      "id": "s_move_face_plus",
+      "kind": "sheet",
+      "title": "Move face+ (feature sheet)",
+      "path": "docs/sheets/move_face_plus/move_face_plus_sheet.pdf",
+      "sources": [
+        "reference_side/move_face_plus.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "3babc454496e",
+      "sources_hash": "8a89fbe72d3a"
+    },
+    {
+      "id": "s_referenced_part",
+      "kind": "sheet",
+      "title": "Referenced part (feature sheet)",
+      "path": "docs/sheets/referenced_part/referenced_part_sheet.pdf",
+      "sources": [
+        "reference_side/referenced_part.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "ebd4e463d2d0",
+      "sources_hash": "c9ad0db78c8c"
+    },
+    {
+      "id": "s_station_definition",
+      "kind": "sheet",
+      "title": "Station definition (feature sheet)",
+      "path": "docs/sheets/station_definition/station_definition_sheet.pdf",
+      "sources": [
+        "publish_tools/station_tools/station_definition.fs",
+        "publish_tools/station_tools/station_utils.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "e71e90ff0fbb",
+      "sources_hash": "d2947eae1155"
+    },
+    {
+      "id": "s_station_geometry",
+      "kind": "sheet",
+      "title": "Station geometry (feature sheet)",
+      "path": "docs/sheets/station_geometry/station_geometry_sheet.pdf",
+      "sources": [
+        "publish_tools/station_tools/station_geometry.fs",
+        "publish_tools/station_tools/station_table.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "0225ab39aa87",
+      "sources_hash": "8ed30be3118e"
+    },
+    {
+      "id": "s_unwrap",
+      "kind": "sheet",
+      "title": "Unwrap (feature sheet)",
+      "path": "docs/sheets/unwrap/unwrap_sheet.pdf",
+      "sources": [
+        "driven_offset/unwrap.fs",
+        "driven_offset/unwrap_part.fs",
+        "driven_offset/undrape_utils.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "8a3e8b21a14f",
+      "sources_hash": "914a6d1b5ec3"
+    },
+    {
+      "id": "s_variable_plus",
+      "kind": "sheet",
+      "title": "Variable + (feature sheet)",
+      "path": "docs/sheets/variable_plus/variable_plus_sheet.pdf",
+      "sources": [
+        "betterMeasure/betterMeasure.fs"
+      ],
+      "state": "draft",
+      "history": [
+        {
+          "date": "2026-11-06",
+          "state": "draft",
+          "note": "written by Claude"
+        }
+      ],
+      "written_hash": "b1165c8ecc1a",
+      "sources_hash": "5de0825d695c"
     }
   ]
 }

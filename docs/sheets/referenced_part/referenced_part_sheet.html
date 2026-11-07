@@ -1,0 +1,83 @@
+﻿<h1>Referenced part</h1>
+<p class="sub">Onshape document <b>Reference_Side_Features</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3083)</p>
+
+<p class="lead">Build a part from reference surfaces with <b>every offset and side read from one reference point</b>. One feature replaces Offset+ x N, Mutual Trim+, Enclose+ / Thicken+, Split+ and a mirror.</p>
+
+<img src="docs/sheets/referenced_part/img/modes.png" width="480"/>
+<p class="cap">Schematic cross-sections of the two part types. The orange point sets every direction.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; layers or cores defined by surfaces with offsets (base, mats, glass, top sheet, cores)<br/>
+&bull; one point (e.g. a mate connector on the centreline) can serve every layer<br/>
+&bull; the feature goes inside a Case pattern body: one feature, one local name</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; a single step (just offset, thicken, or enclose): Offset+, Thicken+, Enclose+<br/>
+&bull; a band outside a core (sidewall): make the outline part and the core, then subtract</td></tr></table>
+
+<h2>How it works</h2>
+<table class="grid">
+<tr><th>Part type</th><th>Steps</th><th>Reference point goes</th></tr>
+<tr><td><b>Thickened</b></td><td>offset the Profile, thicken it (Thicken+), cut by the offset Periphery, cut by the Caps</td><td>inside the periphery, on the side to thicken</td></tr>
+<tr><td><b>Constrained</b></td><td>offset Top, Bottom, Periphery; enclose them with the caps (and mirror plane); keep the solid holding the point; cut by the caps</td><td>inside the part</td></tr>
+</table>
+<p>Thickened thickens <i>before</i> the periphery cut so side walls sit on the periphery instead of tilting with the profile normals. The inputs are never changed: every offset is a new surface, deleted at the end.</p>
+
+<h2>Quick start</h2>
+<ol>
+<li>Pick the <b>Part type</b>, then the <b>Reference point</b> (vertex or mate connector).</li>
+<li>Thickened: pick the <b>Profile</b>, set <b>Profile offset</b> and <b>Thickness</b>. Constrained: pick <b>Top</b> and <b>Bottom</b> with their offsets.</li>
+<li>Pick the <b>Periphery</b> (required for Constrained) and its offset.</li>
+<li>Optional: <b>Cap 1 / Cap 2</b> with offsets; <b>Mirror plane</b> if the surfaces are one half.</li>
+<li>Check the part; negate an offset to move away from the point.</li>
+</ol>
+
+<h2>The one rule: positive means toward the point</h2>
+<p>Each offset and the thickness are signed: positive toward the reference point, negative away, 0 the surface as it is. The point must not lie <b>on</b> a surface it measures.</p>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td><code>Select the reference point / profile / top / bottom / periphery ...</code></td><td>Fill the required picks for the part type.</td></tr>
+<tr><td><code>The thickness is zero.</code></td><td>Give a non-zero thickness (Thickened).</td></tr>
+<tr><td><code>The reference point lies on cap 1's plane (cap 2's), so its sides cannot be told apart.</code></td><td>Move the point off the cap plane.</td></tr>
+<tr><td><code>The top, bottom, periphery and caps do not close off any volume: look for a gap between them, or a missing cap.</code></td><td>Close the gap, or add a cap.</td></tr>
+<tr><td><code>The reference point is not inside the enclosed volume (N solid(s) found): it must lie inside the part.</code></td><td>Move the point into the part (Constrained).</td></tr>
+<tr><td><code>The part is centred on the mirror plane: give one half of the surfaces, or remove the mirror plane.</code></td><td>Model one half only. (A mirror plane must be a plane, planar face or mate connector.)</td></tr>
+</table>
+
+<h1 class="pb">Referenced part, reference</h1>
+<p class="sub">Dialog parameters, outputs, limits</p>
+
+<h2>Dialog, in order</h2>
+<table class="grid">
+<tr><td class="k" width="105">Part type</td><td>Thickened (default) or Constrained. Switches the fields below.</td></tr>
+<tr><td class="k" width="105">Reference point</td><td>Vertex or mate connector, one pick, required. Sets every direction.</td></tr>
+<tr><td class="k" width="105">Profile<br/>Profile offset<br/>Thickness</td><td>Thickened only. Profile: face or sheet body. Offset: default 0 (the profile itself, no copy made). Thickness: signed, default 1 mm, measured from the offset profile; positive toward the point.</td></tr>
+<tr><td class="k" width="105">Top, Top offset<br/>Bottom, Bottom offset</td><td>Constrained only. Face or sheet body each; offsets positive toward the point.</td></tr>
+<tr><td class="k" width="105">Periphery, offset</td><td>The side wall; the part keeps the point's side. Required for Constrained, optional when Thickened.</td></tr>
+<tr><td class="k" width="105">Cap 1 / Cap 2, offsets</td><td>Optional, one pick each: sheet, face, construction plane or mate connector (planes and mate connectors are infinite and moved by the offset). The part keeps the point's side of each; caps always cut.</td></tr>
+<tr><td class="k" width="105">Mirror plane</td><td>Optional: the surfaces are one half; it is made, mirrored and united. A point ON the plane is fine.</td></tr>
+<tr><td class="k" width="105">Output name</td><td>Optional name for the part.</td></tr>
+</table>
+
+<h2>Outputs (for Extract variables)</h2>
+<table class="grid">
+<tr><td class="k" width="105">output</td><td>The part.</td></tr>
+<tr><td class="k" width="105">Thickened</td><td><code>profileFaces</code> (on the offset profile), <code>oppositeFaces</code> (the thickness away from it).</td></tr>
+<tr><td class="k" width="105">Constrained</td><td><code>topFaces</code>, <code>bottomFaces</code>.</td></tr>
+<tr><td class="k" width="105">Both</td><td><code>sideFaces</code> (on the offset periphery), <code>cap1Faces</code>, <code>cap2Faces</code>. Every key is always present, empty when not applicable. Faces are sorted by where they lie, so they survive the splits and the union.</td></tr>
+</table>
+
+<h2>Examples</h2>
+<p>Project test notes (not re-run for this sheet): thickened 5 mm; profile offset 2 with thickness -3; periphery cut (4 side faces); a half with a plane cap offset 5, a mirror plane and the point on the plane; constrained with three offsets; caps that divide a closed volume cut it; a point outside the periphery errors.</p>
+
+<h2>Limits</h2>
+<p>&bull; One reference point for all layers; a point that is outside the periphery (Thickened) or the part (Constrained) errors.<br/>
+&bull; With a mirror plane and a profile offset, the thickened layer is built from the <i>unoffset</i> profile (an offset copy's edges stop short of the plane, which breaks the union).<br/>
+&bull; Constrained is sensitive to the order its boundary bodies are created in; the feature creates top and bottom offsets first on purpose.<br/>
+&bull; Not covered: a sidewall band outside a core.<br/>
+&bull; Importers pin Offset+, Split+ and Thicken+ by microversion: re-pin when they change.</p>
+
+<p class="foot">More: <code>docs/explainers/reference_side/reference_side_explained.md</code> section 2.4d (tests P1-P8) &middot; source <code>reference_side/referenced_part.fs</code>.</p>

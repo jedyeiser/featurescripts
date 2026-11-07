@@ -1,0 +1,95 @@
+<h1>Export tag</h1>
+<p class="sub">Publish &amp; Drawing tools &nbsp;|&nbsp; Onshape document <b>Publish &amp; Drawing tools</b> (tab <code>export_tag</code>) &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 &nbsp;|&nbsp; not yet versioned (needs a document version, together with Station geometry)</p>
+
+<p class="lead">Tell the export app <b>what to export</b> for one body or one composite (solid formats, DXF plan / profile, station views, export origin), and let the feature <b>build the geometry</b> that export needs: DXF faces, an optional shifted copy and the station views.</p>
+
+<img src="docs/sheets/export_tag/img/export_tag_hero.png" width="430"/>
+<p class="cap">Schematic. A tagged part anywhere in the model becomes DXF surface bodies placed from the export origin (here 1st quadrant, 10 mm buffers), patterned 3 x 1 with a clearance.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; a part (or composite) must be exported as DXF, with a known name and origin<br/>
+&bull; several copies of one outline should sit in one DXF (a pattern)<br/>
+&bull; the part's drawing needs station views and a Station table<br/>
+&bull; an app or the API tool should read one record of the export intent</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; you want the file written now: the tag only <i>records</i> solid formats; the app / API tool exports<br/>
+&bull; you need true nesting of parts on a sheet (not built)<br/>
+&bull; you want the ski's primitive drawing: Export primitive</td></tr></table>
+
+<h2>How it works</h2>
+<p>&bull; <b>Input:</b> one body or composite, plus a name, an optional export origin and the DXF / solid / station options.<br/>&bull; <b>FeatureScript builds:</b> DXF faces (surface bodies on XY / XZ, in a composite), an optional shifted copy <code>&lt;name&gt; EXPORT</code>, the station views (Station geometry).<br/>&bull; <b>FeatureScript only records:</b> STEP / IGES / STL / Parasolid, file names, release prefix. The app / API tool does the exporting from the attribute <code>publishExportTag</code> and the variable <code>exportTag</code>.</p>
+
+<h2>Quick start</h2>
+<ol>
+<li><b>Part:</b> pick one body or one composite. The part's name is stored; press <b>Get Part Name</b> if you rename it later.</li>
+<li>Check <b>Export name</b> (empty = the stored part name). It names every generated body and view.</li>
+<li><b>Export info:</b> tick <b>Export solid</b> (and the formats) and / or <b>Export DXF</b>; set Plan (XY) and / or Profile (XZ) to <i>Projection of the part</i> or <i>Selected faces</i>.</li>
+<li>Optional: <b>Export origin</b> (mate connector, or a quadrant with buffers); <b>Pattern the DXF faces</b> for several copies.</li>
+<li>Optional: tick <b>Station table</b>, pick the Station definition(s) and a datum.</li>
+<li>Read the feature's info message: it lists the surface bodies built per view, the pattern and any warnings.</li>
+</ol>
+
+<h2>Key rules</h2>
+<p>&bull; <b>One part per tag.</b> A body inside a composite is exported as itself; tag the composite separately to export the composite.<br/>
+&bull; <b>The export origin always shifts the DXF faces</b> (composites too). A shifted <i>copy</i>, and station views built on a copy, exist for single bodies only.<br/>
+&bull; <b>Keep export names distinct</b> across tags: the Station table finds views by a substring match on the export name.</p>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>Error &ldquo;Press Get Part Name, or enter an export name.&rdquo;</td><td>Press Get Part Name or type an Export name.</td></tr>
+<tr><td>Warning / error &ldquo;The part was renamed since the name was stored.&rdquo;</td><td>Press Get Part Name. (Checked when the dialog is edited; choose Ignore / Warn / Error under &ldquo;If the name changed&rdquo;.)</td></tr>
+<tr><td>Error &ldquo;Select the faces for the XY / XZ DXF.&rdquo;</td><td>Source is <i>Selected faces</i>: pick faces, or switch to Projection.</td></tr>
+<tr><td>Error &ldquo;... projection needs a solid. For a surface, select its faces.&rdquo;</td><td>Choose <i>Selected faces</i> for a surface part.</td></tr>
+<tr><td>Error &ldquo;... pattern distance in X / Y is smaller than the part&rdquo;</td><td>Raise the Pattern distance (pitch) or use Clearance.</td></tr>
+<tr><td>Warning &ldquo;A composite is taken as already patterned...&rdquo; / &ldquo;A composite cannot be copied...&rdquo;</td><td>Expected for composites: pattern or copy was not built. Tag a single body for those.</td></tr>
+</table>
+
+<h1 class="pb">Export tag, reference</h1>
+<p class="sub">Dialog parameters, outputs, examples and limits</p>
+
+<h2>Dialog, in order</h2>
+<table class="grid">
+<tr><th colspan="2">Part and name</th></tr>
+<tr><td class="k" width="105">Part</td><td>One body (solid or surface) or one composite.</td></tr>
+<tr><td class="k" width="105">Get Part Name</td><td>Button. Copies the part's current name into the tag. The feature cannot read names while regenerating, so this runs in the dialog.</td></tr>
+<tr><td class="k" width="105">Export name</td><td>Names the exports and generated bodies. Empty = the stored part name.</td></tr>
+<tr><td class="k" width="105">If the name changed</td><td>Ignore / <b>Warn</b> (default) / Error, compared when the dialog is edited, not when the part is renamed elsewhere.</td></tr>
+<tr><td class="k" width="105">Release prefix</td><td>None (default), V1.., V001.., R0.., R1... A rule only: the app adds the released version at export time.</td></tr>
+<tr><th colspan="2">Export info</th></tr>
+<tr><td class="k" width="105">Export solid / Export DXF</td><td>Solid: records STEP / IGES / STL / Parasolid (.x_t) (each off by default) and a <b>Solid file name</b> (empty = the export name). DXF: shows the views below.</td></tr>
+<tr><td class="k" width="105">Plan DXF (XY) / Profile DXF (XZ)</td><td>None (default) / Projection of the part / Selected faces (then pick <b>Plan faces</b> / <b>Profile faces</b>). File name fields: empty = the app's default.</td></tr>
+<tr><td class="k" width="105">Profile outline</td><td>Section through the part, exact edges (default) or Silhouette (re-fits a curved top into many small pieces). Falls back to the silhouette when the section plane misses the part.</td></tr>
+<tr><td class="k" width="105">One composite for plan and profile</td><td>Off (default): one composite per view. On: <code>&lt;name&gt; DXF</code>.</td></tr>
+<tr><td class="k" width="105">Pattern the DXF faces</td><td>Real surface copies. <b>Spacing</b>: Clearance (default; gap 10 mm) or Pitch (start to start; 300 mm). <b>Instances in X / Y</b> (1 to 500 each, product at most <b>200</b>). Profile uses X and Z. Starts at the export origin.</td></tr>
+<tr><th colspan="2">Drawing Information (driven by the checkbox <b>Station table</b>)</th></tr>
+<tr><td class="k" width="105">Station definitions</td><td>The Station definition feature(s) whose stations this part is measured at.</td></tr>
+<tr><td class="k" width="105">Datum, Datum axes</td><td>Measuring origin (mate connector or vertex; empty = world origin) and whether only its origin or its axes are used (origin by default).</td></tr>
+<tr><td class="k" width="105">Plan view (XY) / Profile view (XZ)</td><td>Defaults on / off. At least one must be on.</td></tr>
+<tr><td class="k" width="105">Views at export position</td><td>Off (default): views on the part where it is. On: on a shifted copy (new part; single bodies; needs an export origin).</td></tr>
+<tr><th colspan="2">Export origin (collapsed by default)</th></tr>
+<tr><td class="k" width="105">Origin</td><td>None (default) / Mate connector (+ <b>Move</b>: origin only, or origin and axes) / Insert into quadrant (1st to 4th, default 1st; <b>X / Y buffer</b> 10 mm, <b>Z buffer</b> 0 mm). Translation only for quadrants.</td></tr>
+<tr><td class="k" width="105">Make a shifted copy</td><td>Adds <code>&lt;name&gt; EXPORT</code> at the export position. Single body only.</td></tr>
+</table>
+
+<h2>Outputs</h2>
+<table class="grid">
+<tr><td class="k" width="105">Bodies</td><td>DXF faces <code>&lt;name&gt; XY EXPORT</code> (copies <code>..._PATTERN_n</code>, n along X then Y), composite <code>&lt;name&gt; XY DXF</code> (always, even for one face; XZ likewise); shifted copy <code>&lt;name&gt; EXPORT</code>; station views <code>&lt;name&gt; XY</code> / <code>XZ</code> (built by Station geometry).</td></tr>
+<tr><td class="k" width="105">Attribute</td><td><code>publishExportTag</code> (schema <code>exportTag/1</code>) on the tagged body: name, part ids, solid formats, <code>dxf</code>, <code>drawing</code> (incl. <code>layout</code> per view: body names with x / lo / hi / span for ordinate dimensions), <code>origin</code>, <code>shiftedCopy</code>.</td></tr>
+<tr><td class="k" width="105">Variable, queries</td><td>Variable <code>exportTag</code> (the same map; read it with Extract variables); queries <code>exportPlan</code>, <code>exportProfile</code>.</td></tr>
+</table>
+
+<h2>Examples</h2>
+<p>&bull; <b>Flat DXF, one part:</b> Export DXF, Plan = Projection, Origin = 1st quadrant. Result: <code>&lt;name&gt; XY EXPORT</code> in <code>&lt;name&gt; XY DXF</code>.<br/>
+&bull; <b>Three copies for one cut:</b> add Pattern, 3 x 1, Pitch. Tested with a 1 x 3 pattern of a projected plan (pitch 142.26 mm, arcs kept).<br/>
+&bull; <b>Part with station table:</b> tick Station table, pick the Station definition, Plan view on; in the drawing insert the table with <i>Views containing</i> = the export name.</p>
+
+<h2>Limits and not verified</h2>
+<p>&bull; Solid formats, file names and the release prefix are only recorded; exporting is the app's / API tool's job. There is no drawing-export flag in the tag.<br/>
+&bull; Name-clash warnings only see tags <i>earlier</i> in the tree.<br/>
+&bull; Verified on real parts (2026-10-29): plan projection, quadrant, pattern, section profile, selected flat face, station views in place and on a shifted copy. <b>Not verified</b>: selected tilted or curved faces, an attribute surviving a composite rebuild, a real drawing built from <code>drawing.layout</code>, and the dialog's rendering of every conditional.<br/>
+&bull; The regression build (<code>build_export_tag_tests.py</code>, ZT1-ZT8) has not been run.</p>
+
+<p class="foot" style="margin-top:2pt">More: <code>publish_tools/README.md</code> (Export tag) &middot; <code>publish_tools/research/export_tag_handoff.md</code> &middot; test studio &ldquo;Export Tests&rdquo;.</p>

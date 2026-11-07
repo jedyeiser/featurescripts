@@ -466,6 +466,36 @@ Note (2026-09-29): keep only ONE Export primitive instance active in "Primitive 
 band incl. EI). Instances share the same position, so two active ones draw their bands and labels on top of each
 other -- it looked like missing letters.
 
+### Cavity depth + scaled baseline / profile bands (2026-11-06; not yet versioned)
+* **Cavity depth profile** (new dialog group "Cavity depth", pick `cavityProfile`, empty by default = no change): one connected
+  wire (edges or a wire body), copied into the local frame; a wire not in the datum XZ plane (|y| > 0.001 mm) is PROJECTED
+  onto it (every edge sampled 80 intervals and refitted with y = 0, `primitiveCavityProfile`, primitive_profiles). It is
+  drawn in the PROFILE band (`<prefix> PRIMITIVE PROFILE CAVITY`, teal, query `profileCavity`) at the profile's scale, and
+  adds the column **cavity depth** (German "Minicaphoehe", `cavityDepth`) to Table 6: at each row, the distance ALONG THE
+  BOTTOM WIRE'S NORMAL (the one thck uses) from the top of the ski to the cavity profile, absolute value; empty where the
+  profile does not reach the row. The column exists only when a row carries `cavityDepth` (data driven: no table parameter,
+  placed tables are unaffected). Attribute: row field `cavityDepth`, `settings.cavityProfile`.
+* **Scaled baseline and profile bands** (Auto scale, which is the default and migrates on): like the EI and radius bands, a
+  fixed band height ("Baseline band height" 60 mm, "Profile band height" 100 mm; saved features take these from the defaults
+  map) and the height (z) scaled up to fill it, x unchanged. The axis (`primitiveFitAxis`): level unit 1 mm (0.1 / 0.01 /
+  0.001 mm under a 4 mm span), the first of 1, 2, 5, 10, ... giving at most 6 intervals, the zero line always on the axis.
+  Each band gets a `<band> REFERENCE` line at z = 0 and the scale frame (`<band> AXIS TIP / TAIL`, `TICK +10 TIP`, `LABEL +10`)
+  over the volume's x extent. The scale is z about the datum height: `scaleNonuniformly(1, 1, k)` then the band move, applied to the
+  wires (opTransform) and every point of the band. The profile band's range includes the cavity profile. Auto scale OFF: 1:1 as before.
+  Attribute `bands`: baselineZScale / profileZScale (k), ...TickStep, ...AxisFrom / To (mm), ...BandHeight.
+  **Anything reading z from the BAND GEOMETRY (not the tables / attribute) now sees it scaled by k** (baseline, profile).
+* **Profile source** (2026-11-06; group "Profile, baseline and footprint source"; `profileFrom` VOLUME default / INPUT, `profileWires`):
+  the profile loop is the volume cut by the datum XZ plane, or ONE closed loop of picked wires in that plane (top, bottom, tip and
+  tail ends). Why: RD 25ONE 28 has a swallowtail slot near the tail; the y = 0 section is then cut into pieces ("the mid plane cuts
+  the volume in 3 loops; the longest is used"), the longest starts 63.6 mm past ACP and the rows at ACP get no thck / cavity depth
+  (blank). A silhouette via opCreateOutline was measured there (1 body, 3 faces, 422 edges, tail at x 17.8 vs the section's 32.1)
+  and NOT adopted: it would change every chain / normal / footprint input. Everything after the loop is unchanged.
+* **Inputs**: a Baseline / Footprint wire pick that mixes model wires with a sketch's edges keeps the model wires (correction 86);
+  overlapping or unchained baseline wires now give "The baseline wires overlap or do not form a clean wire (N edges picked)...".
+* Tests: `devtools/onshape/cavity_depth_tests.py` (builds the fixture sketch 5 mm below the top, P20 = the active base case + that
+  wire, P21 = the same wire on a plane 10 mm off Front = projected; 17 checks, about 8 REST calls). 17 / 17 on 2026-11-06.
+  `check_primitive_tests.py` has NOT been run since: it expects 1:1 baseline / profile bands.
+
 ## Export tag (2026-10-28 / 29; not yet versioned)
 
 Tab `export_tag` (element 27ea220e..., folder `export`; local `publish_tools/export/export_tag.fs`; icon `export_tag_icon.svg`,

@@ -1,0 +1,88 @@
+<h1>Unwrap</h1>
+<p class="sub">Unwrap (edges, constant-thickness plates, solids, faces) &nbsp;|&nbsp; Onshape document <b>Design_Master</b> (driven_offset; <code>unwrap.fs</code>, <code>unwrap_part.fs</code>, <code>undrape_utils.fs</code>) &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3070)</p>
+
+<p class="lead">Flatten geometry that is wrapped along a <b>planar reference curve</b> (a ski's camber and rocker profile, say) onto a plane, keeping the lengths along the curve you choose. It gives you the flat blank of a bent laminate, core or edge.</p>
+
+<img src="docs/sheets/unwrap/img/fig_hero.png" width="330"/>
+<p class="cap">Schematic (not live data): wrapped along W, then flat; length is kept along W offset by d.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; a part or curve lies along a planar tangent chain and you need its flat shape (laminates, base, topsheet, core, extensions, edges)<br/>
+&bull; you need the flat length, volume change and line/arc/spline content checked for you<br/>
+&bull; the part is a plate with a draped surface (topsheet): <i>undrape</i> measures and reports the deformation</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; the reference curves in 3D, runs across world X, or turns back in X (refused)<br/>
+&bull; you want to bend or map curves to another curve, not flatten: Wrap Curve / Deform (curveMapping)<br/>
+&bull; the shape is a sphere, saddle or other non-developable surface that must keep every length (impossible; only plates are undraped)</td></tr></table>
+
+<h2>How it works: four modes, one chart</h2>
+<p>Every point near W gets chart coordinates: arc length <b>s</b> along W, offset <b>v</b> across W's plane, height <b>h</b> off the swept surface. The flat result is <code>x = s - d*theta(s)</code>, <code>y = -v</code>, <code>z = h</code>, placed in the origin's frame with the alignment point at the origin. Only the curve at offset d keeps its length; other heights stretch by (1 - kappa*d) / (1 - kappa*h), which is why a part sitting high on a curved stretch changes volume.</p>
+
+<p class="note"><b>Inputs and outputs:</b> Edges/wires gives one wire body per source body. Constant-thickness part: plates (flat or draped), one flat plate per source. Part (solid): any solid along W, one flat solid per source. Faces/surfaces: faces or sheets, one flat sheet per source body.</p>
+
+<h2>Quick start</h2>
+<ol>
+<li>Pick <b>Unwrap</b> (mode) and the geometry (<i>Edges to unwrap</i>, <i>Parts to unwrap</i> or <i>Faces to unwrap</i>).</li>
+<li>Pick the <b>Wrapped reference</b> (plates: or <i>Section by a face</i>, see page 2).</li>
+<li>Choose the length to keep. Edges, Part, Faces: <i>Preserve length</i> = <i>Along an offset</i> and set <b>Offset</b> to the part's height above W. Plates: set <b>Target offset</b> to the plate's mid height above W.</li>
+<li>Pick the <b>Wrapped alignment point</b> (a mate connector or vertex within W's X span) and the <b>Unwrapped origin</b> (a mate connector, plane or planar face).</li>
+<li>Optional: press <b>Read names and properties</b> to fill the Outputs table (names, materials).</li>
+<li>Read the notice: <code>Length along the preserved curve: ... mm wrapped -&gt; ... mm flat; volume x...</code>. The two lengths should agree.</li>
+</ol>
+
+<h2>Key rules</h2>
+<p>&bull; <b>W must be one planar tangent chain</b> (joints within 1 degree), with <b>X rising steadily</b> along it.<br/>
+&bull; The <b>alignment point's X must lie inside W's X span</b> (the message names the span).<br/>
+&bull; Volume x is <b>not</b> expected to be 1 for a solid off the preserved curve on a bend: set the offset to the part's height (explainer 2.3).</p>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message (start)</th><th>Fix</th></tr>
+<tr><td>The wrapped reference must run along world X ... / ... must be a tangent chain</td><td>Reference must be one tangent chain (joints within 1 degree) with X rising along it.</td></tr>
+<tr><td>An edge cannot be unwrapped (highlighted): a point on it lies past the reference's centre of curvature</td><td>The geometry is farther from W than W's radius of curvature; use a flatter reference.</td></tr>
+<tr><td>Could not find the two sides of a constant-thickness plate ... looks like a solid block</td><td>Use mode <i>Part (solid)</i> for that body.</td></tr>
+<tr><td>Unwrap part: ... misses the source by ... mm &nbsp;/&nbsp; ... did not fuse</td><td>The rebuilt solid failed its two-way check; try <i>Simplify</i>, raise <i>Shape tolerance</i> (the departure is reported), or see Limits.</td></tr>
+</table>
+
+<h1 class="pb">Unwrap, reference</h1>
+<p class="sub">Dialog parameters in order, outputs, status, limits and links</p>
+
+<h2>Dialog (a parameter shows only under the choice it belongs to)</h2>
+<table class="grid">
+<tr><td class="k" width="105">Unwrap</td><td>The mode: Edges / wires (default), Constant-thickness part, Part (solid), Faces / surfaces.</td></tr>
+<tr><td class="k" width="105">Edges / Faces / Parts to unwrap</td><td>The geometry. Grouped by owner body: one output per source body. Plates are solids; Part takes any solid.</td></tr>
+<tr><td class="k" width="105">Undrape target from</td><td>Constant-thickness only. <i>Wire</i> (default): map the mid-surface onto the extrusion of a wire you pick. <i>Section by a face</i>: W is the cut of the plate's own mid-surface by a planar face (the plate keeps its own mid-line length). Needs the cut in one piece, and the plate must cross the alignment X.</td></tr>
+<tr><td class="k" width="105">Wrapped reference / Section face</td><td>W (edges or wire body), or the plane for a section. Section face accepts one pick.</td></tr>
+<tr><td class="k" width="105">Preserve length, Offset, Flip offset</td><td>Not for plates. <i>Along the reference</i> (default, d = 0) or <i>Along an offset</i>: d = Offset (length, up to +/-10 m) along W's surface normal. Pick the height the geometry lives at.</td></tr>
+<tr><td class="k" width="105">Target offset, Flip target offset</td><td>Plates only. The mid-surface maps onto the wire offset by this; that offset's length is kept. Default 0 (right for Section by a face). A topsheet whose top face lies on W's extrusion: minus half its thickness.</td></tr>
+<tr><td class="k" width="105">Wrapped alignment point</td><td>Mate connector or vertex; lands on the origin and fixes x = 0. X within W's span.</td></tr>
+<tr><td class="k" width="105">Unwrapped origin</td><td>Mate connector (implicit ok) or plane / planar face. Flat X runs along W, flat Z along W's surface normal.</td></tr>
+<tr><td class="k" width="105">Lay the part on the origin plane</td><td>Plate and Part only. On (default): lowest face on the origin's XY plane. Off: keeps its height relative to the alignment point.</td></tr>
+<tr><td class="k" width="105">Rebuilt faces, Shape tolerance, Square walls</td><td>Part only. <i>Keep source faces</i> (default; arcs and planes stay) or <i>Simplify</i> (tangent faces merged to splines, fewer faces). Shape tolerance 0.005 mm default (0.0001 to 1): how far a face may depart from a pure profile or wall shape before the slower exact rebuild; results beyond max(tol, 0.01 mm) are an error. Square walls (off): on makes walls normal to the flat plane, as a machined blank.</td></tr>
+<tr><td class="k" width="105">Maximum sample gap, U-turn zones</td><td>Plates only. Gap cap 50 mm default (0.5 to 1000); density itself comes from the fit tolerance. U-turn zones: <i>Section literally</i> (default, keeps a spike at the tip and tail) or <i>Blend across</i> (smooth, faster, not measured there). Which should be the default is undecided (Status).</td></tr>
+<tr><td class="k" width="105">Lines, arcs &amp; fitting</td><td>Recognise lines and arcs (on); Target degree; Tolerance (0.005 mm default; sets sample density); Maximum control points (60 default).</td></tr>
+<tr><td class="k" width="105">Names &amp; properties</td><td>Name suffix (<code>_UNWRAPPED</code>); <b>Read names and properties</b> button; Outputs table (Source, Output name, Material read-only, Copy material and appearance per row); Copy attributes (on). Rows pair with sources by position; if the count changed the table is skipped with a warning, so press the button again.</td></tr>
+<tr><td class="k" width="105">Debug</td><td>Print edge table; Keep length curves (draws the wrapped curve and its flat image: equal lengths = good unwrap); Measure deformation (plates; on by default; off is faster).</td></tr>
+</table>
+
+<h2>Outputs and examples</h2>
+<p>&bull; <b>Bodies:</b> one flat wire / plate / solid / sheet per source body, placed in the origin's frame; named from the Outputs table.<br/>
+&bull; <b>Published values</b> (through Variable_tools' <code>embedStandardOutputs</code>): <code>lengthWrapped</code>, <code>lengthFlat</code>, <code>volumeRatio</code> per body, plus line, arc and spline counts. Exact key spelling not re-checked on this sheet.<br/>
+&bull; <b>Test studio examples</b> (explainer 2.4; wrapped -&gt; flat, mm): base plate 1789.587 -&gt; 1789.589; core 1500.000 -&gt; 1500.000; topsheet by own section 1827.693 -&gt; 1827.693. Examples live in the Design_Master test copies; numbers are the explainer's, not re-run here.</p>
+
+<h2>Status (what is not settled)</h2>
+<p>&bull; <b>U-turn default</b> (literal vs blend at the topsheet tip and tail): the choice is still open; the code default is literal.<br/>
+&bull; Also open: the about 9 degree transition shear on topsheet flaps, runtime, and 5-10 um fit error within 0.2 mm of transition vertices.<br/>
+&bull; A single constant d is used per part; a variable neutral-axis length curve for solids is not built, so layers unwrapped on their own curves do not coincide in the flat.<br/>
+&bull; Faces mode: a 64-face core test gives 2 sheets instead of 1 (faces differing over about 1 um do not sew). Not built: surface projection / thicken, composite parts, mate connectors as input.</p>
+
+<h2>Limits</h2>
+<p>&bull; W: planar, one tangent chain, X rising; geometry past W's centre of curvature is refused.<br/>
+&bull; Part mode over a curved reference refuses what it cannot build instead of building it wrong. Not handled: bosses, tunnels along Y, filleted or stepped hole floors, ring walls that are not ruled; closed chains turning more than 180 degrees.<br/>
+&bull; Plates: the accuracy budget is 0.01 mm; the flat outline can differ from the plan where the plate is draped (undrape is a deformation, reported as stretch and shear).<br/>
+&bull; Always pull the tab before editing: the document pins unwrap, undrape_utils and unwrap_part to one edge_offset_utils version.</p>
+
+<p class="foot">Longer: <code>driven_offset/docs/unwrap_explained.md</code> (theory, parameters, tests, code map) &middot; <code>driven_offset/DOCUMENT_MAP.md</code> (tabs, pins) &middot; <code>driven_offset/research_unwrap*.md</code>, <code>research_undrape_*.md</code>. No Onshape dialog screenshot yet (see report).</p>
+

@@ -1,0 +1,83 @@
+﻿<h1>Station definition</h1>
+<p class="sub">Onshape document <b>Publish &amp; Drawing tools</b> (tab folder station_tools) &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3083; versioned together with Station geometry)</p>
+
+<p class="lead">Name the places along a part where drawings measure it, <b>once</b>: single points and evenly spaced stations along a line or between two points. Station geometry and Export tag then pick this feature.</p>
+
+<img src="docs/sheets/station_definition/img/fig_stations.png" width="430"/>
+<p class="cap">Schematic, not to scale (4101 test positions, datum at the tail): single points TAIL, MRS, TIP and one N-between entry.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; several parts or views share the same measuring stations<br/>
+&bull; you want station ids that stay stable when a station is added or removed<br/>
+&bull; drawings need width / thickness tables at fixed places</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; one part needs a one-off station: use <i>Extra stations</i> inside Station geometry<br/>
+&bull; you need the measurements themselves: add Station geometry (this feature makes no geometry)</td></tr></table>
+
+<h2>How it works</h2>
+<img src="docs/sheets/station_definition/img/fig_flow.png" width="330"/>
+<p class="note">Selections (vertices, mate connectors, line edges) are resolved to <b>plain points and directions</b> here, so nothing downstream breaks when the picked geometry changes later.</p>
+
+<h2>Quick start</h2>
+<ol>
+<li>Add <b>Station definition</b> above the features that use it (it must regenerate before them).</li>
+<li>Add a station (<b>Stations</b> list). Choose its type, give it a name, pick the point(s) or the line.</li>
+<li>For <i>N stations</i> entries, set <b>Number of stations</b> (ends included) and, if wanted, <b>First number</b> (for example 0).</li>
+<li>Choose <b>Station table language</b> (English / Deutsch) for the drawing table.</li>
+<li>Check the message (&ldquo;N stations.&rdquo;); <b>Print stations</b> lists positions in the notices.</li>
+<li>In <b>Station geometry</b> (or Export tag) pick this feature under Station definitions.</li>
+</ol>
+
+<h2>The key rules</h2>
+<p>&bull; <b>Names are ids.</b> Letters, digits and underscore only (anything else becomes <code>_</code>); they must be unique across the whole definition. Drawing dimensions follow the id, not the row.<br/>
+&bull; <b>Numbering</b> of line / between entries runs toward +X (else +Y, else +Z) unless <i>Reverse numbering</i> is on. An <i>empty</i> name numbers its stations 1 .. N.<br/>
+&bull; <b>Station positions are absolute.</b> A part later moved with an export shift is handled by Station geometry's hidden station frame, not here.</p>
+
+<h2>Troubleshooting</h2>
+<table class="grid">
+<tr><th width="200">Message</th><th>Cause and fix</th></tr>
+<tr><td>Station N has no name.</td><td>A <i>Single point</i> entry needs a name (empty names are fine only for line / between entries).</td></tr>
+<tr><td>Station X: select a point. / select a line.</td><td>The entry's pick is empty. Pick a vertex, point or mate connector; or a straight (line) edge.</td></tr>
+<tr><td>Station X: the two ends coincide.</td><td>Both ends of the line or between-pair are the same point.</td></tr>
+<tr><td>Two stations are named X. Station names must be unique.</td><td>Rename; remember that <i>name_1 ... name_N</i> from a line entry count too.</td></tr>
+</table>
+
+<h1 class="pb">Station definition, reference</h1>
+<h2>Dialog parameters (in dialog order)</h2>
+<table class="grid">
+<tr><td class="k" width="105">Also store as # variable (optional)</td><td>Variable name for your own expressions. <b>Empty (default for new features) = none</b>; saved features keep the older default <code>stations</code>. Publish features read the feature itself, not the variable.</td></tr>
+<tr><td class="k" width="105">Station table language</td><td>English (default) or Deutsch: headings of the Station table made from these stations (the table can override it).</td></tr>
+<tr><td class="k" width="105">Stations</td><td>List of entries; each has the fields below. The item label shows the station name.</td></tr>
+<tr><td class="k" width="105">&nbsp;&nbsp;Station type</td><td>Single point (default) / N stations along a line / N stations between two points.</td></tr>
+<tr><td class="k" width="105">&nbsp;&nbsp;Station name (or name stem)</td><td>Up to 64 characters. Single point: the id (required). N stations: ids <code>&lt;name&gt;_&lt;n&gt;</code>, or just <code>n</code> if empty.</td></tr>
+<tr><td class="k" width="105">&nbsp;&nbsp;Point / first point</td><td>One vertex, point or mate connector (its origin). Shown for Single point and Between.</td></tr>
+<tr><td class="k" width="105">&nbsp;&nbsp;Second point</td><td>Between only: the other end.</td></tr>
+<tr><td class="k" width="105">&nbsp;&nbsp;Line</td><td>Line entries only: one straight edge; its two ends are the first and last station.</td></tr>
+<tr><td class="k" width="105">&nbsp;&nbsp;Number of stations</td><td>Integer 2 to 200, default 5. Evenly spaced, both ends included; each measures perpendicular to the line.</td></tr>
+<tr><td class="k" width="105">&nbsp;&nbsp;First number</td><td>0 to 1000, default 1: the number of the first station (0 gives name_0 ... name_(N-1)).</td></tr>
+<tr><td class="k" width="105">&nbsp;&nbsp;Reverse numbering</td><td>Off: numbers rise toward +X (else +Y, else +Z). On: the other way.</td></tr>
+<tr><td class="k" width="105">Print stations</td><td>Prints each station's id, position (mm) and direction to the notices.</td></tr>
+</table>
+
+<h2>Outputs</h2>
+<table class="grid">
+<tr><td class="k" width="105">Geometry</td><td>None. The feature info reads &ldquo;N stations&rdquo; (plus &ldquo;also in #name&rdquo; if a variable was set).</td></tr>
+<tr><td class="k" width="105">Published keys</td><td><code>stationSet</code> (schema <code>stationSet/1</code>: stations with id, group, origin, direction, hasDirection; plus <code>language</code> en / de) and <code>stationCount</code>, in the feature's producer slot (extract_outputs). Read by Station geometry / Export tag; shown in Extract variables.</td></tr>
+<tr><td class="k" width="105"># variable</td><td>Only if named: the same station set map.</td></tr>
+</table>
+
+<h2>Examples</h2>
+<p>&bull; <b>Fixture (4101, test studio &ldquo;Station tests&rdquo;):</b> a point set TAIL / EDA / SPA, plus <i>N stations between EDA and SPA, N = 5</i>: x = 145 / 515 / 885 / 1255 / 1625 mm; Station geometry measured widths 116.2 / 97.95 / 93.26 / 105.94 / 132.08 mm.<br/>
+&bull; <b>Numbered from zero, German:</b> fixture &ldquo;Numbered 0-4 DE&rdquo; gives stations 0 to 4 with language Deutsch (checked by eval).</p>
+
+<h2>Limits</h2>
+<p>&bull; Positions are fixed at definition time (plain points); they do not follow the part if it is later edited without moving the picked points.<br/>
+&bull; Place it <b>above</b> every feature that picks it. Several definitions may be picked; ids must be unique across them and across a part's <i>Extra stations</i>.<br/>
+&bull; Mixed versions: Station definition, Station geometry and Station table should be versioned together. <b>Not yet in a released version</b> of the document (as of 2026-11-06).<br/>
+&bull; The editing dialog (type switching, label text) was not re-checked in the UI for this sheet.</p>
+
+<p class="foot">More: <code>publish_tools/README.md</code> (Station definition, decisions 2026-09-24/28) &middot; <code>publish_tools/station_tools/station_utils.fs</code> (station set schema) &middot; companion sheet: Station geometry.</p>
+
+

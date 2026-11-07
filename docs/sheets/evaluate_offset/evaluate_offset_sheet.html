@@ -1,0 +1,77 @@
+﻿<h1>Evaluate offset</h1>
+<p class="sub">Onshape document <b>driven_offset</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3070; code as of 2026-10-01)</p>
+
+<p class="lead">Driven edge offset <b>run backwards</b>: give it the edges an offset is measured <i>from</i> and the edges it is measured <i>to</i>, and it builds the offset profile wire (X station, Y width, Z height) that Driven edge offset would need to turn one into the other.</p>
+
+<img src="docs/sheets/evaluate_offset/img/eo_flow.png" width="420"/>
+<p class="cap">Schematic (computed, not an Onshape render): the target is measured at every reference station; the result is a profile wire.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; a target curve already exists (a measured edge, an imported wall) and you want its offset as a profile<br/>
+&bull; you then want to drive other edges with the same offset</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; you know the offset values: Create offset profile<br/>
+&bull; you only need a single distance: a measure tool<br/>
+&bull; you want to <i>make</i> the offset: Driven edge offset</td></tr></table>
+
+<h2>How it works</h2>
+<p><b>1</b> It samples the reference edges at exactly the stations Driven edge offset would use (same chain, spacing and transported frames). <b>2</b> At each station a section plane (normal to the frame's length axis: chain tangent for Along, world X for World) cuts the target. <b>3</b> The cut point is read in the station's frame: width along the width axis, height along the height axis. <b>4</b> Every target vertex gets an exact station pair, so a target corner is a corner in the profile. <b>5</b> The profile breaks (one wire per continuous piece) where the target does not reach the section plane or where the offset steps. It starts and stops where the target does.</p>
+
+<h2>Quick start</h2>
+<ol>
+<li>Pick <b>Reference edges</b> (what Driven edge offset would offset) and <b>Target edges</b> (what you measure to).</li>
+<li>Pick the <b>Zero point</b> (required, same one Driven edge offset will use).</li>
+<li>Set <b>Measure along</b> (Along source or World X) and <b>Offset alignment</b> to what the consumer will use.</li>
+<li>Open Spacing &amp; approximation and set the <b>same spacing</b> Driven edge offset will use (3D frames depend on it). Use about 5 mm spacing for accuracy.</li>
+<li>Check the result (optionally Show measurements), then feed the wires into Driven edge offset or Driven offset surface as the offset profile.</li>
+</ol>
+
+<h2>Key rules</h2>
+<table class="grid">
+<tr><td class="k" width="105">Match the consumer</td><td>Measure along, alignment, zero point and spacing are Driven edge offset's own settings under the same parameter keys; a profile only reproduces the target if the consumer uses the same ones.</td></tr>
+<tr><td class="k" width="105">Along reference</td><td>Measure along = Along reference is refused (v1): use Along source or World X.</td></tr>
+</table>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>Evaluate offset does not support Measure along = Reference wire yet. Use Offset edges or World X.</td><td>Switch Measure along to Along source or World X.</td></tr>
+<tr><td>Select the target edges. / Select a zero point (mate connector or vertex).</td><td>Fill the empty field.</td></tr>
+<tr><td>The target edges do not cross the section plane of any reference station.</td><td>The target does not lie across the reference stations; check the edges, the zero point and alignment.</td></tr>
+<tr><td>Console NOTE: N station(s) dropped -- the target lies past the reference's centre of curvature there</td><td>Information: Driven edge offset folds there too; those stations are left out.</td></tr>
+</table>
+
+<h1 class="pb">Evaluate offset, reference</h1>
+<p class="sub">Dialog parameters in dialog order, outputs, limits</p>
+
+<table class="grid">
+<tr><th>Parameter</th><th>Meaning (default)</th></tr>
+<tr><td class="k" width="105">Measure along</td><td>World X / <b>Along source</b> (default) / Along reference (refused, see above).</td></tr>
+<tr><td class="k" width="105">Name</td><td>Names the profile wires; empty (default) leaves them unnamed.</td></tr>
+<tr><td class="k" width="105">Offset alignment</td><td><b>Along</b> (default) or World; as Driven edge offset. (The reference wire group is shared with Driven edge offset but only applies to the refused mode.)</td></tr>
+<tr><td class="k" width="105">Reference edges</td><td>The edges the offset is measured from (construction geometry excluded).</td></tr>
+<tr><td class="k" width="105">Target edges</td><td>The edges the offset is measured to.</td></tr>
+<tr><td class="k" width="105">Zero point</td><td>Vertex or mate connector; required.</td></tr>
+<tr><td class="k" width="105">Spacing &amp; approximation</td><td>Offset spacing: <b>Control points</b> (multiplier 2-10, default 3) / Points per edge (10-50, 25) / Distance along (0.1-50 mm, 10): how many stations per reference edge. Approximation: Target degree (default 3), Tolerance (default 0.01 mm), Maximum control points (default 15). There is no Join or Corners control here.</td></tr>
+<tr><td class="k" width="105">Debug</td><td>Show measurements (draws each station to the target point it found), Print profile table (coordinate, width, height, breaks).</td></tr>
+</table>
+
+<h2>Outputs</h2>
+<p>&bull; <b>Bodies:</b> one wire per continuous piece. A run that is straight within tolerance is a line, otherwise a fitted spline; there are no arcs, and no exact end derivatives.<br/>
+&bull; <b>Published keys</b> (Extract variables): <code>output</code> (all pieces), <code>piece1</code> ... <code>pieceN</code>, <code>startVertex</code>, <code>endVertex</code>, <code>breakVertices</code>, <code>breakStations</code> (middle of each jump or gap), <code>startStation</code>, <code>endStation</code>, plus the inputs (reference and target).</p>
+
+<h2>Examples and evidence (project notes; not re-run)</h2>
+<p>&bull; Test studio "Evaluate offset tests", 11/11 passed (research note). Measured against the original target: E1 line, E2 arc R400, E3 jump (2 pieces), E4 World frame / World X, E5 outside G0 corner, E6 inside G0 corner: worst 5.5 um.<br/>
+&bull; Round trip R2-R6 (measured profile fed back to Driven edge offset): worst 10.4 um against the original target. All at 5 mm spacing; at 71 mm spacing only approximate.<br/>
+&bull; At a G0 corner in the reference, inside the turn the cuts from the wrong side are rejected and the run fit bridges the gap; the forward offset trims it again.</p>
+
+<h2>Limits</h2>
+<p>&bull; No Measure along = Reference wire (the inverse of that placement is a different cut); 3D reference not tested; no icon yet.<br/>
+&bull; Accuracy depends on spacing: use about 5 mm, and the same spacing in Driven edge offset.<br/>
+&bull; The profile is fitted: it reproduces the target within the approximation tolerance, not exactly.</p>
+
+<p class="foot">More: <code>driven_offset/research_evaluate_offset.md</code> (design) &middot; <code>docs/briefs/driven_offset.md</code> &middot; <code>driven_offset/DOCUMENT_MAP.md</code>. Tests: <code>devtools/onshape/build_evaluate_offset_tests.py</code>, <code>check_evaluate_offset.py</code>.</p>
+
+

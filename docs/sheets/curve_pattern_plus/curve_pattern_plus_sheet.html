@@ -1,0 +1,79 @@
+﻿<h1>Curve pattern plus</h1>
+<p class="sub">Onshape document <b>curve pattern +</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3095)</p>
+
+<p class="lead">Pattern parts, faces or features along a path of edges with <b>Linear pattern plus</b> style spacing (spacing or total length, count or target spacing, offsets, centering), control over how copies turn, or place <b>mate connectors only</b> along the path.</p>
+
+<img src="docs/sheets/curve_pattern_plus/img/cpp_spacing.png" width="400"/>
+<p class="cap">How the spacing options place instances. The seed is the first station.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; you want equal spacing along a curve with offsets, centering or a target spacing<br/>
+&bull; copies must follow the path, keep orientation, or stay referenced to a direction or face<br/>
+&bull; you only need mate connectors along a path</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; the standard <i>Curve pattern</i> is enough (it sweeps and has its own lock-faces mode)<br/>
+&bull; copies sit on a straight line: Linear pattern plus (Evan Reese), where this spacing model comes from</td></tr></table>
+
+<h2>Quick start</h2>
+<ol>
+<li><b>Output:</b> Pattern, or Mate connectors only.</li>
+<li><b>Pattern type</b> and the entities, faces or features to pattern (parts and mate connectors, faces, or features).</li>
+<li><b>Path to pattern along:</b> edges or non-sketch wire bodies that join continuously.</li>
+<li><b>Spacing:</b> pick Spacing + count, or Total length (with count or target spacing); set offsets or Centered.</li>
+<li><b>Orientation:</b> leave Follow path, or choose another mode.</li>
+<li>Check the banner: &ldquo;N instances, X mm apart.&rdquo;</li>
+</ol>
+
+<h2>Key rules</h2>
+<p>&bull; <b>The seed sits at the first station.</b> Instance i is the seed carried from the first frame to frame i, so the seed's offset from the curve is kept. With a start offset or centering, place the seed at the first station, not at the path start (otherwise copies sit off the path).<br/>
+&bull; <b>Open paths start at the end nearest the seed</b> (closed paths: the seed's reference geometry picks the start). Reverse path direction flips it. Mate connectors have no seed: the path starts at the first end of the edge.<br/>
+&bull; Closed path: no end offset, and the last instance is one spacing short of the start, so none doubles up.</p>
+
+<img src="docs/sheets/curve_pattern_plus/img/cpp_orient.png" width="400"/>
+<p class="cap">Follow path turns each copy with the path (no roll); Keep seed orientation only moves copies.</p>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>&ldquo;The pattern runs past the end of the path. Reduce the spacing, count or length.&rdquo;</td><td>Open path: spacing x (count-1), plus offsets, exceeds the length.</td></tr>
+<tr><td>&ldquo;The start and end offsets are longer than the path.&rdquo; / &ldquo;The pattern starts before the beginning of the path.&rdquo;</td><td>Shorten the offsets or the span.</td></tr>
+<tr><td>Path edges not continuous (Onshape's standard text)</td><td>Pick edges that join end to end.</td></tr>
+<tr><td>&ldquo;Select a direction.&rdquo; / &ldquo;Select a face.&rdquo; / count or target spacing errors</td><td>Fill the pick for Reference direction / face; count at least 1, target spacing above 0.</td></tr>
+</table>
+
+<h1 class="pb">Curve pattern plus, reference</h1>
+<p class="sub">Dialog parameters (in dialog order), outputs, limits</p>
+
+<h2>Dialog</h2>
+<table class="grid">
+<tr><td class="k" width="105">Output</td><td>Pattern (default) or Mate connectors only (one seed connector placed at the first station, then patterned: one operation however many).</td></tr>
+<tr><td class="k" width="105">Pattern type</td><td>Part (default; New / Add / Remove / Intersect, entities = bodies or mate connectors, merge scope), Face, or Feature (Reapply features option).</td></tr>
+<tr><td class="k" width="105">Path to pattern along</td><td>Edges, or wire bodies that are not sketch objects. Must be continuous. <b>Reverse path direction</b> flips the start.</td></tr>
+<tr><td class="k" width="105">Spacing type</td><td><b>Spacing</b>: Spacing and Instance count (seed included). <b>Total length</b>: Fill the path (uses the length between the offsets) or a Total length; then <b>Count</b> (Instance count) or <b>Target spacing</b> with a Rounding type.</td></tr>
+<tr><td class="k" width="105">Rounding type</td><td>Exact spacing (copies exactly Target spacing apart), Nearest value, Maximum spacing (count rounded up, so spacing never exceeds the target), Minimum spacing (rounded down, never below it); spacing = total length / gaps.</td></tr>
+<tr><td class="k" width="105">Start / End offset</td><td>Length kept clear at the start (seed distance) and at the end of an open path. Default 0.</td></tr>
+<tr><td class="k" width="105">Centered</td><td>Centre the instances between the offsets.</td></tr>
+<tr><td class="k" width="105">Orientation</td><td>Follow path (no roll; default); Keep seed orientation; Reference direction (copies rolled so the normal is as close to your Direction as the path allows); Reference face (normal follows the Face at the point nearest the path; Flip normal).</td></tr>
+<tr><td class="k" width="105">Mate connector axis</td><td>Mate connectors only: Z along the path (default) or Z along the normal.</td></tr>
+</table>
+
+<h2>Outputs</h2>
+<p>&bull; The pattern instances (or the mate connectors), standard instance queries. Banner: count and spacing in mm.<br/>
+&bull; <b>Values for Extract variables</b> (embedded through Variable_tools): <code>count</code>, <code>spacing</code>, <code>span</code> (first to last instance), <code>pathLength</code>, <code>firstDistance</code>; query <code>lastInstance</code> (the seed if only one); output set = instances plus seed. Not exercised by the tests (see limits).</p>
+
+<h2>Examples</h2>
+<p>&bull; Bolts every 25 mm on a rail with a 10 mm start offset: Spacing 25 mm, count 8, Start offset 10 mm, seed at the first station.<br/>
+&bull; Evenly fill a curve: Total length, Fill the path, Count 12.<br/>
+&bull; Mate connectors for an assembly: Output = Mate connectors only, Total length, Target spacing 50 mm, Nearest value.</p>
+<p class="note">Examples are illustrative recipes built from the options above, not saved test cases.</p>
+
+<h2>Limits and status</h2>
+<p>&bull; Tests (8 cases) passed 8/8 on 2026-10-10, checking <i>positions along the path only</i>. Not tested: rotations, Reference direction and Reference face modes, face and feature patterns, closed paths, the Extract variables output and the dialog itself.<br/>
+&bull; Not built: skip instances, match previous, manipulators, a curve as normal source. At most 2500 instances (std limit).<br/>
+&bull; Imports pin Variable_tools and curve_pattern tabs by version; a new tab version needs the user to re-pin.<br/>
+&bull; Credit: spacing model and last-instance queries adapted from Linear pattern plus by Evan Reese (MIT, used with permission).</p>
+
+<p class="foot">More: <code>curve_pattern/</code> (curve_pattern_spacing.fs, curve_pattern_frames.fs, curve_pattern_plus.fs, curve_pattern_tests.fs). No explainer or deck exists yet. Dialog screenshot: not yet captured.</p>
+

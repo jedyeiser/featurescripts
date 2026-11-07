@@ -107,6 +107,7 @@ first, then open only the entries whose topic matches your task. Entry bodies be
 | 82 | rest-sync | The sync matches a tab by NAME: a different local file name creates a second Feature Studio; Playwright notices pane reads compile notices. | 2245 |
 | 83 | testing | getFeatureError/Warning/Info in one eval read a feature's text; eval needs makeId, match().hasMatch, rollbackBarIndex as query param. | 2252 |
 | 84 | ops | Calling a custom feature from another: export import its tab, pass every parameter, pin and re-pin; move absolute inputs (stations) with a frame. | 2259 |
+| 86 | queries-ids | A "created by <feature>" query variable also returns that feature's sketch construction wires; filter with qSketchFilter (not qConstructionFilter) before opExtractWires. | 2283 |
 
 ## Critical top 10
 
@@ -2278,3 +2279,13 @@ definition's stations) must be told to move them when it is run on a shifted cop
 **Not done (decide after the Clean wire fix is seen)**: bridging a real wire gap, guarding overhang absorption by length ratio, using every stretch instead of `longestSpan`. Agent reports: scratchpad agent_A..D (diagnosis, fit, fallback ladder, preflight).
 
 **Rule**: a wire with a micro-edge is an input defect Clean wire must remove; downstream features should report open joints, not fail silently. Verify with the actual wires (eval at a rollback index) before naming a corner or a turn: two claims in this session ("90 degree turn", "caps are a limit of this feature") came from reading notes, not geometry.
+
+## Correction 86: a "created by <feature>" query variable returns the feature's sketch lines too; opExtractWires then refuses it (2026-11-06, RD 25ONE 28, Export primitive)
+
+**Symptom**: Export primitive 1 ERROR `EXTRACT_WIRES_OVERLAPPING_EDGES`, stack at primitiveBaseline `opExtractWires(... inputEdges)`. The Baseline wires pick was the query variable `target_baseline` (selection "created by" Generate_Target_Baseline, wire bodies): 8 bodies, not 1.
+
+**Cause**: generateBaseline with "Add baseline sketch" on draws a measurement sketch of 7 CONSTRUCTION lines (minChord, inflChord, fbTangentLeg, fbNormalLeg, abTangentLeg, abNormalLeg, camberNormal); a sketch's curves are wire bodies created by the feature. inflChord joins FRCP and ARCP and lies on the baseline's camber edge, so the extract refuses the set. `qConstructionFilter(.., ConstructionObject.NO)` keeps ALL 8 (sketch construction lines are not ConstructionObject.YES); `qSketchFilter(.., SketchObject.NO)` keeps only the baseline (measured: sketch YES 7 of 8).
+
+**Fix**: export_primitive.fs `modelWireEdges` (baseline and footprint picks): when a pick mixes model wires with sketch edges, keep the model wires (a pick of sketch edges alone is unchanged) and note "N sketch edge(s) ... were ignored". primitive_baseline.fs wraps the extract in `try silent` and throws a regenError that says the baseline wires overlap or are not one wire, naming the edge count. `try silent { ... }` takes NO catch clause: set a flag after the call and test it.
+
+**Rule**: a query that selects "everything a feature created" is not a wire; filter sketch objects (qSketchFilter) before building a chain, and replace a kernel error from user input with one that names the input. Also seen in this session: the Edit/Write tools turn a `ö` escape into a real umlaut (fscheck then reports 2 non-ASCII bytes): fix at byte level, never with PowerShell Replace on a console-decoded string.

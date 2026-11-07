@@ -1,0 +1,94 @@
+﻿<h1>Evenly divide surface</h1>
+<p class="sub">Onshape document <b>evenly_divide_surface</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3083; strips built 2026-10-17)</p>
+
+<p class="lead">Cut a long open or closed surface (a ski-like shape) with evenly spaced cross sections, divide each section's perimeter into <b>N</b> equal parts, and join matching points into <b>N wires that lie on the surface</b>. Optionally turn each wire into a strip of the surface, with or without thickness.</p>
+
+<img src="docs/sheets/evenly_divide_surface/img/eds_how.png" width="360"/>
+<p class="cap">Left: section planes along the wire; the same-numbered point of every section becomes one wire. Right: one section divided by arc length from the uppermost point on the symmetry plane.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; the surface is long, with cross sections roughly normal to a wire<br/>
+&bull; you want equal-arc-length lines (or strips) around the perimeter<br/>
+&bull; the surface has many faces and creases</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; there is no symmetry plane to anchor the start<br/>
+&bull; you need a fast regen (about 10-15 s for 5-16 wires; strips add 30-50 s per 5)</td></tr></table>
+
+<h2>How it works</h2>
+<table class="grid">
+<tr><th>Step</th><th>What the feature does</th></tr>
+<tr><td><b>1 Range</b></td><td>Finds where the cross section wire meets the surface and where a normal plane cuts a <i>complete</i> section (near trimmed tips a plane clips only a sliver). Sections span that range, 1 mm inside.</td></tr>
+<tr><td><b>2 Sections</b></td><td>Cuts the surface at <b>Cross sections</b> planes, even along the wire. Each section is divided by arc length starting at the uppermost (world Z) crossing of the symmetry plane.</td></tr>
+<tr><td><b>3 Wires</b></td><td>Joins same-numbered points. Each wire is one curve per face run, dropped onto its face, joined into one wire body. Sections are added where a wire strays more than the <b>Surface tolerance</b>. Optional strips are cut from a copy of the surface around each wire.</td></tr>
+</table>
+
+<h2>Quick start</h2>
+<ol>
+<li>Pick the <b>Surface</b> (one sheet body, full 0-360 or half 0-180).</li>
+<li>Pick the <b>Cross section wire</b> (edge or wire body along the long axis; may overhang) and the <b>Symmetry plane</b> (a planar face).</li>
+<li>Set <b>Divisions</b>; leave the other defaults.</li>
+<li>Read the banner (double-click the feature). For strips turn on <b>Create strips</b> and set width and thickness.</li>
+</ol>
+
+<h2>Key rules</h2>
+<p>&bull; <b>Closed vs open:</b> a full surface gives closed sections: N wires at i/N. A half surface gives open sections ending on the plane: N wires at i/(N-1), both ends on the plane.<br/>
+&bull; <b>Numbering:</b> wire 0 starts at the uppermost crossing; with the Front plane as symmetry plane it runs toward -Y (DESIGN.md). Strip overrides use the same numbers.</p>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>&ldquo;Select the cross section wire.&rdquo;</td><td>The wire pick is empty (or the pick has no edges).</td></tr>
+<tr><td>&ldquo;A plane through the middle of the surface does not cut a complete section. Check the wire and the symmetry plane.&rdquo;</td><td>The wire is not roughly along the long axis, or the surface is not a full/half shape about the plane.</td></tr>
+<tr><td>&ldquo;A section does not meet the symmetry plane.&rdquo; / &ldquo;The surface does not extend along the cross section wire.&rdquo; / &ldquo;Fewer than two cross sections met the surface.&rdquo;</td><td>Wrong plane or wire, or too few sections: check the picks, raise Cross sections.</td></tr>
+<tr><td>Warning &ldquo;... Increase the number of cross sections.&rdquo;</td><td>Wire strays past the tolerance: raise Cross sections or turn on Refine sections.</td></tr>
+<tr><td>Warning &ldquo;Strip i was not built: the cut around it did not close. Try a narrower strip.&rdquo;</td><td>Reduce Strip width.</td></tr>
+</table>
+
+<h1 class="pb">Evenly divide surface, reference</h1>
+<p class="sub">Dialog parameters (in dialog order), outputs, limits</p>
+
+<h2>Dialog</h2>
+<table class="grid">
+<tr><td class="k" width="105">Surface</td><td>One sheet body. Full (closed sections) or half (open sections ending on the plane).</td></tr>
+<tr><td class="k" width="105">Cross section wire</td><td>Edge or wire body the section planes are normal to; may extend past the surface.</td></tr>
+<tr><td class="k" width="105">Symmetry plane</td><td>Planar face: the 0 and 180 degree locations; start is its uppermost crossing in world Z.</td></tr>
+<tr><td class="k" width="105">Divisions</td><td>Number of wires around the perimeter. Default 5, range 1-500.</td></tr>
+<tr><td class="k" width="105">Cross sections</td><td>Starting number of planes. Default 60, range 2-1000. With Refine on, more are added (up to 600 in total).</td></tr>
+<tr><td class="k" width="105">Wires on symmetry plane</td><td>Default on: first (and, open, last) wire lie on the plane. Off: a half step away. Odd N with half step on a closed loop puts one wire at the bottom crossing; this is correct.</td></tr>
+<tr><td class="k" width="105">Surface tolerance</td><td>Largest allowed stray of a wire between sections. Default 0.01 mm (0.001 to 1 mm). Larger is faster.</td></tr>
+<tr><td class="k" width="105">Refine sections</td><td>Default on. Adds sections where wires stray; <i>Cross sections</i> becomes the starting count.</td></tr>
+<tr><td class="k" width="105">Project wires, prefix, keep</td><td>Project onto faces (default on; off keeps fitted curves, not exactly on the faces). Wire prefix <code>even_divide_curve_</code> (blank: unnamed). Keep section curves (default off, debug; leaves hundreds of curves).</td></tr>
+<tr><td class="k" width="105">Create strips</td><td>Default off. Reveals the Strips group below.</td></tr>
+</table>
+
+<h2>Strips group (when Create strips is on)</h2>
+<table class="grid">
+<tr><td class="k" width="105">Strip width</td><td>Measured along the surface, perpendicular to the wire, centred on it. Default 10 mm (0.1 mm-1 m). Strips reach the surface boundary; edge wires on a half surface are clipped to half width.</td></tr>
+<tr><td class="k" width="105">Thicken strips</td><td>Default on. Off leaves surface strips. Thickness default 1 mm (0.01 mm-0.1 m); Mid-plane; Opposite direction; Second direction + second thickness.</td></tr>
+<tr><td class="k" width="105">Consume, prefix</td><td>Consume wires (default on), consume surface (default off); strips named <code>even_divide_strip_</code> + wire number.</td></tr>
+<tr><td class="k" width="105">Strip overrides</td><td>Per wire number: Skip, or override width and/or thickness. Out-of-range or duplicate numbers give a warning.</td></tr>
+</table>
+
+<img src="docs/sheets/evenly_divide_surface/img/eds_strips.png" width="400"/>
+<p class="cap">Schematic: a strip is a band of the surface centred on a wire; thickening makes it a solid. Overlapping strips stay separate bodies.</p>
+
+<h2>Outputs</h2>
+<p>&bull; <b>N wire bodies</b> <code>even_divide_curve_0 ... N-1</code>, each one body of several edges (one per face run).<br/>
+&bull; With strips: <code>even_divide_strip_i</code> sheet or solid bodies. No query variables or published keys are created (none found in the code).<br/>
+&bull; The info banner reports counts, widest gap before projection and strips built; <code>println</code> carries the same text.</p>
+
+<h2>Examples (measured 2026-10-17, DESIGN.md)</h2>
+<p>&bull; Half surface, 12 mm strips: 5 of 5 exact (area = width x 1760 mm). Full surface, 16 strips of 5 mm, 0.5 mm mid-plane: 16 solids, about 4,400 mm3 each.</p>
+
+<h2>Limits</h2>
+<p>&bull; Strips that cross sharp folds can fail a two-sided thicken; the feature falls back to one side, then to a sheet, and the banner says so. Such strips are offset half the thickness, not centred.<br/>
+&bull; Very wide strips (60 mm on the test surface): two were about 7% under nominal area; cause not found. First and last section stop about 1 mm short of the ends.<br/>
+&bull; Heavy: a studio holding many strip features crashed once; add them one at a time.<br/>
+&bull; Verified on the author's ski-surface fixtures only (E1-E4, S1-S9); other shapes untested.</p>
+
+<p class="foot">More: <code>evenly_divide_surface/DESIGN.md</code> (algorithm, decisions, performance, strip limits). Tests: <code>devtools/onshape/build_evenly_divide_tests.py</code>, <code>check_evenly_divide_tests.py</code> (studio &ldquo;Divide tests&rdquo;). Dialog screenshot: not yet captured.</p>
+
+
+

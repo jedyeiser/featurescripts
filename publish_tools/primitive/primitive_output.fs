@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_frame.fs
-export import(path : "5808546b3b3d863d82796d24", version : "d64db618948f27fbf452aab9");
+export import(path : "5808546b3b3d863d82796d24", version : "c4f8f1d2705d76d9fe77a97e");
 
 /**
  * Export Primitive -- output geometry helpers: named point bodies and segments, band stacking and the closed
@@ -305,6 +305,62 @@ function betterAxis(a is map, b is map, aim is number) returns boolean
         return a.step > b.step;
     }
     return abs(a.fill - aim) < abs(b.fill - aim) - 1e-12;
+}
+
+/**
+ * Axis for a band whose heights run from `lo` to `hi` (mm, either sign; 2026-11-06, baseline and profile bands): the
+ * zero line is always on the axis. The level unit is 1 mm, or 0.1 / 0.01 / 0.001 mm for a span under 4 mm; the step is
+ * the first of 1, 2, 5, 10, ... level units giving at most 6 intervals; the axis runs from the step multiple at or below
+ * min(lo, 0) to the one at or above max(hi, 0). Returns { digits (decimals of one level unit), unit (mm per level
+ * unit), step, axisLo, axisHi (whole level units) }.
+ */
+export function primitiveFitAxis(lo is number, hi is number) returns map
+{
+    const low = min(lo, 0);
+    const high = max(hi, 0);
+    var digits = 0;
+    while (digits < 3 && (high - low) * (10 ^ digits) < 4)
+    {
+        digits += 1;
+    }
+    const scale = 10 ^ digits;
+    const span = max((high - low) * scale, 1);
+    var step = 1;
+    var decade = 1;
+    var found = false;
+    while (!found)
+    {
+        for (var m in [1, 2, 5])
+        {
+            if (m * decade >= span / 6 - 1e-9)
+            {
+                step = m * decade;
+                found = true;
+                break;
+            }
+        }
+        decade *= 10;
+    }
+    const axisLo = floor(low * scale / step + 1e-9) * step;
+    var axisHi = ceil(high * scale / step - 1e-9) * step;
+    if (axisHi <= axisLo)
+    {
+        axisHi = axisLo + step;
+    }
+    return { "digits" : digits, "unit" : 1 / scale, "step" : step, "axisLo" : axisLo, "axisHi" : axisHi };
+}
+
+/**
+ * The vertical scale of a baseline or profile band (Auto scale): its data's z extent `extent` { lo, hi } (lengths) fitted
+ * (primitiveFitAxis) into the fixed `bandHeight`, axis bottom to top. Returns { axis, perLevel (model height of one
+ * level unit), k (model height per real height: the factor applied to z), levels (the tick levels) }.
+ */
+export function primitiveBandScale(extent is map, bandHeight is ValueWithUnits) returns map
+{
+    const axis = primitiveFitAxis(extent.lo / millimeter, extent.hi / millimeter);
+    const perLevel = bandHeight / (axis.axisHi - axis.axisLo);
+    return { "axis" : axis, "perLevel" : perLevel, "k" : perLevel / (axis.unit * millimeter),
+            "levels" : primitiveLevelsWithin(axis.axisLo, axis.axisHi, axis.step) };
 }
 
 /**

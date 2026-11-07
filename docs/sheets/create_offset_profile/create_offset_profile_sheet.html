@@ -1,0 +1,99 @@
+﻿<h1>Create offset profile</h1>
+<p class="sub">Onshape document <b>driven_offset</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3083; matches the 2026-09-29 deck)</p>
+
+<p class="lead">Type an offset profile as <b>regions</b> or <b>points</b> (width and height against station) and get exact profile wires for Driven edge offset and Driven offset surface, instead of sketching one by hand.</p>
+
+<img src="docs/sheets/create_offset_profile/img/cop_table_to_offset.png" width="360"/>
+<p class="cap">Schematic (computed from the documented shape rules, not an Onshape render): a table of regions becomes one wire; the consumer offsets with it.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; the offset is defined by regions: tip, running length, tail<br/>
+&bull; width or height ramps, holds or steps along X<br/>
+&bull; stations should come from the part (a vertex or mate connector)</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; Driven edge offset only: its own Profile source = Regions needs no wire<br/>
+&bull; the offset already exists as geometry: Evaluate offset<br/>
+&bull; the profile is freehand: sketch it</td></tr></table>
+
+<h2>How it works</h2>
+<table class="grid">
+<tr><th>Idea</th><th>Meaning</th></tr>
+<tr><td class="k" width="105">Profile coordinates</td><td>X = station (world X), Y = width offset, Z = height offset. The wires are data; the consumer measures from its own zero point.</td></tr>
+<tr><td class="k" width="105">Piece = one wire</td><td>A continuous stretch of the profile. Touching regions with equal values join into one piece.</td></tr>
+<tr><td class="k" width="105">Break</td><td>Where the offset jumps (touching regions with different values, or two points at one station) or is undefined (a gap in X), the profile ends and a new piece starts. No connector edge is made; whether and how a break is joined is the consumer's choice.</td></tr>
+<tr><td class="k" width="105">Exact</td><td>Exact Bezier segments (line, smootherstep ramp, Hermite blend); nothing is sampled. A buffer into a Smooth ramp is C2; a Linear corner only G0.</td></tr>
+</table>
+
+<h2>Quick start</h2>
+<ol>
+<li>Mode <b>Regions</b>: add a region per stretch (name it by role: Tip, RSL, Tail).</li>
+<li>Set Start and End station (Enter X, or At point = a vertex / mate connector plus a signed distance along X).</li>
+<li>Choose a Shape and enter widths and heights.</li>
+<li>Between two regions, open the matching Intersection: leave Blend off, or turn it on for a smooth bridge.</li>
+<li>Check the piece count: Print segments (Debug) lists every piece and sub-segment.</li>
+<li>Pick the wires as Offset profile in Driven edge offset or Driven offset surface.</li>
+</ol>
+
+<h2>Key rules</h2>
+<table class="grid">
+<tr><td class="k" width="105">Names unique</td><td>Intersections are kept by region name; two regions with one name is an error. Regions may touch but not overlap.</td></tr>
+<tr><td class="k" width="105">Stations are world X</td><td>Picked points give their world X; place stations accordingly on a part measured along its reference.</td></tr>
+</table>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>Add at least one region. / Add at least two points at different stations. / ...: pick a point for the station.</td><td>Add items; pick the vertex or mate connector for At point.</td></tr>
+<tr><td>Regions 'A' and 'B' overlap. / Two regions are named 'x'...</td><td>Regions may touch, not overlap; rename duplicates.</td></tr>
+<tr><td>Region 'x': the buffers are as long as the region or longer. / the start and end stations coincide.</td><td>Shorten the buffers; give the region a length.</td></tr>
+<tr><td>The blends into region 'x' reach past each other... / The blend between 'A' and 'B' has no length but the offset jumps...</td><td>Shorten the distances (or drag the arrows); give a jump a blend distance, or leave a gap in X.</td></tr>
+
+</table>
+
+<h1 class="pb">Create offset profile, reference</h1>
+<p class="sub">Dialog parameters in dialog order, outputs, limits</p>
+
+<table class="shots"><tr>
+<td><img src="docs/decks/create_offset_profile/shots/dialog_regions.png" width="50"/><p class="cap">Regions</p></td>
+<td><img src="docs/decks/create_offset_profile/shots/dialog_blend.png" width="50"/><p class="cap">Intersection</p></td>
+<td><img src="docs/decks/create_offset_profile/shots/dialog_points.png" width="50"/><p class="cap">Points</p></td>
+</tr></table>
+
+<table class="grid">
+<tr><th>Parameter</th><th>Meaning (default)</th></tr>
+<tr><td class="k" width="105">Mode</td><td><b>Regions</b> (default) or Points.</td></tr>
+<tr><td class="k" width="105">Regions: Name</td><td>Empty = Region n. Up to 64 characters. Must differ.</td></tr>
+<tr><td class="k" width="105">Start / End station</td><td><b>Enter X</b> (default; type Start X / End X, world X) or At point: Start point (vertex or mate connector, one can be created in the field) plus Start offset along X (signed). A region may be entered toward -X (start &gt; end).</td></tr>
+<tr><td class="k" width="105">Shape</td><td>Constant, <b>Linear</b> (default), Smooth (smootherstep: flat, zero curvature at both ends, no overshoot) or Quadratic (a parabola). Quadratic adds <b>Flat at</b> Start (default) or End: the end with zero slope; the other meets its neighbour at a kink.</td></tr>
+<tr><td class="k" width="105">Width, height</td><td>Constant: one Width and Height. Otherwise Start / End width and Start / End height. Width and height share the region's shape.</td></tr>
+<tr><td class="k" width="105">Start / End buffer</td><td>Hold the end value for this distance in from that end; the change runs between the buffers. Not for Constant. Buffers must total less than the region.</td></tr>
+<tr><td class="k" width="105">Intersections</td><td>One per pair of consecutive regions, rebuilt automatically and labelled by names (First / Second region are read-only). <b>Blend</b> (off): off joins touching regions with equal values, else breaks. On: Continuity with first region (G1 default), Distance into first region, Continuity with second region (G1), Distance into second region; a Hermite bridge, G0 / G1 / G2. Two drag arrows per blend on the model while editing; both distances 0 only works across a gap in X.</td></tr>
+<tr><td class="k" width="105">Points</td><td>List of points: Station (Enter X / At point, with Offset along X), Width, Height, and <b>To next point</b>: Smooth (default; flat at both, no overshoot), Linear, or Hold (keep the value to the next point, then break; ignored on the last point). Two points at one station with different values are a jump.</td></tr>
+<tr><td class="k" width="105">Debug</td><td>Print segments: every piece and sub-segment with stations, degree and end values.</td></tr>
+</table>
+
+<img src="docs/explainers/driven_offset/img/cop_fig02_shapes.png" width="300"/>
+<p class="cap">Region shapes from live test wires: Constant, Linear, Smooth, Quadratic.</p>
+
+<h2>Outputs</h2>
+<p>&bull; <b>Bodies:</b> one wire per piece, each joined from exact Bezier edges (no Name parameter). Blend edges are shown magenta while editing.<br/>
+&bull; <b>Published keys</b> (Extract variables): <code>output</code> (all pieces), <code>piece1</code> ... <code>pieceN</code> (station order), <code>startVertex</code>, <code>endVertex</code>, <code>breakVertices</code> (piece ends on both sides of every break), <code>pieceCount</code>, <code>breakCount</code>, <code>breakStations</code>, <code>startStation</code>, <code>endStation</code>.</p>
+
+<h2>Examples (studio "Offset profile tests"; notes, not re-run)</h2>
+<p>&bull; T1: Tip w 0, RSL w 3, Tail w 0 gives three pieces, breaks at 0 and 1000, four break vertices. &bull; T5: two points at one station with different values: two pieces. &bull; T10: a region entered toward -X (start 10100, end 10000) works.<br/>
+&bull; Driven edge offset's <b>Profile source: Regions</b> uses the same table; tests D1-D5 matched the wire within 1e-3 mm.</p>
+
+<h2>Limits</h2>
+<p>&bull; Breaks only split the output today: Driven edge offset / Driven offset surface have no per-break None / Line join yet.<br/>
+&bull; One shape per region for width and height together.</p>
+
+<p class="foot">More: <code>docs/decks/create_offset_profile/create_offset_profile.pdf</code> (deck) &middot; <code>driven_offset/research_create_offset_profile.md</code></p>
+
+
+
+
+
+
+

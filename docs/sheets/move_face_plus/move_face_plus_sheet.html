@@ -1,0 +1,79 @@
+<h1>Move face+</h1>
+<p class="sub">Onshape document <b>Reference_Side_Features</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3083)</p>
+
+<p class="lead">Offset faces in place <b>toward (or away from) a reference</b> you point at, instead of along whichever way each face's normal happens to point. Faces of surfaces with opposite normals all move the same way.</p>
+
+<img src="docs/sheets/move_face_plus/img/toward_reference.png" width="560"/>
+<p class="cap">Schematic. Two sheets with opposite normals: the built-in Move face sends them in opposite directions; Move face+ sends both toward the reference.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; the faces belong to surfaces whose normals are not consistent (or may flip after an upstream edit)<br/>
+&bull; you want &ldquo;toward this point&rdquo; to stay true whatever the normals do<br/>
+&bull; you need the moved faces and their boundary edges as named outputs</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; the face normals are reliable and you want the plain grow / shrink: the built-in Move face (Move face+ with no reference behaves the same)<br/>
+&bull; you need a different distance per face: one feature per distance</td></tr></table>
+
+<h2>How it works</h2>
+<p>Move face+ runs the built-in offset face (<code>opOffsetFace</code>). For <b>each body</b> that owns selected faces it reads the reference's side <b>once</b> (signed distance from the reference to that body's selected faces), so every selected face of that body moves the same way. Faces are then offset in at most two operations: those moving along their normal and those moving against it.</p>
+
+<h2>Quick start</h2>
+<ol>
+<li>Select the <b>Faces to move</b>.</li>
+<li>Pick a <b>Side reference</b>: a vertex, mate connector, edge, face or part clearly on the side you want to move toward.</li>
+<li>Type a <b>Distance</b>. Positive moves toward the reference.</li>
+<li>If it went the wrong way, change the Distance sign or untick/tick <b>Move toward reference</b> (the flip arrow).</li>
+<li>Optional: <b>Reapply fillets</b> if the faces carry fillets that must follow.</li>
+</ol>
+
+<h2>The one rule: the reference sets the direction</h2>
+<table class="grid">
+<tr><th>Situation</th><th>Result</th></tr>
+<tr><td>Reference given</td><td>+Distance moves each body's faces toward it; the sign of the normals does not matter.</td></tr>
+<tr><td>No reference</td><td>Native behaviour: +Distance moves along the normals. A solid's face normal points out of the material, so a solid grows.</td></tr>
+<tr><td>Reference selected but unreadable</td><td>An error, never silently &ldquo;no reference&rdquo;.</td></tr>
+</table>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>Info &ldquo;Distance is zero: nothing was moved.&rdquo;</td><td>Not a failure: the outputs are still published (so a variable can drive the distance to 0).</td></tr>
+<tr><td><code>The side reference lies on the faces of body N (or no side of them can be read there); pick something clearly to one side.</code></td><td>Move the reference off the faces, to one side.</td></tr>
+<tr><td><code>The reference is selected but cannot be read here. Inside a Case pattern, pass it in ...</code></td><td>In a Case pattern, give the reference through a Define case input or shared reference (<code>#name</code>) instead of clicking it.</td></tr>
+<tr><td>Select-faces error (&ldquo;faces&rdquo;)</td><td>The selection had no face owned by a body; pick faces.</td></tr>
+</table>
+
+<h1 class="pb">Move face+, reference</h1>
+<p class="sub">Dialog parameters, outputs, limits</p>
+
+<h2>Dialog, in order</h2>
+<table class="grid">
+<tr><td class="k" width="105">Faces to move</td><td>Faces only (no sketch or construction objects). Any mix of bodies; each body is handled on its own.</td></tr>
+<tr><td class="k" width="105">Distance</td><td>Signed length, default 25 mm (1 in); remembers the last value. Positive: toward the reference (without one: along the normals). Negative: the other way. 0: nothing moves.</td></tr>
+<tr><td class="k" width="105">Side reference</td><td>Optional, one pick: a part, face, edge, vertex or mate connector. Prefer a <b>local</b> mate connector or vertex on the side you mean; the side is read where the reference is closest to the faces.</td></tr>
+<tr><td class="k" width="105">Move toward reference</td><td>Default on. On: toward the reference. Off: away from it. With no reference: along (on) or against (off) the normals.</td></tr>
+<tr><td class="k" width="105">Reapply fillets</td><td>Default off. Defillets the moved faces before the offset and fillets them again after (the built-in option).</td></tr>
+<tr><td class="k" width="105">Debug &gt; Print details</td><td>Default off. Prints, per body, how many faces went along or against their normal.</td></tr>
+</table>
+
+<h2>Outputs (for Extract variables)</h2>
+<table class="grid">
+<tr><td class="k" width="105">output</td><td>The moved faces (followed through the offset, including faces the kernel had to split).</td></tr>
+<tr><td class="k" width="105">boundaryEdges</td><td>The edges bounding the moved faces.</td></tr>
+<tr><td class="k" width="105">inputs</td><td>The selected faces. Standard keys such as <code>modifiedFaces</code> come from the producer library. Every key is published even at distance 0.</td></tr>
+</table>
+
+<h2>Examples</h2>
+<p>&bull; Two sheets of opposite orientation, reference between them, Distance 1.5: both faces move 1.5 toward the reference (figure, right).<br/>
+&bull; A solid box, no reference, Distance 2: the faces grow 2 (native). Turn <i>Move toward reference</i> off to shrink.<br/>
+&bull; Same selection, reference on the far side of the part: the same faces move the other way, with no change to the Distance.</p>
+
+<h2>Limits</h2>
+<p>&bull; One side decision per <b>body</b>, not per face: a body whose selected faces lie on both sides of the reference moves them all the same way. Per-face sides for solid faces are an open design question.<br/>
+&bull; The side is read from the signed distance at the closest point; a reference far from the faces (a far plane) can read ambiguously. Use a local point.<br/>
+&bull; Whether the kernel accepts a given offset (sharp corners, neighbouring faces) is the built-in offset face's call; its error is passed through.<br/>
+&bull; Not verified for this sheet: live results of the Reference_Side test group for Move face+ (no Onshape calls were made).</p>
+
+<p class="foot">More: <code>docs/explainers/reference_side/reference_side_explained.md</code> (the idea and the sibling features; Move face+ is not covered there yet) &middot; source <code>reference_side/move_face_plus.fs</code>.</p>

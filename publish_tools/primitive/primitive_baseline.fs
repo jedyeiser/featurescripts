@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_frame.fs
-export import(path : "5808546b3b3d863d82796d24", version : "d64db618948f27fbf452aab9");
+export import(path : "5808546b3b3d863d82796d24", version : "c4f8f1d2705d76d9fe77a97e");
 // IMPORT: xSection V58 analyzeBaseline.fs (analyzeBaselineGeometry; fcp_pt / acp_pt exact at the FCP / ACP x)
 import(path : "f8deedeb1fbd819a8fa20113/ad6a3958dd2e8873f6dd0b0d/f0717a1116fee7304957da5b", version : "d8b52bb8029bcc972f9af4f0");
 
@@ -43,7 +43,19 @@ export function primitiveBaseline(context is Context, id is Id, fromVolume is bo
         {
             throw regenError("Select the baseline wire(s).", ["baselineWires"]);
         }
-        opExtractWires(context, id + "copy", { "edges" : inputEdges });
+        // Overlapping edges (e.g. a measurement sketch's chord lying on the baseline) make opExtractWires fail with a kernel
+        // error that names neither the cause nor the input: say what to fix.
+        var extracted = false;
+        try silent
+        {
+            opExtractWires(context, id + "copy", { "edges" : inputEdges });
+            extracted = true;
+        }
+        if (!extracted)
+        {
+            throw regenError("The baseline wires overlap or do not form a clean wire (" ~ size(evaluateQuery(context, inputEdges)) ~
+                " edges picked). Pick only the baseline wire: not its sketch, chords or reference geometry.", ["baselineWires"]);
+        }
         primitiveMove(context, id + "copyToLocal", qCreatedBy(id + "copy", EntityType.BODY), toLocal, isIdentity);
     }
     const body = qCreatedBy(id + "copy", EntityType.BODY);

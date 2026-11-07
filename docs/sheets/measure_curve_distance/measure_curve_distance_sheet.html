@@ -1,0 +1,83 @@
+<h1>Measure curve distance</h1>
+<p class="sub">Measure curve distance &nbsp;|&nbsp; Onshape document <b>curveMapping_public</b> (<code>measureBetweenCurves.fs</code>, FeatureScript 3083) &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (no version pinned on this sheet)</p>
+
+<p class="lead">Sample points along one curve and measure how far each is from a second set of curves. The results go into a table, one row per point: a quick inspection of gaps, clearances and offsets between edges or wire bodies.</p>
+
+<img src="docs/sheets/measure_curve_distance/img/fig_modes.png" width="350"/>
+<p class="cap">Schematic (not live data) of the three measurement types on the same two curves. Dots on the lower curve are the sample points; lines show where each distance is read.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; you want a table of distances from one smooth curve to other edges or wires (e.g. how far an offset curve sits from a profile along its length)<br/>
+&bull; you need the distance along a chosen axis, or normal to the curve</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; you need one number between two bodies: Onshape's Measure<br/>
+&bull; you need a surface-to-surface comparison (this works on edges and wires only)<br/>
+&bull; the From curve is not one G1 chain (it is refused)</td></tr></table>
+
+<h2>How it works</h2>
+<img src="docs/sheets/measure_curve_distance/img/fig_flow.png" width="300"/>
+<p><b>Measure from</b> must be a single G1-continuous chain; points are placed along it by count or spacing. <b>Measure to</b> may be any edges or wires (G0). <b>Closest</b> reads the nearest distance from each point to the To set. <b>Normal dist</b> and <b>Along axis</b> cut a plane through each point that contains the measurement direction and slices across the To curves; the distance is the offset to where it cuts, measured along that direction, so it is signed. A point with no crossing gets no row.</p>
+
+<h2>Quick start</h2>
+<ol>
+<li>Pick the <b>Measurement Type</b> (Normal dist is the default) and give the table a <b>Measurement Name</b>.</li>
+<li>Select <b>Measure from</b> (one G1 chain of edges, or a wire body) and <b>Measure to</b>.</li>
+<li>Choose points: <b>Number of points</b> (2 to 200, default 20) or <b>Point spacing</b> with a reference and a distance.</li>
+<li>For Along axis, pick the measurement direction (World X / Y / Z, or custom).</li>
+
+<li>Read the table (see Outputs on page 2).</li>
+</ol>
+
+<h2>Key rules</h2>
+<p>&bull; <b>From = G1 chain</b>, <b>To = any G0 set</b>.<br/>
+&bull; <b>Normal dist and Along axis need a planar From curve</b> (the code fits a plane through the sample points).<br/>
+&bull; The table is <b>shared by all Measure features</b> in the Part Studio; rows of a deleted feature stay until you clear them.</p>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message (start)</th><th>Fix</th></tr>
+<tr><td>Select edges or a wire body for 'Measure from' / 'Measure to'.</td><td>Fill the selection.</td></tr>
+<tr><td>'Measure from' edges must be G1 continuous and form a single chain.</td><td>Pick a connected, tangent chain, or split the job into several features.</td></tr>
+<tr><td>The 'measure from' curve is too straight to define a plane ...</td><td>Normal / Along axis need a curved planar source; use Closest.</td></tr>
+<tr><td>Measurement axis is parallel to the curve-plane normal; cannot build a measurement plane ...</td><td>Choose an axis that lies in the curve's plane directions.</td></tr>
+</table>
+
+<h1 class="pb">Measure curve distance, reference</h1>
+<p class="sub">Dialog parameters, outputs, limits and links</p>
+
+<h2>Dialog (in order)</h2>
+<table class="grid">
+<tr><td class="k" width="105">Measurement Type</td><td>Closest / Normal dist (default) / Along axis.</td></tr>
+<tr><td class="k" width="105">Measurement Name</td><td>Title of this feature's table (default <code>MeasureBetweenCurves</code>).</td></tr>
+<tr><td class="k" width="105">Measurement direction</td><td>Along axis only: World X, Y, Z (default Z) or Custom (a typed X/Y/Z vector, or the Z axis of a mate connector / normal of a planar face).</td></tr>
+<tr><td class="k" width="105">Measure from</td><td>Edges or wire bodies; must be G1 and one chain.</td></tr>
+<tr><td class="k" width="105">Measure to</td><td>Edges or wire bodies; G0 is enough.</td></tr>
+<tr><td class="k" width="105">Point Spacing</td><td>Number of points (default 20, range 2 to 200) or Point spacing: a Spacing reference (plane, vertex or mate connector; where to start) and Distance between points (default 10 mm, 0.5 to 100 mm). Both ends of the curve are always included.</td></tr>
+<tr><td class="k" width="105">Spacing type</td><td>Along curve (default; arc length on From) or Along axis (equal steps of the projection on World X/Y/Z or custom). Along axis assumes the From curve is monotonic in that axis.</td></tr>
+<tr><td class="k" width="105">Table formatting</td><td>Table units (mm, cm, m, in; default mm), Include units in table (off), Decimal precision (3, range 0 to 10), Reverse point order, Start point numbers at 1 (off: first is 0).</td></tr>
+<tr><td class="k" width="105">Clear accumulated data</td><td>Resets the shared table to this feature's rows only. To remove rows left by a deleted feature: toggle on, regenerate, toggle off.</td></tr>
+<tr><td class="k" width="105">Debug</td><td>Show from points (cyan), Show to points (magenta), Show point connections (green).</td></tr>
+</table>
+
+<h2>Outputs</h2>
+<p>&bull; <b>No geometry is created.</b> Debug points and lines are display only.<br/>
+&bull; <b>Table</b> &ldquo;Measure between curves&rdquo;: one titled table per Measure feature (&ldquo;Measurement between curves: &lt;name&gt;&rdquo;) with columns <b>Point #</b>, <b>From point</b>, <b>To point</b>, <b>Distance</b>. Points print as <code>(x, y, z)</code> in the chosen units. With nothing measured it shows &ldquo;(No Data)&rdquo;.<br/>
+&bull; <b>Storage:</b> rows are saved as one attribute on the Part Studio origin, keyed by feature, so every Measure feature adds to the same table set.<br/>
+&bull; <b>Distance sign:</b> Closest is the plain distance; Normal dist and Along axis are the component along the chosen direction (signed). No published variables.</p>
+
+<h2>Examples</h2>
+<p>&bull; Closest, 20 points: a gap profile between an offset curve and its source.<br/>
+&bull; Normal dist, spacing 10 mm from a mate connector: clearances at regular stations along a profile.<br/>
+&bull; Along axis (World Z), spacing along X: heights of one curve above another at equal X stations.<br/>
+These describe use; no worked example is recorded in the repository.</p>
+
+<h2>Status and limits</h2>
+<p>&bull; <b>Not live-verified:</b> the directional modes (Normal dist, Along axis) and the table's persistence were never confirmed in Onshape in the project notes; the public features have no tests. Treat results as unchecked until compared with a known distance.<br/>
+&bull; Rows of deleted features persist until Clear accumulated data is cycled (the feature cannot remove its own entry).<br/>
+&bull; Up to 1000 points per measurement (spacing guard); Number of points caps at 200.<br/>
+&bull; Samples with no crossing of the To curves are silently skipped, so the row count can be lower than the point count.<br/>
+&bull; Where the table appears in Onshape's UI was not checked here.</p>
+
+<p class="foot">More: <code>docs/explainers/curve_mapping/curve_mapping_explained.md</code> section 2.4 &middot; source <code>curveMapping_public/measureBetweenCurves.fs</code>. No Onshape dialog screenshot yet (see report).</p>

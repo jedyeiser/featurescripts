@@ -1,0 +1,102 @@
+<h1>Case pattern</h1>
+<p class="sub">Define case &middot; Case &middot; Close case &nbsp;|&nbsp; Onshape document <b>Case_Pattern</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (feature v3)</p>
+
+<p class="lead">Build a chain of features <b>once</b>, against named inputs, then run it again for each <b>case</b>, every case with its own selections and values. Think &ldquo;apply to each&rdquo; for the feature tree.</p>
+
+<img src="docs/decks/case_pattern/shots/t1_iso.png" width="520"/>
+<p class="cap">Test T1: one chain (boss, rim fillet, boss-edge fillet) built for case A, then run for B (25 mm, R3) and C (8 mm, R2) on different blocks.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; the same feature chain applies to several places<br/>
+&bull; each place has its own selections <i>and</i> dimensions<br/>
+&bull; the chain edits existing geometry (fillet, move face) as well as making new</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; every repeat is a moved copy: Linear / Circular / Curve pattern<br/>
+&bull; only <i>which entity</i> changes: Query pattern (Evan Reese)<br/>
+&bull; different recipes per entity: Amalgamate (Derek Van Allen)</td></tr></table>
+
+<h2>How it works: like a function</h2>
+<table class="grid">
+<tr><th>Feature</th><th>Role</th><th>What you do</th></tr>
+<tr><td><b>Define case</b></td><td>the signature</td><td>Name the inputs (selections) and values (numbers) that change per case, filled with case 1's choices.</td></tr>
+<tr><td>(body)</td><td>the function</td><td>Ordinary features after it, using the names (<code>#top</code>, <code>#bossH</code>). This is case 1.</td></tr>
+<tr><td><b>Case</b></td><td>one call's arguments</td><td>One per further case: a selection per input, a value per value. Runs nothing itself.</td></tr>
+<tr><td><b>Close case</b></td><td>runs the calls</td><td>Lists the body and the Cases, runs the body once per Case, publishes each case's outputs.</td></tr>
+</table>
+
+<h2>Quick start</h2>
+<ol>
+<li><b>Define case:</b> name case 1; add Inputs (name + selection) and Values (name, type, value).</li>
+<li><b>Build the body</b> as normal features, using <code>#names</code> in selections and expressions.</li>
+<li>Make a Query Variable &ldquo;created by&rdquo; a body feature for anything a later body feature must reach.</li>
+<li>Add one <b>Case</b> per further case: pick the Define case, name the case, fill the slots.</li>
+<li><b>Close case:</b> pick the Define case, the body features, the Cases; add Outputs (a name and the query variable) you need later.</li>
+<li>Check the result: parts are named <code>&lt;case&gt;_&lt;output&gt;</code>; outputs are <code>#B_rib</code>, <code>#C_rib</code>...</li>
+</ol>
+
+<h2>The one rule: what the body may point at</h2>
+<table class="grid">
+<tr><th>Geometry</th><th>How to reference it</th></tr>
+<tr><td>made <b>inside</b> the body</td><td>through a Query Variable (&ldquo;created by&rdquo; a body feature). A click always stays on case 1's copy.</td></tr>
+<tr><td>from <b>before</b> the body (side face, mate connector, &ldquo;up to&rdquo; face, plane)</td><td>click it directly; every case uses the same one. Make it an Input only if it changes per case.</td></tr>
+<tr><td>numbers, lengths, angles</td><td>plain variables from anywhere earlier. Make it a Value only if it changes per case.</td></tr>
+</table>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>Warning &ldquo;Not built: B: ...&rdquo;</td><td>Other cases still built. Read the reason after the colon.</td></tr>
+<tr><td>Error &ldquo;No case was built&rdquo;</td><td>Every case failed; open the first failing Case.</td></tr>
+<tr><td><code>repeated feature 3 failed (...)</code></td><td>A body feature failed for that case; Onshape's own reason follows. Often a click on body-made geometry: use a Query Variable.</td></tr>
+<tr><td>Case name used twice</td><td>Rename; names are unique per Define case.</td></tr>
+<tr><td><code>the Define case changed; click Update from Define case in this Case</code></td><td>Click Update from Define case in that Case.</td></tr>
+</table>
+
+<h1 class="pb">Case pattern, reference</h1>
+<p class="sub">Dialog parameters, outputs, limits and troubleshooting</p>
+
+<table class="shots"><tr>
+<td><img src="docs/decks/case_pattern/shots/dialog_define.png" width="68"/><p class="cap">Define case</p></td>
+<td><img src="docs/decks/case_pattern/shots/dialog_case.png" width="68"/><p class="cap">Case</p></td>
+<td><img src="docs/decks/case_pattern/shots/dialog_close.png" width="68"/><p class="cap">Close case</p></td></tr></table>
+
+<h2>Define case</h2>
+<table class="grid">
+<tr><td class="k" width="105">Case 1 name</td><td>The case the tree itself builds (letters, digits, <code>_</code>; starts with a letter).</td></tr>
+<tr><td class="k" width="105">Inputs</td><td>Up to 8 query variables that change per case: a name and case 1's selection.</td></tr>
+<tr><td class="k" width="105">Shared references</td><td>Optional. Same for every case; a single place to change a reference several body features use.</td></tr>
+<tr><td class="k" width="105">Values</td><td>Up to 6 variables that change per case: name, type (Length, Angle, Area, Volume, Number, Integer, Text, Boolean), case 1's value.</td></tr>
+</table>
+<p class="note">Also sets <code>#caseName</code> and <code>#caseIndex</code> (1 for case 1); every case updates them.</p>
+
+<h2>Case</h2>
+<table class="grid">
+<tr><td class="k" width="105">Define case</td><td>Which Define case this belongs to. Picking it lays out the slots.</td></tr>
+<tr><td class="k" width="105">Update from Define case</td><td>Click after inputs or values were added, renamed or retyped in the Define case. Selections and values are kept by name.</td></tr>
+<tr><td class="k" width="105">Case name, slots</td><td>Unique name (the output prefix, <code>#B_...</code>); then a selection per input and a value per value (new values start as a copy of case 1's).</td></tr>
+</table>
+
+<h2>Close case</h2>
+<table class="grid">
+<tr><td class="k" width="105">Features to repeat</td><td>The body's features, in tree order.</td></tr>
+<tr><td class="k" width="105">Cases</td><td>The Case features to run, in tree order. May be empty (publishes case 1's outputs only).</td></tr>
+<tr><td class="k" width="105">Outputs</td><td>A Name and the query variable the body sets (type the name <b>without</b> <code>#</code>). Published per case as <code>#&lt;case&gt;_&lt;name&gt;</code>, case 1 included. <i>Evaluate on use</i> off (default) fixes the entities when the case closes; on re-evaluates the stored query wherever it is used.</td></tr>
+<tr><td class="k" width="105">Keep / Print bindings</td><td>Keep: which new bodies each case keeps (everything but sketches by default). Print bindings: list each case's selections and values in the notices.</td></tr>
+<tr><td class="k" width="105">Name parts after outputs</td><td>On (default): a part an output points to is named <code>&lt;case&gt;_&lt;output&gt;</code>. Off: names are left to the body.</td></tr>
+</table>
+
+<h2>Tips</h2>
+<p>&bull; <b>Switch features per case</b> with a Boolean Value and a suppression expression (<code>#pin</code>); it is re-checked per case.<br/>
+&bull; <b>Run more cases later:</b> a second Close case (same Define case, body picked again) runs further Cases that may select geometry the first batch made.<br/>
+&bull; <b>Keep the variable list short:</b> every query variable name stays for the rest of the tree. Use short local names (<code>_body</code>, <code>_edges</code>) reused in every body; declare Outputs only for what a later feature uses.</p>
+
+<h2>Limits</h2>
+<p>&bull; Not for sheet metal or derived features. Every rebuild runs the body once per case plus case 1.<br/>
+&bull; Cases run in order and see earlier results. A failed case cannot undo edits to existing geometry; only its new bodies are removed.<br/>
+&bull; Edits to existing geometry are verified for fillet and Move face. Chamfer, shell, draft and booleans into existing parts are untested.<br/>
+&bull; In a new Case the grey slot names stay blank until you press <i>Update from Define case</i>.</p>
+
+
+<p class="foot">More: <code>docs/explainers/case_pattern/</code> (explainer, comparison with Query pattern) &middot; <code>docs/decks/case_pattern/case_pattern.pdf</code> (full deck) &middot; examples T1-T14 in the Case_Pattern test Part Studio.</p>

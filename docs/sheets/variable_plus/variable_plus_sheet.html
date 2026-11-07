@@ -1,0 +1,88 @@
+﻿<h1>Variable +</h1>
+<p class="sub">Assigned &middot; Measured &middot; From import &nbsp;|&nbsp; Onshape document <b>betterMeasure</b> (FeatureScript 3083) &nbsp;|&nbsp; Feature sheet, draft 2026-11-06</p>
+<p class="note"><b>Status:</b> frame and Map output tested live 2026-11-05 (8 test features, all values matched); the Export for derive tick and the other measurement modes are not covered by that run. Needs a user version of betterMeasure before other documents see these options.</p>
+
+<p class="lead">A variable feature that can also <b>measure</b>: distance, length, diameter, angle, radius of curvature, point coordinates. Distances and points can be read in a <b>mate connector's frame</b> and kept as a <b>Map</b>, so one variable gives a signed vector of lengths you index in any dialog (<code>#d.delta[0]</code>).</p>
+
+<img src="docs/sheets/variable_plus/img/frame_and_map.png" width="430"/>
+<p class="cap">Left: the same two points seen in the world frame and in a mate connector rotated 90 deg about Z. Right: what Output = Map records.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; a dimension should come from geometry, not be typed<br/>
+&bull; you need a <i>signed</i> offset along a custom axis (a connector)<br/>
+&bull; one measurement feeds several fields (a vector, not three variables)<br/>
+&bull; a CSV value must become a variable (mode From import)</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; the value is just a number: the standard Variable<br/>
+&bull; you need many named <i>selections</i>: Extract variables<br/>
+&bull; the measurement must stay a one-off: the Measure tool</td></tr></table>
+
+<h2>How it works</h2>
+<table class="grid">
+<tr><th>Choice</th><th>What happens</th></tr>
+<tr><td><b>Mode</b></td><td>Assigned (you type a value), Measured (the feature reads geometry), From import (a CSV table cell, row or column).</td></tr>
+<tr><td><b>Measurement</b></td><td>Distance, Length, Diameter, Angle, Radius of curvature, Point coordinate. The result is stored as <code>#name</code>.</td></tr>
+<tr><td><b>Coordinate system</b> (new)</td><td>Distance and Point coordinate: pick a mate connector; components X/Y/Z/Delta are then expressed along its axes and are <b>signed</b>.</td></tr>
+<tr><td><b>Output</b> (new)</td><td>Single value, or Map: one variable holding several named lengths (keys below).</td></tr>
+</table>
+
+<h2>Quick start: a signed offset in a connector's frame</h2>
+<ol>
+<li>Add <b>Variable +</b>, Mode <b>Measured</b>, Measurement <b>Distance</b>, type a <b>Name</b> (<code>d</code>).</li>
+<li>Pick the two entities (faces, edges, vertices or mate connectors).</li>
+<li>Tick <b>Custom coordinate system</b> and pick one mate connector.</li>
+<li>Set <b>Output</b> to <b>Map</b> (or keep Single value and choose <i>Value to record</i> under Axis measurements).</li>
+<li>Use it: <code>#d.delta[0]</code> is the signed offset along the connector's X, with units.</li>
+</ol>
+
+<h2>The key rule</h2>
+<p><b>Without a coordinate system the old behaviour is kept:</b> single-value Along X/Y/Z are unsigned (absolute) so existing features do not change. <b>With</b> a frame, and for Delta and Map output in the world frame, the components are signed. Pick a connector whenever the sign matters.</p>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>Pick a mate connector as the coordinate system. / Pick a single mate connector as the coordinate system.</td><td>Custom coordinate system is on but the field is empty, or holds more than one connector.</td></tr>
+<tr><td>Only an ordinary value can be exported for derive.</td><td>Export for derive needs a real value (not a query, not empty).</td></tr>
+<tr><td>'exportVariables' is the registry itself and cannot be exported.</td><td>Rename the variable.</td></tr>
+<tr><td>Select second entity / only two entities allowed (Onshape's own text)</td><td>Distance and Angle need exactly two entities.</td></tr>
+</table>
+
+<h1 class="pb">Variable +, reference</h1>
+<p class="sub">Dialog parameters, outputs, limits</p>
+
+<h2>Dialog, in order</h2>
+<table class="grid">
+<tr><td class="k" width="105">Mode</td><td>Assigned / Measured / From import. Default Assigned.</td></tr>
+<tr><td class="k" width="105">Variable type / Measurement</td><td>Assigned: Length, Angle, Number, Any (default Any). Measured: Distance (default), Length, Diameter, Angle, Radius of curvature, Point coordinate.</td></tr>
+<tr><td class="k" width="105">Name</td><td>The variable, used as <code>#name</code>. A name already used by a query variable is refused. Not configurable.</td></tr>
+<tr><td class="k" width="105">Value</td><td>Assigned only. Units follow the type.</td></tr>
+<tr><td class="k" width="105">Entities to measure between</td><td>Distance: exactly two faces, edges, vertices, bodies or mate connectors.</td></tr>
+<tr><td class="k" width="105">Minimum / Maximum</td><td>Default Minimum. <i>Extend entities</i> and <i>Use axis</i> (default off) exist only for Minimum.</td></tr>
+<tr><td class="k" width="105">Custom coordinate system</td><td>Default off. On: pick one mate connector (<i>Coordinate system</i>). Components become signed.</td></tr>
+<tr><td class="k" width="105">Output</td><td>Single value (default) or Map. In Map the Value to record / Custom direction controls are hidden.</td></tr>
+<tr><td class="k" width="105">Axis measurements</td><td>Read-only Distance, Along X, Y, Z (collapsed). <i>Value to record</i> (Single only): Distance, Along X/Y/Z, Along custom, Delta (vector). Custom direction in a frame is still the unsigned projection.</td></tr>
+<tr><td class="k" width="105">Length / Diameter / Angle / Curvature</td><td>As in the original feature: Radius toggle; Angle between entities or three points with Complement; curvature at a point or minimum along the curve. <b>No frame or Map</b> for these.</td></tr>
+<tr><td class="k" width="105">Point coordinate</td><td>Point (vertex or mate connector), Custom coordinate system, Output, Component X / Y / Z / Vector (X, Y, Z); read-only X, Y, Z.</td></tr>
+<tr><td class="k" width="105">Description</td><td>Up to 256 characters.</td></tr>
+<tr><td class="k" width="105">Export for derive</td><td>Default off. Adds the value to <code>exportVariables</code> for a deriving Part Studio (see the Add variables for derive sheet).</td></tr>
+</table>
+
+<h2>Outputs</h2>
+<table class="grid">
+<tr><th>Mode</th><th>Variable</th></tr>
+<tr><td>Distance, Single</td><td><code>#name</code> = one length.</td></tr>
+<tr><td>Distance, Map</td><td><code>#name.distance</code>, <code>#name.delta</code> (vector of lengths), <code>#name.first</code>, <code>#name.second</code> (end points), in the frame or in world.</td></tr>
+<tr><td>Coordinate, Single</td><td><code>#name</code> = X, Y or Z, or the whole vector.</td></tr>
+<tr><td>Coordinate, Map</td><td><code>#name.point</code> (vector of lengths).</td></tr>
+</table>
+<p class="note">Highlights and magenta/axis debug lines show the measurement while the feature is open.</p>
+
+<h2>Example (tested)</h2>
+<p>Connector rotated 90 deg about Z; distance between two vertices, Map. The four keys matched the hand-computed values in the frame and in world (test features v1-v8, Part Studio 2 of betterMeasure). <code>#d.delta[1]</code> shows a length with units in a variable table; it was <b>not yet</b> tried in an extrude depth field.</p>
+
+<h2>Limits</h2>
+<p>&bull; Angle, length, diameter and curvature have no frame or Map. &bull; Export for derive with a Map value is untested. &bull; Pure-Assigned/CSV behaviour is the original feature's. &bull; Cannot export queries.</p>
+<p class="foot">More: memory note <code>variable-plus-frame-and-map.md</code>; source <code>betterMeasure/betterMeasure.fs</code>. No dedicated explainer or deck exists yet. Companion sheets: Add variables for derive, Extract variables.</p>
+

@@ -11,12 +11,12 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | x_unwrap | Unwrap (pre-existing) | **draft** | edited by user, code changed since written | `driven_offset/docs/unwrap_explained.md` | 2026-09-25 written by Claude |
 | x_reference_side | Reference-side features | **reviewed** | edited by user, changed since reviewed, code changed since written | `docs/explainers/reference_side/reference_side_explained.md` | 2026-09-25 written by Claude |
 | x_curve_tools | Curve tools | **draft** | code changed since written | `docs/explainers/curve_tools/curve_tools_explained.md` | 2026-09-26 written by Claude |
-| x_variable_tools | Variable tools | **draft** | edited by user | `docs/explainers/variable_tools/variable_tools_explained.md` | 2026-09-25 written by Claude |
+| x_variable_tools | Variable tools | **draft** | edited by user, code changed since written | `docs/explainers/variable_tools/variable_tools_explained.md` | 2026-09-25 written by Claude |
 | x_case_pattern | Case pattern | **draft** | - | `docs/explainers/case_pattern/case_pattern_explained.md` | 2026-09-29 written by Claude |
 | x_driven_offset | Driven offset | **planned** | - | `docs/explainers/driven_offset/driven_offset_explained.md` |   |
 | x_publish_tools | Publish & drawing tools | **planned** | - | `docs/explainers/publish_tools/publish_tools_explained.md` |   |
 | x_solvers | Solvers | **draft** | - | `docs/explainers/solvers/solvers_explained.md` | 2026-09-26 written by Claude |
-| x_small_tools | Small tools | **draft** | - | `docs/explainers/small_tools/small_tools_explained.md` | 2026-09-26 written by Claude |
+| x_small_tools | Small tools | **draft** | code changed since written | `docs/explainers/small_tools/small_tools_explained.md` | 2026-09-26 written by Claude |
 | x_curve_mapping | Curve mapping (public) | **draft** | code changed since written | `docs/explainers/curve_mapping/curve_mapping_explained.md` | 2026-09-26 written by Claude |
 | x_footprint | Footprint | **draft** | code changed since written | `docs/explainers/footprint/footprint_explained.md` | 2026-09-26 written by Claude |
 | x_gordon_surface | Gordon surface | **draft** | code changed since written | `docs/explainers/gordon_surface/gordon_surface_explained.md` | 2026-09-26 written by Claude |
@@ -34,10 +34,10 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | d_clean_wire | Clean wire | **draft** | code changed since written | `docs/decks/clean_wire/clean_wire.pptx` | 2026-09-25 written by Claude |
 | d_map_curve | Map curve | **draft** | code changed since written | `docs/decks/map_curve/map_curve.pptx` | 2026-09-26 written by Claude |
 | d_merge_curve | Merge curve | **draft** | - | `docs/decks/merge_curve/merge_curve.pptx` | 2026-09-25 written by Claude |
-| d_evaluate_profiles | Evaluate profiles | **draft** | - | `docs/decks/evaluate_profiles/evaluate_profiles.pptx` | 2026-09-26 written by Claude |
+| d_evaluate_profiles | Evaluate profiles | **draft** | code changed since written | `docs/decks/evaluate_profiles/evaluate_profiles.pptx` | 2026-09-26 written by Claude |
 | d_fillet_wire | Fillet wire | **draft** | - | `docs/decks/fillet_wire/fillet_wire.pptx` | 2026-09-25 written by Claude |
 | d_recognize_arcs | Recognize arcs | **draft** | - | `docs/decks/recognize_arcs/recognize_arcs.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_extract_variables | Extract variables | **draft** | - | `docs/decks/extract_variables/extract_variables.pptx` | 2026-09-25 written by Claude |
+| d_extract_variables | Extract variables | **draft** | code changed since written | `docs/decks/extract_variables/extract_variables.pptx` | 2026-09-25 written by Claude |
 | d_case_pattern | Case pattern (Define case, Case, Close case) | **draft** | - | `docs/decks/case_pattern/case_pattern.pptx` | 2026-09-29 written by Claude |
 | d_driven_edge_offset | Driven edge offset | **planned** | - | `docs/decks/driven_edge_offset/driven_edge_offset.pptx` |   |
 | d_driven_offset_surface | Driven offset surface | **planned** | - | `docs/decks/driven_offset_surface/driven_offset_surface.pptx` |   |
@@ -50,10 +50,10 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | d_part_volume | Part Volume | **draft** | - | `docs/decks/part_volume/part_volume.pptx` | 2026-09-26 written by Claude |
 | d_move_along_edge | Move Along Edge | **draft** | - | `docs/decks/move_along_edge/move_along_edge.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
 | d_trim_curve | Trim curve | **draft** | - | `docs/decks/trim_curve/trim_curve.pptx` | 2026-09-26 written by Claude |
-| d_trim_curve_plus | Trim curve + | **draft** | - | `docs/decks/trim_curve_plus/trim_curve_plus.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_wrap_curve | Wrap Curve | **draft** | - | `docs/decks/wrap_curve/wrap_curve.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_wrap_and_loft | Wrap and Loft | **draft** | - | `docs/decks/wrap_and_loft/wrap_and_loft.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
-| d_deform | Deform | **draft** | - | `docs/decks/deform/deform.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_trim_curve_plus | Trim curve + | **draft** | code changed since written | `docs/decks/trim_curve_plus/trim_curve_plus.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_wrap_curve | Wrap Curve | **draft** | code changed since written | `docs/decks/wrap_curve/wrap_curve.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_wrap_and_loft | Wrap and Loft | **draft** | code changed since written | `docs/decks/wrap_and_loft/wrap_and_loft.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
+| d_deform | Deform | **draft** | code changed since written | `docs/decks/deform/deform.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
 | d_offset_edges | Offset edges | **draft** | code changed since written | `docs/decks/offset_edges/offset_edges.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
 | d_generate_footprint_points | Generate Footprint Points | **draft** | code changed since written | `docs/decks/generate_footprint_points/generate_footprint_points.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
 | d_analyze_footprint | Analyze footprint | **draft** | code changed since written | `docs/decks/analyze_footprint/analyze_footprint.pptx` | 2026-09-26 dialog screenshot pending (Onshape login expired) |
@@ -74,3 +74,29 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | d_estimate_deflection | Estimate Deflection | **draft** | code changed since written | `docs/decks/estimate_deflection/estimate_deflection.pptx` | 2026-09-25 written by Claude |
 | d_estimate_stiffness | Estimate Stiffness | **draft** | code changed since written | `docs/decks/estimate_stiffness/estimate_stiffness.pptx` | 2026-09-25 written by Claude |
 | d_update_profile | Update profile | **draft** | code changed since written | `docs/decks/update_profile/update_profile.pptx` | 2026-09-25 written by Claude |
+
+## Feature sheets (1-2 page .pdf, built from .html)
+
+| id | title | state | flags | file | last change |
+|---|---|---|---|---|---|
+| s_case_pattern | Case pattern (feature sheet) | **draft** | - | `docs/sheets/case_pattern/case_pattern_sheet.pdf` | 2026-11-06 written by Claude |
+| s_add_variables_for_derive | Add variables for derive (feature sheet) | **draft** | - | `docs/sheets/add_variables_for_derive/add_variables_for_derive_sheet.pdf` | 2026-11-06 written by Claude |
+| s_auto_layout_plus | Auto layout plus (feature sheet) | **draft** | - | `docs/sheets/auto_layout_plus/auto_layout_plus_sheet.pdf` | 2026-11-06 written by Claude |
+| s_create_offset_profile | Create offset profile (feature sheet) | **draft** | - | `docs/sheets/create_offset_profile/create_offset_profile_sheet.pdf` | 2026-11-06 written by Claude |
+| s_curve_pattern_plus | Curve pattern plus (feature sheet) | **draft** | - | `docs/sheets/curve_pattern_plus/curve_pattern_plus_sheet.pdf` | 2026-11-06 written by Claude |
+| s_driven_edge_offset | Driven edge offset (feature sheet) | **draft** | - | `docs/sheets/driven_edge_offset/driven_edge_offset_sheet.pdf` | 2026-11-06 written by Claude |
+| s_driven_offset_surface | Driven offset surface (feature sheet) | **draft** | - | `docs/sheets/driven_offset_surface/driven_offset_surface_sheet.pdf` | 2026-11-06 written by Claude |
+| s_enclose_plus | Enclose+ (feature sheet) | **draft** | - | `docs/sheets/enclose_plus/enclose_plus_sheet.pdf` | 2026-11-06 written by Claude |
+| s_evaluate_offset | Evaluate offset (feature sheet) | **draft** | - | `docs/sheets/evaluate_offset/evaluate_offset_sheet.pdf` | 2026-11-06 written by Claude |
+| s_evenly_divide_surface | Evenly divide surface (feature sheet) | **draft** | - | `docs/sheets/evenly_divide_surface/evenly_divide_surface_sheet.pdf` | 2026-11-06 written by Claude |
+| s_export_primitive | Export primitive (feature sheet) | **draft** | - | `docs/sheets/export_primitive/export_primitive_sheet.pdf` | 2026-11-06 written by Claude |
+| s_export_tag | Export tag (feature sheet) | **draft** | - | `docs/sheets/export_tag/export_tag_sheet.pdf` | 2026-11-06 written by Claude |
+| s_extract_variables | Extract variables (feature sheet) | **draft** | - | `docs/sheets/extract_variables/extract_variables_sheet.pdf` | 2026-11-06 written by Claude |
+| s_join_profile_surfaces | Join profile surfaces (feature sheet) | **draft** | - | `docs/sheets/join_profile_surfaces/join_profile_surfaces_sheet.pdf` | 2026-11-06 written by Claude |
+| s_measure_curve_distance | Measure curve distance (feature sheet) | **draft** | - | `docs/sheets/measure_curve_distance/measure_curve_distance_sheet.pdf` | 2026-11-06 written by Claude |
+| s_move_face_plus | Move face+ (feature sheet) | **draft** | - | `docs/sheets/move_face_plus/move_face_plus_sheet.pdf` | 2026-11-06 written by Claude |
+| s_referenced_part | Referenced part (feature sheet) | **draft** | - | `docs/sheets/referenced_part/referenced_part_sheet.pdf` | 2026-11-06 written by Claude |
+| s_station_definition | Station definition (feature sheet) | **draft** | - | `docs/sheets/station_definition/station_definition_sheet.pdf` | 2026-11-06 written by Claude |
+| s_station_geometry | Station geometry (feature sheet) | **draft** | - | `docs/sheets/station_geometry/station_geometry_sheet.pdf` | 2026-11-06 written by Claude |
+| s_unwrap | Unwrap (feature sheet) | **draft** | - | `docs/sheets/unwrap/unwrap_sheet.pdf` | 2026-11-06 written by Claude |
+| s_variable_plus | Variable + (feature sheet) | **draft** | - | `docs/sheets/variable_plus/variable_plus_sheet.pdf` | 2026-11-06 written by Claude |

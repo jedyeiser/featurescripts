@@ -2,13 +2,13 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/queryVariable.fs", version : "3083.0");
 // IMPORT: primitive_profiles.fs
-export import(path : "5865b24d55ff270a56088adf", version : "46ac1b2a456540a2c6782ce4");
+export import(path : "5865b24d55ff270a56088adf", version : "c9874a0fc3f37c49fc1dd22a");
 // IMPORT: primitive_footprint.fs
-export import(path : "fbc957543e769a649f00c5cc", version : "3fd527e284e32df1995bc347");
+export import(path : "fbc957543e769a649f00c5cc", version : "4494b4775c5a1bf0b2be7703");
 // IMPORT: primitive_baseline.fs
-export import(path : "b827b10bc0bdc678c2db28cd", version : "4a3447fc7246d1cda7c9a473");
+export import(path : "b827b10bc0bdc678c2db28cd", version : "e3ee480ce26dc51ab42ec01f");
 // IMPORT: primitive_output.fs
-export import(path : "6f122edb2547a6a46991d9fd", version : "fdc4d4666f84ddc58b88f990");
+export import(path : "6f122edb2547a6a46991d9fd", version : "a749755e22f875495197c386");
 // IMPORT: Variable_tools extract_outputs.fs (embedStandardOutputs) -- same pin as station_geometry
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: xSection V58 xSectBeamAnalysis.fs (getEIFromEdges, computeBeamStiffness; direction-safe)
@@ -49,6 +49,11 @@ const REGION_TOLERANCE = 1e-6 * meter;
  *                   the key locations and junction ticks there; the REFERENCE (0) line and the scale frame (end axes,
  *                   ticks, numbers) span the full footprint length whatever the data
  *     The EI band's frame spans the volume's x extent, EI 0 .. its axis top.
+ *     BASELINE and PROFILE (Auto scale, 2026-11-06): the height (z) is scaled to fill "Baseline band height" / "Profile band
+ *     height" (primitiveBandScale: a nice mm step, the zero line on the axis), x stays 1:1; each band gets a REFERENCE line at
+ *     z = 0 and a numbered mm axis over the volume's x extent. The PROFILE band also holds the optional cavity depth profile
+ *     ("<prefix> PRIMITIVE PROFILE CAVITY"), which adds the cavity depth column to the RSL data table. Auto scale off: 1:1.
+ *     The scale factors are in the attribute's bands (baselineZScale, profileZScale, ...); the tables never use the plot.
  *     Auto scale (default, 2026-09-29): each of these bands has a FIXED height ("Radius band height", zero line 20 %
  *     up; "EI band height") and the scale inside follows the data: axis top = k * nice step with the largest plotted
  *     value at 85-95 % of it (primitiveAutoAxis), the top numbered. Off: the manual scales above (10 mm per 1 m,
@@ -110,8 +115,20 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             definition.prefix is string;
         }
 
-        annotation { "Group Name" : "Baseline and footprint source", "Collapsed By Default" : true }
+        annotation { "Group Name" : "Profile, baseline and footprint source", "Collapsed By Default" : true }
         {
+            // New 2026-11-06: default From the volume, so saved features keep the mid-plane section.
+            annotation { "Name" : "Profile source", "Default" : PrimitiveSource.VOLUME, "UIHint" : [UIHint.SHOW_LABEL],
+                        "Description" : "From the volume: the volume cut by the datum XZ plane (the section at y = 0). From picked wires: the ski's side profile as one closed loop in the datum XZ plane. Use wires when the section is cut into pieces (a slot or swallowtail at the tail: the info says 'the mid plane cuts the volume in N loops'): the rows beyond the longest piece get no thickness or cavity depth." }
+            definition.profileFrom is PrimitiveSource;
+
+            if (definition.profileFrom == PrimitiveSource.INPUT)
+            {
+                annotation { "Name" : "Profile wires (closed loop)", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE),
+                            "Description" : "The ski's side profile in the datum XZ plane: top, bottom, tip and tail end wires forming ONE closed loop (e.g. the joined profile wires of the design)." }
+                definition.profileWires is Query;
+            }
+
             annotation { "Name" : "Baseline source", "Default" : PrimitiveSource.VOLUME, "UIHint" : [UIHint.SHOW_LABEL],
                         "Description" : "From the volume: the bottom edge of the profile (the volume cut by the datum XZ plane). From picked wires: e.g. FULL_BASELINE." }
             definition.baselineFrom is PrimitiveSource;
@@ -172,6 +189,14 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             definition.routStop is Query;
         }
 
+        // New 2026-11-06: a pick, empty by default, so saved features gain no column and no change.
+        annotation { "Group Name" : "Cavity depth", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Cavity depth profile (optional)", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE),
+                        "Description" : "The profile of the bottom of the lid cavity: one connected wire (edges or a wire body); one not lying in the datum XZ plane is projected onto it. Drawn in the profile band, and adds the cavity depth column (Minicaphoehe) to the RSL data table: at each row, the distance along the bottom wire's normal from the top of the ski to this profile; empty where the profile does not reach." }
+            definition.cavityProfile is Query;
+        }
+
         annotation { "Group Name" : "Plot", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Plot type", "Default" : PrimitivePlot.RADIUS, "UIHint" : [UIHint.SHOW_LABEL],
@@ -184,13 +209,19 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
 
             // New 2026-09-29, default ON (correction 25: saved features migrate to true, intended by the user).
             annotation { "Name" : "Auto scale", "Default" : true,
-                        "Description" : "Fixed band heights, scale fitted to the data: the largest plotted radius / curvature (within the Plot x-range and Max radius) and the largest EI sit at 85-95 % of their band's top; ticks on a nice step (1, 2, 5, 10, 20, 25, 50 m; 0.01 1/m steps; 10, 25, 50, 100 N*m^2), the top numbered. Off: the manual scales and axes." }
+                        "Description" : "Fixed band heights, scale fitted to the data: the largest plotted radius / curvature (within the Plot x-range and Max radius) and the largest EI sit at 85-95 % of their band's top; ticks on a nice step (1, 2, 5, 10, 20, 25, 50 m; 0.01 1/m steps; 10, 25, 50, 100 N*m^2), the top numbered. The baseline and profile bands scale their height (z) to fill their band height, with a numbered mm axis (x stays 1:1). Off: the manual scales and axes, and the baseline and profile at 1:1." }
             definition.autoScale is boolean;
 
             if (definition.autoScale)
             {
                 annotation { "Name" : "Radius band height", "Description" : "Model height of the radius (or curvature) band, axis bottom to top: 80 % above the zero line, 20 % below it (taper, tip, tail). 150 mm prints 30 mm at 1:5." }
                 isLength(definition.radiusBandHeight, PRIMITIVE_PLOT_BAND_HEIGHT_BOUNDS);
+
+                annotation { "Name" : "Baseline band height", "Description" : "Model height of the baseline band, axis bottom to top. The baseline's height (z) is scaled up to fill it (x stays 1:1) and a numbered height axis is drawn, like the EI and radius bands." }
+                isLength(definition.baselineBandHeight, PRIMITIVE_BASELINE_BAND_HEIGHT_BOUNDS);
+
+                annotation { "Name" : "Profile band height", "Description" : "Model height of the profile band, axis bottom to top. The profile's height (z, with the cavity depth profile) is scaled up to fill it (x stays 1:1) and a numbered height axis is drawn." }
+                isLength(definition.profileBandHeight, PRIMITIVE_PROFILE_BAND_HEIGHT_BOUNDS);
             }
             else if (definition.plotMode == PrimitivePlot.CURVATURE)
             {
@@ -376,12 +407,23 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         const volumeBox = evBox3d(context, { "topology" : definition.volume, "cSys" : datum, "tight" : true });
 
         // ---- Profile and the bottom-wire frame ----
-        const profile = primitiveProfile(context, id + "profile", definition.volume, datum, toLocal, isIdentity, dirSign, mrs[0]);
+        const fromWiresProfile = definition.profileFrom == PrimitiveSource.INPUT;
+        if (fromWiresProfile && isQueryEmpty(context, definition.profileWires))
+        {
+            throw regenError("Select the profile wires (one closed loop in the datum XZ plane).", ["profileWires"]);
+        }
+        const profile = primitiveProfile(context, id + "profile", definition.volume, datum, toLocal, isIdentity, dirSign, mrs[0],
+            fromWiresProfile ? modelWireEdges(context, definition.profileWires) : qNothing());
         if (profile.loops > 1)
         {
-            notes = append(notes, "the mid plane cuts the volume in " ~ profile.loops ~ " loops; the longest is used");
+            notes = append(notes, fromWiresProfile ? "the profile wires hold " ~ profile.loops ~ " closed loops; the longest is used" :
+                "the mid plane cuts the volume in " ~ profile.loops ~ " loops; the longest is used (rows outside it have no thickness: pick the profile wires under Profile source)");
         }
         const frame = primitiveFrame(context, profile.bottomChain, mrs, dirSign);
+
+        // ---- Cavity depth profile (optional, 2026-11-06): in the profile's plane, for the profile band and Table 6 ----
+        const cavity = isQueryEmpty(context, definition.cavityProfile) ? undefined :
+            primitiveCavityProfile(context, id + "cavity", wireEdges(definition.cavityProfile), toLocal, isIdentity, profile.tail);
 
         // ---- Key locations (Table 3) ----
         const xXs1 = (fcp[0] + mrs[0]) / 2;
@@ -438,8 +480,17 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         const scale = primitiveScaleFactors(context, frame, profile.topChain, keys.FCP.a, keys.ACP.a, language);
 
         // ---- Table 5: baseline ----
+        const baselineEdges = fromVolumeBaseline ? qNothing() : modelWireEdges(context, definition.baselineWires);
+        if (!fromVolumeBaseline)
+        {
+            const ignored = size(evaluateQuery(context, wireEdges(definition.baselineWires))) - size(evaluateQuery(context, baselineEdges));
+            if (ignored > 0)
+            {
+                notes = append(notes, ignored ~ " sketch edge(s) in the baseline wires were ignored");
+            }
+        }
         const baseline = primitiveBaseline(context, id + "baseline", fromVolumeBaseline, profile.bottom,
-            fromVolumeBaseline ? qNothing() : wireEdges(definition.baselineWires), toLocal, isIdentity, fcp, acp, profile.tail, frame);
+            baselineEdges, toLocal, isIdentity, fcp, acp, profile.tail, frame);
         if (baseline.result == undefined)
         {
             notes = append(notes, "the baseline could not be analysed");
@@ -497,7 +548,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
 
         // ---- Footprint: unwrap, analyse (Table 2), radius ----
         const source = primitiveFootprintSource(context, id + "footprintSource", fromVolumeFootprint, definition.volume,
-            fromVolumeFootprint ? qNothing() : wireEdges(definition.footprintWires), frame, toWorld(datum), toLocal, isIdentity);
+            fromVolumeFootprint ? qNothing() : modelWireEdges(context, definition.footprintWires), frame, toWorld(datum), toLocal, isIdentity);
         const unwrapped = primitiveUnwrap(context, id + "unwrap", frame, source.edges, !fromVolumeFootprint, definition.radiusLimit,
             source.sections);
         opDeleteBodies(context, id + "deleteFootprintSource", { "entities" : source.bodies });
@@ -566,7 +617,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             const topHit = primitiveChainCrossing(context, profile.topChain, b.point, up);
             const across = crossings[j];
             const radius = crossings[size(dataX) + j].radius;
-            dataRows = append(dataRows, {
+            var dataRow = {
                         "station" : j,
                         "name" : rowName,
                         "x" : primitiveMM(dataX[j]),
@@ -577,7 +628,16 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                         "skiThck" : topHit == undefined ? PRIMITIVE_NOT_FOUND : primitiveMM(dot(topHit.point - b.point, up)),
                         "baselineHeight" : primitiveMM(dataHeights[j]),
                         "radius" : radius == undefined ? "" : primitiveRound(radius, 4)
-                    });
+                    };
+            if (cavity != undefined)
+            {
+                // Cavity depth (2026-11-06): along the same normal as thck, from the top of the ski to the cavity profile
+                // (positive = the cavity's bottom is below the top); empty where the profile does not reach this row.
+                const cavityHit = primitiveChainCrossing(context, cavity.chain, b.point, up);
+                dataRow.cavityDepth = (cavityHit == undefined || topHit == undefined) ? "" :
+                    primitiveMM(abs(dot(topHit.point - cavityHit.point, up)));
+            }
+            dataRows = append(dataRows, dataRow);
         }
 
         // ---- Table 2: metadata ----
@@ -668,6 +728,12 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         const eiLabelHalf = definition.labels && size(eiLevels) > 1 ? labelHeight / 2 : 0 * meter;
         const tick = definition.tickLength;
         const profileBodies = qUnion([profile.bottom, profile.top, profile.tipEnd, profile.tailEnd]);
+        // Baseline and profile bands (2026-11-06, Auto scale): the height (z) is scaled to fill the band height with a
+        // numbered mm axis, like the EI and radius bands; x stays 1:1. The profile band's range includes the cavity profile.
+        const profileWithCavity = cavity == undefined ? profileBodies : qUnion([profileBodies, cavity.bodies]);
+        const baselineScale = autoScale ? primitiveBandScale(primitiveZExtent(context, baseline.body), definition.baselineBandHeight) : undefined;
+        const profileScale = autoScale ? primitiveBandScale(primitiveZExtent(context, profileWithCavity), definition.profileBandHeight) : undefined;
+        const heightLabelHalf = definition.labels ? labelHeight / 2 : 0 * meter;
         var bandKeys = [];
         var extents = [];
         if (eiPlot != undefined)
@@ -682,8 +748,8 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             { "lo" : min([axisLo * perLevel, -tick, levels[0] * perLevel - labelHalf]),
               "hi" : max([axisHi * perLevel, tick, levels[size(levels) - 1] * perLevel + labelHalf]) };
         extents = concatenateArrays([extents, [
-            primitiveZExtent(context, baseline.body),
-            primitiveZExtent(context, profileBodies),
+            baselineScale == undefined ? primitiveZExtent(context, baseline.body) : scaledBandExtent(baselineScale, heightLabelHalf),
+            profileScale == undefined ? primitiveZExtent(context, profileWithCavity) : scaledBandExtent(profileScale, heightLabelHalf),
             { "lo" : fpBox.minCorner[1], "hi" : fpBox.maxCorner[1] },
             plotExtent
         ]]);
@@ -726,7 +792,9 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
 
         // Band 1: baseline
         var bandStart = size(members);
-        opTransform(context, id + "moveBaseline", { "bodies" : baseline.body, "transform" : transform(vector(zero, zero, zBaseline)) });
+        // The band's transform: z scaled about the datum height, then moved to the band (a plain move without Auto scale).
+        const baselineMove = transform(vector(zero, zero, zBaseline)) * scaleNonuniformly(1, 1, baselineScale == undefined ? 1 : baselineScale.k);
+        opTransform(context, id + "moveBaseline", { "bodies" : baseline.body, "transform" : baselineMove });
         primitiveName(context, baseline.body, title ~ " BASELINE");
         members = append(members, baseline.body);
         queries.baseline = baseline.body;
@@ -751,14 +819,19 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             if (entry.value is Vector)
             {
                 members = append(members, primitivePointBody(context, id + ("baselinePt" ~ entry.key),
-                            entry.value + vector(zero, zero, zBaseline), title ~ " BASELINE " ~ entry.key));
+                            baselineMove * entry.value, title ~ " BASELINE " ~ entry.key));
             }
         }
         primitiveColour(context, qUnion(subArray(members, bandStart)), PRIMITIVE_COLOURS.baseline);
+        if (baselineScale != undefined)
+        {
+            members = concatenateArrays([members, heightBandFrame(context, id + "baselineHeights", "BASELINE", baselineScale, eiFrameLo, eiFrameHi,
+                            zBaseline, dirSign, definition.dashedGrid, labelHeight, title)]);
+        }
 
         // Band 2: profile
         bandStart = size(members);
-        const profileMove = transform(vector(zero, zero, zProfile));
+        const profileMove = transform(vector(zero, zero, zProfile)) * scaleNonuniformly(1, 1, profileScale == undefined ? 1 : profileScale.k);
         opTransform(context, id + "moveProfile", { "bodies" : profileBodies, "transform" : profileMove });
         primitiveName(context, profile.bottom, title ~ " PROFILE BOTTOM");
         primitiveName(context, profile.top, title ~ " PROFILE TOP");
@@ -795,6 +868,20 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
             members = append(members, primitivePointBody(context, id + "profilePtTopACP", profileMove * scale.topAcp, title ~ " PROFILE TOP ACP"));
         }
         primitiveColour(context, qUnion(subArray(members, bandStart)), PRIMITIVE_COLOURS.profile);
+        if (cavity != undefined)
+        {
+            // The cavity depth profile, in the same plot (and scale) as the profile.
+            opTransform(context, id + "moveCavity", { "bodies" : cavity.bodies, "transform" : profileMove });
+            primitiveName(context, cavity.bodies, title ~ " PROFILE CAVITY");
+            primitiveColour(context, cavity.bodies, PRIMITIVE_COLOURS.cavity);
+            members = append(members, cavity.bodies);
+            queries.profileCavity = cavity.bodies;
+        }
+        if (profileScale != undefined)
+        {
+            members = concatenateArrays([members, heightBandFrame(context, id + "profileHeights", "PROFILE", profileScale, eiFrameLo, eiFrameHi,
+                            zProfile, dirSign, definition.dashedGrid, labelHeight, title)]);
+        }
 
         // Band 3: footprint (plan y becomes height)
         bandStart = size(members);
@@ -941,6 +1028,7 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                     "datumUses" : definition.datumUses == PrimitiveDatumUse.ORIGIN ? "ORIGIN" : "COORDINATE_SYSTEM",
                     "targetEI" : beam != undefined,
                     "baselineFlat" : baseline.flat,
+                    "profileFrom" : fromWiresProfile ? "INPUT" : "VOLUME",
                     "baselineFrom" : fromVolumeBaseline ? "VOLUME" : "INPUT",
                     "footprintFrom" : fromVolumeFootprint ? "VOLUME" : "INPUT",
                     "radiusBetween" : AVERAGE_BETWEEN,
@@ -954,11 +1042,13 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
                     "junctionTicks" : definition.junctionTicks,
                     "autoScale" : autoScale,
                     "swRout" : rout != undefined,
+                    "cavityProfile" : cavity != undefined,
                     "tipTowards" : dirSign > 0 ? "+X" : "-X"
                 },
-                "bands" : bandsData(bandZ, definition, region, [frameLo, frameHi], [axisLo, axisHi], levels, levelStep, perLevel, curvatureMode,
+                "bands" : mergeMaps(bandsData(bandZ, definition, region, [frameLo, frameHi], [axisLo, axisHi], levels, levelStep, perLevel, curvatureMode,
                     size(junctions), eiPlot == undefined ? undefined : [eiFrameLo, eiFrameHi],
                     { "max" : plotMax, "fill" : plotFill, "eiTop" : eiTop, "eiStep" : eiStep, "eiPerUnit" : eiPerUnit, "eiMax" : eiMax }),
+                    mergeMaps(bandScaleData("baseline", baselineScale), bandScaleData("profile", profileScale))),
                 "scaleFactors" : scale.rows,
                 "metadata" : metaRows,
                 "keyLocations" : keyRows,
@@ -1015,6 +1105,11 @@ export const exportPrimitive = defineFeature(function(context is Context, id is 
         "autoScale" : true,
         "radiusBandHeight" : 150 * millimeter,
         "eiBandHeight" : 150 * millimeter,
+        "baselineBandHeight" : 60 * millimeter,
+        "profileBandHeight" : 100 * millimeter,
+        "cavityProfile" : qNothing(),
+        "profileFrom" : PrimitiveSource.VOLUME,
+        "profileWires" : qNothing(),
         "curvatureScale" : 50 * millimeter,
         "maxCurvature" : 0.1,
         "curvatureAxisMin" : 0.02,
@@ -1484,6 +1579,57 @@ function followName(context is Context, oldDefinition is map, definition is map,
 function wireEdges(pick is Query) returns Query
 {
     return qUnion([qEntityFilter(pick, EntityType.EDGE), qOwnedByBody(qBodyType(qEntityFilter(pick, EntityType.BODY), BodyType.WIRE), EntityType.EDGE)]);
+}
+
+/**
+ * wireEdges for the baseline and footprint picks (2026-11-06): a pick that mixes model wires with a sketch's edges
+ * (e.g. a query variable of everything a feature created, which includes its measurement sketch) keeps the model wires
+ * only. A pick of sketch edges alone is used as it is.
+ */
+function modelWireEdges(context is Context, pick is Query) returns Query
+{
+    const all = wireEdges(pick);
+    const model = qSketchFilter(all, SketchObject.NO);
+    return isQueryEmpty(context, model) ? all : model;
+}
+
+/** A baseline or profile band's z extent after scaling: the axis (zero line included) plus half a number at each end. */
+function scaledBandExtent(scale is map, labelHalf is ValueWithUnits) returns map
+{
+    return { "lo" : scale.axis.axisLo * scale.perLevel - labelHalf, "hi" : scale.axis.axisHi * scale.perLevel + labelHalf };
+}
+
+/**
+ * The reference line (z = 0 of the band) and numbered height axis of a scaled baseline or profile band: the same frame as
+ * the EI band's (primitiveScaleFrame), in mm, over the volume's x extent.
+ */
+function heightBandFrame(context is Context, id is Id, band is string, scale is map, xLo is ValueWithUnits, xHi is ValueWithUnits,
+    zRef is ValueWithUnits, dirSign is number, grid is boolean, labelHeight, title is string) returns array
+{
+    const zero = 0 * meter;
+    const reference = primitiveSegment(context, id + "reference", vector(xLo, zero, zRef), vector(xHi, zero, zRef), title ~ " " ~ band ~ " REFERENCE");
+    primitiveColour(context, reference, PRIMITIVE_COLOURS.frame);
+    return concatenateArrays([[reference], primitiveScaleFrame(context, id + "frame", band, scale.levels, scale.perLevel, xLo, xHi, zRef,
+                    dirSign, grid, labelHeight, title,
+                    { "digits" : scale.axis.digits, "signed" : false, "labelStep" : primitiveLabelStep(scale.axis.step, scale.perLevel, labelHeight),
+                      "axisLo" : scale.axis.axisLo, "axisHi" : scale.axis.axisHi, "labelTop" : scale.axis.axisHi })]);
+}
+
+/** The attribute's numbers for a scaled baseline / profile band ("baseline" / "profile"); {} when it is not scaled. */
+function bandScaleData(band is string, scale) returns map
+{
+    if (scale == undefined)
+    {
+        return {};
+    }
+    const unit = scale.axis.unit;
+    var out = {};
+    out[band ~ "ZScale"] = primitiveRound(scale.k, 4);
+    out[band ~ "TickStep"] = primitiveRound(scale.axis.step * unit, 6);
+    out[band ~ "AxisFrom"] = primitiveRound(scale.axis.axisLo * unit, 6);
+    out[band ~ "AxisTo"] = primitiveRound(scale.axis.axisHi * unit, 6);
+    out[band ~ "BandHeight"] = primitiveMM((scale.axis.axisHi - scale.axis.axisLo) * scale.perLevel);
+    return out;
 }
 
 /** Data-table x positions: N evenly spaced FCP..ACP (both included), plus the `forced` x when forced; ascending x. */

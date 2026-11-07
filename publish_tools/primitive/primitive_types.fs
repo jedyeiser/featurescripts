@@ -212,6 +212,7 @@ export const PRIMITIVE_TERMS = {
             "skiWidth" : { "en" : ["w"], "de" : ["b"] },
             "z" : { "en" : ["z"], "de" : ["z"] },
             "skiThck" : { "en" : ["thck"], "de" : ["d"] },
+            "cavityDepth" : { "en" : ["cavity depth"], "de" : ["Minicaph\u00f6he"] },
             "baselineHeight" : { "en" : ["baseline"], "de" : ["Buglinie"] },
             "radius" : { "en" : ["radius (m)"], "de" : ["Radius (m)"] }
         },
@@ -304,6 +305,12 @@ export const PRIMITIVE_EI_AXIS_MAX_BOUNDS = { (unitless) : [1, 450, 1000000] } a
  */
 export const PRIMITIVE_PLOT_BAND_HEIGHT_BOUNDS = { (millimeter) : [10, 150, 5000] } as LengthBoundSpec;
 export const PRIMITIVE_EI_BAND_HEIGHT_BOUNDS = { (millimeter) : [10, 150, 5000] } as LengthBoundSpec;
+/**
+ * Baseline and profile bands (2026-11-06, Auto scale): the same fixed band height, with the height (z) scaled up to fill it
+ * (primitiveBandScale); x stays 1:1. Saved features without these parameters take the defaults map's values (60 / 100 mm).
+ */
+export const PRIMITIVE_BASELINE_BAND_HEIGHT_BOUNDS = { (millimeter) : [10, 60, 5000] } as LengthBoundSpec;
+export const PRIMITIVE_PROFILE_BAND_HEIGHT_BOUNDS = { (millimeter) : [10, 100, 5000] } as LengthBoundSpec;
 /** Share of the radius / curvature band below its zero line (taper, tip, tail); fixed so the zero line never moves. */
 export const PRIMITIVE_PLOT_NEGATIVE_FRACTION = 0.2;
 /** Auto scale: the largest plotted value sits within this share of the positive axis (aim 90 %). */
@@ -329,6 +336,7 @@ export const PRIMITIVE_AXIS_TICK = 3 * millimeter;
 export const PRIMITIVE_COLOURS = {
         "baseline" : color(0.09, 0.32, 0.69),
         "profile" : color(0.0, 0.5, 0.25),
+        "cavity" : color(0.0, 0.6, 0.6),
         "footprint" : color(0.85, 0.4, 0.0),
         "radius" : color(0.75, 0.1, 0.1),
         "curvature" : color(0.75, 0.1, 0.1),

@@ -1,0 +1,81 @@
+﻿<h1>Add variables for derive</h1>
+<p class="sub">Document <b>Variable_tools</b> (FeatureScript 3083) &nbsp;|&nbsp; Feature sheet, draft 2026-11-06</p>
+<p class="note"><b>Status:</b> pushed to the workspace, compiled without errors, <b>never run</b>. Unverified: that a custom feature can build the other studio, that variables set by Variable features are visible in that context, and name autocomplete. Needs a user version of Variable_tools before other documents see it.</p>
+
+<p class="lead">A Derived Part Studio brings geometry across, not variables. Put this feature in the <b>source</b> studio to list the variables the deriving studio should receive; <b>Extract variables</b> in the deriving studio then sets them again under the same names.</p>
+
+<img src="docs/sheets/add_variables_for_derive/img/derive_flow.png" width="430"/>
+<p class="cap">The source studio stores a map called exportVariables; the deriving studio reads it through Extract variables.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; a studio derives from another and needs its dimensions<br/>
+&bull; no geometry carrier (a dummy part) is wanted</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; the value is a single measured or assigned variable: tick Export for derive in Variable +<br/>
+&bull; you need a query variable across the derive: not possible</td></tr></table>
+
+<h2>How it works</h2>
+<table class="grid">
+<tr><th>Step</th><th>Where</th><th>What</th></tr>
+<tr><td>1</td><td>source studio</td><td>This feature reads the current value of each name you list and merges them into the variable <code>exportVariables</code> (name to value).</td></tr>
+<tr><td>2</td><td>deriving studio</td><td>Add <b>Derived</b> as usual, then <b>Extract variables</b> with <i>Get variables from a derived Part Studio</i> ticked and the same studio picked.</td></tr>
+<tr><td>3</td><td>deriving studio</td><td>Every entry is set as an ordinary variable of the same name (<code>#length</code>); an existing one is overwritten.</td></tr>
+</table>
+
+<h2>Quick start</h2>
+<ol>
+<li>In the source studio, create the variables (Variable, Variable +).</li>
+<li>Add <b>Add variables for derive</b> <i>after</i> them in the tree.</li>
+<li>Add an item per variable and type its name <b>without #</b>.</li>
+<li>In the deriving studio add the Derived feature, then <b>Extract variables</b>; tick <i>Get variables from a derived Part Studio</i> and pick the source.</li>
+<li>Check the notice: "Exporting N variable(s)..." (source), "Published N name(s)" (deriving).</li>
+</ol>
+
+<h2>The key rule</h2>
+<p>Values are <b>snapshots at the feature's position</b>: put it after the variables, and any variable edited later in the tree is not seen. Only ordinary values travel (numbers, lengths, angles, text, maps); queries and query variables cannot.</p>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>Variable 'x' is not set before this feature (query variables cannot be exported).</td><td>Move this feature below the variable, or fix the spelling.</td></tr>
+<tr><td>Variable 'x' is a query; only ordinary variables... / 'exportVariables' is the registry itself...</td><td>Remove that name from the list.</td></tr>
+<tr><td>Extract variables: The Part Studio has no 'exportVariables' variable...</td><td>The source has neither this feature nor a Variable + with Export for derive.</td></tr>
+<tr><td>Extract variables: Pick the Part Studio you derive from. / The Part Studio could not be built.</td><td>Pick the studio in the Derived Part Studio field; check it regenerates.</td></tr>
+</table>
+
+<h1 class="pb">Add variables for derive, reference</h1>
+<p class="sub">Dialog parameters, outputs, limits</p>
+
+<h2>Dialog</h2>
+<table class="grid">
+<tr><td class="k" width="105">Variables</td><td>List of items, labelled by name. Each item is one variable. Starts empty; the feature then only reports "Exporting 0 variable(s)".</td></tr>
+<tr><td class="k" width="105">Variable name</td><td>A variable set earlier in this studio, without the #. Variable-name autocomplete is enabled. Max 10000 characters. A name listed twice: the later one wins.</td></tr>
+</table>
+<p class="note">No units, bounds or other parameters. No preview.</p>
+
+<h2>Outputs</h2>
+<table class="grid">
+<tr><td class="k" width="105"><code>exportVariables</code></td><td>One map variable in the source studio, name to value. Other producers merge into the same map (Variable + with Export for derive), so you can mix both.</td></tr>
+<tr><td class="k" width="105">In the deriving studio</td><td>One ordinary variable per entry, same name, set by Extract variables with description "From derived Part Studio"; also added to its optional manifest. A name that an Extract entry also publishes raises an error.</td></tr>
+</table>
+
+<h2>The two ways to export</h2>
+<table class="grid">
+<tr><th>Producer</th><th>Use for</th></tr>
+<tr><td>Add variables for derive</td><td>Variables that already exist (including from other features); one place for the list.</td></tr>
+<tr><td>Variable +, Export for derive</td><td>A variable made by Variable + itself; the tick adds it as it is created. Assigned, measured and Map values all qualify (Map: untested).</td></tr>
+</table>
+
+<h2>Limits</h2>
+<p>&bull; Extract variables builds the source studio once more to read the map (one extra regeneration; it uses the studio's configuration).<br/>
+&bull; The studio configuration picked in the Derived Part Studio field is the one that is built (from code; not run).<br/>
+&bull; Not yet exercised: empty Sources list in Extract variables, configured studios, large maps.</p>
+<p class="foot">More: memory note <code>export-variables-for-derive.md</code>; source <code>variable_tools/add_variables_for_derive.fs</code>, consumer <code>variable_tools/extract_variables.fs</code>. No explainer or deck covers this yet. Test it first in a scratch source + deriving studio.</p>
+
+
+
+
+
+

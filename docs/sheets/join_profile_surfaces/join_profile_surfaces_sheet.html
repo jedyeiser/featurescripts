@@ -1,0 +1,83 @@
+<h1>Join profile surfaces</h1>
+<p class="sub">Onshape document <b>Reference_Side_Features</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3083)</p>
+
+<p class="lead">Join an <b>inside</b> profile surface to <b>outside</b> profile surface(s) across a start and an end split, with a <b>lofted strip</b> at each split and optional fillets, in one feature and one merged surface.</p>
+
+<img src="docs/sheets/join_profile_surfaces/img/join_flow.png" width="560"/>
+<p class="cap">Schematic side view. The inside profile is kept between the splits, the outside profile beyond them; a loft closes each step.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; a layer steps from one profile surface to another at a split (a ramp, a bump, an end transition)<br/>
+&bull; every profile can be offset toward one point first<br/>
+&bull; you want one watertight surface out, with named joint edges to fillet</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; you only need to cut or offset: Split+ or Offset+ alone<br/>
+&bull; the pieces should stay separate bodies: the merge here is always on</td></tr></table>
+
+<h2>How it works</h2>
+<p>It replaces the hand steps Offset+ x N, Split+ x N, two lofts and fillets. <b>One inside point</b> drives every side decision.</p>
+<table class="grid">
+<tr><th>Step</th><th>What happens</th></tr>
+<tr><td>1 Offset</td><td>Every profile is offset with Offset+ toward the inside point (positive toward it, negative away, 0 a copy).</td></tr>
+<tr><td>2 Split</td><td>Split+ cuts the inside offset at the splits and keeps the <b>inside</b> (between); the outside offset(s) keep the <b>outside</b> (beyond).</td></tr>
+<tr><td>3 Loft</td><td>Each pair of cut edges (inside cut to outside cut) is lofted into a strip.</td></tr>
+<tr><td>4 Merge, fillet</td><td>Everything is united into one surface; fillets go on the merged joint edges.</td></tr>
+</table>
+
+<h2>Quick start</h2>
+<ol>
+<li>Pick the <b>Start split</b>, the <b>End split</b>, or both (a plane, mate connector, face or sheet).</li>
+<li>Pick the <b>Inside point</b>: inside every profile, between the two splits (with one split: on the side the inside profile keeps).</li>
+<li>Pick the <b>Inside profile</b> (a sheet body) and its offset.</li>
+<li>Choose <b>Outside profiles</b>: one surface for both ends, or different start and end surfaces; pick them and their offsets.</li>
+<li>Optional: switch on <b>Start fillet</b> / <b>End fillet</b> and set radius and edge.</li>
+</ol>
+
+<h2>The one rule: profiles must reach the splits</h2>
+<p>Every profile must be actually cut by its split, on the side the inside point implies. A split lying within 0.05 mm of an existing profile edge counts as on it; a cut closer than the 0.01 mm modelling tolerance can leave slivers.</p>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td><code>Select a start split, an end split, or both.</code></td><td>Pick at least one split.</td></tr>
+<tr><td><code>The inside / outside profile is not cut by the start / end split: it does not reach the split, or the inside point is on the wrong side.</code></td><td>Extend the profile past the split, or move the inside point.</td></tr>
+<tr><td><code>The pieces did not join into one surface: open at the ... A loft edge does not meet its cut edge -- check that the profiles reach the splits cleanly.</code></td><td>Check the named joint; profiles cut at a seam or off the split are the usual cause.</td></tr>
+<tr><td><code>The start / end fillet needs a start / end split.</code></td><td>Turn the fillet off or add that split.</td></tr>
+<tr><td><code>The start / end joint edge to fillet was not found after the merge.</code></td><td>Try the other fillet edge, or check the merge.</td></tr>
+<tr><td><code>A split lies on an existing edge of a profile, and it is not a plane or mate connector ...</code></td><td>Use a plane or mate connector as the split.</td></tr>
+</table>
+
+<h1 class="pb">Join profile surfaces, reference</h1>
+<p class="sub">Dialog parameters, outputs, limits</p>
+
+<h2>Dialog, in order</h2>
+<table class="grid">
+<tr><td class="k" width="105">Start split<br/>End split</td><td>One pick each: sheet body, face or mate connector. At least one is required; with one there is a single transition.</td></tr>
+<tr><td class="k" width="105">Inside point</td><td>Vertex or mate connector. Inside every profile; positive offsets move toward it.</td></tr>
+<tr><td class="k" width="105">Inside profile, Inside offset</td><td>A sheet body (no construction / sketch). Offset: signed length, default 0 (a copy).</td></tr>
+<tr><td class="k" width="105">Outside profiles</td><td><i>Same outside surface</i> (default): one profile + offset, kept beyond both splits. <i>Different start and end surfaces</i>: a start profile and an end profile, each with its own offset.</td></tr>
+<tr><td class="k" width="105">Start fillet</td><td>Default off. Radius (default 5 mm); <i>Start fillet edge</i> Inside (default) or Outside = which joint edge of the loft; <i>Keep opposite start edge</i> (default off) protects the loft's other joint edge (edge overflow on, that edge kept).</td></tr>
+<tr><td class="k" width="105">End fillet</td><td>Same three controls for the end loft.</td></tr>
+<tr><td class="k" width="105">Output name</td><td>Optional name for the joined surface.</td></tr>
+<tr><td class="k" width="105">Keep input surfaces</td><td>Default on. Off deletes the profile surfaces used (the split tools are never deleted).</td></tr>
+</table>
+
+<h2>Outputs (for Extract variables)</h2>
+<table class="grid">
+<tr><td class="k" width="105">output</td><td>The joined surface.</td></tr>
+<tr><td class="k" width="105">Faces</td><td><code>insideSurface</code>, <code>startOutside</code>, <code>endOutside</code>, <code>startLoft</code>, <code>endLoft</code>.</td></tr>
+<tr><td class="k" width="105">Edges</td><td>Joint edges <code>startInsideEdge</code>, <code>startOutsideEdge</code>, <code>endInsideEdge</code>, <code>endOutsideEdge</code>; <code>boundaryEdges</code> (the open edges of the result). Keys of a missing split are empty.</td></tr>
+</table>
+
+<h2>Examples</h2>
+<p>Project test notes (not re-run for this sheet): a stepped join gives 5 faces; an inside offset of 5 and different start / end outside profiles both work; a start fillet on the inside joint works. With only one split, one loft joins the two profiles.</p>
+
+<h2>Limits</h2>
+<p>&bull; The merge is always on; if it fails the feature errors rather than leaving pieces.<br/>
+&bull; Cut edges shorter than 0.1 mm are dropped before lofting, so a micro edge cannot create extra loft faces. This fix is in the workspace library; a document using an older <b>pinned version</b> does not have it. It was not proven on the user's own geometry (project note).<br/>
+&bull; Importing documents pin Offset+ and Split+ by microversion: re-pin when they change.<br/>
+&bull; Fillets need the matching split; &ldquo;Different&rdquo; outside profiles are needed only for the splits given.</p>
+
+<p class="foot">More: <code>docs/explainers/reference_side/reference_side_explained.md</code> section 2.4c (tests J1-J4) &middot; source <code>reference_side/join_profile_surfaces.fs</code>.</p>

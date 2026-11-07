@@ -1,0 +1,74 @@
+<h1>Enclose+</h1>
+<p class="sub">Onshape document <b>Reference_Side_Features</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3083)</p>
+
+<p class="lead">Make a part from the volume that surfaces and caps close off, like Onshape's Enclose, but with <b>mate connector caps</b>, an <b>inside point</b> that picks the solid, and an optional <b>mirror plane</b> that encloses one half and mirrors it.</p>
+
+<img src="docs/sheets/enclose_plus/img/enclose_flow.png" width="560"/>
+<p class="cap">Schematic, side view. Surfaces, a cap, an inside point and a mirror plane go in; the half is enclosed, stray pockets are dropped, the half is mirrored and united.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; the part is defined by surfaces (top, bottom, sides) and ends that are planes or mate connectors<br/>
+&bull; the surfaces also close off stray pockets you do not want<br/>
+&bull; you modelled one half of a symmetric part</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; the surfaces already close one volume and you want every pocket: std Enclose<br/>
+&bull; you want offsets, thickness and cuts from one reference point: Referenced part (its Constrained type uses an enclose)</td></tr></table>
+
+<h2>How it works</h2>
+<p>Std Enclose has no notion of &ldquo;inside&rdquo;: it returns every pocket the inputs close off from the outside, dropping interior walls. Enclose+ turns each mate connector cap into an infinite plane, adds the mirror plane as a boundary, runs <code>opEnclose</code>, keeps only the solid(s) holding the <b>inside point</b>, then mirrors and unites. Temporary planes are deleted.</p>
+
+<h2>Quick start</h2>
+<ol>
+<li>Select the <b>Surfaces</b> that bound the part (sheet bodies or faces).</li>
+<li>Add <b>Caps</b> if the surfaces do not close the ends: planes, mate connectors (infinite), faces or surfaces.</li>
+<li>Pick an <b>Inside point</b> (vertex or mate connector) inside the part to drop stray pockets.</li>
+<li>Half model? Pick the <b>Mirror plane</b>; the surfaces are one half.</li>
+<li>Optional: <b>Output name</b>; tick <b>Keep tools</b> to keep the surfaces.</li>
+</ol>
+
+<h2>The one rule: the boundary must close</h2>
+<p>Surfaces, caps and (if used) the mirror plane together must close a volume with no gap. The inside point must lie in that volume; a point in no solid means a gap around it.</p>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td><code>Select the surfaces that bound the part.</code></td><td>Pick surfaces or faces.</td></tr>
+<tr><td><code>The surfaces and caps do not close off any volume: look for a gap, or a missing cap.</code></td><td>Close the gap or add a cap (a mate connector or plane).</td></tr>
+<tr><td><code>The inside point is not in any enclosed solid (N found): the surfaces leave a gap around it, or it lies outside the part.</code></td><td>Move the point inside; check for a gap.</td></tr>
+<tr><td><code>The mirror plane must be a plane, a planar face or a mate connector.</code></td><td>Pick a planar face or a mate connector.</td></tr>
+<tr><td>Info &ldquo;N other enclosed solid(s) did not contain the inside point and were removed.&rdquo;</td><td>Expected when stray pockets exist.</td></tr>
+</table>
+
+<h1 class="pb">Enclose+, reference</h1>
+<p class="sub">Dialog parameters, outputs, limits</p>
+
+<h2>Dialog, in order</h2>
+<table class="grid">
+<tr><td class="k" width="105">Surfaces</td><td>Sheet bodies or faces (no sketch or construction objects). Required.</td></tr>
+<tr><td class="k" width="105">Caps</td><td>Optional. Sheet bodies, faces, construction planes or mate connectors. A mate connector becomes its XY plane, <b>infinite</b> like a construction plane.</td></tr>
+<tr><td class="k" width="105">Inside point</td><td>Optional, one pick: vertex or mate connector. Keeps only the solid(s) containing it. Empty: every enclosed solid is kept (std behaviour).</td></tr>
+<tr><td class="k" width="105">Mirror plane</td><td>Optional, one pick: planar face, construction plane or mate connector. The surfaces are one half; it is enclosed against this plane, mirrored and united. A point on the mirrored side is mirrored too.</td></tr>
+<tr><td class="k" width="105">Output name</td><td>Optional; names the part. Empty: default name.</td></tr>
+<tr><td class="k" width="105">Keep tools</td><td>Default off: the input sheet bodies are deleted. On: kept. Planes and mate connectors are never deleted.</td></tr>
+</table>
+
+<h2>Outputs (for Extract variables)</h2>
+<table class="grid">
+<tr><td class="k" width="105">output</td><td>The enclosed part (solid).</td></tr>
+<tr><td class="k" width="105">surfaceFaces</td><td>Part faces that come from the surfaces (all faces not on a cap).</td></tr>
+<tr><td class="k" width="105">capFaces</td><td>Part faces on the caps (including the mirror image of a cap plane).</td></tr>
+<tr><td class="k" width="105">seamEdges</td><td>Edges on the mirror plane after the union. Empty without a mirror, or where faces merged.</td></tr>
+</table>
+
+<h2>Examples</h2>
+<p>From the project's test notes (not re-run for this sheet): a tube capped by two plane caps gives one solid (400000 mm3, 6 faces); a half tube with a mirror plane gives one part, 6 faces (the faces split by the plane merge); a stray pocket is dropped by the inside point; a point outside the part is an error.</p>
+
+<h2>Limits</h2>
+<p>&bull; Mate connector caps are untested in the project's notes (plane and face caps are covered).<br/>
+&bull; After a mirror, faces merge only where they lie on one plane or cylinder; a mirrored free-form surface keeps a <b>seam edge</b>.<br/>
+&bull; Std Enclose drops walls between touching pockets, so caps that only <i>divide</i> a closed volume do nothing here; Referenced part (Constrained) cuts by the caps afterwards.<br/>
+&bull; The inside point is tested with <code>qContainsPoint</code> on the new solids.</p>
+
+<p class="foot">More: <code>docs/explainers/reference_side/reference_side_explained.md</code> section 2.4b (tests E1-E4) &middot; source <code>reference_side/enclose_plus.fs</code>.</p>

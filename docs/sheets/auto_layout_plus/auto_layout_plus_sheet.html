@@ -1,0 +1,88 @@
+﻿<h1>Auto layout plus</h1>
+<p class="sub">Onshape document <b>Publish &amp; Drawing tools</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3095; not yet in a released document version)</p>
+
+<p class="lead">Lay out selected solids, surfaces and composite parts flat on the XY plane of a mate connector, packed by bounding box with set gaps, optionally in fixed-size sheets, optionally with small parts nested into the holes of big ones.</p>
+
+<img src="docs/sheets/auto_layout_plus/img/fig_layout.png" width="470"/>
+<p class="cap">Schematic. Bodies A-G are packed along Y first (columns), then along X; when a length limit is set, a full sheet starts the next sheet at +Y.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; you need a flat nest of parts (cut file, DXF, drawing sheet) from parts that sit anywhere<br/>
+&bull; the set mixes solids, surfaces and composites<br/>
+&bull; you want a repeatable layout that follows when the parts change</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; you need rotation to any angle or true-outline (non-box) nesting: the packing is by bounding box, only 90 degrees<br/>
+&bull; you want the original Onshape &ldquo;Auto Layout&rdquo; example for simple solids<br/>
+&bull; you just want evenly spaced copies: Linear pattern</td></tr></table>
+
+<h2>How it works</h2>
+<table class="grid">
+<tr><th>Step</th><th>What the feature does</th></tr>
+<tr><td><b>Measure</b></td><td>Each body's bounding box in the origin frame (length = X, width = Y). A selected composite moves with its members.</td></tr>
+<tr><td><b>Pack</b></td><td>Longest side first; free-rectangle (MaxRects) packing: the lowest-x, then lowest-y free corner that fits. Fills Y first, then continues along X. Optional 90 degree turn tries both orientations.</td></tr>
+<tr><td><b>Place</b></td><td>Moves (or copies) every body to its slot, lowest point on the origin plane, original orientation kept.</td></tr>
+</table>
+
+<h2>Quick start</h2>
+<ol>
+<li>Select <b>Bodies to lay out</b> (solids, surfaces, composites).</li>
+<li>Pick the <b>Pattern origin</b>: a mate connector (existing or made in the field) or a vertex. X and Y of that frame are the layout's length and width.</li>
+<li>Set <b>X buffer</b> / <b>Y buffer</b> (gap between bodies and margin from the origin).</li>
+<li>Optional: tick <b>Limit layout width</b> (and <b>Limit layout length</b>) to pack into sheets of a fixed size.</li>
+<li>Leave <b>Show layout preview</b> on while editing: cyan boxes per body, magenta sheet outlines.</li>
+<li>Choose <b>Copy bodies</b> to keep the originals, and <b>Create composite part</b> to group the result; accept.</li>
+</ol>
+
+<h2>The key rules</h2>
+<p>&bull; <b>Length is X, width is Y.</b> Layout width limits Y; Layout length limits X; the next sheet is offset along <b>+Y</b> (pitch 1.1 x the layout width).<br/>
+&bull; <b>A vertex gives world axes</b>, a mate connector gives its own axes. Orient the connector to choose the layout direction.<br/>
+&bull; <b>The packing is by bounding box</b>, not outline. Curved or L-shaped parts leave unused corners unless nesting is on.</p>
+
+<h2>Troubleshooting</h2>
+<table class="grid">
+<tr><th width="190">Message</th><th>Cause and fix</th></tr>
+<tr><td>Select a mate connector or vertex as the pattern origin.</td><td>Nothing in Pattern origin. Pick one.</td></tr>
+<tr><td>Select at least one body to lay out.</td><td>Nothing left after removing composite members; select bodies.</td></tr>
+<tr><td>N bodies are larger than the layout and were placed on their own. (warning)</td><td>A body is wider than the layout width, or bigger than a whole sheet. Raise the limits or accept the overhang.</td></tr>
+<tr><td>Composite part not created... / N laid-out composite part(s) stay separate. (warning)</td><td>A composite cannot contain a composite: selected composites are laid out but stay out of the new one.</td></tr>
+</table>
+
+<h1 class="pb">Auto layout plus, reference</h1>
+<h2>Dialog parameters (in dialog order)</h2>
+<table class="grid">
+<tr><td class="k" width="105">Bodies to lay out</td><td>Solids, surfaces, composites (modifiable only).</td></tr>
+<tr><td class="k" width="105">Pattern origin</td><td>One mate connector or vertex. Vertex = world axes. Required.</td></tr>
+<tr><td class="k" width="105">X buffer, Y buffer</td><td>Length, 0 to 1000 mm, default 10 mm each. Gap between bodies and margin from the origin. Remembered between uses.</td></tr>
+<tr><td class="k" width="105">Limit layout width</td><td>Off = one unbounded row of columns. On shows <b>Layout width (Y)</b> (1 mm to 100 m, default 2000 mm) and <b>Limit layout length</b>.</td></tr>
+<tr><td class="k" width="105">Limit layout length</td><td>On shows <b>Layout length (X)</b> (same bounds). A full sheet starts a new one at +Y. Only available with a width limit.</td></tr>
+<tr><td class="k" width="105">Allow 90 degree rotation</td><td>Each body may be turned 90 degrees about the origin Z, whichever packs better. Off by default.</td></tr>
+<tr><td class="k" width="105">Nest bodies inside holes</td><td>Opt-in. Places smaller flat bodies into holes and windows of larger ones (outline and holes from the largest flat face, 5 mm resolution, nested bodies keep orientation). Slower; not for non-flat parts.</td></tr>
+<tr><td class="k" width="105">Spread bodies in holes</td><td>Shown with nesting. On: nested bodies slide to the middle of their free range. Off: packed against the first wall.</td></tr>
+<tr><td class="k" width="105">Place on origin plane</td><td>On: each body's lowest point goes to the origin plane. Off: Z unchanged.</td></tr>
+<tr><td class="k" width="105">Copy bodies</td><td>Copy instead of move; originals stay.</td></tr>
+<tr><td class="k" width="105">Create composite part, name</td><td>Groups the laid-out bodies in an open composite named by <b>Composite name</b> (default Layout).</td></tr>
+<tr><td class="k" width="105">Show layout preview</td><td>Debug geometry while editing: cyan box per body, magenta sheet outlines, origin frame.</td></tr>
+</table>
+<p class="note">Defaults above are those coded in the feature's saved-feature defaults map; confirm the first-use dialog values in Onshape.</p>
+
+<h2>Outputs</h2>
+<p>Moved or copied bodies, and the optional composite part. It publishes <b>no query variables or keys</b>. The feature message reports sheets used and bodies nested.</p>
+
+<table class="shots"><tr><td><img src="docs/sheets/auto_layout_plus/img/fig_nesting.png" width="250"/><p class="cap">Nesting: small plates sit in the windows of a large part.</p></td>
+<td><b>Examples</b> (regression studio, publish_tools document; 8 cases, all passing as of 2026-10-29)<br/>
+T1 column wrap &middot; T2 no width limit &middot; T3 length limit gives sheet 2 &middot; T4 composite name &middot; T5 composite inputs warn &middot; T6, T7 nesting spread off / on &middot; T8 nesting off. On a real ski-part test, 5 of 6 small plates nested into the windows.</td></tr></table>
+
+<h2>Limits</h2>
+<p>&bull; Bounding-box packing: curved parts waste space unless nesting is on.<br/>
+&bull; A composite cannot contain another composite: selected composites are laid out but stay separate from the new composite.<br/>
+&bull; Nesting is opt-in, flat parts only; its cost is mostly the outline sampling (about 3 s per regen on the user's test with spread on, after tuning).<br/>
+&bull; <b>Not covered by the automated tests:</b> rotation (tested by hand in the UI), implicit connector pick (UI only), nesting with copy mode, rotation or non-flat bodies, composite rename.<br/>
+&bull; Not in a released version of the document yet.</p>
+
+<p class="foot">More: <code>publish_tools/layout/auto_layout.fs</code> (header comments) &middot; <code>publish_tools/README.md</code> &middot; tests <code>devtools/onshape/build_auto_layout_tests.py</code> / <code>check_auto_layout_tests.py</code>.</p>
+
+
+
+

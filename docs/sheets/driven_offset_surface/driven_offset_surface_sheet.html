@@ -1,0 +1,89 @@
+﻿<h1>Driven offset surface</h1>
+<p class="sub">Onshape document <b>driven_offset</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3070; code as of 2026-11-02)</p>
+
+<p class="lead">Build sheet surfaces from one or more <b>driven offsets</b> of the same seed edges: rule sideways from an offset, connect the seed to its offset, or loft between several offsets. Same profile idea as Driven edge offset, but the output is a surface.</p>
+
+<img src="docs/sheets/driven_offset_surface/img/dos_modes.png" width="430"/>
+<p class="cap">The three Surface modes, drawn as a section at one station (schematic, not an Onshape render).</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; a wall, rout or cap surface follows an offset that varies along a chain<br/>
+&bull; several offsets of one seed (inner / outer / top) must be lofted as one surface<br/>
+&bull; you want the surface split exactly where the offsets break</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; you need only the curve: Driven edge offset<br/>
+&bull; the offset is constant: Offset surface / Extrude<br/>
+&bull; a loft through arbitrary curves: Onshape's Loft</td></tr></table>
+
+<h2>The three modes</h2>
+<table class="grid">
+<tr><th>Surface</th><th>Builds</th><th>Use for</th></tr>
+<tr><td class="k" width="105">Ruled from offset</td><td>From each offset, a sheet reaching <b>Distance</b> along the frame's Width or Height (optionally both ways). One surface per offset.</td><td>Walls and flanges that hang off a driven curve.</td></tr>
+<tr><td class="k" width="105">Connect source to offset</td><td>A sheet from the seed edges to the offset. One surface per offset; only the span where the offset exists, and only the longest such stretch.</td><td>Surface between the seed and its offset.</td></tr>
+<tr><td class="k" width="105">Loft between profiles</td><td>One surface through two or more offsets (needs at least two). Ruled patches between neighbours, or one smooth surface with Blend through profiles.</td><td>Cap walls, rout surfaces.</td></tr>
+</table>
+
+<h2>Quick start</h2>
+<ol>
+<li>Pick the <b>Surface</b> mode, the <b>Offset edges</b> (seed), a <b>Zero point</b> (required); set Measure along and alignment as for Driven edge offset.</li>
+<li>In <b>Offsets</b> add one entry per offset: an <b>Offset profile</b> wire (X station, Y width, Z height) and optionally a Name. Loft needs two or more.</li>
+<li>Ruled mode: choose Rule along (Width or Height) and a Distance. Loft mode: decide Blend through profiles.</li>
+<li>Set <b>Break output at</b>: Corners and offset breaks usually suits a loft; Every source edge is the saved default.</li>
+<li>Keep offset wires if you want the driven curves too; name the surfaces.</li>
+</ol>
+
+<h2>Key rules</h2>
+<table class="grid">
+<tr><td class="k" width="105">Offsets break together</td><td>Every profile must break where the others do; the feature inserts stations for the <i>union</i> of all breaks so section i is at the same arc length in every offset. A profile that breaks inside another's run is refused (see below).</td></tr>
+<tr><td class="k" width="105">Clean seed</td><td>Micro-edges in the seed chain can make an offset step backwards and a patch be refused. Run <b>Clean wire</b> on the seed first (Cap_Wall failure, 2026-11).</td></tr>
+</table>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>Add at least one offset profile. / Lofting between profiles needs at least two offsets.</td><td>Add entries to Offsets.</td></tr>
+<tr><td>'X' breaks at N mm along the edges, inside a run of 'Y'...</td><td>Make 'X' one clean wire with no vertex or gap there; every offset must break where the others do.</td></tr>
+<tr><td>A loft between profiles cannot leave a corner open...</td><td>Corners: choose Round with an arc or Extend to a sharp corner. (Leave crossing is overridden to Trim with a console NOTE.)</td></tr>
+<tr><td>Warning: The loft refused k of n patches, so the surface has a hole at run:profiles ...</td><td>The text gives each refused patch's edge counts and lengths. Check the seed for slivers (Clean wire); use Print surface in Surface debug.</td></tr>
+<tr><td>Every patch was refused / No run is covered by every offset / The offset does not cover enough of the edges...</td><td>No surface. Check every profile reaches the same part of the seed (Measure along, Zero point).</td></tr>
+</table>
+
+<h1 class="pb">Driven offset surface, reference</h1>
+<p class="sub">Dialog parameters in dialog order, outputs, limits</p>
+
+<table class="grid">
+<tr><th>Parameter</th><th>Meaning (default)</th></tr>
+<tr><td class="k" width="105">Surface</td><td>Ruled from offset (default) / Connect source to offset / Loft between profiles.</td></tr>
+<tr><td class="k" width="105">Name</td><td>Names the surfaces; empty leaves them unnamed.</td></tr>
+<tr><td class="k" width="105">Offset edges, Zero point, Measure along, reference group, Offset alignment</td><td>As Driven edge offset: Measure along defaults to Along source; Along reference shows Reference wire, Offset delta (-50..50 mm), Flip, Hold length in the reference surface; alignment defaults to Along.</td></tr>
+<tr><td class="k" width="105">Break output at</td><td>Where the offsets, sections and so faces are split: <b>Every source edge</b> (default; a face per source edge) or Corners and offset breaks (a face per smooth stretch). The default is kept so older features do not change; choose per feature.</td></tr>
+<tr><td class="k" width="105">Varying offset on arcs</td><td><b>Spline</b> (default) / Biarc fit; same meaning as in Driven edge offset (only where the offset varies on an arc; a constant offset is an exact arc either way). It is passed to the offset the surface is built from. Project notes say the loft section fits never use biarcs; the effect on the surface itself was not checked for this sheet.</td></tr>
+<tr><td class="k" width="105">Offsets</td><td>Array; each item has <b>Offset profile</b> (edges / wires, no construction geometry; wires only, there is no Regions source here) and <b>Name</b> (names that offset's wire when wires are kept).</td></tr>
+<tr><td class="k" width="105">Rule along, Distance, Both directions, Sections across the ruling</td><td>Ruled mode only. Rule along <b>Width</b> (default) or Height. Distance: how far the surface reaches (default 10 mm, up to +-10 m; negative rules the other way). Both directions (off): straddle the offset. Sections across the ruling (2-25, default 5): only matters with a reference wire, where the ruling follows the reference surface and is not straight.</td></tr>
+<tr><td class="k" width="105">Blend through profiles</td><td>Loft mode only (off). Off: a ruled patch per adjacent pair, with a crease at each intermediate profile. On: one smooth surface. No effect with two offsets.</td></tr>
+<tr><td class="k" width="105">Keep offset wires</td><td>Off by default; leaves the driven curves beside the surfaces.</td></tr>
+<tr><td class="k" width="105">Corners, Ends, Spacing &amp; approximation, Debug</td><td>As Driven edge offset (collapsed groups). Spacing: Control points x3 by default; Approximation: degree 3, tolerance 0.01 mm, max control points 15.</td></tr>
+<tr><td class="k" width="105">Surface debug</td><td>Print surface (what each offset made and what went to the loft), Only run (-1 = all), Keep section curves (the fastest way to see what the loft was given).</td></tr>
+</table>
+
+<img src="docs/sheets/driven_offset_surface/img/dos_break_modes.png" width="330"/>
+<p class="cap">Break output at: schematic of the faces along one seed (not an Onshape render).</p>
+
+<h2>Outputs</h2>
+<p>&bull; <b>Surfaces:</b> sheet bodies named Name. Offset wires and section curves are deleted unless Keep offset wires / Keep section curves is on.<br/>
+&bull; <b>Published keys</b> (Extract variables): <code>output</code> (the surfaces), <code>faceCount</code>, <code>offsetCount</code>, <code>offsetWire1</code> ... <code>offsetWireN</code> (empty unless Keep offset wires is on), plus the inputs.</p>
+
+<h2>Examples (project notes; not re-run)</h2>
+<p>&bull; Design_Master Cap_Wall (seed with 32 edges incl. 0.1 mm slivers, two 9-segment profiles): 10 sheets became one sheet of 16 faces on Corners and offset breaks.<br/>
+&bull; SW_Rout_Surface: 7 / 7 / 9 runs, 16 faces. (Changing Break output at once re-ran it with 3 runs, hence the saved default.)</p>
+
+<h2>Limits</h2>
+<p>&bull; Patch order: exact B-spline patch, unified patch, then Onshape loft; a patch the kernel refuses becomes a hole plus a warning.<br/>
+&bull; Connect source to offset: seed trimming and corner fans are not wired up yet; ruled and single-profile modes ignore corner fills; Blend still uses opLoft.<br/>
+&bull; Loft mode: Leave open is refused.</p>
+
+<p class="foot">More: <code>driven_offset/DOCUMENT_MAP.md</code> &middot; <code>docs/briefs/driven_offset.md</code> &middot; <code>driven_offset/research_driven_edge_offset.md</code>. Needs a longer explainer: patch builders, section plans, run alignment.</p>
+
+

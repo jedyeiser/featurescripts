@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_types.fs
-export import(path : "ecde24520874030ab412c981", version : "355bde5713fa1a177e6aa8b4");
+export import(path : "ecde24520874030ab412c981", version : "3249c9dfa89325628880186d");
 // IMPORT: primitive_tables_icon.svg (table icon)
 IconNamespace::import(path : "eb32ed1a7e9ecf0a7ef61a7c", version : "a0113143f1b8cd5ca25093fa");
 
@@ -260,16 +260,28 @@ function dataRowLabel(r is map)
 function dataTable(data is map, body is Query) returns Table
 {
     const language = languageOf(data);
+    // Cavity depth (2026-11-06): the column exists only when the rows carry it (a cavity profile was picked).
+    var hasCavity = false;
+    for (var r in data.data)
+    {
+        hasCavity = hasCavity || r.cavityDepth != undefined;
+    }
     var rows = [];
     for (var r in data.data)
     {
-        rows = append(rows, tableRow({ "station" : dataRowLabel(r), "x" : cell2(r.x), "s" : cell2(r.s), "y" : cell2(r.y), "skiWidth" : cell2(r.skiWidth),
+        var cells = { "station" : dataRowLabel(r), "x" : cell2(r.x), "s" : cell2(r.s), "y" : cell2(r.y), "skiWidth" : cell2(r.skiWidth),
                         "z" : cell2(r.z), "skiThck" : cell2(r.skiThck), "baselineHeight" : cell2(r.baselineHeight),
-                        "radius" : cellN(r.radius, 3) }));
+                        "radius" : cellN(r.radius, 3) };
+        if (hasCavity)
+        {
+            cells.cavityDepth = cell2(r.cavityDepth == undefined ? "" : r.cavityDepth);
+        }
+        rows = append(rows, tableRow(cells));
     }
     // Short headings keep the columns narrow (a custom table can't set column widths): lengths in mm, radius in m.
     var columns = [];
-    for (var key in ["x", "s", "y", "skiWidth", "z", "skiThck", "baselineHeight", "radius"])
+    for (var key in hasCavity ? ["x", "s", "y", "skiWidth", "z", "skiThck", "cavityDepth", "baselineHeight", "radius"] :
+                                ["x", "s", "y", "skiWidth", "z", "skiThck", "baselineHeight", "radius"])
     {
         columns = append(columns, termColumn(key, key, language));
     }

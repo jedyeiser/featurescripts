@@ -1,0 +1,80 @@
+﻿<h1>Station geometry</h1>
+<p class="sub">Onshape document <b>Publish &amp; Drawing tools</b> (tab folder station_tools) &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3083; Station table and Export tag use it, version them together)</p>
+
+<p class="lead">Build the drawing-aid geometry for one part: outline wires, a line at every station, the two end points and a datum point, grouped with the part so a drawing view shows them, plus the numbers for the <b>Station table</b>. It replaces hand-built, easily broken drawing sketches.</p>
+
+<img src="docs/sheets/station_geometry/img/fig_plan.png" width="320"/>
+<p class="cap">Schematic plan (XY) view, y exaggerated; widths are the 4101 test part's.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; a drawing must dimension widths / thicknesses at fixed stations<br/>
+&bull; you need a flat copy of the outline for DXF<br/>
+&bull; the same stations apply to many parts (Station definition)</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; you want the whole export package (DXF faces, origin, patterns): Export tag, which runs this feature<br/>
+&bull; you want the ski analysis plot / tables: Export primitive</td></tr></table>
+
+<h2>How it works</h2>
+<img src="docs/sheets/station_geometry/img/fig_struct.png" width="330"/>
+<p class="note">Per view the part is projected, each station line is cut across the outline, and the rows are stored on the view composite for the Station table.</p>
+
+<h2>Quick start</h2>
+<ol>
+<li>Add <b>Station geometry</b> after a <b>Station definition</b>. Pick the <b>Part</b>; the name prefix fills with its name.</li>
+<li>Pick a <b>Datum</b> (x = 0), for example the tail end point. Empty = world origin.</li>
+<li>Choose the views: <b>Plan view</b> (default on), <b>Profile view</b>, custom views.</li>
+<li>Under <b>Station definitions</b> pick your Station definition feature(s); optional <i>Extra stations</i> for this part only.</li>
+<li>In a drawing: insert the view of the <code>&lt;prefix&gt; XY</code> composite with wires shown, dimension the station lines; insert <b>Station table</b> with <i>Views containing</i> = the prefix.</li>
+</ol>
+
+<h2>The key rules</h2>
+<p>&bull; <b>The datum frame changes numbers, not geometry.</b> The composite is open, so it cannot be moved; x is measured from the datum, and <i>Flat copy at datum</i> is the moved copy.<br/>
+&bull; <b>Datum axes = World axes</b> (default): only the datum's position counts. A ski's own mate connectors have Z along the ski; use <i>Mate connector's axes</i> only for a connector with a true X.<br/>
+&bull; <b>The two part ends are always included</b> (TIP / TAIL, else MIN X / MAX X), even with no stations.</p>
+
+<h2>Troubleshooting</h2>
+<table class="grid">
+<tr><th width="205">Message</th><th>Cause and fix</th></tr>
+<tr><td>Enter a name prefix, e.g. the part number.</td><td>Prefix is empty; pick the part (fills it) or type one.</td></tr>
+<tr><td>A picked feature gave no stations: pick Station definition features...</td><td>The pick is not a Station definition, or it failed. Fix it first.</td></tr>
+<tr><td>Datum axes = Mate connector's axes: the datum must be a mate connector. / PLAN: the part has no outline in this view.</td><td>Pick a connector or switch to World axes. / Nothing projected: check the part.</td></tr>
+<tr><td>(info) ... Missing the part -- PLAN: ST1</td><td>That station does not cross the part; its table row reads &ldquo;misses the part&rdquo;.</td></tr>
+<tr><td>(info) PROFILE: the datum XZ plane misses the part, outline from its silhouette.</td><td>Move the datum into the part, or accept the silhouette.</td></tr>
+</table>
+
+<h1 class="pb">Station geometry, reference</h1>
+<h2>Dialog parameters (in dialog order)</h2>
+<table class="grid">
+<tr><td class="k" width="105">Part</td><td>One solid, sheet or composite. Sheets work: face-on sheet = its own region; edge-on or curved sheet = its boundary edges dropped on the view.</td></tr>
+<tr><td class="k" width="105">Datum (measuring origin)</td><td>Mate connector or vertex. Empty = world origin.</td></tr>
+<tr><td class="k" width="105">Datum axes</td><td>World axes (default; datum is a point only, plan = world XY, profile = world XZ) or Mate connector's axes.</td></tr>
+<tr><td class="k" width="105">Name prefix</td><td>Starts every body name. Filled with the part's name, follows a part change unless you typed your own. Required.</td></tr>
+<tr><td class="k" width="105">Plan view</td><td>On by default. Datum XY.</td></tr>
+<tr><td class="k" width="105">Profile view</td><td>Off by default. Datum XZ. Shows <b>Profile outline</b>: <b>Section</b> (default; the solids cut by the datum XZ plane, exact edges, thickness on the centreline) or <b>Silhouette</b> (projected outline, thickest point; hundreds of tiny edges on curved parts). Section falls back to Silhouette if the plane misses the part.</td></tr>
+<tr><td class="k" width="105">View names</td><td>XY / XZ (new features) or PLAN / PROFILE (kept in saved features): names bodies, composites and table title.</td></tr>
+<tr><td class="k" width="105">Custom views</td><td>List: View name (letters, digits, _) and View mate connector (XY plane, its X = measuring axis).</td></tr>
+<tr><td class="k" width="105">Station definitions</td><td>The Station definition feature(s) to read, in order. Optional (none = only the two ends).</td></tr>
+<tr><td class="k" width="105">Extra stations</td><td>Same entries as Station definition, for this part only; ids must stay unique.</td></tr>
+<tr><td class="k" width="105">Geometry to create</td><td>Station lines (on), Outline wires (on), Outline as surface (off: region sheet, shaded in drawings), Datum point (on), Flat copy at datum (off: copy on world XY for DXF).</td></tr>
+<tr><td class="k" width="105">Print station table</td><td>Debug group: prints each row to the notices.</td></tr>
+</table>
+
+<h2>Outputs</h2>
+<table class="grid">
+<tr><td class="k" width="105">Bodies</td><td><code>&lt;prefix&gt; XY</code> (open composite: part + wires, excluded from BOM, carries the table attribute), <code>&lt;prefix&gt; XY WIRES</code> (closed: <code>... ST &lt;id&gt;</code>, <code>OUTLINE</code>, <code>DATUM</code>, end points TIP / TAIL or MIN X / MAX X), optional <code>REGION</code>, optional <code>&lt;prefix&gt; XY FLAT</code>. Same for XZ / PLAN / PROFILE / custom names. Built 0.01 mm in front of the part so views show them.</td></tr>
+<tr><td class="k" width="105">Published</td><td>Variable <code>stationTable</code> (rows: view, id, x, lo, hi, span in mm; end rows carry x only) and <code>stationCount</code>. Queries: <code>&lt;view&gt;_&lt;station id&gt;</code>, <code>&lt;view&gt;Outline | Datum | Flat | Wires | Surface | Composite | ExtentMin | ExtentMax</code>, with view = plan, profile or view_&lt;name&gt;.</td></tr>
+<tr><td class="k" width="105">Station table</td><td>Separate custom table (Views containing, Show edge positions, Language). One table per part: Station | x | Width (plan) / Thickness (profile) | optional Lower / Upper edge. Insert it with the view filter, since a drawing brings every table.</td></tr>
+</table>
+
+<h2>Examples (test studio &ldquo;Station tests&rdquo;)</h2>
+<p>&bull; 4101 plan + flat copy: widths 116.2 / 97.95 / 93.26 / 105.94 / 132.08 mm at x = 145 .. 1625; extents x = 0 / 1790. &bull; 4501 plan + profile + region (open composite of core strips). &bull; 4101E: no stations, extent rows only. &bull; 2D_PERIPHERY / TOP_SURFACE: surface parts (half-width / height from the datum axis). &bull; 12 features regenerated INFO with no notices at the last full check (2026-09-30).</p>
+
+<h2>Limits</h2>
+<p>&bull; Open composites cannot move; export-shift handled by Export tag's hidden station frame. &bull; A width measured exactly at a tangent-graze (4101 tail, 0.94 mm) is unstable: that is why end rows are position only. &bull; Crowned or bevelled parts read <b>thinner</b> in Section than in the old silhouette. &bull; Views show the wires only if the drawing view has wires switched on. &bull; Not yet in a released version; a Station table from an older version fails on the newer end rows. &bull; <b>Untested:</b> prefix auto-fill in the UI, a real drawing built from the published rows, station sets per part family.</p>
+
+<p class="foot">More: <code>publish_tools/README.md</code> (decisions, surface parts, extents, profile section) &middot; <code>station_tools/station_geometry.fs</code>, <code>station_table.fs</code> &middot; companion sheet: Station definition.</p>
+
+
+

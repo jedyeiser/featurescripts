@@ -1,6 +1,6 @@
 # driven_offset: document map and working rules (read first)
 
-Last updated 2026-09-25 (import pins re-read from the code, unwrap family added); 2026-09-29: import chain
+Last updated 2026-11-06 (document family table extended; pins re-read from the code, unchanged). 2026-09-25 (import pins re-read from the code, unwrap family added); 2026-09-29: import chain
 re-read from the code again (curve_core now Curve_tools V9, extract_outputs V6, offset_profile_core added),
 Create offset profile and arc-tangency entries brought up to date (docs agent). Split of generic
 features into their own Onshape documents 2026-09-23. Anyone (human or agent) working in `driven_offset/` should read this
@@ -12,8 +12,12 @@ before editing or pushing.
 |---|---|---|---|
 | driven_offset (Design_Master lives here) | `driven_offset` | Driven edge offset, Driven offset surface, offset run treatment, offset debug, `edge_offset_utils`, `bspline_compat`, Create offset profile (+ `offset_profile_core`), Evaluate offset, Unwrap (+ `undrape_utils`, `unwrap_part`) | `f61d2c000ab2d1240776342e` |
 | Curve_tools | `curve_tools` | `curve_core` (shared curve machinery), Clean wire, Map curve, Merge curve, Evaluate profiles | `2143812a99089658c704f0bc` |
-| Variable_tools | `variable_tools` | `extract_outputs` (producer library), Extract variables feature + consumer library | `a47f90bfa6b17a59e20cebd0` |
-| Reference_Side_Features | `reference_side` | Mutual Trim+, Split+, Offset+ (keep side named by a reference) | `22764764a00a7f607dbc1c4d` |
+| Variable_tools | `variable_tools` | `extract_outputs` (producer library), Extract variables feature + consumer library (`extract_variables`, `extract_variables_utils`; option "Get variables from a derived Part Studio"), Add variables for derive | `a47f90bfa6b17a59e20cebd0` |
+| Reference_Side_Features | `reference_side` | Mutual Trim+, Split+, Offset+, Thicken+ (keep side named by a reference), Orient to reference, Move face+, Enclose+, Join profile surfaces, Referenced part (+ `reference_side_utils`) | `22764764a00a7f607dbc1c4d` |
+| betterMeasure | `betterMeasure` | Variable + (`betterMeasure.fs`: distance / coordinate modes with optional mate-connector frame and Map output, "Export for derive"); imports std only, no pins | `f2aa0d88aa9af672efd57487` |
+
+Folder `join_profiles/` holds only a `.document.json` (no .fs); the Join profile surfaces feature is `reference_side/join_profile_surfaces.fs`.
+Other documents outside this family: `publish_tools`, `curve_pattern`, `evenly_divide_surface`, `curveMapping` (see CLAUDE.md).
 
 Design_Master: element `643b702dc551feb3cc001826` in workspace `5b11f323ab31b04cba8b36ef`.
 
@@ -42,6 +46,14 @@ Design_Master: element `643b702dc551feb3cc001826` in workspace `5b11f323ab31b04c
 
 ## Import chain (who pins whom) -- re-pin in this order after changing a callee
 
+Re-read from the code's `import(...)` strings on 2026-11-06: every pin below is UNCHANGED (curve_core still the Curve_tools
+V9 path `75b53dea...` / mv `186e92db...`, extract_outputs `cffacd73...`, both eou generations, DEO `660678a6...`, ORT `05e1f78a...`,
+debug `4a442f19...`, bspline_compat `e91083bb...`, offset_profile_core `6d80d279...`, undrape_utils `79fd4945...`,
+unwrap_part `7edcda3e...`). Note: the repo's local pins do NOT show a newer Curve_tools version (the memory notes say
+Curve_tools V14 holds the 2026-11-02 Clean wire micro-edge fix); this chain was not re-pinned to it, and whether it needs to be
+is not verified here. Std imports: DEO / DOS / eou / unwrap family / debug / ORT / bspline_compat on 3070.0;
+create_offset_profile and offset_profile_core on 3083.0.
+
 Pins as they stand in the code on 2026-09-29 (the `version` of each `import`; `""` = same-workspace tab,
 always current). Two generations of `edge_offset_utils` are pinned at once: the unwrap family is on the
 current one (3356bea0..., the tab's microversion on 2026-09-29); DEO / DOS / ORT / debug are on an older one
@@ -69,6 +81,10 @@ offset_profile_core (9553c095d4d77c83c34a0a36)              std only: the profil
   <- driven_edge_offset                                     (above: its "Profile source: Regions")
 ```
 
+Other consumers of `extract_outputs` at the same mv `cffacd73...` (2026-11-06): the curve_tools tabs (clean_wire, evaluate_profiles,
+map_curve, recognize_arcs) and most reference_side tabs incl. Enclose+, Join profile surfaces, Move face+, Referenced part, Offset+, Split+, Thicken+.
+Older pin (mv `b8c80ac0...`, paths `78504463...` / `f4f872fe...`): merge_curve, fillet_wire, mutual_trim_plus, orient_to_reference.
+Reference_side tabs they import `reference_side_utils` by path `9aebe5ea...` mv `51d2aab9...`.
 Variable_tools `extract_outputs` (by VERSION): every tab here now pins **V6**
 (`a47f90bf.../eb9b32c556ff036c3dd19f73/3cac74f0...`, mv `cffacd73d80aa6dc1a2c4273`) -- DEO, DOS, unwrap,
 evaluate_offset and create_offset_profile alike.

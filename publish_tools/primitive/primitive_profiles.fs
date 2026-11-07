@@ -1,7 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // IMPORT: primitive_frame.fs
-export import(path : "5808546b3b3d863d82796d24", version : "d64db618948f27fbf452aab9");
+export import(path : "5808546b3b3d863d82796d24", version : "c4f8f1d2705d76d9fe77a97e");
 
 /**
  * Export Primitive -- the profile: the volume cut by the datum XZ plane (the mid plane), split into
@@ -32,17 +32,38 @@ const CAP_REACH = 30 * millimeter;
  *   loops (closed loops found; only the longest is used) }.
  */
 export function primitiveProfile(context is Context, id is Id, volume is Query, datum is CoordSystem,
-    toLocal is Transform, isIdentity is boolean, dirSign is number, xMrs is ValueWithUnits) returns map
+    toLocal is Transform, isIdentity is boolean, dirSign is number, xMrs is ValueWithUnits, inputEdges is Query) returns map
 {
-    const yAxis = cross(datum.zAxis, datum.xAxis);
-    opPlane(context, id + "midPlane", { "plane" : plane(datum.origin, yAxis, datum.xAxis),
-                "width" : SECTION_PLANE_SIZE, "height" : SECTION_PLANE_SIZE });
-    opIntersectFaces(context, id + "section", { "tools" : qCreatedBy(id + "midPlane", EntityType.FACE), "targets" : volume });
-    opDeleteBodies(context, id + "deletePlane", { "entities" : qCreatedBy(id + "midPlane", EntityType.BODY) });
-    const sectionBodies = qCreatedBy(id + "section", EntityType.BODY);
-    if (isQueryEmpty(context, qOwnedByBody(sectionBodies, EntityType.EDGE)))
+    // The starting loop: the picked profile wires (2026-11-06: a volume whose mid-plane section is cut into pieces, e.g. by a
+    // swallowtail slot, leaves the longest piece short of the tail), else the volume cut by the datum XZ plane.
+    var sectionBodies;
+    if (!isQueryEmpty(context, inputEdges))
     {
-        throw regenError("The datum XZ plane (the mid plane) does not cut the volume.", ["volume"]);
+        var copied = false;
+        try silent
+        {
+            opExtractWires(context, id + "inputCopy", { "edges" : inputEdges });
+            copied = true;
+        }
+        if (!copied)
+        {
+            throw regenError("The profile wires overlap or do not form a clean wire (" ~ size(evaluateQuery(context, inputEdges)) ~
+                " edges picked). Pick only the ski's side profile: one closed loop of top, bottom and end wires.", ["profileWires"]);
+        }
+        sectionBodies = qCreatedBy(id + "inputCopy", EntityType.BODY);
+    }
+    else
+    {
+        const yAxis = cross(datum.zAxis, datum.xAxis);
+        opPlane(context, id + "midPlane", { "plane" : plane(datum.origin, yAxis, datum.xAxis),
+                    "width" : SECTION_PLANE_SIZE, "height" : SECTION_PLANE_SIZE });
+        opIntersectFaces(context, id + "section", { "tools" : qCreatedBy(id + "midPlane", EntityType.FACE), "targets" : volume });
+        opDeleteBodies(context, id + "deletePlane", { "entities" : qCreatedBy(id + "midPlane", EntityType.BODY) });
+        sectionBodies = qCreatedBy(id + "section", EntityType.BODY);
+        if (isQueryEmpty(context, qOwnedByBody(sectionBodies, EntityType.EDGE)))
+        {
+            throw regenError("The datum XZ plane (the mid plane) does not cut the volume.", ["volume"]);
+        }
     }
     primitiveMove(context, id + "sectionToLocal", sectionBodies, toLocal, isIdentity);
 
@@ -95,6 +116,68 @@ export function primitiveProfile(context is Context, id is Id, volume is Query, 
     };
 }
 
+/** A cavity profile with every |y| within this lies in the datum XZ plane already: it is copied, not projected. */
+const CAVITY_PLANAR_TOLERANCE = 1e-3 * millimeter;
+/** Intervals sampled per edge when a cavity profile is projected onto the datum XZ plane. */
+const CAVITY_SAMPLES = 80;
+
+/**
+ * The cavity depth profile (the bottom of the lid cavity, 2026-11-06) in the LOCAL XZ plane. `edges` = the user's wire
+ * (edges, or the edges of wire bodies; one connected chain). A copy is moved into the local frame; one that does not lie
+ * in the plane (|y| beyond CAVITY_PLANAR_TOLERANCE) is PROJECTED onto it: every edge is sampled and refitted with y = 0
+ * (opFitSpline, CAVITY_SAMPLES intervals), so the result lies in the same plane as the profile wires. Returns
+ * { bodies (the wire bodies, in the local frame), chain (primitiveChain, oriented from `tail`) }.
+ */
+export function primitiveCavityProfile(context is Context, id is Id, edges is Query, toLocal is Transform,
+    isIdentity is boolean, tail is Vector) returns map
+{
+    if (isQueryEmpty(context, edges))
+    {
+        throw regenError("Select the cavity depth profile.", ["cavityProfile"]);
+    }
+    opExtractWires(context, id + "copy", { "edges" : edges });
+    const copy = qCreatedBy(id + "copy", EntityType.BODY);
+    primitiveMove(context, id + "copyToLocal", copy, toLocal, isIdentity);
+    const bb = evBox3d(context, { "topology" : copy, "tight" : true });
+    var bodies = copy;
+    if (max(abs(bb.minCorner[1]), abs(bb.maxCorner[1])) > CAVITY_PLANAR_TOLERANCE)
+    {
+        var params = [];
+        for (var k = 0; k <= CAVITY_SAMPLES; k += 1)
+        {
+            params = append(params, k / CAVITY_SAMPLES);
+        }
+        var fitted = [];
+        var index = 0;
+        for (var edge in evaluateQuery(context, qOwnedByBody(copy, EntityType.EDGE)))
+        {
+            var points = [];
+            for (var tl in evEdgeTangentLines(context, { "edge" : edge, "parameters" : params }))
+            {
+                const p = vector(tl.origin[0], 0 * meter, tl.origin[2]);
+                if (size(points) == 0 || norm(p - points[size(points) - 1]) > 1e-8 * meter)
+                {
+                    points = append(points, p);
+                }
+            }
+            if (size(points) >= 2)
+            {
+                const fitId = id + ("fit" ~ index);
+                opFitSpline(context, fitId, { "points" : points });
+                fitted = append(fitted, qCreatedBy(fitId, EntityType.BODY));
+            }
+            index += 1;
+        }
+        opDeleteBodies(context, id + "deleteCopy", { "entities" : copy });
+        if (size(fitted) == 0)
+        {
+            throw regenError("The cavity depth profile has no length once projected onto the datum XZ plane.", ["cavityProfile"]);
+        }
+        bodies = qUnion(fitted);
+    }
+    return { "bodies" : bodies, "chain" : primitiveChain(context, qOwnedByBody(bodies, EntityType.EDGE), tail, "Cavity depth profile") };
+}
+
 /** The section's longest closed loop, duplicates removed: { run, count }. */
 function sectionLoop(context is Context, sectionBodies is Query) returns map
 {
@@ -130,7 +213,7 @@ function longestLoop(context is Context, runs is array) returns map
     }
     if (best == undefined)
     {
-        throw regenError("The mid-plane section of the volume has no closed loop.", ["volume"]);
+        throw regenError("The profile has no closed loop: the mid-plane section of the volume, or the picked profile wires, must close.", ["volume"]);
     }
     return { "run" : best, "count" : count };
 }

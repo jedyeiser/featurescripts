@@ -1,0 +1,88 @@
+﻿<h1>Extract variables</h1>
+<p class="sub">Document <b>Variable_tools</b> (FeatureScript 3083) &nbsp;|&nbsp; Feature sheet, draft 2026-11-06</p>
+<p class="note"><b>Status:</b> in live use (topsheet_surf, RD 20FOU 28, Design_Master); tracking tests 4/4 and region tests 6/6 (2026-09). The newer <i>Get variables from a derived Part Studio</i> option is pushed but <b>not run</b>.</p>
+
+<p class="lead">One feature per block of the tree that turns what the block's features produced into <b>named variables and query variables</b> (a region, a cut, a chain end, the two largest faces) so later features pick them by name and keep working when the model changes.</p>
+
+<table class="shots"><tr><td><img src="docs/decks/extract_variables/shots/hero.png" width="170"/><p class="cap">Show highlights the published body and band cuts; "Published 6 name(s)."</p></td>
+<td><img src="docs/sheets/extract_variables/img/sources_and_derive.png" width="330"/><p class="cap">Sources publish keys; entries turn keys into names. The derive input is new.</p></td></tr></table>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; a block feeds many later selections<br/>
+&bull; a selection must be computed (region, chain end, largest N)<br/>
+&bull; names must survive upstream edits<br/>
+&bull; variables from a derived studio must be re-set here</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; you need one name for one click: a native Query variable<br/>
+&bull; the value is a measurement: Variable +</td></tr></table>
+
+<h2>How it works</h2>
+<p>Our producers add their own keys; any feature offers output, outputFaces/Edges/Vertices and modified*. A key offered by one source is addressed by its bare name; by several, <code>key@1</code>, <code>key@2</code>... (the bare name then warns "ambiguous"). Published names are <code>&lt;prefix&gt;_&lt;name&gt;</code>.</p>
+
+<h2>Quick start</h2>
+<ol>
+<li>Add <b>Extract variables</b> after the block; pick the block's features as <b>Sources</b>.</li>
+<li>Type a <b>Prefix</b> (<code>box</code>), press <b>Add keys from sources</b>.</li>
+<li>Delete entries you do not need; rename or retype the rest (Filtered, Closest to point, Region ...). Turn <b>Show</b> on to see them.</li>
+<li>Use the names (<code>#box_body</code>, or a query variable from the dropdown) later.</li>
+<li>To bring variables across a derive: tick <i>Get variables from a derived Part Studio</i> and pick the source studio.</li>
+</ol>
+
+<h2>The key rule</h2>
+<p>Keep a name with <b>Hold</b> (default: the entities present now, followed through edits that keep them), <b>Track</b> (also what later splits and merges make of them; it grows) or <b>Evaluate on use</b> (the producer's query re-run where it is used; rarely right). A merge onto a held edge loses it: use Track.</p>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>Info "Published N name(s)" (may list names empty at this point)</td><td>Normal.</td></tr>
+<tr><td>Info "Nothing published yet: press Add keys from sources..."</td><td>New feature: press the button.</td></tr>
+<tr><td>Warning "Entry k (key): reason."</td><td>That entry was not published: unknown or ambiguous key, missing point, no source key, etc.</td></tr>
+<tr><td>Error "'x' is already published by an earlier entry."</td><td>Give the entries distinct names.</td></tr>
+<tr><td>Error "'x' comes from the derived Part Studio and is also published by an entry."</td><td>Rename one.</td></tr>
+</table>
+
+<h1 class="pb">Extract variables, reference</h1>
+<p class="sub">Dialog parameters, outputs, limits, and what the longer docs cover</p>
+
+<table class="shots"><tr><td><img src="docs/decks/extract_variables/shots/dialog.png" width="80"/><p class="cap">Dialog</p></td>
+<td><img src="docs/explainers/variable_tools/img/fig02_hold_track_evaluate.png" width="300"/><p class="cap">Hold, Track, Evaluate on use</p></td></tr></table>
+
+<h2>Dialog, in order</h2>
+<table class="grid">
+<tr><td class="k" width="105">Sources</td><td>Feature list; any feature works; sorted by tree order.</td></tr>
+<tr><td class="k" width="105">Prefix</td><td>Default empty (no prefix). Joined with <code>_</code>.</td></tr>
+<tr><td class="k" width="105">Add keys from sources</td><td>Button: one Source key entry per address not yet listed (outputFaces, outputVertices, inputs, modified* left out).</td></tr>
+<tr><td class="k" width="105">Entry: Type, Source key, Published name</td><td>Types: Source key, Filtered (entity type, body type, body name contains, keep the largest N), Closest to point, Shared edges (second key), Chain end (nearest/farthest; vertex, edge or both), Edges between points (Other side), Bridging curve input, Region (second key, Publish faces / boundary / both). Empty name = the key (<code>@</code> becomes <code>_</code>).</td></tr>
+<tr><td class="k" width="105">Show</td><td>Default off. Highlights the entry and prints its count or value in the notices.</td></tr>
+<tr><td class="k" width="105">Evaluate on use / Track</td><td>Default off. Queries only. Composed types are always held.</td></tr>
+<tr><td class="k" width="105">Get variables from a derived Part Studio</td><td>Default off. Picks a Part Studio; sets every variable in its <code>exportVariables</code> map under the same name, overwriting.</td></tr>
+<tr><td class="k" width="105">Print keys</td><td>Default off. Lists addresses.</td></tr>
+<tr><td class="k" width="105">Manifest</td><td>Optional name of a map variable listing all published names (derived ones included).</td></tr>
+</table>
+
+<h2>Outputs</h2>
+<p><code>#prefix_name</code> for value entries; a native query variable <code>prefix_name</code> for query entries (it shows in later dialogs' query-variable dropdowns); variables from a derive; the optional manifest. Query variables cannot be removed once set: publish only what is used.</p>
+
+
+<h2>Limits</h2>
+<p>&bull; Adding a second source turns bare <code>output</code> into <code>output@n</code>; entries with the bare name then warn. &bull; "Body name contains" reads part names during regeneration and is untested. &bull; The derive option builds the other studio once more per regeneration.</p>
+
+<h2>Gaps in the longer docs</h2>
+<p>The explainer (<code>docs/explainers/variable_tools/variable_tools_explained.md</code>, 2026-09-25) and the deck (<code>docs/decks/extract_variables/</code>) cover the sources, entries, Hold/Track/Evaluate, messages and the example; they do <b>not</b> mention <i>Get variables from a derived Part Studio</i>, Add variables for derive, or Variable +. This sheet covers the derive option; see the two companion sheets. Source: <code>variable_tools/extract_variables*.fs</code>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

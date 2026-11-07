@@ -1,0 +1,90 @@
+﻿<h1>Driven edge offset</h1>
+<p class="sub">Onshape document <b>driven_offset</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3070; code as of 2026-11-02)</p>
+
+<p class="lead">Offset a chain of edges sideways and up/down by an amount that <b>changes along the chain</b>, set by a profile (a wire, or regions typed in the dialog). The result is clean wires with real lines and arcs where the source has them, tangent where the source is tangent.</p>
+
+<img src="docs/sheets/driven_edge_offset/img/deo_concept.png" width="330"/>
+<p class="cap">Schematic, not an Onshape render. Profile X = station, Y = width offset, Z = height offset.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; the offset <i>varies</i> along the chain (0 at a tip, 3 mm along the running length)<br/>
+&bull; the chain is 3D or sits on a curved reference and must follow it</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; the offset is constant on a planar sketch curve: Onshape's Offset curve<br/>
+&bull; you offset a face: Offset surface<br/>
+&bull; you have the offset and want the profile: Evaluate offset</td></tr></table>
+
+<h2>How it works</h2>
+<p><b>1 Stations:</b> source edges become G0 chains toward +X, sampled at stations; each gets a frame (tangent, width axis, height axis, carried by minimal rotation, not Frenet). <b>2 Lookup:</b> each station reads the profile at its coordinate; <b>Measure along</b> says what that is (World X, distance Along source, or Along a reference wire), always from the Zero point. <b>3 Offset:</b> the station moves by width and height in its frame; at a profile jump or kink the output splits and each side uses its own value. <b>4 Treat:</b> G0 corners are rounded, extended or left open and trimmed where they cross; ends can land on planes. <b>5 Emit:</b> straight runs become lines, circular runs arcs, the rest fitted splines with exact end tangents; one wire per connected chain.</p>
+<h2>Quick start</h2>
+<ol>
+<li>Pick <b>Offset edges</b> (the source chain) and a <b>Zero point</b> (vertex or mate connector). This is required.</li>
+<li>Set <b>Measure along</b>. Along source (default) means profile X = distance from the zero point along the edges.</li>
+<li>Choose <b>Profile source</b>: <i>Wire</i> (pick a profile wire, e.g. from Create offset profile) or <i>Regions</i> (type it here).</li>
+<li>Check <b>Offset alignment</b> (Along = the chain's own frame, World = world X/Y/Z) and <b>Break output at</b>.</li>
+<li>Open Corners / Ends only if the chain has G0 corners or must end on a plane. Give the result a Name.</li>
+<li>If the result wobbles, tighten Spacing &amp; approximation: tolerance about 1 um for ski radii (default 0.01 mm); raise Maximum control points to 25-30 if it warns (project notes).</li>
+</ol>
+
+<h2>Key rules</h2>
+<table class="grid">
+<tr><td class="k" width="105">Profile reach</td><td>The profile only has data between its first and last station. Where it does not reach, no offset is made there (nothing is extrapolated).</td></tr>
+<tr><td class="k" width="105">Width and height</td><td>Width = Y, height = Z of the profile. With Along alignment the width axis is the frame axis with the larger world-Y component; with a Reference wire, height is the reference's normal and width lies in its surface.</td></tr>
+</table>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>Select a zero point (mate connector or vertex).</td><td>Fill the Zero point field.</td></tr>
+<tr><td>The offset profile does not reach any of the offset edges.</td><td>The profile X range does not overlap the stations. Check Measure along, the Zero point and the profile's stations.</td></tr>
+<tr><td>Warning: The offset wire has N open joint(s), first: ...</td><td>A run collapsed to nothing and no corner filler was left. Look for micro-edges in the source (run Clean wire first); the Visualize continuity debug option shows the splits.</td></tr>
+<tr><td>The offset runs parallel to its terminal plane...</td><td>Pick a different End/Start plane or direction (Ends group).</td></tr>
+<tr><td>Add at least one region.</td><td>Profile source = Regions needs one.</td></tr>
+
+</table>
+
+<h1 class="pb">Driven edge offset, reference</h1>
+<p class="sub">Dialog parameters in dialog order, outputs, limits</p>
+
+<table class="grid">
+<tr><th>Parameter</th><th>Meaning (default)</th></tr>
+<tr><td class="k" width="105">Measure along</td><td>What profile X measures: World X, <b>Along source</b> (default), Along reference.</td></tr>
+<tr><td class="k" width="105">Name</td><td>Name of the result bodies. Clear it to leave them unnamed.</td></tr>
+<tr><td class="k" width="105">Offset spacing definition</td><td>Shown for Along reference only: <b>Reference wire</b> (one pick), <b>Offset delta</b> (-50 to 50 mm, default 0; measures along a curve this far from the wire), Flip offset delta, <b>Hold length in the reference surface</b> (off). Delta only changes where each station reads the profile; it never moves a point.</td></tr>
+<tr><td class="k" width="105">Offset alignment</td><td><b>Along</b> (default) or World.</td></tr>
+<tr><td class="k" width="105">Break output at</td><td><b>Every source edge</b> (default; one output edge per source edge) or Corners and offset breaks (tangent-continuous edges run together).</td></tr>
+<tr><td class="k" width="105">Varying offset on arcs</td><td><b>Spline</b> (default) or Biarc fit. Applies only where the source is an arc <i>and</i> the offset changes along it, so the result is not an arc. Spline: one spline per run, tangent to its neighbours. Biarc fit: two or more tangent circular arcs per run, matching both end directions within the approximation tolerance; a spline instead where that would take more than 8 arcs. A constant offset of an arc is an exact arc either way. Biarc adds edges; Spline keeps one per run.</td></tr>
+<tr><td class="k" width="105">Offset edges</td><td>The source edges or wires (construction geometry excluded).</td></tr>
+<tr><td class="k" width="105">Profile source</td><td><b>Wire</b> (default) or Regions. Wire: <i>Offset profile</i> = the profile edges. Regions: the same Regions / Intersections table as Create offset profile; no wire is made.</td></tr>
+<tr><td class="k" width="105">Corners</td><td>Collapsed group. <i>Where the offset gaps</i>: Round with an arc (default, a true arc centred on the vertex) / Extend to a sharp corner / Leave open. <i>Where the offset crosses</i>: Trim to the crossing (default) / Leave crossing.</td></tr>
+<tr><td class="k" width="105">Ends</td><td>Collapsed. Start plane, End plane (mate connector or planar face; start = low-X end), optional Start / End direction (the slope at the plane), <b>Allow extension</b> (on): off leaves an offset that stops short alone.</td></tr>
+<tr><td class="k" width="105">Zero point</td><td>Vertex or mate connector; all profile coordinates are measured from it. Required.</td></tr>
+<tr><td class="k" width="105">Spacing &amp; approximation</td><td>Offset spacing: <b>Control points</b> (multiplier 2-10, default 3) / Points per edge (10-50, 25) / Distance along (0.1-50 mm, 10). Join runs into one wire per link (on). Join tangent segments into one edge (off). Approximation: Target degree (2.., default 3), Tolerance (default 0.01 mm), Maximum control points (4.., default 15). Station count must stay stable between edits or the frame seed can move.</td></tr>
+<tr><td class="k" width="105">Debug</td><td>Print chains / offset / frame tables, Show offset frames, offsets, reference offset, chain ends (green start, red end), Visualize continuity. No effect on geometry.</td></tr>
+</table>
+
+<img src="docs/sheets/driven_edge_offset/img/deo_arc_fit.png" width="340"/>
+<p class="cap">Schematic. A constant offset on an arc is one exact arc in both settings. Biarc drawn by the standard construction, not read from Onshape.</p>
+
+<h2>Outputs</h2>
+<p>&bull; <b>Bodies:</b> one wire per connected chain (or loose curves if Join runs is off), named by Name.<br/>
+&bull; <b>Published keys</b> (for Extract variables): <code>output</code>, <code>startVertex</code>, <code>endVertex</code> (start of each wire at its source start / the other end), <code>startEdge</code>, <code>endEdge</code>, <code>cornerArcs</code> (the true arcs that round G0 corners), plus the inputs.</p>
+
+<h2>Examples and evidence (project notes; not re-run)</h2>
+<p>&bull; Corner test: outside gaps measured 2w&middot;sin(&theta;/2) to 3 decimals; a 123.5 deg inside corner overlapped 9.311 mm.<br/>
+&bull; Regions source vs a profile wire (tests D1-D5): identical within 1e-3 mm.</p>
+
+<h2>Limits</h2>
+<p>&bull; Length always follows the source edges; fully reference-driven length/width is an open design question.<br/>
+&bull; A profile break always splits the output; no per-break None / Line join exists yet.<br/>
+&bull; Fit curvature resolution is about 8&middot;tol/L&sup2;: a loose tolerance wobbles on very long radii.<br/>
+&bull; Not verified for this sheet: behaviour of Biarc fit on live geometry and whether the pinned library versions in your document already include the Varying offset on arcs option.</p>
+
+<p class="foot">More: <code>driven_offset/DOCUMENT_MAP.md</code> (tabs, import pins) &middot; <code>docs/briefs/driven_offset.md</code> &middot; <code>docs/decks/create_offset_profile/</code> &middot; <code>driven_offset/docs/unwrap_explained.md</code> (charts, s - d&middot;theta).</p>
+
+
+
+
+

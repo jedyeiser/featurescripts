@@ -1,0 +1,83 @@
+<h1>Export primitive</h1>
+<p class="sub">Publish &amp; Drawing tools &nbsp;|&nbsp; Onshape document <b>Publish &amp; Drawing tools</b> (tabs <code>primitive/*</code>) &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 &nbsp;|&nbsp; cavity depth and scaled bands are not yet versioned</p>
+
+<p class="lead">Build a ski's <b>primitive drawing</b> from its solid: baseline, profile, unwrapped footprint and a radius (or curvature) plot, stacked as bands in one closed composite, plus six data tables (including the <b>cavity depth</b> column) for the drawing and the factory.</p>
+
+<img src="docs/sheets/export_primitive/img/primitive_bands.png" width="400"/>
+<p class="cap">Schematic with made-up data (not a real ski): the bands the feature stacks below the part. The EI band needs a Target EI; key lines are optional.</p>
+
+<h2>Use it when / not when</h2>
+<table class="two">
+<tr><td class="g"><b>Use it when</b><br/>
+&bull; a ski or board volume needs its primitive drawing and data tables<br/>
+&bull; you need rocker / camber, sidecut radius, thickness and (optionally) cavity depth along the ski<br/>
+&bull; the factory wants the numbers in English or German</td>
+<td class="r"><b>Use something else when</b><br/>
+&bull; you only need a flat DXF or station views: Export tag, Station geometry<br/>
+&bull; you want the EI curve itself: Cross section / EI tools</td></tr></table>
+
+<h2>How it works</h2>
+<p>&bull; <b>Inputs:</b> the ski <i>Volume</i>, the contact points <b>FCP</b> (forebody, on the tip side) and <b>ACP</b>, and a name prefix. MRS (mid running surface) is halfway between them.<br/>
+&bull; The volume is cut by the datum XZ plane: BOTTOM / TOP / end wires give the <b>profile</b>; its bottom edge is the <b>baseline</b>. The base outline is <b>unwrapped</b> along the bottom wire to the footprint, from which the sidecut radius is measured.<br/>
+&bull; Everything is drawn as points and wires in <b>one closed composite</b> <code>&lt;prefix&gt; PRIMITIVE</code> (movable as a unit). The tables are stored in its attribute; the <i>Primitive tables</i> custom table shows them in the drawing.</p>
+
+<h2>Quick start</h2>
+<ol>
+<li><b>Volume:</b> pick the ski solid. The Name prefix fills in from it.</li>
+<li><b>FCP</b> and <b>ACP:</b> pick vertices, points or mate connectors (they must be apart along the datum X); optionally a Datum.</li>
+<li>Optional: <b>Cavity depth</b> group: pick the cavity depth profile (a wire).</li>
+<li>Optional: <b>Stiffness</b> group: pick a Target EI wire for the EI band and deflection.</li>
+<li>Read the info message (RSL, average radius, rows) and insert the <i>Primitive tables</i> in the drawing.</li>
+</ol>
+
+<h2>Key rules</h2>
+<p>&bull; <b>FCP is on the tip side</b>; never assume ACP &gt; FCP in x. x is measured from the datum, s along the bottom wire.<br/>
+&bull; <b>Scaled bands (Auto scale, default):</b> baseline and profile heights (z) are stretched to fill a fixed band height; x stays 1:1. Anything reading z from the <i>band geometry</i> sees it scaled; tables and the attribute are exact.<br/>
+&bull; <b>Cavity depth is measured along the bottom wire's normal</b> (the same direction as <code>thck</code>), not vertically.</p>
+
+<h2>Messages and fixes</h2>
+<table class="grid">
+<tr><th>Message</th><th>Fix</th></tr>
+<tr><td>&ldquo;Select the volume (the ski part).&rdquo; / &ldquo;Enter a name prefix...&rdquo;</td><td>Pick the volume; type a prefix (e.g. the model name).</td></tr>
+<tr><td>Info &ldquo;the mid plane cuts the volume in N loops; the longest is used&rdquo;</td><td>A slot or swallowtail splits the section; rows outside the longest piece have no thickness or cavity depth. Set <b>Profile source</b> to picked wires (one closed loop).</td></tr>
+<tr><td>&ldquo;The profile wires / baseline wires overlap or do not form a clean wire&rdquo;</td><td>Pick only the profile or baseline body, not extra sketch lines that touch it.</td></tr>
+<tr><td>&ldquo;The cavity depth profile has no length once projected...&rdquo;</td><td>Pick a wire that lies in or projects onto the datum XZ plane.</td></tr>
+</table>
+
+<h1 class="pb">Export primitive, reference</h1>
+<p class="sub">Dialog parameters (groups in dialog order), tables, outputs, limits</p>
+
+<h2>Dialog, in order</h2>
+<table class="grid">
+<tr><th colspan="2">Inputs</th></tr>
+<tr><td class="k" width="105">Volume, Name prefix</td><td>The ski / board solid (one part); a prefix starting every body name (required, filled from the volume).</td></tr>
+<tr><td class="k" width="105">FCP / ACP</td><td>Forebody / aftbody contact points: vertex, point or mate connector. MP (optional, several allowed for a snowboard).</td></tr>
+<tr><td class="k" width="105">Datum, Datum axes</td><td>Measuring origin; empty = world origin. Axes: <i>World axes (datum is a point only)</i> (default) or <i>Mate connector's axes</i> (its X along the ski, Z up).</td></tr>
+<tr><th colspan="2">Profile, baseline and footprint source (collapsed)</th></tr>
+<tr><td class="k" width="105">Profile / Baseline / Footprint source</td><td>From the volume (default) or From picked wires. Use picked profile wires when the mid-plane section splits (swallowtail); pick only the baseline body, not generated measurement sketch lines.</td></tr>
+<tr><th colspan="2">Key locations, SW rout (collapsed)</th></tr>
+<tr><td class="k" width="105">Extra key points, SW rout surface</td><td>Named points (a Table 3 row, plot tick; names must differ from FCP, ACP, MRS, XS1, XS2, TIP, TAIL). Optional SW rout surface, start and stop add Table 4.</td></tr>
+<tr><th colspan="2">Cavity depth (collapsed)</th></tr>
+<tr><td class="k" width="105">Cavity depth profile</td><td>Optional wire for the bottom of the lid cavity (edges or a wire body, connected). One not in the datum XZ plane is projected onto it. Drawn in the profile band (<code>&lt;prefix&gt; PRIMITIVE PROFILE CAVITY</code>) and adds the column <b>cavity depth</b> (German Minicaphoehe) to Table 6: distance along the bottom wire's normal from the top of the ski to this profile, absolute value, <b>blank where it does not reach</b>.</td></tr>
+<tr><th colspan="2">Plot (collapsed)</th></tr>
+<tr><td class="k" width="105">Plot type, x-range</td><td>Sidecut radius (m) (default) or Curvature (1/m); Full ski (default), Running surface, Between widest points, Between inflection points.</td></tr>
+<tr><td class="k" width="105">Auto scale</td><td>On (default): fixed band heights (radius 150, baseline 60, profile 100, EI 150 mm), scale fitted to the data. Off: manual scales, baseline and profile 1:1.</td></tr>
+<tr><td class="k" width="105">Max radius, labels, grid, key lines, ticks, gap</td><td>Max radius 50 m (above it: plot break, empty table cell). Band titles on (text height 20 mm); grid lines off; key lines off; edge junction ticks on; band gap 50 mm; tick half-length 10 mm.</td></tr>
+<tr><th colspan="2">Stiffness, Tooling blocks, Data table, Output (collapsed)</th></tr>
+<tr><td class="k" width="105">Target EI</td><td>Optional EI wire (1 mm = 1 N*m^2): adds the EI band, deflection (mm / 30 kg) and stiffness (lb/in); 3-point bending, rollers at FCP and ACP.</td></tr>
+<tr><td class="k" width="105">Tip / Tail block, Data table rows</td><td>Table 5 block names (typed or from a wire; empty = no row). Data rows default 35, FCP to ACP, plus rows at key locations.</td></tr>
+<tr><td class="k" width="105">Language, query variable</td><td>English (default) or Deutsch for tables and band titles. Publish as query variable: <code>primitive</code> (apps expect this name).</td></tr>
+</table>
+
+<h2>Outputs</h2>
+<table class="grid">
+<tr><td class="k" width="105">Geometry</td><td>Closed composite <code>&lt;prefix&gt; PRIMITIVE</code> (excluded from the BOM) with bands EI, BASELINE, PROFILE, FOOTPRINT, RADIUS or CURVATURE; queries <code>baseline</code>, <code>profileBottom</code>, <code>profileTop</code>, <code>profileCavity</code>, <code>footprint</code>, <code>radius</code> / <code>curvature</code>, <code>ei</code>, <code>primitive</code>.</td></tr>
+<tr><td class="k" width="105">Tables</td><td>1 Theoretical scale factors, 2 Metadata, 3 Key locations, 4 SW rout, 5 Baseline, 6 RSL data (x, s, y, w, z, thck, cavity depth, baseline, radius ...).</td></tr>
+<tr><td class="k" width="105">Variables</td><td><code>primitive</code> (all tables, schema primitive/1), <code>rsl</code>, <code>averageRadius</code>, natural radii, taper angles, <code>deflection</code>, <code>stiffness</code>, <code>swRout*</code> (read with Extract variables).</td></tr>
+</table>
+
+<img src="docs/sheets/export_primitive/img/primitive_cavity.png" width="300"/>
+<h2>Limits and not verified</h2>
+<p>&bull; <b>Assumed definition:</b> cavity depth = distance along the bottom normal (a vertical distance would be a one-line change). Camber stays small in the scaled band (the range includes tip and tail rise).<br/>
+&bull; Tested on the &ldquo;Primitive tests&rdquo; studio (P20 cavity, P21 off-plane wire: 17 of 17 checks). The older full check script (1:1 bands) was not rerun. Needs a document version first. More: <code>publish_tools/README.md</code>.</p>
+
