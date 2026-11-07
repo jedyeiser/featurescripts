@@ -357,6 +357,17 @@
       "last_push": "2026-10-17T11:54:11.309823+00:00",
       "document_id": "69ab3696c014c05409202108",
       "workspace_id": "c176011bc60a3f918e673d98"
+    },
+    {
+      "name": "clean_surfaces",
+      "description": "Clean surfaces: denoise/sliver-remove an input surface",
+      "working_directory": "./clean_surfaces",
+      "onshape_url": "https://k2-sports.onshape.com/documents/a39a5952c0df830cde96ffb6/w/c85128a9d158805ce2dafa19",
+      "references": [],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "a39a5952c0df830cde96ffb6",
+      "workspace_id": "c85128a9d158805ce2dafa19"
     }
   ],
   "sync_metadata": {}
