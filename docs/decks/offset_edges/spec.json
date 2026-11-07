@@ -158,7 +158,7 @@
         ],
         [
           "Tab",
-          "refSurfCreation/offsetEdges (+ engine curveMappingCore)"
+          "refSurfCreation/offsetEdges (+ same-document tabs offset_edges_frames, offset_edges_output; engine curveMappingCore)"
         ],
         [
           "Tests",

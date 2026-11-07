@@ -1,12 +1,13 @@
 # Unwrap, explained
 
 *A living explainer for the Unwrap feature family (`unwrap.fs`, `undrape_utils.fs`, `unwrap_part.fs`, and the
-chart in `edge_offset_utils.fs`). Written 2026-09-25 against the code as it stands that day. Revise freely.*
+chart in `edge_offset_utils.fs`). Written 2026-09-25 against the code as it stands that day; sections 2.8 and 2.9 (holes, Faces mode) were added
+2026-09-30. Checked against the code 2026-11-06: no source change since 2026-09-30. Revise freely.*
 
 The document runs in three passes, each building on the one before:
 
 1. **Concepts**: what is geometrically going on, with pictures. No code.
-2. **Our feature**: the three modes, what every parameter means physically, how to read the checks,
+2. **Our feature**: the four modes, what every parameter means physically, how to read the checks,
    what the test studios show, what is still open, and the two questions you asked.
 3. **The codebase**: files, call graph, data structures, import pins, how to test, where the notes are.
 
@@ -932,7 +933,7 @@ range, and the per-face check refuses it when that fails).
 
 | File (tab) | Role |
 |---|---|
-| `driven_offset/unwrap.fs` (a84cdaa8963f2a55db1c016b) | The feature: dialog, three modes, edge sampling and emission, plate side finding / section face / plate rebuild, length check, names, report, editing logic. The user's docstring spec is at the top; the AS BUILT block follows it. |
+| `driven_offset/unwrap.fs` (a84cdaa8963f2a55db1c016b) | The feature: dialog, four modes, edge sampling and emission, plate side finding / section face / plate rebuild, length check, names, report, editing logic. The user's docstring spec is at the top; the AS BUILT block follows it. |
 | `driven_offset/undrape_utils.fs` (283b8f7562a16e9c9ccc01b7) | The undrape map: `undrapeOutline` and everything under it. Plain-number inner loops. |
 | `driven_offset/unwrap_part.fs` (fc976128871c5b4b2d33a91c) | Solid unwrap: `unwrapSolid`. Needs `extendendtype.gen.fs` and `extendsheetshapetype.gen.fs` imported explicitly (correction 17). |
 | `driven_offset/edge_offset_utils.fs` (a2665e22c07b7a6929ce4e80) | The chart ("The reference surface as a chart", "Unwrapping through the chart", "Packed chart" sections, lines ~931-1760), shared with Driven edge offset / surface. |

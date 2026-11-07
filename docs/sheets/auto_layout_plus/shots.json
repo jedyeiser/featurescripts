@@ -3,11 +3,19 @@
     "doc":  "73271cfcd708b3f5e3fc315c",
     "shots":  [
                   {
+                      "fit":  true,
+                      "graphics":  "docs/sheets/auto_layout_plus/shots/before.png",
+                      "wait":  30,
                       "elem":  "cc7309dee4072090c78a2663",
-                      "dialog":  "docs/sheets/auto_layout_plus/shots/dialog.png",
-                      "featurePrefix":  "T7",
+                      "view":  "top",
+                      "featurePrefix":  "T8"
+                  },
+                  {
+                      "elem":  "cc7309dee4072090c78a2663",
                       "graphics":  "docs/sheets/auto_layout_plus/shots/after.png",
-                      "wait":  30
+                      "featurePrefix":  "T7",
+                      "fit":  true,
+                      "view":  "top"
                   }
               ]
 }

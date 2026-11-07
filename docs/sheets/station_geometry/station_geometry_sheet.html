@@ -1,10 +1,9 @@
-﻿<h1>Station geometry</h1>
+<h1>Station geometry</h1>
 <p class="sub">Onshape document <b>Publish &amp; Drawing tools</b> (tab folder station_tools) &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3083; Station table and Export tag use it, version them together)</p>
 
 <p class="lead">Build the drawing-aid geometry for one part: outline wires, a line at every station, the two end points and a datum point, grouped with the part so a drawing view shows them, plus the numbers for the <b>Station table</b>. It replaces hand-built, easily broken drawing sketches.</p>
 
-<img src="docs/sheets/station_geometry/img/fig_plan.png" width="320"/>
-<p class="cap">Schematic plan (XY) view, y exaggerated; widths are the 4101 test part's.</p>
+<table class="shots"><tr><td><img src="docs/sheets/station_geometry/shots/dialog_crop.png" width="66"/><p class="cap">Real dialog (4101 stations).</p></td><td><img src="docs/sheets/station_geometry/shots/plan.png" width="420"/><p class="cap">Plan view of the 4101 test part with station lines.</p></td></tr></table>
 
 <h2>Use it when / not when</h2>
 <table class="two">
@@ -17,7 +16,7 @@
 &bull; you want the ski analysis plot / tables: Export primitive</td></tr></table>
 
 <h2>How it works</h2>
-<img src="docs/sheets/station_geometry/img/fig_struct.png" width="330"/>
+<img src="docs/sheets/station_geometry/img/fig_struct.png" width="250"/>
 <p class="note">Per view the part is projected, each station line is cut across the outline, and the rows are stored on the view composite for the Station table.</p>
 
 <h2>Quick start</h2>

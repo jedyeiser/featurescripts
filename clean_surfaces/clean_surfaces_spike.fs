@@ -35,55 +35,104 @@ export const cleanSurfacesSpike = defineFeature(function(context is Context, id 
         opDeleteBodies(context, id + "probeDel", { "entities" : qCreatedBy(id + "probe", EntityType.BODY) });
         println("slivers " ~ nSliv);
 
-        // spike 4: delete the sliver TOGETHER WITH its neighbour faces, fill the bigger hole, sew, measure.
+        // spike 5: classify each sliver, then replace onto each neighbour + free redundancy merge
         for (var k = 0; k < nSliv; k += 1)
         {
-            const fid = id + ("c" ~ k);
-            opPattern(context, fid, { "entities" : src, "transforms" : [identityTransform()], "instanceNames" : ["C" ~ k] });
-            const fb = qCreatedBy(fid, EntityType.BODY);
-            const sf = findSlivers(context, fb)[k];
-            const info = sliverInfo(context, sf);
-            const nbs = evaluateQuery(context, qAdjacent(sf, AdjacencyType.EDGE, EntityType.FACE));
-            const region = qUnion([sf, qUnion(nbs)]);
-            const pts = regionPoints(context, region);
-            const nakedBefore = evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(fb, EntityType.EDGE), EdgeTopology.ONE_SIDED));
-            const areaBefore = evArea(context, { "entities" : region }) / millimeter ^ 2;
-            opDeleteFace(context, fid + "del", { "deleteFaces" : region, "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
-            const hole = qSubtraction(qEdgeTopologyFilter(qOwnedByBody(fb, EntityType.EDGE), EdgeTopology.ONE_SIDED), qUnion(nakedBefore));
-            var res = "region " ~ (size(nbs) + 1) ~ " faces A " ~ roundToPrecision(areaBefore, 2) ~ "; hole edges " ~ size(evaluateQuery(context, hole));
-            var filled = false;
-            for (var mode in ["G1", "G0"])
+            const rid = id + ("r" ~ k);
+            opPattern(context, rid, { "entities" : src, "transforms" : [identityTransform()], "instanceNames" : ["R" ~ k] });
+            const rb = qCreatedBy(rid, EntityType.BODY);
+            const sf = findSlivers(context, rb)[k];
+            // two longest edges
+            var es = evaluateQuery(context, qAdjacent(sf, AdjacencyType.EDGE, EntityType.EDGE));
+            var lens = [];
+            for (var e in es)
             {
-                if (filled)
+                lens = append(lens, { "e" : e, "len" : evLength(context, { "entities" : e }) / millimeter });
+            }
+            lens = sort(lens, function(a, b)
                 {
-                    break;
+                    return b.len - a.len;
+                });
+            var cls = "";
+            var info = sliverInfo(context, sf);
+            if (size(lens) >= 2)
+            {
+                const a = evEdgeTangentLines(context, { "edge" : lens[0].e, "parameters" : [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1] });
+                const b = evEdgeTangentLines(context, { "edge" : lens[1].e, "parameters" : [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1] });
+                var fwd = 0 * meter;
+                var rev = 0 * meter;
+                var fwdMax = 0 * meter;
+                var revMax = 0 * meter;
+                for (var m = 0; m < 9; m += 1)
+                {
+                    const d1 = norm(a[m].origin - b[m].origin);
+                    const d2 = norm(a[m].origin - b[8 - m].origin);
+                    fwd += d1;
+                    rev += d2;
+                    fwdMax = max(fwdMax, d1);
+                    revMax = max(revMax, d2);
                 }
-                try
+                const wmax = (fwd < rev ? fwdMax : revMax) / millimeter;
+                const mid = (a[4].origin + (fwd < rev ? b[4].origin : b[4].origin)) / 2;
+                const n1s = evaluateQuery(context, qSubtraction(qAdjacent(lens[0].e, AdjacencyType.EDGE, EntityType.FACE), sf));
+                const n2s = evaluateQuery(context, qSubtraction(qAdjacent(lens[1].e, AdjacencyType.EDGE, EntityType.FACE), sf));
+                var ang = "n/a";
+                var types = "";
+                if (size(n1s) > 0 && size(n2s) > 0)
                 {
-                    opFillSurface(context, fid + ("fill" ~ mode), mode == "G1" ? { "edgesG1" : hole } : { "edgesG0" : hole });
-                    const fill = qCreatedBy(fid + ("fill" ~ mode), EntityType.BODY);
-                    filled = true;
-                    res = res ~ "; fill " ~ mode ~ " OK, " ~ size(pts) ~ " pts dev " ~ roundToPrecision(maxDist(context, pts, fill) / millimeter, 4) ~ " mm";
+                    ang = roundToPrecision(acos(clamp(abs(dot(normalAt(context, n1s[0], mid), normalAt(context, n2s[0], mid))), 0, 1)) / degree, 3);
+                    types = surfType(context, n1s[0]) ~ "/" ~ surfType(context, n2s[0]);
+                }
+                cls = "long " ~ roundToPrecision(lens[0].len, 2) ~ "/" ~ roundToPrecision(lens[1].len, 2) ~ " wmax " ~ roundToPrecision(wmax, 4)
+                    ~ " N1N2 angle " ~ ang ~ " deg " ~ types ~ " sameSurfaceNeighbours " ~ (size(n1s) > 0 && size(n2s) > 0 && isSameFace(context, n1s[0], n2s[0]));
+            }
+            say("S" ~ k ~ " " ~ info ~ " | " ~ cls);
+
+            // replace onto each neighbour, then free redundancy merge of the whole body
+            const nbs = evaluateQuery(context, qAdjacent(sf, AdjacencyType.EDGE, EntityType.FACE));
+            var rres = "";
+            for (var n = 0; n < size(nbs); n += 1)
+            {
+                var ok = false;
+                for (var sense in [false, true])
+                {
+                    if (ok)
+                    {
+                        break;
+                    }
                     try
                     {
-                        opBoolean(context, fid + "join", { "tools" : qUnion([fill, fb]), "operationType" : BooleanOperationType.UNION });
-                        res = res ~ "; sewn: " ~ stats(context, qBodyType(qCreatedBy(fid, EntityType.BODY), BodyType.SHEET));
+                        opReplaceFace(context, rid + ("x" ~ n ~ (sense ? "t" : "f")), { "replaceFaces" : sf, "templateFace" : nbs[n], "oppositeSense" : sense });
+                        ok = true;
                     }
                     catch (e)
                     {
-                        res = res ~ "; sew FAILED " ~ e.message;
                     }
                 }
-                catch (e)
+                if (ok)
                 {
-                    res = res ~ "; fill " ~ mode ~ " " ~ e.message;
+                    try
+                    {
+                        opExtractSurface(context, rid + "merge", { "faces" : qOwnedByBody(rb, EntityType.FACE), "tangentPropagation" : false,
+                                    "redundancyType" : ExtractSurfaceRedundancyType.REMOVE_ALL_REDUNDANCY });
+                        rres = "replace onto nb " ~ n ~ " OK; after merge: " ~ stats(context, qCreatedBy(rid + "merge", EntityType.BODY));
+                    }
+                    catch (e)
+                    {
+                        rres = "replace onto nb " ~ n ~ " OK; merge FAILED";
+                    }
+                    break;
                 }
             }
-            say("S" ~ k ~ " " ~ info ~ " | CLUSTER " ~ res);
-            opDeleteBodies(context, fid + "cleanup", { "entities" : qCreatedBy(fid, EntityType.BODY) });
+            say("S" ~ k ~ " " ~ (rres == "" ? "replace: no neighbour accepted" : rres));
+            opDeleteBodies(context, rid + "cleanup", { "entities" : qCreatedBy(rid, EntityType.BODY) });
         }
     });
 
+function isSameFace(context is Context, a is Query, b is Query) returns boolean
+{
+    return size(evaluateQuery(context, qIntersection([a, b]))) > 0;
+}
 /** Grid points inside every face of the region (5 x 5 UV, undefined outside the trim dropped), plus 3 points per edge. */
 function regionPoints(context is Context, region is Query) returns array
 {

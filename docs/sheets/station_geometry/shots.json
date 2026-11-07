@@ -6,8 +6,13 @@
                       "elem":  "bb2cddb24faf53d9d043c38e",
                       "dialog":  "docs/sheets/station_geometry/shots/dialog.png",
                       "featurePrefix":  "4101 stations (test)",
-                      "graphics":  "docs/sheets/station_geometry/shots/graphics.png",
-                      "wait":  25
+                      "wait":  30
+                  },
+                  {
+                      "elem":  "bb2cddb24faf53d9d043c38e",
+                      "graphics":  "docs/sheets/station_geometry/shots/plan.png",
+                      "view":  "top",
+                      "fit":  true
                   }
               ]
 }

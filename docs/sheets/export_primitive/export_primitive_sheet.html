@@ -3,8 +3,7 @@
 
 <p class="lead">Build a ski's <b>primitive drawing</b> from its solid: baseline, profile, unwrapped footprint and a radius (or curvature) plot, stacked as bands in one closed composite, plus six data tables (including the <b>cavity depth</b> column) for the drawing and the factory.</p>
 
-<img src="docs/sheets/export_primitive/img/primitive_bands.png" width="400"/>
-<p class="cap">Schematic with made-up data (not a real ski): the bands the feature stacks below the part. The EI band needs a Target EI; key lines are optional.</p>
+<table class="shots"><tr><td><img src="docs/sheets/export_primitive/shots/dialog.png" width="50"/><p class="cap">Real dialog (P20): Inputs and Cavity depth.</p></td><td><img src="docs/sheets/export_primitive/shots/graphics.png" width="200"/><p class="cap">Real result, case P20: part with the stacked bands.</p></td><td><img src="docs/sheets/export_primitive/img/primitive_bands.png" width="210"/><p class="cap">Schematic with made-up data (not a real ski): the bands the feature stacks below the part. The EI band needs a Target EI; key lines are optional.</p></td></tr></table>
 
 <h2>Use it when / not when</h2>
 <table class="two">
@@ -76,7 +75,7 @@
 <tr><td class="k" width="105">Variables</td><td><code>primitive</code> (all tables, schema primitive/1), <code>rsl</code>, <code>averageRadius</code>, natural radii, taper angles, <code>deflection</code>, <code>stiffness</code>, <code>swRout*</code> (read with Extract variables).</td></tr>
 </table>
 
-<img src="docs/sheets/export_primitive/img/primitive_cavity.png" width="300"/>
+
 <h2>Limits and not verified</h2>
 <p>&bull; <b>Assumed definition:</b> cavity depth = distance along the bottom normal (a vertical distance would be a one-line change). Camber stays small in the scaled band (the range includes tip and tail rise).<br/>
 &bull; Tested on the &ldquo;Primitive tests&rdquo; studio (P20 cavity, P21 off-plane wire: 17 of 17 checks). The older full check script (1:1 bands) was not rerun. Needs a document version first. More: <code>publish_tools/README.md</code>.</p>

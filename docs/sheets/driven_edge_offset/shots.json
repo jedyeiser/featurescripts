@@ -1,0 +1,9 @@
+{
+ "doc": "f61d2c000ab2d1240776342e", "ws": "5b11f323ab31b04cba8b36ef",
+ "shots": [
+  {"elem": "5efbe29c46094eba1499c4fb", "featurePrefix": "D2 arc R400: Driven edge offset", "filter": "D2 arc", "wait": 30,
+   "dialog": "docs/sheets/driven_edge_offset/shots/dialog_regions.png"},
+  {"elem": "0ce4ac09e693f8ecd18e8a7f", "featurePrefix": "E2 arc R400", "filter": "E2 arc", "wait": 30,
+   "dialog": "docs/sheets/evaluate_offset/shots/dialog_eval.png"}
+ ]
+}

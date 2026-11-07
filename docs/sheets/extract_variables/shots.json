@@ -1,0 +1,10 @@
+{
+ "doc": "a47f90bfa6b17a59e20cebd0", "ws": "0bd1fa4306898d9fe9c9fb47",
+ "shots": [
+  {"elem": "ca7eb26e372133899a264a94", "featurePrefix": "Extract variables: box bands", "wait": 30, "view": "iso",
+   "dialog": "docs/sheets/extract_variables/shots/dialog_bands.png",
+   "graphics": "docs/sheets/extract_variables/shots/render_bands.png"},
+  {"elem": "d33a3bd9d5c8c403c98fdece", "feature": "Extract variables 1", "wait": 30,
+   "dialog": "docs/sheets/extract_variables/shots/dialog_derived.png"}
+ ]
+}

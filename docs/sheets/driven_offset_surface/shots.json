@@ -1,0 +1,11 @@
+{
+ "doc": "f61d2c000ab2d1240776342e", "ws": "5b11f323ab31b04cba8b36ef",
+ "shots": [
+  {"elem": "643b702dc551feb3cc001826", "featurePrefix": "Cap_Wall_Surface", "filter": "Cap_Wall", "wait": 60, "dialogWait": 60, "settle": 8,
+   "dialog": "docs/sheets/driven_offset_surface/shots/dialog_cap_wall.png"},
+  {"elem": "643b702dc551feb3cc001826", "featurePrefix": "Cavity_Depth", "filter": "Cavity_Depth", "dialogWait": 60, "settle": 8,
+   "dialog": "docs/sheets/driven_offset_surface/shots/dialog_cavity.png"},
+  {"elem": "643b702dc551feb3cc001826", "featurePrefix": "SW_Rout_Surface", "filter": "SW_Rout", "dialogWait": 60, "settle": 8,
+   "dialog": "docs/sheets/driven_offset_surface/shots/dialog_sw_rout.png"}
+ ]
+}

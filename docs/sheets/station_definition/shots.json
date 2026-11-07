@@ -4,10 +4,11 @@
     "shots":  [
                   {
                       "elem":  "bb2cddb24faf53d9d043c38e",
-                      "dialog":  "docs/sheets/station_definition/shots/dialog.png",
+                      "expand": ["EDA","SPA"], "dialog":  "docs/sheets/station_definition/shots/dialog.png",
                       "featurePrefix":  "Stations (test)",
-                      "graphics":  "docs/sheets/station_definition/shots/graphics.png",
-                      "wait":  25
+                      "wait":  30
                   }
               ]
 }
+
+

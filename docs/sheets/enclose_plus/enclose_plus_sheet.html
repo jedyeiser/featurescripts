@@ -1,9 +1,9 @@
-<h1>Enclose+</h1>
+﻿<h1>Enclose+</h1>
 <p class="sub">Onshape document <b>Reference_Side_Features</b> &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3083)</p>
 
 <p class="lead">Make a part from the volume that surfaces and caps close off, like Onshape's Enclose, but with <b>mate connector caps</b>, an <b>inside point</b> that picks the solid, and an optional <b>mirror plane</b> that encloses one half and mirrors it.</p>
 
-<img src="docs/sheets/enclose_plus/img/enclose_flow.png" width="560"/>
+<table class="shots"><tr><td><img src="docs/sheets/enclose_plus/img/enclose_flow.png" width="420"/></td><td><img src="docs/sheets/enclose_plus/shots/dialog_enclose.png" width="70"/><p class="cap">Dialog</p></td></tr></table>
 <p class="cap">Schematic, side view. Surfaces, a cap, an inside point and a mirror plane go in; the half is enclosed, stray pockets are dropped, the half is mirrored and united.</p>
 
 <h2>Use it when / not when</h2>
@@ -72,3 +72,5 @@
 &bull; The inside point is tested with <code>qContainsPoint</code> on the new solids.</p>
 
 <p class="foot">More: <code>docs/explainers/reference_side/reference_side_explained.md</code> section 2.4b (tests E1-E4) &middot; source <code>reference_side/enclose_plus.fs</code>.</p>
+
+

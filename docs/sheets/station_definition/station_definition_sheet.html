@@ -1,4 +1,4 @@
-﻿<h1>Station definition</h1>
+<h1>Station definition</h1>
 <p class="sub">Onshape document <b>Publish &amp; Drawing tools</b> (tab folder station_tools) &nbsp;|&nbsp; Feature sheet, draft 2026-11-06 (FeatureScript 3083; versioned together with Station geometry)</p>
 
 <p class="lead">Name the places along a part where drawings measure it, <b>once</b>: single points and evenly spaced stations along a line or between two points. Station geometry and Export tag then pick this feature.</p>
@@ -72,6 +72,7 @@
 <p>&bull; <b>Fixture (4101, test studio &ldquo;Station tests&rdquo;):</b> a point set TAIL / EDA / SPA, plus <i>N stations between EDA and SPA, N = 5</i>: x = 145 / 515 / 885 / 1255 / 1625 mm; Station geometry measured widths 116.2 / 97.95 / 93.26 / 105.94 / 132.08 mm.<br/>
 &bull; <b>Numbered from zero, German:</b> fixture &ldquo;Numbered 0-4 DE&rdquo; gives stations 0 to 4 with language Deutsch (checked by eval).</p>
 
+<table class="shots"><tr><td><img src="docs/sheets/station_definition/shots/dialog.png" width="54"/><p class="cap">Real dialog: single-point entry TAIL and N-between entry Q (5 stations).</p></td></tr></table>
 <h2>Limits</h2>
 <p>&bull; Positions are fixed at definition time (plain points); they do not follow the part if it is later edited without moving the picked points.<br/>
 &bull; Place it <b>above</b> every feature that picks it. Several definitions may be picked; ids must be unique across them and across a part's <i>Extra stations</i>.<br/>

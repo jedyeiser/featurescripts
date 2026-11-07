@@ -1,0 +1,7 @@
+{"doc": "22764764a00a7f607dbc1c4d", "ws": "3b5e11a121111a161684adee", "shots": [
+  {"elem": "73222f3cbcfe185c0932d0a4", "featurePrefix": "F4 Move face+", "filter": "F4", "dialog": "docs/sheets/move_face_plus/shots/dialog_move.png"},
+  {"elem": "73222f3cbcfe185c0932d0a4", "featurePrefix": "E1 Enclose+", "filter": "E1", "dialog": "docs/sheets/enclose_plus/shots/dialog_enclose.png"},
+  {"elem": "73222f3cbcfe185c0932d0a4", "featurePrefix": "J4 Join profile surfaces", "filter": "J4", "dialog": "docs/sheets/join_profile_surfaces/shots/dialog_join.png"},
+  {"elem": "73222f3cbcfe185c0932d0a4", "featurePrefix": "P1 Referenced part", "filter": "P1", "dialog": "docs/sheets/referenced_part/shots/dialog_thickened.png"},
+  {"elem": "73222f3cbcfe185c0932d0a4", "featurePrefix": "P7 Referenced part", "filter": "P7", "dialog": "docs/sheets/referenced_part/shots/dialog_constrained.png"}
+]}

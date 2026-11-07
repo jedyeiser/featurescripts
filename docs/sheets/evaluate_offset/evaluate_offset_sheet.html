@@ -3,7 +3,7 @@
 
 <p class="lead">Driven edge offset <b>run backwards</b>: give it the edges an offset is measured <i>from</i> and the edges it is measured <i>to</i>, and it builds the offset profile wire (X station, Y width, Z height) that Driven edge offset would need to turn one into the other.</p>
 
-<img src="docs/sheets/evaluate_offset/img/eo_flow.png" width="420"/>
+<table class="shots"><tr><td><img src="docs/sheets/evaluate_offset/img/eo_flow.png" width="420"/></td><td><img src="docs/sheets/evaluate_offset/shots/dialog_eval.png" width="70"/><p class="cap">Dialog</p></td></tr></table>
 <p class="cap">Schematic (computed, not an Onshape render): the target is measured at every reference station; the result is a profile wire.</p>
 
 <h2>Use it when / not when</h2>
@@ -73,5 +73,6 @@
 &bull; The profile is fitted: it reproduces the target within the approximation tolerance, not exactly.</p>
 
 <p class="foot">More: <code>driven_offset/research_evaluate_offset.md</code> (design) &middot; <code>docs/briefs/driven_offset.md</code> &middot; <code>driven_offset/DOCUMENT_MAP.md</code>. Tests: <code>devtools/onshape/build_evaluate_offset_tests.py</code>, <code>check_evaluate_offset.py</code>.</p>
+
 
 
