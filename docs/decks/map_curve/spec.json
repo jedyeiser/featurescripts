@@ -119,11 +119,11 @@
         ],
         [
           "spanStart / spanEnd",
-          "The from-chain's span, measured from its zero."
+          "The from-chain's low-X and high-X ends, measured from its zero."
         ],
         [
           "toStart / toEnd",
-          "Where that span lands on the to-chain."
+          "Where those ends land on the to-chain (from its low-X end; high-X when flipped)."
         ],
         [
           "stationCount",

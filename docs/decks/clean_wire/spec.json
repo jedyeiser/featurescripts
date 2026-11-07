@@ -29,7 +29,7 @@
         },
         {
           "head": "Slivers (< 0.5 mm)",
-          "body": "Judged by their own two joints: absorbed next to a tangent joint, kept as a chamfer between two corners."
+          "body": "Judged by their own two joints: absorbed next to a tangent joint, kept as a chamfer between two corners. Under 0.01 mm a micro edge has no direction: it joins the run before it and is not sampled."
         },
         {
           "head": "Lines and arcs",

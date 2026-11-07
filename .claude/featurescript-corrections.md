@@ -108,6 +108,7 @@ first, then open only the entries whose topic matches your task. Entry bodies be
 | 83 | testing | getFeatureError/Warning/Info in one eval read a feature's text; eval needs makeId, match().hasMatch, rollbackBarIndex as query param. | 2252 |
 | 84 | ops | Calling a custom feature from another: export import its tab, pass every parameter, pin and re-pin; move absolute inputs (stations) with a frame. | 2259 |
 | 86 | queries-ids | A "created by <feature>" query variable also returns that feature's sketch construction wires; filter with qSketchFilter (not qConstructionFilter) before opExtractWires. | 2283 |
+| 87 | dialog-ui | A WARNING status is drawn as an error in the feature tree; report a handled fallback that produced the intended result as INFO. | 2294 |
 
 ## Critical top 10
 
@@ -2289,3 +2290,14 @@ definition's stations) must be told to move them when it is run on a shifted cop
 **Fix**: export_primitive.fs `modelWireEdges` (baseline and footprint picks): when a pick mixes model wires with sketch edges, keep the model wires (a pick of sketch edges alone is unchanged) and note "N sketch edge(s) ... were ignored". primitive_baseline.fs wraps the extract in `try silent` and throws a regenError that says the baseline wires overlap or are not one wire, naming the edge count. `try silent { ... }` takes NO catch clause: set a flag after the call and test it.
 
 **Rule**: a query that selects "everything a feature created" is not a wire; filter sketch objects (qSketchFilter) before building a chain, and replace a kernel error from user input with one that names the input. Also seen in this session: the Edit/Write tools turn a `ö` escape into a real umlaut (fscheck then reports 2 non-ASCII bytes): fix at byte level, never with PowerShell Replace on a console-decoded string.
+
+
+## Correction 87: a WARNING status shows as an ERROR in the feature tree; report a successful fallback as INFO (2026-11-07, Offset+ AUTO)
+
+**Symptom**: Offset+ built the right geometry through its Thicken fallback and reported it with `reportFeatureWarning`; the Reference Side geo-test studio showed the feature red (tree item class `ns-list-item-error`, dialog `has-regen-error`, red icon on the Features header) and the user read it as a failure. The stored REST status was WARNING (not ERROR) and the notification bubble was `alert-warning`: Onshape styles WARNING-status custom features like errors in the tree.
+
+**Test**: the same message through `reportFeatureInfo` -> no error class, normal icon, same geometry.
+
+**Fix**: offset_plus.fs reports "The direct offset failed on surface N; it was built by thickening ..." with `reportFeatureInfo`. A failed op inside `try silent` does NOT leak an error status (checked: INFO leaves the feature clean).
+
+**Rule**: use WARNING only for a result the user must fix or distrust; a handled fallback that produced the intended result is INFO. Do not trust an eval's `getFeatureWarning` for how the tree will look: open the studio (class names via Playwright) or compare the stored status.

@@ -1,0 +1,13 @@
+{
+    "ws":  "fea83d30106dba0a4e066761",
+    "doc":  "73271cfcd708b3f5e3fc315c",
+    "shots":  [
+                  {
+                      "elem":  "40ddd837fc2586ab9a75239f",
+                      "dialog":  "docs/sheets/export_tag/shots/dialog.png",
+                      "featurePrefix":  "ZT1",
+                      "graphics":  "docs/sheets/export_tag/shots/graphics.png",
+                      "wait":  25
+                  }
+              ]
+}

@@ -94,6 +94,14 @@ tangent joint at the other -> absorbed into the tangent side; corners at both en
 both ends -> absorbed if its neighbours line up, kept if they are offset from each other (a jog). A real line or arc
 at least one sliver long always keeps its own run.
 
+**Micro edges** (since 2026-11-02; shorter than 0.01 mm, the lower bound of the sliver length). A micro edge's
+direction cannot be measured, so Clean wire handles it separately from the sliver rule: it is oriented by which of its
+ends meets the neighbouring edge and takes its tangents from the edges either side; it joins the run before it when the
+edges either side of it line up (a "corner" read at either end of it is noise); and inside a longer run it is not
+sampled at all -- it only moves that run's end to where the micro edge ends, so the curve still meets the next run.
+Before this, a 3.4 micron edge could be kept as a run of its own and the fitter was handed an end tangent pointing
+backwards (BAD_GEOMETRY), or the break at it left a piece the driven offset could not frame.
+
 ## 1.5 Sampling where the curve bends
 
 ![Adaptive sampling](img/fig02_adaptive_sampling.png)
@@ -198,6 +206,12 @@ the host is a true arc. Mapped onto a near-circle *spline* host it stays a splin
 arc with kinked ends; onto a sketch arc R500 it is an arc R500 (M2). Some edges therefore change type in models built
 before that date.
 
+**Published keys read in X terms** (since 2026-09-28): chains run toward +X, so `spanStart` / `spanEnd` are the low-X
+and high-X ends of the from-chain (measured from its reference point), `toStart` / `toEnd` are where those ends land on
+the to-chain (arc length from the to-chain's low-X end, its high-X end when flipped), and `startVertex` is the wire end
+at the to-chain's start (low-X, or high-X with Flip to-chain), whichever end is the tip. The overrun errors say the
+same ("START (low-X end; high-X end when flipped)").
+
 **Messages.** Error "chains point in opposite directions ... Tick Flip to-chain"; error "from-edges run X mm past the
 start / end of the to-edges"; info "the from/to-edges do not span the zero point's X; closest point used"; info
 "Merged result is a spline; arc radius not preserved".
@@ -254,8 +268,13 @@ derivative** / **Keep end derivative** (on), **Approximation** (degree, toleranc
 (lines stay lines, arcs stay arcs). On RD 20FOU 28 a 1.7 um outline edge made SW_Fill fail; with it merged the
 fill works.
 
+**Arc runs.** A stretch detected as an arc is drawn as a sketch arc; if it cannot be (near-straight points, or the
+sketch comes back with no edges) it is fitted like freeform instead of being dropped or failing with "at least one
+edge is required".
+
 **Parameters.** **Profile from** (Edges / Part), **Name**; *Edges:* **Edges to project**; *Part:* **Part or surface
-to outline**, **Return** (Top / Bottom / Middle / Periphery / All profiles / Full), **Merge edges shorter than**;
+to outline**, **Return** (Top / Bottom / Middle / Periphery / All profiles / Top and bottom / Full; "Top and bottom" is All profiles
+without the middle, which is never built -- for a part whose middle cannot be rebuilt), **Merge edges shorter than**;
 **Project onto** (a planar face); **Prevailing direction** + flip (not for Periphery; default: the chord for
 Edges, the longest in-plane extent for Part); **Output**; **Approximation** (60 samples, degree 3, 0.01 mm, 24
 control points); **Debug**.

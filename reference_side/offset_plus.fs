@@ -123,7 +123,7 @@ export const offsetPlus = defineFeature(function(context is Context, id is Id, d
             definition.surfaces is Query;
 
             annotation { "Name" : "Offset method", "Default" : OffsetMethod.AUTO, "UIHint" : UIHint.SHOW_LABEL,
-                        "Description" : "Direct: the built-in surface offset. Thicken: thicken each surface by the distance and keep the cap on the offset side. Auto: Direct, and where it fails, Thicken (a warning names the surfaces). When both fail the faces that cause it are shown in red." }
+                        "Description" : "Direct: the built-in surface offset. Thicken: thicken each surface by the distance and keep the cap on the offset side. Auto: Direct, and where it fails, Thicken (an info note names the surfaces; the feature stays clean). When both fail the faces that cause it are shown in red." }
             definition.offsetMethod is OffsetMethod;
         }
         else
@@ -287,7 +287,7 @@ function offsetSurfaces(context is Context, id is Id, definition is map, probe)
     }
     if (size(thickened) > 0)
     {
-        reportFeatureWarning(context, id, "The direct offset failed on surface " ~ join(mapArray(thickened, function(n) { return "" ~ n; }), ", ") ~
+        reportFeatureInfo(context, id, "The direct offset failed on surface " ~ join(mapArray(thickened, function(n) { return "" ~ n; }), ", ") ~
             "; it was built by thickening and keeping the offset-side cap. Check the result where the surface folds.");
     }
 

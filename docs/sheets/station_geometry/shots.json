@@ -1,0 +1,13 @@
+{
+    "ws":  "fea83d30106dba0a4e066761",
+    "doc":  "73271cfcd708b3f5e3fc315c",
+    "shots":  [
+                  {
+                      "elem":  "bb2cddb24faf53d9d043c38e",
+                      "dialog":  "docs/sheets/station_geometry/shots/dialog.png",
+                      "featurePrefix":  "4101 stations (test)",
+                      "graphics":  "docs/sheets/station_geometry/shots/graphics.png",
+                      "wait":  25
+                  }
+              ]
+}

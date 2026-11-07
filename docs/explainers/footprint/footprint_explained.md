@@ -1,8 +1,10 @@
 # Footprint, explained
 
 *Integrate footprint, Analyze footprint, Scale Footprint, Arc fit and Generate Footprint Points (Onshape document
-**footprint**). Written 2026-09-26 against the code as it stands that day. Draft for review. Every number below
-comes from the "Footprint tests" studio. Those fixtures are exact analytic sidecuts; all 25 cases pass today.*
+**footprint**). Written 2026-09-26; refreshed 2026-11-06 for the changes of 2026-09-28 to 10-06 (new radius
+definitions in Analyze footprint, optional FCP picks in Scale Footprint and Generate Footprint Points). Draft for
+review. Every number below comes from the "Footprint tests" studio (exact analytic sidecuts; 25/25 on 2026-09-26).
+The radius figures in 1.3 and 2.2 were measured under the OLD radius definitions and have not been re-measured.*
 
 1. **The idea**: what a footprint is and the words used for it.
 2. **The features**: design one, measure one, scale one, make it manufacturable, export it.
@@ -72,14 +74,18 @@ wire. Integrate footprint, Scale Footprint and Arc fit all do this. Transitions 
 
 Two numbers summarise a sidecut's radius, and they answer different questions:
 
-- **Average radius**: the mean of R = 1 / curvature at 200 evenly spaced X stations between the two inflection
-  points. It does not depend on how the outline is split into edges (test AF3 splits AF2's chain into 13 edges and
-  gets the same 16.97 m).
-- **Natural radius**: the radius of one circle through three points. "Inflection" uses inflection, waist,
-  inflection; "widest" uses widest, waist, widest. It reflects the width change, weighted toward the waist.
+- **Average radius**: the arc-length weighted mean of R = 1 / curvature between the two inflection points
+  (integral of R ds over integral of ds, computed by adaptive quadrature, not by sampling). Parts flatter than a
+  radius of 100 m (`SIDECUT_FLAT_CURVATURE` = 0.01 / m) are left out of both integrals. It does not depend on how the
+  outline is split into edges, and exact arcs use their true 1 / R. (Definitions follow beamBuilder, decision
+  2026-09-28.)
+- **Natural radius**: the radius of the arc through two stations that is **tangent to the waist line** (not a circle
+  through three points). "Inflection" uses the two inflection points; "widest" uses the two widest points. It is 0
+  (invalid) when a station is not wider than the waist or the solve degenerates.
 
-On FX2 (an R14 m core with R25 m either side), the average is 16.97 m and the natural (inflection) radius is 14.47 m.
-A gap like that is expected, not an error.
+Old-definition figures (200-station mean, three-point circle) for FX2 (an R14 m core with R25 m either side):
+average 16.97 m, natural (inflection) 14.47 m. A gap between the two numbers is expected, not an error. Re-measure
+before quoting them under the current definitions.
 
 ---
 
@@ -162,13 +168,15 @@ in the dialog:
 - An info line every regeneration: "Tip-waist-tail ... mm | average radius ... | natural radius (inflection) ...".
 - Optional **Sketch key points**: construction lines for the waist, both widest points and both inflections.
 - Variables for Extract variables: `tipWidth`, `waistWidth`, `tailWidth`, `waistX`, `tipLength`, `tailLength`,
-  `taperAngle`, `sidecutRadius` (the average radius).
+  `taperAngle`, `sidecutRadius` (the average radius), `naturalRadiusWidest`, `naturalRadiusInflection` (each 0 when
+  there is no valid arc).
 
 **Examples.**
 
-- AF1 (S14): inflections at x = +-550, average radius 14.00 m, natural (inflection) 14.00 m, natural (widest)
-  17.00 m, taper 0.
-- AF2 / AF3 (FX2, 7 or 13 edges): average 16.97 m, natural (inflection) 14.47 m.
+- AF1 (S14): inflections at x = +-550, taper 0. Radii as measured 2026-09-26 (old definitions): average 14.00 m,
+  natural (inflection) 14.00 m, natural (widest) 17.00 m.
+- AF2 / AF3 (FX2, 7 or 13 edges): same result for both splits. Old-definition figures: average 16.97 m, natural
+  (inflection) 14.47 m.
 - AF6: asymmetric flanks, so the tail is wider and the taper is -0.0662 deg.
 - AF4 has the tip at +X and AF5 is not centred; both are measured correctly.
 - AF7: raw sketch arcs (always counter-clockwise) are measured correctly.
@@ -198,7 +206,8 @@ exactly: its control points move and its knots are kept (SF5: within 0.001 mm).
 | Parameter | Meaning |
 |---|---|
 | **Reference footprint edges** | All of the reference, +Y and -Y. |
-| **Reference RSL line / New RSL line** | The FCP is the lower-X end of each. |
+| **Reference RSL line / New RSL line** | The FCP is the lower-X end of each, unless Reference FCP is picked. |
+| **Reference FCP (optional)** | A vertex or mate connector. The RSL end nearest it is the FCP on both RSL lines, so the tip may point either way along X (internally the footprint is mirrored in X, scaled, and mirrored back). |
 | **Symmetry mode** | Symmetric (mirror +Y to -Y) / Asymmetric (each side on its own, -Y settings repeated). |
 | **Scale mode**, **Pin location** | As above. |
 | **Spline options** | Degree, Strict arcs, tolerance, maximum control points. |
@@ -273,7 +282,8 @@ region's origin (tip -> FCP, RSL -> MRS, tail -> ACP).
 |---|---|
 | **Geometry Selection Type** | FACE (the footprint face; its edges are collected) / EDGES (edges or wires). |
 | **RSL Line** | FCP to ACP. |
-| **Tip toward +X** | Off: the tip is the lower-X end. On: the higher-X end. |
+| **FCP (optional)** | A vertex or mate connector. When picked, the RSL end nearest it is the FCP and the tip is on its side; Tip toward +X is then ignored. |
+| **Tip toward +X** | Used only when no FCP is picked. Off: the tip is the lower-X end. On: the higher-X end. |
 | **Include Points** | Not used. |
 | **Table Formatting** | Units (mm / inch / cm), decimal places (labelled "sig figs"), units in cells or not, number of tip / RSL / tail points (23 / 80 / 23) and a flip for each. |
 | **Additional options** | Retain the tip / RSL / tail curves, retain the FCP / ACP planes, create a sketch from the points. |
@@ -281,6 +291,8 @@ region's origin (tip -> FCP, RSL -> MRS, tail -> ACP).
 **Outputs.**
 
 - A "Footprint Points" table.
+- Each point list is sorted by world X ascending (not tip-to-FCP or ACP-to-tail order), with x relative to the
+  region origin; each Flip option reverses its list.
 - Stored point lists that the table reads: `tipEdgePoints`, `rslEdgePoints`, `tailEdgePoints`, `tableFormat`. These
   are attributes on the origin; keep their names and format stable.
 - Keys `tipCurve`, `rslCurve`, `tailCurve` when the curves are kept.

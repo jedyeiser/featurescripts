@@ -3,6 +3,8 @@
 *Mutual Trim+, Split+, Offset+, Thicken+ and Orient to reference (Onshape document **Reference_Side_Features**). Written 2026-09-25
 against the code as it stands that day. Draft for review.*
 
+*Update 2026-11-06 (surgical additions, existing prose untouched): section 2.4e Move face+, Move face+ / Enclose+ / Join profile surfaces in the 2.5 outputs table, Offset+ offset method / output name / signed distance (2.3), Mutual Trim+ perimeter edges (2.1), files table. Where an older paragraph is contradicted, a bold Update 2026-11-06 note follows it.*
+
 Three passes, each building on the one before:
 
 1. **The idea** -- one rule shared by all four features, with pictures. No code.
@@ -27,7 +29,7 @@ Figures are in `img/`, made by `img/src/figs.py` (`python docs/explainers/refere
   - [2.2 Split+](#22-split)
   - [2.3 Offset+](#23-offset)
   - [2.4 Thicken+](#24-thicken)
-  - [2.4b Enclose+](#24b-enclose), [2.4c Join profile surfaces](#24c-join-profile-surfaces), [2.4d Referenced part](#24d-referenced-part)
+  - [2.4b Enclose+](#24b-enclose), [2.4c Join profile surfaces](#24c-join-profile-surfaces), [2.4d Referenced part](#24d-referenced-part), [2.4e Move face+](#24e-move-face)
   - [2.5 Outputs for Extract variables](#25-outputs-for-extract-variables)
   - [2.6 Orient to reference](#26-orient-to-reference)
 - [Part 3: The code](#part-3-the-code)
@@ -162,6 +164,8 @@ side of the splitter got that case right; deciding by distance did not.
 | Info "boolean union no-op" | The surfaces do not intersect; nothing was trimmed. |
 | Error "The keep side reference cannot be placed on either side of the first/second surface" | The pieces did not straddle the other surface, and the reference is equally far from both. Pick a closer reference inside the region to keep. |
 
+**Update 2026-11-06.** `trimEdges` no longer includes the pieces of a sheet's outer boundary that the extended imprint split (a crossing X used to publish the trim edge plus four perimeter halves); only the trim curve is published.
+
 **Example (test M1).** A horizontal sheet (z 0) and a vertical sheet (x 7800), reference in the upper-right
 quadrant: the result is an L of 10 000 mm2 with centroid 12.5 mm into the kept quadrant; each surface keeps a
 5000 mm2 face.
@@ -269,6 +273,12 @@ The result is fitted per source edge, with both end tangents pinned to the true 
 - **Offset toward reference** -- on: toward; off: away. Without a reference: a plain flip.
 - **Fit** group (Curve): **Samples per edge** (24), **Max station spacing** (5 mm; bounds the error between
   stations), **Fit tolerance** (0.001 mm).
+
+**Added 2026-11-06 (Offset+).**
+
+- **Signed distance.** Distance may now be negative (the other way) or 0 (an unmoved copy: a surface copy, or the chain's own edges as a wire). It was non-negative before.
+- **Offset method** (Surface mode): *Auto* (default), *Direct* or *Thicken*. Direct is the built-in surface offset. Thicken thickens each surface by the distance on the offset side only and keeps the cap on that side as a sheet. Auto tries Direct and falls back to Thicken per surface; the fallback is reported as an info notice naming the surfaces (the feature stays clean). When every method fails, the error names the cause and the faces that cause it are shown in red (slivers under 0.1 mm2, faces concave on the offset side with radius under the distance, faces that fail alone).
+- **Output name** -- optional; names the offset bodies.
 
 **Messages.**
 
@@ -411,6 +421,34 @@ plane cap offset 5 and mirror, point on the mirror plane), P5 (constrained with 
 closed volume cut it), P7 (constrained half, caps closing the ends, mirror, point on the plane), P8 (point outside
 the periphery: error).
 
+## 2.4e Move face+
+
+![Move face+](../../sheets/move_face_plus/img/toward_reference.png)
+
+*Added 2026-11-06 (source `reference_side/move_face_plus.fs`; feature sheet `docs/sheets/move_face_plus/`).* Onshape's Move face > Offset, with the direction named by a **reference** instead of by each face's normal. It runs the built-in `opOffsetFace`. For each body that owns selected faces the side is read **once**: the signed distance (1.2) from the reference to that body's selected faces, at the closest point. So every selected face of one body moves the same way, and surfaces of opposite orientation all move toward the reference. The faces are then offset in at most two operations: those moving along their normal and those moving against it.
+
+A solid face's normal points out of the material, so with no reference the box is the plain grow (on) / shrink (off) of the native feature. A reference that is selected but cannot be read (for example inside a Case pattern, clicked rather than passed in) is an error, never "no reference".
+
+**Parameters.**
+
+- **Faces to move** -- faces only (no sketch or construction objects), any mix of bodies.
+- **Distance** -- signed. Positive: toward the reference (without one: along the normals). Negative: the other way. 0: nothing moves (an info notice; the outputs are still published, so a variable can drive the distance to 0).
+- **Side reference** -- optional, one pick: body, face, edge, vertex or mate connector. Best a local mate connector or vertex (1.3).
+- **Move toward reference** (the flip arrow, default on) -- on: toward; off: away. Without a reference: along (on) or against (off) the normals.
+- **Reapply fillets** (default off) -- defillet the moved faces before the offset and fillet them again after (the built-in option).
+- **Debug > Print details** -- per body, how many faces went along or against their normal.
+
+**Messages.**
+
+| Message | Meaning |
+|---|---|
+| Info "Distance is zero: nothing was moved." | Not a failure. |
+| Error "The side reference lies on the faces of body N (or no side of them can be read there) ..." | Move the reference off the faces, to one side. |
+| Error "The reference is selected but cannot be read here. Inside a Case pattern ..." | Pass the reference in through a Define case input or shared reference. |
+
+**Outputs:** `output` (the moved faces, followed through the offset including faces the kernel had to split), `boundaryEdges` (the edges bounding them), plus `inputs` and the standard keys.
+
+**Limits.** One side decision per **body**, not per face: a body whose selected faces lie on both sides of the reference moves them all the same way. Whether the kernel accepts an offset (sharp corners, neighbouring faces) is the built-in's call; its error is passed through. No live test group for Move face+ is listed in section 3.3 (not verified here).
 ## 2.5 Outputs for Extract variables
 
 Every key holds the entities **as the feature leaves them**. A later edit that replaces them -- a loft merged onto a
@@ -427,8 +465,13 @@ result bodies) and `inputs`; the rest:
 | Split+ | `inside`, `outside`, `start`, `end` and each `<region>Edges`; `startCut`, `endCut`; `splitEdges` (one edge per cut, on a kept piece); `splitFaces`; `pieceCount` |
 | Offset+ | `startVertex`, `endVertex`, `startEdge`, `endEdge` (start = the end at the source's start), `cornerArcs`, `boundaryEdges` (surfaces). Corner counts are in the notice only. |
 | Thicken+ | `towardFaces`, `awayFaces`, `sideFaces` (each tracked through the boolean) |
+| Enclose+ | `surfaceFaces`, `capFaces`, `seamEdges` (edges left on the mirror plane) |
+| Join profile surfaces | `insideSurface`, `startOutside`, `endOutside`, `startLoft`, `endLoft` (faces); `startInsideEdge`, `startOutsideEdge`, `endInsideEdge`, `endOutsideEdge` (the lofts' joint edges); `boundaryEdges` |
+| Move face+ | `boundaryEdges` (`output` = the moved faces) |
 | Referenced part | `profileFaces`, `oppositeFaces` (Thickened), `topFaces`, `bottomFaces` (Constrained), `sideFaces`, `cap1Faces`, `cap2Faces` |
 | Orient to reference | `flipped` (the surfaces it flipped), `unchanged` (already facing the right way), `flippedCount`; `output` = every selected surface |
+
+Since 2026-09-27 the published queries are *settled*: each key is resolved to the entities present when the feature finishes (`settledOutputs` in `reference_side_utils.fs`), so whether a name follows them through later edits is the consumer's Track choice, as stated above.
 
 Every key is present on every regeneration, empty when it does not apply, so an Extract variables entry never
 breaks because a key disappeared. Split+ publishes **one** edge per cut: keeping both sides leaves two coincident
@@ -484,8 +527,9 @@ reference on its axis: every normal ends up pointing at the axis (R3). A solid's
 | `split_plus.fs` | `opSplitPart` per tool with `keepTypeFor` (KEEP_FRONT keeps the side the tool normal points to); Face mode via `opSplitFace`; `classifyRegions`, `oneEdgePerCut`, `cutsPerTool`. |
 | `offset_plus.fs` | Surface: `opExtractSurface` with a per-body sign. Curve: `pathStations` -> `directionField` (transport / surface / plane) -> corners (`cornerArcs`, `polylineCrossing`) -> `fitPiece` -> `opExtractWires`. |
 | `orient_to_reference.fs` | Per-body `sideSign` against the reference -> `opFlipOrientation` on the bodies facing the wrong way; `showNormals` (debug arrows on a 3 x 3 face grid). |
-| `thicken_plus.fs` | Per-body `sideSign` -> `opThicken` thickness1/2; `checkCurvature` (9 x 9 grid of `evFaceCurvatures`); `classifyFaces` against a copy taken before the thicken; std `processNewBodyIfNeeded`. |
+| `thicken_plus.fs` | **Update 2026-11-06: the copy / `classifyFaces` step named below is gone;** the toward / away faces are now the START / END caps of `opThicken` (`qCapEntity`) chosen by the surface's side, and the sides are the remaining faces. Per-body `sideSign` -> `opThicken` thickness1/2; `checkCurvature` (9 x 9 grid of `evFaceCurvatures`); `classifyFaces` against a copy taken before the thicken; std `processNewBodyIfNeeded`. |
 
+| `enclose_plus.fs`, `join_profile_surfaces.fs`, `move_face_plus.fs` | Enclose+ (2.4b), Join profile surfaces (2.4c; calls Offset+ and Split+), Move face+ (2.4e; per-body `sideSign` then `opOffsetFace` along / against). |
 | `referenced_part.fs` | Composite: Offset+ for every surface, Thicken+ (Thickened) or `opEnclose` + `qContainsPoint` (Constrained), Split+ for the periphery and cap cuts, `mirrorAndUnite`, `sortFaces` (faces by the boundary they lie on). Imports offset_plus, split_plus and thicken_plus by microversion. |
 
 All import `reference_side_utils` and Variable_tools **V1** `extract_outputs`.

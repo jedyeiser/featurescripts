@@ -1,0 +1,13 @@
+{
+    "ws":  "fea83d30106dba0a4e066761",
+    "doc":  "73271cfcd708b3f5e3fc315c",
+    "shots":  [
+                  {
+                      "elem":  "cc7309dee4072090c78a2663",
+                      "dialog":  "docs/sheets/auto_layout_plus/shots/dialog.png",
+                      "featurePrefix":  "T7 nesting",
+                      "graphics":  "docs/sheets/auto_layout_plus/shots/graphics.png",
+                      "wait":  25
+                  }
+              ]
+}
