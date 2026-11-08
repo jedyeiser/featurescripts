@@ -1342,11 +1342,21 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
                 {
                     matches = append(matches, { "topology1" : a.edge, "topology2" : b.edge, "matchType" : TopologyMatchType.COINCIDENT });
                 }
+                else if (verbose && step < 40)
+                {
+                    println("  no match for face " ~ key ~ " against " ~ other ~ ": nearest edge gap " ~ roundToPrecision(min(a.distance, 1 * meter) / millimeter, 5) ~ " / "
+                        ~ roundToPrecision(min(b.distance, 1 * meter) / millimeter, 5) ~ " mm");
+                }
             }
             if (!touching)
                 continue;
             step += 1;
             const joinId = id + ("join" ~ step);
+            if (verbose)
+            {
+                println("JOIN step " ~ step ~ ": face " ~ key ~ ", main body " ~ size(evaluateQuery(context, current[seed])) ~ " sheet(s), this face "
+                    ~ size(evaluateQuery(context, current[key])) ~ " sheet(s), " ~ size(matches) ~ " edge matches");
+            }
             try
             {
                 opBoolean(context, joinId, { "tools" : qUnion([current[seed], current[key]]), "operationType" : BooleanOperationType.UNION,
