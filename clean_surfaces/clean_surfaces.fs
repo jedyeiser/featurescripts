@@ -59,7 +59,9 @@ export enum CleanColorBy
     annotation { "Name" : "Offset test" }
     OFFSET,
     annotation { "Name" : "Tight curvature" }
-    RADIUS
+    RADIUS,
+    annotation { "Name" : "No face colour" }
+    NONE
 }
 
 /** What the feature does. Quick = resurface the faces that refuse an offset; Thorough (not built yet) also joins broken loops, splits creased faces and sews with explicit matches. */
@@ -171,6 +173,9 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
         {
             annotation { "Name" : "Colour by", "UIHint" : UIHint.SHOW_LABEL }
             definition.colorBy is CleanColorBy;
+
+            annotation { "Name" : "Mark short and tolerant edges", "Default" : true, "Description" : "Draw thin curves on the copy: green = short edge that lines up (mergeable), red = short edge at a corner, cyan = tolerant edge (tolerance above 0.5 um)." }
+            definition.markEdges is boolean;
         }
 
         if (!(definition.mode == CleanMode.DIAGNOSE) || definition.colorBy == CleanColorBy.OFFSET || definition.colorBy == CleanColorBy.RADIUS)
@@ -366,7 +371,7 @@ function diagnose(context is Context, id is Id, definition is map)
                 groups = append(groups, { "faces" : byLevel[lv], "color" : LEVEL_COLORS[lv] });
             }
         }
-        else
+        else if (definition.colorBy == CleanColorBy.OFFSET || definition.colorBy == CleanColorBy.RADIUS)
         {
             const signedDistance = (definition.offsetFlip ? -1 : 1) * definition.offsetDistance;
             var probe = [[], [], [], []];
@@ -394,11 +399,14 @@ function diagnose(context is Context, id is Id, definition is map)
                 groups = append(groups, { "faces" : probe[p], "color" : palette[p] });
             }
         }
-        for (var g in groups)
+        if (definition.colorBy != CleanColorBy.NONE)
         {
-            if (size(g.faces) > 0)
+            for (var g in groups)
             {
-                setProperty(context, { "entities" : qUnion(g.faces), "propertyType" : PropertyType.APPEARANCE, "value" : g.color });
+                if (size(g.faces) > 0)
+                {
+                    setProperty(context, { "entities" : qUnion(g.faces), "propertyType" : PropertyType.APPEARANCE, "value" : g.color });
+                }
             }
         }
 
@@ -479,7 +487,13 @@ function diagnose(context is Context, id is Id, definition is map)
         }
         if (size(tolerantEdges) > 0)
         {
-            addDebugEntities(context, qUnion(tolerantEdges), DebugColor.MAGENTA);
+            addDebugEntities(context, qUnion(tolerantEdges), DebugColor.CYAN);
+        }
+        if (definition.markEdges == true)
+        {
+            markEdges(context, id + "markA", mergeable, color(0.20, 0.75, 0.30), "Short edges that line up");
+            markEdges(context, id + "markB", corners, color(0.85, 0.10, 0.10), "Short edges at corners");
+            markEdges(context, id + "markC", tolerantEdges, color(0.00, 0.75, 0.85), "Tolerant edges");
         }
 
         const worstFaces = counts[3] + counts[4];
@@ -504,6 +518,7 @@ function diagnose(context is Context, id is Id, definition is map)
             {
                 println(edgeLines[i]);
             }
+            println("TOLERANT edges " ~ size(tolerantEdges) ~ ", largest " ~ roundToPrecision(maxTolerantEdge * 1e6, 3) ~ " um");
             println("SHORTEDGES " ~ size(shortEdges) ~ " mergeable " ~ size(mergeable) ~ " corner " ~ size(corners));
             if (definition.colorBy == CleanColorBy.OFFSET)
             {
@@ -573,7 +588,7 @@ function diagnose(context is Context, id is Id, definition is map)
         }
 
         reportFeatureInfo(context, id, (needsCleanup ? "Needs cleanup: " : "Looks clean: ") ~ worstFaces ~ " critical+ faces (" ~ issues ~ "), "
-                ~ size(mergeable) ~ " mergeable short edges, " ~ size(tolerantEdges) ~ " tolerant edges (magenta; tolerance above 0.5 um, largest "
+                ~ size(mergeable) ~ " mergeable short edges, " ~ size(tolerantEdges) ~ " tolerant edges (cyan; tolerance above 0.5 um, largest "
                 ~ roundToPrecision(maxTolerantEdge * 1e6, 2) ~ " um)"
                 ~ (definition.colorBy == CleanColorBy.OFFSET ? ", offset test " ~ offsetFailed ~ " of " ~ offsetTested ~ " faces refuse" : "")
                 ~ ". " ~ size(shortEdges) ~ " short edges (" ~ size(mergeable) ~ " line up within " ~ roundToPrecision(tangentDeg, 2)
@@ -1470,4 +1485,17 @@ function trialSwap(context is Context, id is Id, job is map, cur is Query, defin
     const tolAfterAll = maxTolerance(context, qBodyType(qCreatedBy(trialId + "mini", EntityType.BODY), BodyType.SHEET));
     deleteBodies(context, trialId + "cleanup", qCreatedBy(trialId + "mini", EntityType.BODY));
     return { "ok" : reason == "", "reason" : reason, "tolBefore" : tolBefore, "tolAfter" : tolAfterAll };
+}
+
+/** Draw a list of edges as thin curves (wire bodies of the copy's edges) in one colour, named so they can be picked in the Parts list. */
+function markEdges(context is Context, id is Id, edges is array, shade is Color, label is string)
+{
+    if (size(edges) == 0)
+    {
+        return;
+    }
+    opExtractWires(context, id, { "edges" : qUnion(edges) });
+    const wires = qCreatedBy(id, EntityType.BODY);
+    setProperty(context, { "entities" : wires, "propertyType" : PropertyType.APPEARANCE, "value" : shade });
+    setProperty(context, { "entities" : wires, "propertyType" : PropertyType.NAME, "value" : label });
 }
