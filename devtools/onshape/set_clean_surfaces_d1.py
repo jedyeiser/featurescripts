@@ -1,7 +1,7 @@
 """Set D1's Faces to keep to the pinch-fillet face (area 155.263 mm2, user 2026-11-06) by a point-on-face query."""
 import json, re, os
 from sync.core.client import OnshapeClient
-from devtools.onshape.fsapi import write_feature, q, num, en, b
+from devtools.onshape.fsapi import write_feature, q, num, en, b, s
 from devtools.onshape.fseval import run
 c = OnshapeClient()
 DOC = json.load(open("clean_surfaces/.document.json"))
@@ -43,10 +43,13 @@ f = {"btType": "BTMFeature-134", "featureType": "cleanSurfaces", "name": "D1 ski
      "parameters": [q("surfaces", "qBodyType(qEverything(EntityType.BODY), BodyType.SHEET)"),
                     q("cleanFaces"), q("keepFaces", "qContainsPoint(qEverything(EntityType.FACE), vector(%s, %s, %s) * millimeter)" % (x, y, z)),
                     num("sliverWidth", "0.1 mm"), num("shortEdge", "0.01 mm"), num("maxTangent", "0.5 deg"),
+                    en("mode", "CleanMode", os.environ.get("CS_CLEAN", "DIAGNOSE"), "e%s::m%s" % (TAB["id"], TAB["microversionId"])),
+                    num("maxChange", os.environ.get("CS_MAXCHANGE", "0.05") + " mm"), b("useCache", os.environ.get("CS_USECACHE", "0") == "1"), q("cachedFaces"), s("cacheKey", ""), s("cacheStatus", "Not resolved yet."),
                     en("colorBy", "CleanColorBy", os.environ.get("CS_MODE", "SEVERITY"), "e%s::m%s" % (TAB["id"], TAB["microversionId"])),
                     num("offsetDistance", os.environ.get("CS_DIST", "0.5") + " mm"), b("offsetFlip", os.environ.get("CS_FLIP", "0") == "1"), b("debugOutput", os.environ.get("CS_DEBUG", "1") == "1")]}
 resp = write_feature(BASE, f, {}, client=c)
 print(resp.get("featureState", {}).get("featureStatus"))
+
 
 
 

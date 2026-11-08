@@ -62,6 +62,33 @@ export enum CleanColorBy
     RADIUS
 }
 
+/** What the feature does. Quick = resurface the faces that refuse an offset; Thorough (not built yet) also joins broken loops, splits creased faces and sews with explicit matches. */
+export enum CleanMode
+{
+    annotation { "Name" : "Diagnose" }
+    DIAGNOSE,
+    annotation { "Name" : "Clean: quick" }
+    QUICK,
+    annotation { "Name" : "Clean: thorough" }
+    THOROUGH
+}
+
+/** Max change: 0.001 mm min, 0.05 mm default, 10 mm max. No resurfaced face may stray further than this from the original. */
+export const MaxChangeBounds =
+{
+    (meter)      : [1e-6, 5e-5, 0.01],
+    (centimeter) : 0.005,
+    (millimeter) : 0.05,
+    (inch)       : 0.002,
+    (foot)       : 0.00016,
+    (yard)       : 0.00005
+} as LengthBoundSpec;
+
+/** Fit tolerance (plain number, metres) of the rebuilt patches: tight so that a patch edge lands inside the 1 micron sewing tolerance. */
+const PATCH_TOLERANCE = 1e-7;
+/** Offset distance used to prove that offsets can run at all (the editing-logic self check). */
+const SELF_CHECK_OFFSET = 1e-5 * meter;
+
 /** Offset test distance: 0.001 mm min, 0.5 mm default, 50 mm max. */
 export const OffsetTestBounds =
 {
@@ -113,10 +140,13 @@ const PRINT_ROWS = 25;
 /** A face of the copy must match its source face in area to this fraction (the copy is mapped to the source by face order). */
 const COPY_AREA_MATCH = 1e-6;
 
-annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Clean surfaces" }
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Clean surfaces", "Editing Logic Function" : "cleanSurfacesEditLogic" }
 export const cleanSurfaces = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
+        annotation { "Name" : "Mode", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE] }
+        definition.mode is CleanMode;
+
         annotation { "Name" : "Surfaces", "Filter" : EntityType.BODY && BodyType.SHEET && SketchObject.NO && ConstructionObject.NO }
         definition.surfaces is Query;
 
@@ -135,10 +165,13 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
         annotation { "Name" : "Max tangent change" }
         isAngle(definition.maxTangent, MaxTangentBounds);
 
-        annotation { "Name" : "Colour by", "UIHint" : UIHint.SHOW_LABEL }
-        definition.colorBy is CleanColorBy;
+        if (definition.mode == CleanMode.DIAGNOSE)
+        {
+            annotation { "Name" : "Colour by", "UIHint" : UIHint.SHOW_LABEL }
+            definition.colorBy is CleanColorBy;
+        }
 
-        if (definition.colorBy == CleanColorBy.OFFSET || definition.colorBy == CleanColorBy.RADIUS)
+        if (!(definition.mode == CleanMode.DIAGNOSE) || definition.colorBy == CleanColorBy.OFFSET || definition.colorBy == CleanColorBy.RADIUS)
         {
             annotation { "Name" : "Offset distance" }
             isLength(definition.offsetDistance, OffsetTestBounds);
@@ -147,10 +180,47 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
             definition.offsetFlip is boolean;
         }
 
+        if (!(definition.mode == CleanMode.DIAGNOSE))
+        {
+            annotation { "Name" : "Max change" }
+            isLength(definition.maxChange, MaxChangeBounds);
+        }
+
+        annotation { "Name" : "Use cached analysis" }
+        definition.useCache is boolean;
+
+        if (definition.useCache)
+        {
+            annotation { "Name" : "Resolve", "Description" : "Run the offset analysis now and store which faces refuse the offset. Needed again after the surfaces, the distance, the side or the face selections change." }
+            isButton(definition.resolve);
+
+            annotation { "Name" : "Cached faces", "Filter" : EntityType.FACE, "UIHint" : UIHint.ALWAYS_HIDDEN }
+            definition.cachedFaces is Query;
+
+            annotation { "Name" : "Cache key", "Default" : "", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            definition.cacheKey is string;
+
+            annotation { "Name" : "Cache status", "Default" : "Not resolved yet.", "UIHint" : UIHint.READ_ONLY }
+            definition.cacheStatus is string;
+        }
+
         annotation { "Name" : "Debug output" }
         definition.debugOutput is boolean;
     }
     {
+        if (definition.mode == CleanMode.DIAGNOSE)
+        {
+            diagnose(context, id, definition);
+        }
+        else
+        {
+            resurface(context, id, definition);
+        }
+    });
+
+/** Diagnose: copy the surfaces and colour the copy (severity, offset test or tight curvature). */
+function diagnose(context is Context, id is Id, definition is map)
+{
         const sources = evaluateQuery(context, qBodyType(definition.surfaces, BodyType.SHEET));
         if (size(sources) == 0)
         {
@@ -179,6 +249,7 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
         const cleanSet = copyKeys(context, definition.cleanFaces, srcIndex, srcFaces, faces);
         const keepSet = copyKeys(context, definition.keepFaces, srcIndex, srcFaces, faces);
         const hasScope = size(evaluateQuery(context, definition.cleanFaces)) > 0;
+        const cachedFails = cachedFailing(context, definition, srcIndex, srcFaces, faces);
 
         const widthCrit = definition.sliverWidth / millimeter;
         const edgeCrit = definition.shortEdge / millimeter;
@@ -283,7 +354,7 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
             {
                 if (definition.colorBy == CleanColorBy.OFFSET)
                 {
-                    const fails = offsetRefused(context, id + ("off" ~ i), rows[i].face, signedDistance);
+                    const fails = cachedFails != undefined ? cachedFails[transientQueriesToStrings(rows[i].face)] != undefined : offsetRefused(context, id + ("off" ~ i), rows[i].face, signedDistance);
                     rows[i].offsetFail = fails;
                     probe[fails ? 1 : 0] = append(probe[fails ? 1 : 0], rows[i].face);
                     offsetTested += 1;
@@ -485,7 +556,7 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
                 ~ " | critical " ~ counts[3] ~ " | degenerate " ~ counts[4] ~ " | keep " ~ counts[LEVEL_KEEP] ~ " | outside " ~ counts[LEVEL_OUTSIDE]
                 ~ ". Colours: grey ok, yellow watch, orange bad, red critical, violet degenerate, blue keep, dark grey outside the faces to clean."
                 ~ " Original is unchanged; hide it to see the copy.");
-    });
+}
 
 /**
  * Report on one short edge: its middle (mm), the classes of the faces it touches (K keep, O outside, C clean), the number of
@@ -795,4 +866,417 @@ function bandLevel(value is number, critical is number, badFactor is number, wat
         return 1;
     }
     return 0;
+}
+/**
+ * Clean: quick. Resurface every face that refuses the offset: rebuild it as one B-spline patch from its approximated net (clean outer
+ * loop, no micro-edges), prove the patch offsets and stays within Max change, then swap it into the copy of the surface: backup the old face,
+ * void it, sew the patch in; if the patch will not sew, sew the backup back, so a failed face is never left as a hole.
+ * The failures the kernel is expected to give (a loop that does not close, a surface it cannot build, a sew it refuses) are read with
+ * try/catch so they can be reported per face; that is the one place this feature catches errors.
+ */
+function resurface(context is Context, id is Id, definition is map)
+{
+    const sources = evaluateQuery(context, qBodyType(definition.surfaces, BodyType.SHEET));
+    if (size(sources) == 0)
+    {
+        throw regenError("Select at least one surface body.", ["surfaces"]);
+    }
+    opPattern(context, id + "copy", {
+                "entities" : qUnion(sources),
+                "transforms" : [identityTransform()],
+                "instanceNames" : ["Clean_surfaces_result"]
+            });
+    const copyId = id + "copy";
+    const body = qCreatedBy(copyId, EntityType.BODY);
+    const faces = evaluateQuery(context, qOwnedByBody(body, EntityType.FACE));
+    const srcFaces = evaluateQuery(context, qOwnedByBody(qUnion(sources), EntityType.FACE));
+    if (size(srcFaces) != size(faces))
+    {
+        throw regenError("The copy of the surfaces has a different number of faces.", ["surfaces"]);
+    }
+    var srcIndex = {};
+    for (var i = 0; i < size(srcFaces); i += 1)
+    {
+        srcIndex[transientQueriesToStrings(srcFaces[i])] = i;
+    }
+    const cleanSet = copyKeys(context, definition.cleanFaces, srcIndex, srcFaces, faces);
+    const keepSet = copyKeys(context, definition.keepFaces, srcIndex, srcFaces, faces);
+    const hasScope = size(evaluateQuery(context, definition.cleanFaces)) > 0;
+    const signedDistance = (definition.offsetFlip ? -1 : 1) * definition.offsetDistance;
+    const before = bodyStats(context, body);
+    const cachedFails = cachedFailing(context, definition, srcIndex, srcFaces, faces);
+    const stale = definition.useCache == true && cachedFails == undefined;
+
+    // 1. the faces to resurface: those that refuse the offset (tested here, or taken from the cache)
+    var targets = [];
+    var tested = 0;
+    for (var i = 0; i < size(faces); i += 1)
+    {
+        const key = transientQueriesToStrings(faces[i]);
+        if (keepSet[key] != undefined || (hasScope && cleanSet[key] == undefined))
+        {
+            continue;
+        }
+        tested += 1;
+        const refused = cachedFails != undefined ? cachedFails[key] != undefined : offsetRefused(context, id + ("off" ~ i), faces[i], signedDistance);
+        if (refused)
+        {
+            targets = append(targets, faces[i]);
+        }
+    }
+
+    // 2. a patch for each, proved before anything is cut
+    var jobs = [];
+    var skipped = [];
+    for (var t = 0; t < size(targets); t += 1)
+    {
+        const r = buildPatch(context, id, t, targets[t], definition.maxChange, signedDistance);
+        if (r.ok)
+        {
+            jobs = append(jobs, r);
+        }
+        else
+        {
+            skipped = append(skipped, r);
+        }
+    }
+
+    // 3. swap each patch in, one at a time (a single union of all of them is refused by the kernel)
+    var sewnAnchors = [];
+    var keptOriginal = 0;
+    var holes = 0;
+    for (var job in jobs)
+    {
+        const cur = qBodyType(qCreatedBy(copyId, EntityType.BODY), BodyType.SHEET);
+        const found = evaluateQuery(context, qContainsPoint(qOwnedByBody(cur, EntityType.FACE), job.anchor));
+        if (size(found) != 1)
+        {
+            skipped = append(skipped, { "where" : job.where, "anchor" : job.anchor, "reason" : "face not found again" });
+            deleteBodies(context, id + ("gone" ~ job.t), job.patch);
+            continue;
+        }
+        const sewId = id + ("sew" ~ job.t);
+        opExtractSurface(context, sewId + "bak", { "faces" : found[0], "tangentPropagation" : false });
+        const backup = qCreatedBy(sewId + "bak", EntityType.BODY);
+        var voided = false;
+        var reason = "";
+        try
+        {
+            opDeleteFace(context, sewId + "void", { "deleteFaces" : found[0], "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
+            voided = true;
+        }
+        catch (e)
+        {
+            reason = "could not remove the old face: " ~ e.message;
+        }
+        if (!voided)
+        {
+            skipped = append(skipped, { "where" : job.where, "anchor" : job.anchor, "reason" : reason });
+            deleteBodies(context, sewId + "d1", job.patch);
+            deleteBodies(context, sewId + "d2", backup);
+            continue;
+        }
+        var joined = false;
+        try
+        {
+            opBoolean(context, sewId + "join", { "tools" : qUnion([cur, job.patch]), "operationType" : BooleanOperationType.UNION });
+            joined = true;
+        }
+        catch (e)
+        {
+            reason = "patch would not sew: " ~ e.message;
+        }
+        if (joined)
+        {
+            sewnAnchors = append(sewnAnchors, job.anchor);
+            deleteBodies(context, sewId + "d2", backup);
+        }
+        else
+        {
+            var restored = false;
+            try
+            {
+                opBoolean(context, sewId + "back", { "tools" : qUnion([cur, backup]), "operationType" : BooleanOperationType.UNION });
+                restored = true;
+            }
+            catch (e)
+            {
+                reason = reason ~ "; the original face could not be put back";
+            }
+            keptOriginal += restored ? 1 : 0;
+            holes += restored ? 0 : 1;
+            skipped = append(skipped, { "where" : job.where, "anchor" : job.anchor, "reason" : reason ~ (restored ? " (original face kept)" : "") });
+            deleteBodies(context, sewId + "d1", job.patch);
+        }
+    }
+
+    // 4. colour what happened and report
+    const result = qBodyType(qCreatedBy(copyId, EntityType.BODY), BodyType.SHEET);
+    var skippedAnchors = [];
+    var reasons = {};
+    for (var s in skipped)
+    {
+        if (s.anchor != undefined)
+        {
+            skippedAnchors = append(skippedAnchors, s.anchor);
+        }
+        const key = s.reason;
+        reasons[key] = reasons[key] == undefined ? 1 : reasons[key] + 1;
+    }
+    colorFacesAt(context, result, sewnAnchors, color(0.55, 0.85, 0.55));
+    colorFacesAt(context, result, skippedAnchors, color(1.00, 0.50, 0.10));
+    const after = bodyStats(context, result);
+
+    if (definition.debugOutput)
+    {
+        println("CLEAN tested " ~ tested ~ " faces, " ~ size(targets) ~ " refuse the offset (" ~ (cachedFails != undefined ? "cached" : "live") ~ "), patches built " ~ size(jobs)
+                ~ ", swapped in " ~ size(sewnAnchors) ~ ", original kept " ~ keptOriginal ~ ", holes " ~ holes);
+        println("CLEAN faces " ~ before.faces ~ " -> " ~ after.faces ~ ", edges " ~ before.edges ~ " -> " ~ after.edges ~ ", naked " ~ before.naked ~ " -> " ~ after.naked);
+        for (var s in skipped)
+        {
+            println("SKIPPED at " ~ s.where ~ ": " ~ s.reason);
+        }
+        for (var job in jobs)
+        {
+            println("PATCH at " ~ job.where ~ " deviation " ~ roundToPrecision(job.dev / millimeter, 5) ~ " mm");
+        }
+    }
+
+    var text = "Clean (quick): " ~ size(sewnAnchors) ~ " of " ~ size(targets) ~ " faces that refuse an offset of " ~ roundToPrecision(definition.offsetDistance / millimeter, 3)
+        ~ " mm were resurfaced (" ~ (cachedFails != undefined ? "cached analysis" : "live analysis") ~ "). Faces " ~ before.faces ~ " -> " ~ after.faces
+        ~ ", naked edges " ~ before.naked ~ " -> " ~ after.naked ~ ".";
+    if (size(skipped) > 0)
+    {
+        text = text ~ " Left as they were: " ~ size(skipped) ~ " (orange):";
+        for (var r in reasons)
+        {
+            text = text ~ " " ~ r.value ~ " x " ~ r.key ~ ";";
+        }
+    }
+    if (holes > 0)
+    {
+        text = text ~ " WARNING: " ~ holes ~ " face(s) could not be restored and leave a hole.";
+    }
+    if (stale)
+    {
+        text = text ~ " The cached analysis was out of date, so it was analysed live; press Resolve to refresh it.";
+    }
+    if (definition.mode == CleanMode.THOROUGH)
+    {
+        text = text ~ " Thorough mode is not built yet; this is the quick result.";
+    }
+    text = text ~ " Green = resurfaced. Original is unchanged; hide it to see the result.";
+    if (size(skipped) > 0 || holes > 0 || stale)
+    {
+        reportFeatureWarning(context, id, text);
+    }
+    else
+    {
+        reportFeatureInfo(context, id, text);
+    }
+}
+
+/**
+ * Build the replacement patch for one face (named in the id by t): sample points of the old face, approximate its net, make one B-spline
+ * face with the approximated outer loop, then prove it offsets and stays within maxChange. On any failure the patch is deleted and the reason returned.
+ * Returns { ok, reason, where, anchor, patch, dev, t }.
+ */
+function buildPatch(context is Context, id is Id, t is number, face is Query, maxChange is ValueWithUnits, signedDistance is ValueWithUnits) returns map
+{
+    var params = [];
+    for (var i = 1; i < 7; i += 1)
+    {
+        for (var j = 1; j < 7; j += 1)
+        {
+            params = append(params, vector(i / 7, j / 7));
+        }
+    }
+    const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : params, "returnUndefinedOutsideFace" : true });
+    var pts = [];
+    var anchor = undefined;
+    var nearest = 1e9;
+    for (var i = 0; i < size(params); i += 1)
+    {
+        if (planes[i] != undefined)
+        {
+            pts = append(pts, planes[i].origin);
+            const d = norm(params[i] - vector(0.5, 0.5));
+            if (d < nearest)
+            {
+                nearest = d;
+                anchor = planes[i].origin;
+            }
+        }
+    }
+    const bb = evBox3d(context, { "topology" : face });
+    const c = (bb.minCorner + bb.maxCorner) / 2 / millimeter;
+    const where = "(" ~ roundToPrecision(c[0], 1) ~ ", " ~ roundToPrecision(c[1], 1) ~ ", " ~ roundToPrecision(c[2], 1) ~ ")";
+    if (anchor == undefined)
+    {
+        return { "ok" : false, "reason" : "no interior point to rebuild from", "where" : where, "anchor" : undefined, "t" : t };
+    }
+    const patchId = id + ("patch" ~ t);
+    var reason = "";
+    try
+    {
+        const res = evApproximateBSplineSurface(context, { "face" : face, "tolerance" : PATCH_TOLERANCE });
+        var def = { "bSplineSurface" : res.bSplineSurface };
+        if (size(res.boundaryBSplineCurves) > 0)
+        {
+            def.boundaryBSplineCurves = res.boundaryBSplineCurves;
+        }
+        opCreateBSplineSurface(context, patchId, def);
+    }
+    catch (e)
+    {
+        reason = "cannot rebuild: " ~ e.message;
+    }
+    if (reason != "")
+    {
+        return { "ok" : false, "reason" : reason, "where" : where, "anchor" : anchor, "t" : t };
+    }
+    const patch = qCreatedBy(patchId, EntityType.BODY);
+    if (offsetRefused(context, patchId + "off", qOwnedByBody(patch, EntityType.FACE), signedDistance))
+    {
+        deleteBodies(context, patchId + "del", patch);
+        return { "ok" : false, "reason" : "rebuilt face still refuses the offset", "where" : where, "anchor" : anchor, "t" : t };
+    }
+    var worst = 0 * meter;
+    for (var p in pts)
+    {
+        worst = max(worst, evDistance(context, { "side0" : p, "side1" : patch }).distance);
+    }
+    if (worst > maxChange)
+    {
+        deleteBodies(context, patchId + "del", patch);
+        return { "ok" : false, "reason" : "rebuilt face is more than Max change from the original", "where" : where, "anchor" : anchor, "t" : t };
+    }
+    return { "ok" : true, "reason" : "", "where" : where, "anchor" : anchor, "patch" : patch, "dev" : worst, "t" : t };
+}
+
+function deleteBodies(context is Context, id is Id, bodies is Query)
+{
+    opDeleteBodies(context, id, { "entities" : bodies });
+}
+
+/** Colour the faces of `body` that contain the given points. */
+function colorFacesAt(context is Context, body is Query, points is array, shade is Color)
+{
+    var found = [];
+    for (var p in points)
+    {
+        found = concatenateArrays([found, evaluateQuery(context, qContainsPoint(qOwnedByBody(body, EntityType.FACE), p))]);
+    }
+    if (size(found) > 0)
+    {
+        setProperty(context, { "entities" : qUnion(found), "propertyType" : PropertyType.APPEARANCE, "value" : shade });
+    }
+}
+
+/** Face, edge and naked-edge counts of a body. */
+function bodyStats(context is Context, body is Query) returns map
+{
+    const edges = qOwnedByBody(body, EntityType.EDGE);
+    return { "faces" : size(evaluateQuery(context, qOwnedByBody(body, EntityType.FACE))), "edges" : size(evaluateQuery(context, edges)),
+            "naked" : size(evaluateQuery(context, qEdgeTopologyFilter(edges, EdgeTopology.ONE_SIDED))) };
+}
+
+/**
+ * What a stored analysis is for: the offset distance and side and the sizes of the inputs. If any change the stored faces no longer mean
+ * anything and the feature analyses live (the surfaces themselves are not compared, only their face count).
+ */
+function cacheKeyOf(context is Context, definition is map) returns string
+{
+    const faceCount = size(evaluateQuery(context, qOwnedByBody(qBodyType(definition.surfaces, BodyType.SHEET), EntityType.FACE)));
+    return roundToPrecision(definition.offsetDistance / millimeter, 6) ~ "|" ~ (definition.offsetFlip ? "1" : "0") ~ "|" ~ faceCount ~ "|"
+        ~ size(evaluateQuery(context, definition.cleanFaces)) ~ "|" ~ size(evaluateQuery(context, definition.keepFaces));
+}
+
+/** The faces (keyed by the copy face) that the stored analysis says refuse the offset; undefined when the cache is off, not needed here, or out of date. */
+function cachedFailing(context is Context, definition is map, srcIndex is map, srcFaces is array, faces is array)
+{
+    if (definition.useCache != true)
+    {
+        return undefined;
+    }
+    if (definition.mode == CleanMode.DIAGNOSE && definition.colorBy != CleanColorBy.OFFSET)
+    {
+        return undefined;
+    }
+    if (definition.cacheKey != cacheKeyOf(context, definition))
+    {
+        return undefined;
+    }
+    return copyKeys(context, definition.cachedFaces, srcIndex, srcFaces, faces);
+}
+
+/** The faces of a selection as a map of transient-id strings (the faces of the SOURCE surfaces, as the editing logic sees them). */
+function faceKeys(context is Context, selection is Query) returns map
+{
+    var keys = {};
+    for (var f in evaluateQuery(context, selection))
+    {
+        keys[transientQueriesToStrings(f)] = true;
+    }
+    return keys;
+}
+
+/**
+ * Editing logic: the Resolve button runs the offset analysis here, once, and stores the faces that refuse the offset (a persistent face
+ * selection) with a key of what they were computed for. The feature then skips the analysis. Offsets inside editing logic are checked by
+ * a self test first: if they cannot run, the status says so and nothing is stored.
+ */
+export function cleanSurfacesEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
+    isCreating is boolean, specifiedParameters is map, hiddenBodies is Query, clickedButton is string) returns map
+{
+    if (clickedButton != "resolve" || definition.useCache != true)
+    {
+        return definition;
+    }
+    const sources = evaluateQuery(context, qBodyType(definition.surfaces, BodyType.SHEET));
+    if (size(sources) == 0)
+    {
+        definition.cacheStatus = "Select the surfaces, then press Resolve.";
+        return definition;
+    }
+    if (definition.offsetDistance == undefined)
+    {
+        definition.cacheStatus = "Choose a Clean mode or the Offset test view first: they set the offset distance.";
+        return definition;
+    }
+    const faces = evaluateQuery(context, qOwnedByBody(qUnion(sources), EntityType.FACE));
+    var selfRefused = 0;
+    for (var i = 0; i < min(3, size(faces)); i += 1)
+    {
+        selfRefused += offsetRefused(context, id + ("self" ~ i), faces[i], SELF_CHECK_OFFSET) ? 1 : 0;
+    }
+    if (selfRefused >= min(3, size(faces)))
+    {
+        definition.cacheStatus = "Offsets cannot run inside the dialog here, so nothing was stored. Turn off Use cached analysis.";
+        return definition;
+    }
+    const cleanKeys = faceKeys(context, definition.cleanFaces);
+    const keepKeys = faceKeys(context, definition.keepFaces);
+    const hasScope = size(cleanKeys) > 0;
+    const signedDistance = (definition.offsetFlip ? -1 : 1) * definition.offsetDistance;
+    var failing = [];
+    var tested = 0;
+    for (var i = 0; i < size(faces); i += 1)
+    {
+        const key = transientQueriesToStrings(faces[i]);
+        if (keepKeys[key] != undefined || (hasScope && cleanKeys[key] == undefined))
+        {
+            continue;
+        }
+        tested += 1;
+        if (offsetRefused(context, id + ("r" ~ i), faces[i], signedDistance))
+        {
+            failing = append(failing, faces[i]);
+        }
+    }
+    definition.cachedFaces = qUnion(failing);
+    definition.cacheKey = cacheKeyOf(context, definition);
+    definition.cacheStatus = "Resolved: " ~ size(failing) ~ " of " ~ tested ~ " faces refuse an offset of "
+        ~ roundToPrecision(definition.offsetDistance / millimeter, 3) ~ " mm" ~ (definition.offsetFlip ? " (flipped side)." : ".");
+    return definition;
 }

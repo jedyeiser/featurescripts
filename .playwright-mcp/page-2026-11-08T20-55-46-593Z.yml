@@ -1,0 +1,163 @@
+- generic [ref=f1e5]:
+  - navigation [ref=f1e6]:
+    - generic [ref=f1e7]:
+      - link [ref=f1e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f1e11]
+      - generic [ref=f1e13] [cursor=pointer]
+    - generic [ref=f1e16]:
+      - generic [ref=f1e18]:
+        - generic [ref=f1e19]: RD 25ONE 28 178 (K032_V06)
+        - generic [ref=f1e20]: Main
+      - generic [ref=f1e22] [cursor=pointer]
+      - link "Stray 101 (K032)" [ref=f1e26] [cursor=pointer]:
+        - /url: /documents?nodeId=b699be802bb8e35e2302da57&resourceType=folder
+    - generic [ref=f1e30]:
+      - generic [ref=f1e38] [cursor=pointer]
+      - button "Notifications" [ref=f1e43] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f1e51]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f1e54] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f1e59] [cursor=pointer]
+      - button "Share" [ref=f1e63] [cursor=pointer]
+      - generic "Help menu" [ref=f1e65] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f1e69] [cursor=pointer]
+  - generic [ref=f1e79]:
+    - generic [ref=f1e81]:
+      - generic [ref=f1e82]:
+        - generic [ref=f1e83]:
+          - generic [ref=f1e84] [cursor=pointer]
+          - generic [ref=f1e87] [cursor=pointer]
+          - generic [ref=f1e90] [cursor=pointer]
+          - generic [ref=f1e93] [cursor=pointer]
+          - generic [ref=f1e96] [cursor=pointer]
+          - generic [ref=f1e99] [cursor=pointer]
+          - generic [ref=f1e102] [cursor=pointer]
+          - generic [ref=f1e107] [cursor=pointer]
+        - generic [ref=f1e111] [cursor=pointer]
+      - generic [ref=f1e115] [cursor=pointer]
+    - generic [ref=f1e122]:
+      - generic [ref=f1e129]:
+        - generic [ref=f1e141]:
+          - generic [ref=f1e142]: Sketch
+          - generic [ref=f1e154]:
+            - generic [ref=f1e155] [cursor=pointer]
+            - generic [ref=f1e159] [cursor=pointer]
+            - generic [ref=f1e163] [cursor=pointer]
+            - generic [ref=f1e167] [cursor=pointer]
+            - generic [ref=f1e172]:
+              - generic [ref=f1e173] [cursor=pointer]
+              - generic [ref=f1e177] [cursor=pointer]
+          - generic [ref=f1e183]:
+            - generic [ref=f1e185]:
+              - generic [ref=f1e186] [cursor=pointer]
+              - generic [ref=f1e190] [cursor=pointer]
+            - generic [ref=f1e193] [cursor=pointer]
+            - generic [ref=f1e198]:
+              - generic [ref=f1e199] [cursor=pointer]
+              - generic [ref=f1e203] [cursor=pointer]
+            - generic [ref=f1e206] [cursor=pointer]
+            - generic [ref=f1e210] [cursor=pointer]
+            - generic [ref=f1e214] [cursor=pointer]
+            - generic [ref=f1e218] [cursor=pointer]
+          - generic [ref=f1e225]:
+            - generic [ref=f1e227]:
+              - generic [ref=f1e228] [cursor=pointer]
+              - generic [ref=f1e232] [cursor=pointer]
+            - generic [ref=f1e235] [cursor=pointer]
+          - generic [ref=f1e242]:
+            - generic [ref=f1e243] [cursor=pointer]
+            - generic [ref=f1e247] [cursor=pointer]
+            - generic [ref=f1e252]:
+              - generic [ref=f1e253] [cursor=pointer]
+              - generic [ref=f1e257] [cursor=pointer]
+            - generic [ref=f1e260] [cursor=pointer]
+          - generic [ref=f1e267]:
+            - generic [ref=f1e268] [cursor=pointer]
+            - generic [ref=f1e272] [cursor=pointer]
+            - generic [ref=f1e276] [cursor=pointer]
+            - generic [ref=f1e280] [cursor=pointer]
+          - generic [ref=f1e288]:
+            - generic [ref=f1e289] [cursor=pointer]
+            - generic [ref=f1e293] [cursor=pointer]
+          - generic [ref=f1e300]:
+            - generic [ref=f1e301] [cursor=pointer]: SA
+            - generic [ref=f1e304] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f1e308] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f1e309]:
+            - generic [ref=f1e310]: alt/⌥
+            - generic [ref=f1e311]: c
+      - generic [ref=f1e315]:
+        - generic [ref=f1e318]:
+          - generic [ref=f1e320]:
+            - generic [ref=f1e321]:
+              - generic [ref=f1e323]:
+                - button [ref=f1e325] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f1e330]
+              - generic [ref=f1e331]:
+                - generic [ref=f1e332]: Features (13)
+                - button [ref=f1e333] [cursor=pointer]
+                - button [ref=f1e336] [cursor=pointer]
+                - button [ref=f1e339] [cursor=pointer]
+            - generic [ref=f1e343]:
+              - generic [ref=f1e344]:
+                - generic [ref=f1e346]:
+                  - generic [ref=f1e347] [cursor=pointer]
+                  - generic [ref=f1e350]: Default geometry
+                - generic [ref=f1e352]: Origin
+                - generic [ref=f1e362]: Top
+                - generic [ref=f1e372]: Front
+                - generic [ref=f1e382]: Right
+                - generic [ref=f1e393]:
+                  - generic [ref=f1e395] [cursor=pointer]
+                  - generic [ref=f1e398]: Derive_Design_Master
+                - generic [ref=f1e403]: "#extract_qv's"
+                - generic [ref=f1e415]: std_bs_deform
+                - generic [ref=f1e427]: "#std_bs_bodies"
+                - generic [ref=f1e435]: STD_BS_Composite
+                - generic [ref=f1e443]: Simple Body Rename 1
+                - generic [ref=f1e455]: KT_bs_Deform
+                - generic [ref=f1e467]: "#kt_bs_bodies"
+                - generic [ref=f1e479]: std_lid_bodies
+              - list
+          - generic [ref=f1e495]:
+            - generic [ref=f1e497]:
+              - generic [ref=f1e499] [cursor=pointer]
+              - generic [ref=f1e502]: Parts (5)
+            - generic [ref=f1e506]: Part 1
+            - generic [ref=f1e518]: 20B
+            - generic [ref=f1e530]: 20B_SUBTRACT
+            - generic [ref=f1e542]: 15A
+            - generic [ref=f1e554]: 15A_SUBTRACT
+            - generic [ref=f1e567]:
+              - generic [ref=f1e569] [cursor=pointer]
+              - generic [ref=f1e572]: Composite parts (2)
+            - generic [ref=f1e577]:
+              - generic [ref=f1e579] [cursor=pointer]
+              - generic [ref=f1e582]: Surfaces (28)
+            - generic [ref=f1e587]:
+              - generic [ref=f1e589] [cursor=pointer]
+              - generic [ref=f1e592]: Curves (8)
+        - generic [ref=f1e597]:
+          - generic [ref=f1e599] [cursor=pointer]
+          - generic [ref=f1e603]:
+            - generic [ref=f1e605]:
+              - button [ref=f1e606] [cursor=pointer]
+              - button [ref=f1e610] [cursor=pointer]
+              - button [ref=f1e614] [cursor=pointer]
+            - generic [ref=f1e618] [cursor=pointer]
+          - generic [ref=f1e623]:
+            - generic [ref=f1e624] [cursor=pointer]
+            - generic [ref=f1e628] [cursor=pointer]
+            - generic [ref=f1e632] [cursor=pointer]
+            - generic [ref=f1e636] [cursor=pointer]
+            - generic [ref=f1e640] [cursor=pointer]
+            - generic [ref=f1e644] [cursor=pointer]
+            - generic [ref=f1e648] [cursor=pointer]
+            - generic [ref=f1e651] [cursor=pointer]
+      - generic [ref=f1e655]:
+        - img [ref=f1e658] [cursor=pointer]
+        - generic [ref=f1e660]:
+          - generic [ref=f1e661] [cursor=pointer]
+          - generic [ref=f1e665]: Tooling
+        - generic [ref=f1e671]: Deform_Tooling_Geo
