@@ -1475,6 +1475,7 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
         var note = "";
         var loopSize = 0;
         var guideBodies = [];
+        var patchFill = undefined;      // the fill that was made for the sheet (a query), once there is one
         try
         {
             const area = evArea(context, { "entities" : sheet });
@@ -1489,19 +1490,12 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                 // all naked edges of the main body (a few dozen: the source's own boundary and the holes), tested against the sheet's edges
                 const nakedNear = qEdgeTopologyFilter(qOwnedByBody(main, EntityType.EDGE), EdgeTopology.ONE_SIDED);
                 const sheetEdges = qOwnedByBody(sheet, EntityType.EDGE);
-                var loop = [];
+                var nakedGaps = [];       // [{ "edge", "gap" }]: each naked edge of the main body and how far its middle is from the sheet's edges
                 for (var e in evaluateQuery(context, nakedNear))
                 {
                     const middle = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin;
-                    if (evDistance(context, { "side0" : middle, "side1" : sheetEdges }).distance < PATCH_EDGE_GATE)
-                        loop = append(loop, e);
+                    nakedGaps = append(nakedGaps, { "edge" : e, "gap" : evDistance(context, { "side0" : middle, "side1" : sheetEdges }).distance });
                 }
-                loopSize = size(loop);
-                if (size(loop) < 2)
-                {
-                    note = "not patched: only " ~ size(loop) ~ " naked edge(s) of the main body along it";
-                }
-                else
                 {
                     // Points ON the old sheet (its interior, where the fill has nothing to follow) as guide vertices.
                     const oldFace = qOwnedByBody(sheet, EntityType.FACE);
@@ -1523,33 +1517,97 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                             }
                         }
                     }
-                    opFillSurface(context, patchId, { "edgesG0" : qUnion(loop), "edgesG1" : qNothing(), "edgesG2" : qNothing(),
-                                                      "guideVertices" : size(guideBodies) > 0 ? qUnion(guideBodies) : qNothing() });
-                    const patch = qBodyType(qCreatedBy(patchId, EntityType.BODY), BodyType.SHEET);
-                    var deviation = undefined;
-                    try silent
+                    // Attempts: the boundary found with the tight gate, with and without guide points, then the same with a gate ten times
+                    // wider (a contact edge that is off by more than the tight gate leaves the loop open).
+                    var failure = "";
+                    var usedLoop = 0;
+                    var usedGuides = false;
+                    for (var attempt = 0; attempt < 4 && patchFill == undefined; attempt += 1)
                     {
-                        const probes = evFaceTangentPlanes(context, { "face" : qOwnedByBody(sheet, EntityType.FACE),
-                            "parameters" : [vector(0.5, 0.5), vector(0.25, 0.25), vector(0.75, 0.25), vector(0.25, 0.75), vector(0.75, 0.75)] });
-                        deviation = 0 * meter;
-                        for (var pl in probes)
-                            deviation = max(deviation, evDistance(context, { "side0" : pl.origin, "side1" : patch }).distance);
+                        const gate = attempt < 2 ? PATCH_EDGE_GATE : 10 * PATCH_EDGE_GATE;
+                        const withGuides = attempt % 2 == 0 && size(guideBodies) > 0;
+                        var loop = [];
+                        for (var candidate in nakedGaps)
+                            if (candidate.gap < gate)
+                                loop = append(loop, candidate.edge);
+                        loopSize = size(loop);
+                        if (size(loop) < 2)
+                        {
+                            failure = "only " ~ size(loop) ~ " naked edge(s) of the main body along it";
+                        }
+                        else
+                        {
+                            const attemptId = patchId + ("a" ~ attempt);
+                            try
+                            {
+                                opFillSurface(context, attemptId, { "edgesG0" : qUnion(loop), "edgesG1" : qNothing(), "edgesG2" : qNothing(),
+                                                                    "guideVertices" : withGuides ? qUnion(guideBodies) : qNothing() });
+                                patchFill = qBodyType(qCreatedBy(attemptId, EntityType.BODY), BodyType.SHEET);
+                                usedLoop = size(loop);
+                                usedGuides = withGuides;
+                            }
+                            catch (fillErr)
+                            {
+                                // how many ends of the boundary meet no other end: an open boundary cannot be filled
+                                var openEnds = 0;
+                                try silent
+                                {
+                                    var ends = [];
+                                    for (var le in loop)
+                                    {
+                                        const lp = evEdgeTangentLines(context, { "edge" : le, "parameters" : [0, 1] });
+                                        ends = append(ends, lp[0].origin);
+                                        ends = append(ends, lp[1].origin);
+                                    }
+                                    for (var ei = 0; ei < size(ends); ei += 1)
+                                    {
+                                        var met = 0;
+                                        for (var ej = 0; ej < size(ends); ej += 1)
+                                            if (ei != ej && norm(ends[ei] - ends[ej]) < 1e-5 * meter)
+                                                met += 1;
+                                        if (met == 0)
+                                            openEnds += 1;
+                                    }
+                                }
+                                failure = toString(fillErr) ~ " (gate " ~ roundToPrecision(gate / meter * 1e6, 0) ~ " um, " ~ size(loop) ~ " edges, " ~ openEnds ~ " open ends, "
+                                    ~ (withGuides ? "guided" : "unguided") ~ ")";
+                            }
+                        }
                     }
-                    opBoolean(context, id + ("patchJoin" ~ i), { "tools" : qUnion([main, patch]), "operationType" : BooleanOperationType.UNION,
-                                                                 "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true });
-                    opDeleteBodies(context, id + ("dropSheet" ~ i), { "entities" : sheet });
-                    done = true;
-                    note = "replaced by a patch of " ~ size(loop) ~ " boundary edges and " ~ size(guideBodies) ~ " guide points" ~ (deviation == undefined ? "" : ", mid-face deviation from the mapped sheet "
-                        ~ roundToPrecision(deviation / millimeter, 5) ~ " mm");
+                    if (patchFill == undefined)
+                    {
+                        note = "not patched: " ~ failure;
+                    }
+                    else
+                    {
+                        var deviation = undefined;
+                        try silent
+                        {
+                            const probes = evFaceTangentPlanes(context, { "face" : qOwnedByBody(sheet, EntityType.FACE),
+                                "parameters" : [vector(0.5, 0.5), vector(0.25, 0.25), vector(0.75, 0.25), vector(0.25, 0.75), vector(0.75, 0.75)] });
+                            deviation = 0 * meter;
+                            for (var pl in probes)
+                                deviation = max(deviation, evDistance(context, { "side0" : pl.origin, "side1" : patchFill }).distance);
+                        }
+                        opBoolean(context, id + ("patchJoin" ~ i), { "tools" : qUnion([main, patchFill]), "operationType" : BooleanOperationType.UNION,
+                                                                     "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true });
+                        opDeleteBodies(context, id + ("dropSheet" ~ i), { "entities" : sheet });
+                        done = true;
+                        note = "replaced by a patch of " ~ usedLoop ~ " boundary edges" ~ (usedGuides ? " and " ~ size(guideBodies) ~ " guide points" : " (unguided)")
+                            ~ (deviation == undefined ? "" : ", mid-face deviation from the mapped sheet " ~ roundToPrecision(deviation / millimeter, 5) ~ " mm");
+                    }
                 }
             }
         }
         catch (patchErr)
         {
             note = "patch failed: " ~ toString(patchErr) ~ " (" ~ loopSize ~ " boundary edges, " ~ size(guideBodies) ~ " guide points)";
-            try silent
+            if (patchFill != undefined)
             {
-                opDeleteBodies(context, id + ("dropPatch" ~ i), { "entities" : qCreatedBy(patchId, EntityType.BODY) });
+                try silent
+                {
+                    opDeleteBodies(context, id + ("dropPatch" ~ i), { "entities" : patchFill });
+                }
             }
         }
         // the guide points are scaffolding, whatever happened
