@@ -1509,6 +1509,7 @@ function bridgedBoundary(context is Context, id is Id, edges is array)
     const start = chosen[0].p0;
     var cursor = chosen[0].p1;
     var bridgeCount = 0;
+    var gapNote = "";
     for (var step = 1; step <= size(chosen); step += 1)
     {
         // the next edge (nearest end point to the cursor), or on the last step the way back to the start
@@ -1540,6 +1541,7 @@ function bridgedBoundary(context is Context, id is Id, edges is array)
             target = nextForward ? chosen[nextIndex].p0 : chosen[nextIndex].p1;
         }
         const gap = norm(target - cursor);
+        gapNote = gapNote ~ (gapNote == "" ? "" : "/") ~ roundToPrecision(gap / meter * 1e6, 1);
         if (gap > PATCH_BRIDGE_MAX)
             return undefined;
         if (gap >= PATCH_BRIDGE_MIN)
@@ -1557,7 +1559,8 @@ function bridgedBoundary(context is Context, id is Id, edges is array)
             cursor = nextForward ? chosen[nextIndex].p1 : chosen[nextIndex].p0;
         }
     }
-    return { "edges" : qUnion(concatenateArrays([pieces, bridgeEdges])), "bodies" : bridgeBodies };
+    return { "edges" : qUnion(concatenateArrays([pieces, bridgeEdges])), "bodies" : bridgeBodies,
+             "summary" : size(chosen) ~ " edges after dropping " ~ (size(items) - size(chosen)) ~ " duplicate(s), " ~ bridgeCount ~ " bridge(s), gaps " ~ gapNote ~ " um" };
 }
 
 /** An edge's end points as text, in mm (debug output). */
@@ -1649,14 +1652,17 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                     var failure = "";
                     var usedLoop = 0;
                     var usedGuides = false;
-                    for (var attempt = 0; attempt < 8 && patchFill == undefined; attempt += 1)
+                    var chainSummary = "";
+                    for (var attempt = 0; attempt < 10 && patchFill == undefined; attempt += 1)
                     {
                         // 0-1: the naked edges along the sheet, guided / unguided. 2-3: plus the sheet's own free edges. 4-5: the same with a gate ten
-                        // times wider. 6-7: the naked edges (wide gate) with duplicates dropped and the gaps between them bridged.
+                        // times wider. 6-7: the naked edges (wide gate) with duplicates dropped and the gaps between them bridged, stitched into a wire
+                        // first. 8-9: the same chain filled directly, without the stitching.
                         const gate = attempt < 4 ? PATCH_EDGE_GATE : 10 * PATCH_EDGE_GATE;
                         const withGuides = attempt % 2 == 0 && size(guideBodies) > 0;
                         const withFree = attempt >= 2 && attempt < 6;
                         const bridged = attempt >= 6;
+                        const stitched = attempt < 8;       // for the bridged attempts: stitched into a wire first
                         var loop = [];
                         for (var candidate in nakedGaps)
                             if (candidate.gap < gate)
@@ -1692,8 +1698,13 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                                     if (chain == undefined)
                                         throw "the naked edges around the sheet do not form a loop that can be bridged";
                                     scaffold = chain.bodies;
-                                    opExtractWires(context, wireId, { "edges" : chain.edges });
-                                    boundary = qCreatedBy(wireId, EntityType.EDGE);
+                                    chainSummary = chain.summary;
+                                    boundary = chain.edges;
+                                    if (stitched)
+                                    {
+                                        opExtractWires(context, wireId, { "edges" : chain.edges });
+                                        boundary = qCreatedBy(wireId, EntityType.EDGE);
+                                    }
                                 }
                                 opFillSurface(context, attemptId, { "edgesG0" : boundary, "edgesG1" : qNothing(), "edgesG2" : qNothing(),
                                                                     "guideVertices" : withGuides ? qUnion(guideBodies) : qNothing() });
@@ -1732,7 +1743,7 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                                     }
                                 }
                                 failure = toString(fillErr) ~ " (attempt " ~ attempt ~ ", gate " ~ roundToPrecision(gate / meter * 1e6, 0) ~ " um, " ~ size(loop) ~ " edges"
-                                    ~ (withFree ? " incl. the sheet's free edges" : "") ~ (bridged ? " bridged" : "") ~ ", " ~ openEnds ~ " open ends, " ~ (withGuides ? "guided" : "unguided") ~ ")";
+                                    ~ (withFree ? " incl. the sheet's free edges" : "") ~ (bridged ? " bridged, " ~ (stitched ? "stitched" : "direct") ~ (chainSummary == "" ? "" : " [" ~ chainSummary ~ "]") : "") ~ ", " ~ openEnds ~ " open ends, " ~ (withGuides ? "guided" : "unguided") ~ ")";
                                 // a wire and bridges made for an attempt that failed are scaffolding
                                 try silent
                                 {
