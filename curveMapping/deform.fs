@@ -620,6 +620,15 @@ const MAPPED_SAMPLES_MIN_V = 8;
 const MAPPED_SAMPLES_MAX_V = 40;
 /** Points mapped for mapped surfaces in one feature (each costs interpreter steps; the budget of a whole feature is about 20-30k). */
 const MAPPED_POINT_BUDGET = 24000;
+
+/** The starting grid of a small face has a sample about this far apart (never fewer than 5 per direction, never more than the minimum above). */
+const MAPPED_MIN_SPACING = 4 * millimeter;
+
+/** The cost of a face beyond its grid: boundary probes and one round of interpolation probes (mapped points). */
+const MAPPED_FACE_OVERHEAD = 70;
+
+/** A face is always given at least this many points, even when the feature's budget is spent: a face left to a fill cannot be welded to its mapped neighbours. */
+const MAPPED_FACE_FLOOR = 110;
 /** How far a mapped surface may lie from the exactly mapped face between its samples (default 2 microns): lengths in meter [min, default, max] and the other units. */
 const MAPPED_ACCURACY_BOUND = { (meter) : [1e-7, 2e-6, 1e-4], (centimeter) : 0.0002, (millimeter) : 0.002, (inch) : 0.00008, (foot) : 0.000007, (yard) : 0.0000022 } as LengthBoundSpec;
 /** Times the sampling grid of a mapped surface may be refined (each time the directions that miss the accuracy get twice the intervals). */
@@ -1086,12 +1095,22 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
         const cached = approximations[toString(face)];
         const approximation = cached != undefined ? cached : evApproximateBSplineSurface(context, { "face" : face, "tolerance" : 1e-6 });
         const net = approximation.bSplineSurface.controlPoints;
-        var nU = clamp(size(net), MAPPED_SAMPLES_MIN_U, MAPPED_SAMPLES_MAX_U);
-        var nV = clamp(size(net[0]), MAPPED_SAMPLES_MIN_V, MAPPED_SAMPLES_MAX_V);
+        // physical length of the face along u and v: sets the smallest grid, and where the boundary misses, the direction with the
+        // longer sample spacing is refined
+        const extent = evFaceTangentPlanes(context, { "face" : face, "parameters" : [vector(0, 0.5), vector(1, 0.5), vector(0.5, 0), vector(0.5, 1)] });
+        const lengthU = norm(extent[1].origin - extent[0].origin);
+        const lengthV = norm(extent[3].origin - extent[2].origin);
+        // A small face needs a small grid (a 3 mm face does not need 12 x 8 samples; 193 faces at the full minimum cost more
+        // than the whole feature's budget): a sample about every MAPPED_MIN_SPACING, at least 5. The probes refine it where it is
+        // not accurate enough.
+        const minU = clamp(ceil(lengthU / MAPPED_MIN_SPACING) + 1, 5, MAPPED_SAMPLES_MIN_U);
+        const minV = clamp(ceil(lengthV / MAPPED_MIN_SPACING) + 1, 5, MAPPED_SAMPLES_MIN_V);
+        var nU = clamp(size(net), minU, MAPPED_SAMPLES_MAX_U);
+        var nV = clamp(size(net[0]), minV, MAPPED_SAMPLES_MAX_V);
         // A face that does not fit the budget at its natural size is sampled more coarsely rather than not at all (a fill cannot
         // rebuild a long thin face); the probes then say how far from the exact map it is.
         if (nU * nV > pointBudget)
-            nU = max(MAPPED_SAMPLES_MIN_U, floor(pointBudget / nV));
+            nU = max(minU, floor(pointBudget / nV));
         if (nU * nV > pointBudget)
             return 0;
         var us = uniformParameters(nU);
@@ -1105,10 +1124,6 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
         var grid = interpolateGrid(samples.mapped, us, vs);
         const probes = boundaryProbes(context, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
         spent += size(probes);
-        // physical length of the face along u and v: where the boundary misses, the direction with the longer sample spacing is refined
-        const extent = evFaceTangentPlanes(context, { "face" : face, "parameters" : [vector(0, 0.5), vector(1, 0.5), vector(0.5, 0), vector(0.5, 1)] });
-        const lengthU = norm(extent[1].origin - extent[0].origin);
-        const lengthV = norm(extent[3].origin - extent[2].origin);
         for (var pass = 0; pass < MAPPED_REFINE_PASSES; pass += 1)
         {
             const error = mappedGridError(context, face, grid, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
@@ -1850,14 +1865,14 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     {
                         for (var cIdx = 0; cIdx < size(allFaces); cIdx += 1)
                         {
-                            faceCells[cIdx] = MAPPED_SAMPLES_MIN_U * MAPPED_SAMPLES_MIN_V;
+                            faceCells[cIdx] = 25 + MAPPED_FACE_OVERHEAD;
                             try silent
                             {
                                 const approx = evApproximateBSplineSurface(context, { "face" : allFaces[cIdx], "tolerance" : 1e-6 });
                                 approximations[toString(allFaces[cIdx])] = approx;
                                 const approxNet = approx.bSplineSurface.controlPoints;
-                                faceCells[cIdx] = clamp(size(approxNet), MAPPED_SAMPLES_MIN_U, MAPPED_SAMPLES_MAX_U)
-                                    * clamp(size(approxNet[0]), MAPPED_SAMPLES_MIN_V, MAPPED_SAMPLES_MAX_V);
+                                faceCells[cIdx] = max(25, min(size(approxNet), MAPPED_SAMPLES_MAX_U) * min(size(approxNet[0]), MAPPED_SAMPLES_MAX_V))
+                                    + MAPPED_FACE_OVERHEAD;
                             }
                         }
                         for (var sIdx = size(allFaces) - 1; sIdx >= 0; sIdx -= 1)
@@ -2081,6 +2096,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                 var allowance = budgetLeft;
                                 if (faceCellsFrom[fIdx] > 0)
                                     allowance = min(budgetLeft, floor(2 * budgetLeft * faceCells[fIdx] / faceCellsFrom[fIdx]));
+                                allowance = max(allowance, MAPPED_FACE_FLOOR);
                                 pointsMapped = mappedSurfaceFace(context, fillId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal,
                                     definition.mappedAccuracy, allowance, definition.debug, approximations);
                                 if (definition.debug)
