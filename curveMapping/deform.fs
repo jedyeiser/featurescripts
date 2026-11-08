@@ -1448,8 +1448,11 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
 /** The distance from a patch's edge midpoints to the old sheet's edges within which a naked edge of the main body is part of the hole. */
 const PATCH_EDGE_GATE = 5e-5 * meter;
 
-/** A left-over sheet smaller than this has collapsed (all its edges merged): it is dropped, not joined. */
-const PATCH_DEGENERATE_AREA = 1e-9 * meter ^ 2;
+/** A left-over sheet smaller than this (0.05 mm2) is a sliver left by collapsed edges: it is dropped, not joined. */
+const PATCH_DEGENERATE_AREA = 5e-8 * meter ^ 2;
+
+/** Interior sample positions (u and v) of the old sheet that guide the patch's fill, so it follows the mapped shape and not the flattest surface through its boundary. */
+const PATCH_GUIDE_PARAMETERS = [0.15, 0.325, 0.5, 0.675, 0.85];
 
 /**
  * The sheets the kernel would not sew into the main body, replaced by patches built from the hole they leave: the naked edges of
@@ -1470,6 +1473,8 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
         const patchId = id + ("patch" ~ i);
         var done = false;
         var note = "";
+        var loopSize = 0;
+        var guideBodies = [];
         try
         {
             const area = evArea(context, { "entities" : sheet });
@@ -1491,13 +1496,35 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                     if (evDistance(context, { "side0" : middle, "side1" : sheetEdges }).distance < PATCH_EDGE_GATE)
                         loop = append(loop, e);
                 }
+                loopSize = size(loop);
                 if (size(loop) < 2)
                 {
                     note = "not patched: only " ~ size(loop) ~ " naked edge(s) of the main body along it";
                 }
                 else
                 {
-                    opFillSurface(context, patchId, { "edgesG0" : qUnion(loop), "edgesG1" : qNothing(), "edgesG2" : qNothing(), "guideVertices" : qNothing() });
+                    // Points ON the old sheet (its interior, where the fill has nothing to follow) as guide vertices.
+                    const oldFace = qOwnedByBody(sheet, EntityType.FACE);
+                    try silent
+                    {
+                        var guideParameters = [];
+                        for (var gu in PATCH_GUIDE_PARAMETERS)
+                            for (var gv in PATCH_GUIDE_PARAMETERS)
+                                guideParameters = append(guideParameters, vector(gu, gv));
+                        const guidePlanes = evFaceTangentPlanes(context, { "face" : oldFace, "parameters" : guideParameters });
+                        for (var g = 0; g < size(guidePlanes); g += 1)
+                        {
+                            // the parameter box is bigger than the trimmed face: keep the samples that lie on the face
+                            if (evDistance(context, { "side0" : guidePlanes[g].origin, "side1" : oldFace }).distance < 5e-6 * meter)
+                            {
+                                const guideId = id + ("guide" ~ i ~ "_" ~ g);
+                                opPoint(context, guideId, { "point" : guidePlanes[g].origin });
+                                guideBodies = append(guideBodies, qCreatedBy(guideId, EntityType.BODY));
+                            }
+                        }
+                    }
+                    opFillSurface(context, patchId, { "edgesG0" : qUnion(loop), "edgesG1" : qNothing(), "edgesG2" : qNothing(),
+                                                      "guideVertices" : size(guideBodies) > 0 ? qUnion(guideBodies) : qNothing() });
                     const patch = qBodyType(qCreatedBy(patchId, EntityType.BODY), BodyType.SHEET);
                     var deviation = undefined;
                     try silent
@@ -1512,17 +1539,25 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                                                                  "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true });
                     opDeleteBodies(context, id + ("dropSheet" ~ i), { "entities" : sheet });
                     done = true;
-                    note = "replaced by a patch of " ~ size(loop) ~ " boundary edges" ~ (deviation == undefined ? "" : ", mid-face deviation from the mapped sheet "
+                    note = "replaced by a patch of " ~ size(loop) ~ " boundary edges and " ~ size(guideBodies) ~ " guide points" ~ (deviation == undefined ? "" : ", mid-face deviation from the mapped sheet "
                         ~ roundToPrecision(deviation / millimeter, 5) ~ " mm");
                 }
             }
         }
         catch (patchErr)
         {
-            note = "patch failed: " ~ toString(patchErr);
+            note = "patch failed: " ~ toString(patchErr) ~ " (" ~ loopSize ~ " boundary edges, " ~ size(guideBodies) ~ " guide points)";
             try silent
             {
                 opDeleteBodies(context, id + ("dropPatch" ~ i), { "entities" : qCreatedBy(patchId, EntityType.BODY) });
+            }
+        }
+        // the guide points are scaffolding, whatever happened
+        if (size(guideBodies) > 0)
+        {
+            try silent
+            {
+                opDeleteBodies(context, id + ("dropGuides" ~ i), { "entities" : qUnion(guideBodies) });
             }
         }
         if (done)
