@@ -1496,6 +1496,19 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                     const middle = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin;
                     nakedGaps = append(nakedGaps, { "edge" : e, "gap" : evDistance(context, { "side0" : middle, "side1" : sheetEdges }).distance });
                 }
+                // The sheet's own edges that touch no naked edge of the main body: its free boundary, where there is no neighbour to take
+                // an edge from. A face on the part's outer boundary needs them in its loop.
+                var sheetGaps = [];       // [{ "edge", "gap" }]
+                for (var se in evaluateQuery(context, sheetEdges))
+                {
+                    var sheetGap = 1 * meter;
+                    try silent
+                    {
+                        const sheetMiddle = evEdgeTangentLine(context, { "edge" : se, "parameter" : 0.5 }).origin;
+                        sheetGap = evDistance(context, { "side0" : sheetMiddle, "side1" : nakedNear }).distance;
+                    }
+                    sheetGaps = append(sheetGaps, { "edge" : se, "gap" : sheetGap });
+                }
                 {
                     // Points ON the old sheet (its interior, where the fill has nothing to follow) as guide vertices.
                     const oldFace = qOwnedByBody(sheet, EntityType.FACE);
@@ -1522,14 +1535,22 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                     var failure = "";
                     var usedLoop = 0;
                     var usedGuides = false;
-                    for (var attempt = 0; attempt < 4 && patchFill == undefined; attempt += 1)
+                    for (var attempt = 0; attempt < 6 && patchFill == undefined; attempt += 1)
                     {
-                        const gate = attempt < 2 ? PATCH_EDGE_GATE : 10 * PATCH_EDGE_GATE;
+                        // 0-1: the naked edges along the sheet, guided / unguided. 2-3: plus the sheet's own free edges. 4-5: the same with a gate ten times wider.
+                        const gate = attempt < 4 ? PATCH_EDGE_GATE : 10 * PATCH_EDGE_GATE;
                         const withGuides = attempt % 2 == 0 && size(guideBodies) > 0;
+                        const withFree = attempt >= 2;
                         var loop = [];
                         for (var candidate in nakedGaps)
                             if (candidate.gap < gate)
                                 loop = append(loop, candidate.edge);
+                        if (withFree)
+                        {
+                            for (var freeCandidate in sheetGaps)
+                                if (freeCandidate.gap >= gate)
+                                    loop = append(loop, freeCandidate.edge);
+                        }
                         loopSize = size(loop);
                         if (size(loop) < 2)
                         {
@@ -1538,13 +1559,28 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                         else
                         {
                             const attemptId = patchId + ("a" ~ attempt);
+                            const wireId = patchId + ("w" ~ attempt);
                             try
                             {
-                                opFillSurface(context, attemptId, { "edgesG0" : qUnion(loop), "edgesG1" : qNothing(), "edgesG2" : qNothing(),
+                                // edges of two bodies (the main body's and the sheet's) are stitched into one wire first, as the rebuild of a face does
+                                var boundary = qUnion(loop);
+                                if (withFree)
+                                {
+                                    opExtractWires(context, wireId, { "edges" : qUnion(loop) });
+                                    boundary = qCreatedBy(wireId, EntityType.EDGE);
+                                }
+                                opFillSurface(context, attemptId, { "edgesG0" : boundary, "edgesG1" : qNothing(), "edgesG2" : qNothing(),
                                                                     "guideVertices" : withGuides ? qUnion(guideBodies) : qNothing() });
                                 patchFill = qBodyType(qCreatedBy(attemptId, EntityType.BODY), BodyType.SHEET);
                                 usedLoop = size(loop);
                                 usedGuides = withGuides;
+                                if (withFree)
+                                {
+                                    try silent
+                                    {
+                                        opDeleteBodies(context, patchId + ("dropWire" ~ attempt), { "entities" : qCreatedBy(wireId, EntityType.BODY) });
+                                    }
+                                }
                             }
                             catch (fillErr)
                             {
@@ -1569,8 +1605,13 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                                             openEnds += 1;
                                     }
                                 }
-                                failure = toString(fillErr) ~ " (gate " ~ roundToPrecision(gate / meter * 1e6, 0) ~ " um, " ~ size(loop) ~ " edges, " ~ openEnds ~ " open ends, "
-                                    ~ (withGuides ? "guided" : "unguided") ~ ")";
+                                failure = toString(fillErr) ~ " (attempt " ~ attempt ~ ", gate " ~ roundToPrecision(gate / meter * 1e6, 0) ~ " um, " ~ size(loop) ~ " edges"
+                                    ~ (withFree ? " incl. the sheet's free edges" : "") ~ ", " ~ openEnds ~ " open ends, " ~ (withGuides ? "guided" : "unguided") ~ ")";
+                                // a wire that was made for an attempt that failed is scaffolding
+                                try silent
+                                {
+                                    opDeleteBodies(context, patchId + ("dropFailedWire" ~ attempt), { "entities" : qCreatedBy(wireId, EntityType.BODY) });
+                                }
                             }
                         }
                     }
