@@ -1454,6 +1454,112 @@ const PATCH_DEGENERATE_AREA = 5e-8 * meter ^ 2;
 /** Interior sample positions (u and v) of the old sheet that guide the patch's fill, so it follows the mapped shape and not the flattest surface through its boundary. */
 const PATCH_GUIDE_PARAMETERS = [0.15, 0.325, 0.5, 0.675, 0.85];
 
+/** Two naked edges whose end points are this close (in either order) are duplicates: the boundary of a micro-edge cluster has several. */
+const PATCH_DUPLICATE_GATE = 5e-5 * meter;
+
+/** A gap between consecutive boundary edges below this is left to the kernel's tolerance (a shorter bridge edge would be refused). */
+const PATCH_BRIDGE_MIN = 1e-5 * meter;
+
+/** A gap above this is not a loop that can be bridged. */
+const PATCH_BRIDGE_MAX = 5e-4 * meter;
+
+/**
+ * A closed boundary from the naked edges around a hole when they do not quite meet: duplicates (edges with the same two end
+ * points) are dropped, the rest are chained by nearest end point, and each gap of PATCH_BRIDGE_MIN or more is closed with a short
+ * straight edge. The bridges are the only new geometry; the patch meets the neighbours along their own edges.
+ *
+ * @returns {map} { "edges" : Query (the chain and the bridges), "bodies" : Query array (the bridges' bodies, to delete afterwards) }
+ *          or `undefined` when the edges do not form a loop (a gap over PATCH_BRIDGE_MAX, fewer than two edges)
+ */
+function bridgedBoundary(context is Context, id is Id, edges is array)
+{
+    var items = [];
+    for (var e in edges)
+    {
+        const lp = evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 1] });
+        items = append(items, { "edge" : e, "p0" : lp[0].origin, "p1" : lp[1].origin, "len" : evLength(context, { "entities" : e }) });
+    }
+    // longest first, then without the duplicates
+    var chosen = [];
+    var pending = items;
+    while (size(pending) > 0)
+    {
+        var best = 0;
+        for (var k = 1; k < size(pending); k += 1)
+            if (pending[k].len > pending[best].len)
+                best = k;
+        const item = pending[best];
+        pending = concatenateArrays([subArray(pending, 0, best), subArray(pending, best + 1)]);
+        var duplicate = false;
+        for (var c in chosen)
+            if ((norm(item.p0 - c.p0) < PATCH_DUPLICATE_GATE && norm(item.p1 - c.p1) < PATCH_DUPLICATE_GATE)
+                || (norm(item.p0 - c.p1) < PATCH_DUPLICATE_GATE && norm(item.p1 - c.p0) < PATCH_DUPLICATE_GATE))
+                duplicate = true;
+        if (!duplicate)
+            chosen = append(chosen, item);
+    }
+    if (size(chosen) < 2)
+        return undefined;
+
+    var used = makeArray(size(chosen), false);
+    used[0] = true;
+    var pieces = [chosen[0].edge];
+    var bridgeEdges = [];
+    var bridgeBodies = [];
+    const start = chosen[0].p0;
+    var cursor = chosen[0].p1;
+    var bridgeCount = 0;
+    for (var step = 1; step <= size(chosen); step += 1)
+    {
+        // the next edge (nearest end point to the cursor), or on the last step the way back to the start
+        var target = start;
+        var nextIndex = -1;
+        var nextForward = true;
+        if (step < size(chosen))
+        {
+            var nextGap = 1 * meter;
+            for (var k = 0; k < size(chosen); k += 1)
+            {
+                if (used[k])
+                    continue;
+                if (norm(chosen[k].p0 - cursor) < nextGap)
+                {
+                    nextGap = norm(chosen[k].p0 - cursor);
+                    nextIndex = k;
+                    nextForward = true;
+                }
+                if (norm(chosen[k].p1 - cursor) < nextGap)
+                {
+                    nextGap = norm(chosen[k].p1 - cursor);
+                    nextIndex = k;
+                    nextForward = false;
+                }
+            }
+            if (nextIndex < 0)
+                return undefined;
+            target = nextForward ? chosen[nextIndex].p0 : chosen[nextIndex].p1;
+        }
+        const gap = norm(target - cursor);
+        if (gap > PATCH_BRIDGE_MAX)
+            return undefined;
+        if (gap >= PATCH_BRIDGE_MIN)
+        {
+            const bridgeId = id + ("bridge" ~ bridgeCount);
+            opPolyline(context, bridgeId, { "points" : [cursor, target] });
+            bridgeEdges = append(bridgeEdges, qCreatedBy(bridgeId, EntityType.EDGE));
+            bridgeBodies = append(bridgeBodies, qCreatedBy(bridgeId, EntityType.BODY));
+            bridgeCount += 1;
+        }
+        if (nextIndex >= 0)
+        {
+            used[nextIndex] = true;
+            pieces = append(pieces, chosen[nextIndex].edge);
+            cursor = nextForward ? chosen[nextIndex].p1 : chosen[nextIndex].p0;
+        }
+    }
+    return { "edges" : qUnion(concatenateArrays([pieces, bridgeEdges])), "bodies" : bridgeBodies };
+}
+
 /** An edge's end points as text, in mm (debug output). */
 function edgeEndsText(context is Context, edge is Query) returns string
 {
@@ -1543,12 +1649,14 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                     var failure = "";
                     var usedLoop = 0;
                     var usedGuides = false;
-                    for (var attempt = 0; attempt < 6 && patchFill == undefined; attempt += 1)
+                    for (var attempt = 0; attempt < 8 && patchFill == undefined; attempt += 1)
                     {
-                        // 0-1: the naked edges along the sheet, guided / unguided. 2-3: plus the sheet's own free edges. 4-5: the same with a gate ten times wider.
+                        // 0-1: the naked edges along the sheet, guided / unguided. 2-3: plus the sheet's own free edges. 4-5: the same with a gate ten
+                        // times wider. 6-7: the naked edges (wide gate) with duplicates dropped and the gaps between them bridged.
                         const gate = attempt < 4 ? PATCH_EDGE_GATE : 10 * PATCH_EDGE_GATE;
                         const withGuides = attempt % 2 == 0 && size(guideBodies) > 0;
-                        const withFree = attempt >= 2;
+                        const withFree = attempt >= 2 && attempt < 6;
+                        const bridged = attempt >= 6;
                         var loop = [];
                         for (var candidate in nakedGaps)
                             if (candidate.gap < gate)
@@ -1568,6 +1676,7 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                         {
                             const attemptId = patchId + ("a" ~ attempt);
                             const wireId = patchId + ("w" ~ attempt);
+                            var scaffold = [];        // the bridges' bodies of this attempt
                             try
                             {
                                 // edges of two bodies (the main body's and the sheet's) are stitched into one wire first, as the rebuild of a face does
@@ -1577,16 +1686,25 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                                     opExtractWires(context, wireId, { "edges" : qUnion(loop) });
                                     boundary = qCreatedBy(wireId, EntityType.EDGE);
                                 }
+                                else if (bridged)
+                                {
+                                    const chain = bridgedBoundary(context, patchId + ("b" ~ attempt), loop);
+                                    if (chain == undefined)
+                                        throw "the naked edges around the sheet do not form a loop that can be bridged";
+                                    scaffold = chain.bodies;
+                                    opExtractWires(context, wireId, { "edges" : chain.edges });
+                                    boundary = qCreatedBy(wireId, EntityType.EDGE);
+                                }
                                 opFillSurface(context, attemptId, { "edgesG0" : boundary, "edgesG1" : qNothing(), "edgesG2" : qNothing(),
                                                                     "guideVertices" : withGuides ? qUnion(guideBodies) : qNothing() });
                                 patchFill = qBodyType(qCreatedBy(attemptId, EntityType.BODY), BodyType.SHEET);
                                 usedLoop = size(loop);
                                 usedGuides = withGuides;
-                                if (withFree)
+                                if (withFree || bridged)
                                 {
                                     try silent
                                     {
-                                        opDeleteBodies(context, patchId + ("dropWire" ~ attempt), { "entities" : qCreatedBy(wireId, EntityType.BODY) });
+                                        opDeleteBodies(context, patchId + ("dropWire" ~ attempt), { "entities" : qUnion(concatenateArrays([[qCreatedBy(wireId, EntityType.BODY)], scaffold])) });
                                     }
                                 }
                             }
@@ -1614,11 +1732,11 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                                     }
                                 }
                                 failure = toString(fillErr) ~ " (attempt " ~ attempt ~ ", gate " ~ roundToPrecision(gate / meter * 1e6, 0) ~ " um, " ~ size(loop) ~ " edges"
-                                    ~ (withFree ? " incl. the sheet's free edges" : "") ~ ", " ~ openEnds ~ " open ends, " ~ (withGuides ? "guided" : "unguided") ~ ")";
-                                // a wire that was made for an attempt that failed is scaffolding
+                                    ~ (withFree ? " incl. the sheet's free edges" : "") ~ (bridged ? " bridged" : "") ~ ", " ~ openEnds ~ " open ends, " ~ (withGuides ? "guided" : "unguided") ~ ")";
+                                // a wire and bridges made for an attempt that failed are scaffolding
                                 try silent
                                 {
-                                    opDeleteBodies(context, patchId + ("dropFailedWire" ~ attempt), { "entities" : qCreatedBy(wireId, EntityType.BODY) });
+                                    opDeleteBodies(context, patchId + ("dropFailedWire" ~ attempt), { "entities" : qUnion(concatenateArrays([[qCreatedBy(wireId, EntityType.BODY)], scaffold])) });
                                 }
                             }
                         }
