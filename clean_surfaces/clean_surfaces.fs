@@ -425,6 +425,41 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
                     }
                 }
                 println("OFFSET tested " ~ offsetTested ~ " failed " ~ offsetFailed);
+                // control-net clustering vs the offset result: do the faces that refuse have crowded knots / control points?
+                var netFail = [];
+                var netPass = [];
+                for (var r in rows)
+                {
+                    const nm = netClustering(context, r.face);
+                    if (r.offsetFail)
+                    {
+                        netFail = append(netFail, nm);
+                        println("NET fail " ~ faceType(context, r.face) ~ " A=" ~ roundToPrecision(r.area, 2) ~ " cps " ~ nm.nu ~ "x" ~ nm.nv ~ " knotRatio " ~ roundToPrecision(nm.knotRatio, 3)
+                                ~ " cpRatio " ~ roundToPrecision(nm.cpRatio, 3) ~ " minGap " ~ roundToPrecision(nm.minGap, 5) ~ "mm");
+                    }
+                    else
+                    {
+                        netPass = append(netPass, nm);
+                    }
+                }
+                for (var grp in [["fail", netFail], ["pass", netPass]])
+                {
+                    var lowKnot = 0;
+                    var lowCp = 0;
+                    var ratios = [];
+                    for (var nm in grp[1])
+                    {
+                        lowKnot += nm.knotRatio < 0.05 ? 1 : 0;
+                        lowCp += nm.cpRatio < 0.05 ? 1 : 0;
+                        ratios = append(ratios, nm.cpRatio);
+                    }
+                    ratios = sort(ratios, function(a, b)
+                        {
+                            return a - b;
+                        });
+                    println("NETSUM " ~ grp[0] ~ " n=" ~ size(grp[1]) ~ " knotRatio<0.05: " ~ lowKnot ~ " cpRatio<0.05: " ~ lowCp
+                            ~ (size(ratios) > 0 ? " cpRatio median " ~ roundToPrecision(ratios[floor(size(ratios) / 2)], 3) ~ " min " ~ roundToPrecision(ratios[0], 4) : ""));
+                }
                 // does the curvature number predict the failures? (sign check: which side is "positive")
                 for (var sgn in [1, -1])
                 {
@@ -555,6 +590,58 @@ function tightness(context is Context, face is Query, distance is ValueWithUnits
         worst = min(worst, min(1 + distance * c.minCurvature, 1 + distance * c.maxCurvature));
     }
     return worst;
+}
+
+/**
+ * How crowded a face's B-spline control net is: knotRatio = smallest / largest knot span over both directions, cpRatio = smallest /
+ * median distance between neighbouring control points, minGap = that smallest distance in mm, nu x nv = control points.
+ * A low ratio means control points or knots bunch up (a surface that is hard to offset or fit). Uses evApproximateBSplineSurface.
+ */
+function netClustering(context is Context, face is Query) returns map
+{
+    const surf = evApproximateBSplineSurface(context, { "face" : face }).bSplineSurface;
+    const cps = surf.controlPoints;
+    const nu = size(cps);
+    const nv = size(cps[0]);
+    var gaps = [];
+    for (var i = 0; i < nu; i += 1)
+    {
+        for (var j = 0; j < nv; j += 1)
+        {
+            if (i + 1 < nu)
+            {
+                gaps = append(gaps, norm(cps[i + 1][j] - cps[i][j]) / millimeter);
+            }
+            if (j + 1 < nv)
+            {
+                gaps = append(gaps, norm(cps[i][j + 1] - cps[i][j]) / millimeter);
+            }
+        }
+    }
+    gaps = sort(gaps, function(a, b)
+        {
+            return a - b;
+        });
+    var spans = [];
+    for (var knots in [surf.uKnots, surf.vKnots])
+    {
+        for (var k = 0; k + 1 < size(knots); k += 1)
+        {
+            const d = knots[k + 1] - knots[k];
+            if (d > 1e-12)
+            {
+                spans = append(spans, d);
+            }
+        }
+    }
+    spans = sort(spans, function(a, b)
+        {
+            return a - b;
+        });
+    const median = size(gaps) == 0 ? 1 : gaps[floor(size(gaps) / 2)];
+    return { "nu" : nu, "nv" : nv, "minGap" : size(gaps) == 0 ? 0 : gaps[0],
+            "cpRatio" : size(gaps) == 0 ? 1 : gaps[0] / max(median, 1e-12),
+            "knotRatio" : size(spans) == 0 ? 1 : spans[0] / spans[size(spans) - 1] };
 }
 
 /** Surface type of a face as text (PLANE, CYLINDER, ..., OTHER). */
