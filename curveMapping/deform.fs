@@ -1314,6 +1314,9 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
         return { "joined" : 0, "left" : 0 };
     var done = { (seed) : true };
     var refused = {};
+    var refusedWhy = {};
+    var retries = 0;
+    var doneAtLastPass = 1;
     var step = 0;
     var progress = true;
     while (progress)
@@ -1357,35 +1360,86 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
                 println("JOIN step " ~ step ~ ": face " ~ key ~ ", main body " ~ size(evaluateQuery(context, current[seed])) ~ " sheet(s), this face "
                     ~ size(evaluateQuery(context, current[key])) ~ " sheet(s), " ~ size(matches) ~ " edge matches");
             }
-            try
+            // First with the edge matches; when the kernel refuses that, as a plain union (the nearest edges found for the matches
+            // can be the wrong ones, and the kernel sews edges that are close enough on its own).
+            var joinedNow = false;
+            var joinErr = undefined;
+            var joinIds = [];
+            for (var variant = 0; variant < 2 && !joinedNow; variant += 1)
             {
-                opBoolean(context, joinId, { "tools" : qUnion([current[seed], current[key]]), "operationType" : BooleanOperationType.UNION,
-                                             "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true,
-                                             "matches" : uniqueMatches(matches), "recomputeMatches" : true });
+                if (variant == 1 && size(matches) == 0)
+                    break;
+                const variantId = joinId + ("v" ~ variant);
+                var joinOptions = { "tools" : qUnion([current[seed], current[key]]), "operationType" : BooleanOperationType.UNION,
+                                    "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true };
+                if (variant == 0)
+                    joinOptions = mergeMaps(joinOptions, { "matches" : uniqueMatches(matches), "recomputeMatches" : true });
+                try
+                {
+                    opBoolean(context, variantId, joinOptions);
+                    joinedNow = true;
+                    joinIds = append(joinIds, qCreatedBy(variantId, EntityType.BODY));
+                }
+                catch (variantErr)
+                {
+                    joinErr = variantErr;
+                }
+            }
+            if (joinedNow)
+            {
                 // The union's result is the first tool's body, modified: qCreatedBy(joinId) alone is EMPTY (a join then handed the next
                 // step one tool, BOOLEAN_BAD_INPUT, and no face after the second ever joined). The tools' own queries still resolve
                 // to the survivor (the consumed body resolves to nothing), so the merged body is whichever of them exists.
-                const merged = qBodyType(qUnion([qCreatedBy(joinId, EntityType.BODY), current[seed], current[key]]), BodyType.SHEET);
+                const merged = qBodyType(qUnion(concatenateArrays([joinIds, [current[seed], current[key]]])), BodyType.SHEET);
                 for (var member in done)
                     current[member.key] = merged;
                 current[key] = merged;
                 done[key] = true;
                 progress = true;
             }
-            catch (joinErr)
+            else
             {
                 refused[key] = true;
+                refusedWhy[key] = toString(joinErr) ~ " (" ~ size(matches) ~ " edge matches)";
                 if (verbose)
                 {
-                    println("join refused a face: " ~ toString(joinErr) ~ " (" ~ size(matches) ~ " edge matches)");
+                    println("join refused a face: " ~ refusedWhy[key]);
                 }
             }
+        }
+        // A face the kernel refused may be accepted once more of its neighbours are in the main body (a contact along two edges
+        // needs both sides present): try the refused ones again as long as the main body keeps growing.
+        if (!progress && size(refused) > 0 && retries < 4 && size(done) > doneAtLastPass)
+        {
+            doneAtLastPass = size(done);
+            retries += 1;
+            refused = {};
+            progress = true;
         }
     }
     var left = 0;
     for (var entry in fillBodies)
         if (done[entry.key] == undefined)
+        {
             left += 1;
+            if (verbose)
+            {
+                var placeNote = "";
+                try silent
+                {
+                    const leftBox = evBox3d(context, { "topology" : current[entry.key] });
+                    const centre = (leftBox.minCorner + leftBox.maxCorner) / 2;
+                    placeNote = " at (" ~ roundToPrecision(centre[0] / millimeter, 1) ~ ", " ~ roundToPrecision(centre[1] / millimeter, 1) ~ ", " ~ roundToPrecision(centre[2] / millimeter, 1)
+                        ~ ") mm, area " ~ roundToPrecision(evArea(context, { "entities" : current[entry.key] }) / (millimeter ^ 2), 2) ~ " mm2";
+                }
+                var touchingMain = 0;
+                for (var link in links)
+                    if ((link.a == entry.key && done[link.b] != undefined) || (link.b == entry.key && done[link.a] != undefined))
+                        touchingMain += 1;
+                println("LEFT sheet " ~ entry.key ~ placeNote ~ ": " ~ touchingMain ~ " contact edge(s) with the main body, "
+                    ~ (refusedWhy[entry.key] == undefined ? "never touched the main body" : refusedWhy[entry.key]));
+            }
+        }
     return { "joined" : size(done), "left" : left };
 }
 
