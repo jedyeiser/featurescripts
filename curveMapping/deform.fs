@@ -1489,7 +1489,7 @@ const PATCH_BRIDGE_MAX = 5e-4 * meter;
  * @returns {map} { "edges" : Query (the chain and the bridges), "bodies" : Query array (the bridges' bodies, to delete afterwards) }
  *          or `undefined` when the edges do not form a loop (a gap over PATCH_BRIDGE_MAX, fewer than two edges)
  */
-function bridgedBoundary(context is Context, id is Id, edges is array)
+function bridgedBoundary(context is Context, id is Id, edges is array, variant is number, bridge is boolean)
 {
     var items = [];
     for (var e in edges)
@@ -1497,8 +1497,10 @@ function bridgedBoundary(context is Context, id is Id, edges is array)
         const lp = evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 1] });
         items = append(items, { "edge" : e, "p0" : lp[0].origin, "p1" : lp[1].origin, "len" : evLength(context, { "entities" : e }) });
     }
-    // longest first, then without the duplicates
-    var chosen = [];
+    // longest first, grouped into duplicates (edges with the same two end points): the boundary uses ONE edge of each group, and which one
+    // matters (at a micro-edge cluster the group is the strip's own end edge, the sliver beside it and the edge beyond the sliver;
+    // the hand-made fill that works takes the last). `variant` picks the member (modulo the group's size).
+    var groups = [];
     var pending = items;
     while (size(pending) > 0)
     {
@@ -1508,14 +1510,23 @@ function bridgedBoundary(context is Context, id is Id, edges is array)
                 best = k;
         const item = pending[best];
         pending = concatenateArrays([subArray(pending, 0, best), subArray(pending, best + 1)]);
-        var duplicate = false;
-        for (var c in chosen)
+        var placed = false;
+        for (var g = 0; g < size(groups) && !placed; g += 1)
+        {
+            const c = groups[g][0];
             if ((norm(item.p0 - c.p0) < PATCH_DUPLICATE_GATE && norm(item.p1 - c.p1) < PATCH_DUPLICATE_GATE)
                 || (norm(item.p0 - c.p1) < PATCH_DUPLICATE_GATE && norm(item.p1 - c.p0) < PATCH_DUPLICATE_GATE))
-                duplicate = true;
-        if (!duplicate)
-            chosen = append(chosen, item);
+            {
+                groups[g] = append(groups[g], item);
+                placed = true;
+            }
+        }
+        if (!placed)
+            groups = append(groups, [item]);
     }
+    var chosen = [];
+    for (var group in groups)
+        chosen = append(chosen, group[variant % size(group)]);
     if (size(chosen) < 2)
         return undefined;
 
@@ -1562,7 +1573,7 @@ function bridgedBoundary(context is Context, id is Id, edges is array)
         gapNote = gapNote ~ (gapNote == "" ? "" : "/") ~ roundToPrecision(gap / meter * 1e6, 1);
         if (gap > PATCH_BRIDGE_MAX)
             return undefined;
-        if (gap >= PATCH_BRIDGE_MIN)
+        if (bridge && gap >= PATCH_BRIDGE_MIN)
         {
             const bridgeId = id + ("bridge" ~ bridgeCount);
             opPolyline(context, bridgeId, { "points" : [cursor, target] });
@@ -1671,16 +1682,18 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                     var usedLoop = 0;
                     var usedGuides = false;
                     var chainSummary = "";
-                    for (var attempt = 0; attempt < 10 && patchFill == undefined; attempt += 1)
+                    for (var attempt = 0; attempt < 8 && patchFill == undefined; attempt += 1)
                     {
-                        // 0-1: the naked edges along the sheet, guided / unguided. 2-3: plus the sheet's own free edges. 4-5: the same with a gate ten
-                        // times wider. 6-7: the naked edges (wide gate) with duplicates dropped and the gaps between them bridged, stitched into a wire
-                        // first. 8-9: the same chain filled directly, without the stitching.
-                        const gate = attempt < 4 ? PATCH_EDGE_GATE : 10 * PATCH_EDGE_GATE;
-                        const withGuides = attempt % 2 == 0 && size(guideBodies) > 0;
-                        const withFree = attempt >= 2 && attempt < 6;
-                        const bridged = attempt >= 6;
-                        const stitched = attempt < 8;       // for the bridged attempts: stitched into a wire first
+                        // 0-1: the naked edges along the sheet (tight gate), guided / unguided: what works for a face with a clean boundary.
+                        // 2-7: the naked edges within a wide gate with duplicates reduced to one edge per group and NO bridges (a gap of ~10-20 um
+                        // is left to the kernel, as in a hand-made Fill, and a bridge that short is what broke the earlier attempts); the member
+                        // of each duplicate group is tried in turn (2-4 unguided, 5-7 guided). A hand-made fill of the 413 mm2 strip (edges: the
+                        // two long ones, the 2.58 mm one and the LAST of three 3.5 mm end edges, unguided) is what this follows.
+                        const gate = attempt < 2 ? PATCH_EDGE_GATE : 10 * PATCH_EDGE_GATE;
+                        const withGuides = (attempt < 2 ? attempt == 0 : attempt >= 5) && size(guideBodies) > 0;
+                        const withFree = false;
+                        const bridged = attempt >= 2;
+                        const stitched = false;
                         var loop = [];
                         for (var candidate in nakedGaps)
                             if (candidate.gap < gate)
@@ -1712,7 +1725,7 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                                 }
                                 else if (bridged)
                                 {
-                                    const chain = bridgedBoundary(context, patchId + ("b" ~ attempt), loop);
+                                    const chain = bridgedBoundary(context, patchId + ("b" ~ attempt), loop, (attempt - 2) % 3, false);
                                     if (chain == undefined)
                                         throw "the naked edges around the sheet do not form a loop that can be bridged";
                                     scaffold = chain.bodies;
