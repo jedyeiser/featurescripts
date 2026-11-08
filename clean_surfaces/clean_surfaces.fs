@@ -412,6 +412,18 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
             println("SHORTEDGES " ~ size(shortEdges) ~ " mergeable " ~ size(mergeable) ~ " corner " ~ size(corners));
             if (definition.colorBy == CleanColorBy.OFFSET)
             {
+                // faces the kernel refuses to offset that the severity score does not call critical: what are they?
+                for (var r in rows)
+                {
+                    if (r.offsetFail == true && r.level < NAME_FROM_LEVEL)
+                    {
+                        const m = stripMeasure(context, r.face);
+                        println("UNFLAGGED-FAIL " ~ LEVEL_NAMES[r.level] ~ " " ~ faceType(context, r.face) ~ " A=" ~ roundToPrecision(r.area, 2) ~ " w=" ~ roundToPrecision(r.width, 3)
+                                ~ " minEdge=" ~ roundToPrecision(r.edge, 3) ~ " edges=" ~ size(evaluateQuery(context, qAdjacent(r.face, AdjacencyType.EDGE, EntityType.EDGE)))
+                                ~ " naked=" ~ size(evaluateQuery(context, qEdgeTopologyFilter(qAdjacent(r.face, AdjacencyType.EDGE, EntityType.EDGE), EdgeTopology.ONE_SIDED)))
+                                ~ " corner=" ~ roundToPrecision(cornerAngle(context, r.face), 0) ~ " taper=" ~ roundToPrecision(m.taper, 2) ~ " at " ~ m.where);
+                    }
+                }
                 println("OFFSET tested " ~ offsetTested ~ " failed " ~ offsetFailed);
                 // does the curvature number predict the failures? (sign check: which side is "positive")
                 for (var sgn in [1, -1])
@@ -543,6 +555,12 @@ function tightness(context is Context, face is Query, distance is ValueWithUnits
         worst = min(worst, min(1 + distance * c.minCurvature, 1 + distance * c.maxCurvature));
     }
     return worst;
+}
+
+/** Surface type of a face as text (PLANE, CYLINDER, ..., OTHER). */
+function faceType(context is Context, face is Query) returns string
+{
+    return "" ~ evSurfaceDefinition(context, { "face" : face, "returnBSplinesAsOther" : true }).surfaceType;
 }
 
 /** Direction of an edge leaving a vertex (unit vector). */
