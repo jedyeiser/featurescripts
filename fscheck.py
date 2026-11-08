@@ -157,7 +157,184 @@ def balance(text):
     return depth
 
 
+# ---------------------------------------------------------------------------
+# println lint. User rule (2026-11-08): a feature never emits println unless the
+# user switched on a Debug/print option. Purely lexical; see println_check().
+# ---------------------------------------------------------------------------
+PRINTLN_SKIP_PATH_RES = [      # matched against the '/'-normalised path
+    r"_tests\.fs$", r"_spike\.fs$", r"_probe\.fs$",
+    r"(^|/)std/", r"(^|/)archive/", r"(^|/)example_1/", r"(^|/)legacy",
+]
+GUARD_RE = re.compile(r"debug|print|verbose|trace|dbg|diag|log", re.I)
+ALLOW_RE = re.compile(r"fscheck:\s*allow-println")
+FUNC_RE = re.compile(
+    r"\bfunction\s+(\w+)\s*\(|\b(?:const|var)\s+(\w+)\s*=\s*function\s*\(")
+
+
+def println_skipped(path):
+    norm = path.replace("\\", "/")
+    return any(re.search(r, norm) for r in PRINTLN_SKIP_PATH_RES)
+
+
+def blank_noise(src):
+    """Comments and string contents -> spaces; length and newlines preserved, so
+    offsets and line numbers match the original."""
+    out, i, n = [], 0, len(src)
+    while i < n:
+        two = src[i:i + 2]
+        if two == "//":
+            j = src.find("\n", i)
+            j = n if j < 0 else j
+            out.append(" " * (j - i)); i = j
+        elif two == "/*":
+            j = src.find("*/", i + 2)
+            j = n if j < 0 else j + 2
+            out.append("".join(c if c == "\n" else " " for c in src[i:j])); i = j
+        elif src[i] == '"':
+            j = i + 1
+            while j < n and src[j] != '"' and src[j] != "\n":
+                j += 2 if src[j] == "\\" else 1
+            j = min(j + 1, n)
+            out.append('"' + " " * (j - i - 2) + '"' if j - i >= 2 else " " * (j - i)); i = j
+        else:
+            out.append(src[i]); i += 1
+    return "".join(out)
+
+
+class PrintlnFile(object):
+    def __init__(self, path, raw):
+        self.path, self.raw = path, raw
+        self.lines = raw.split("\n")
+        self.t = blank_noise(raw)
+        self.match, self.rmatch, stack = {}, {}, []
+        for i, c in enumerate(self.t):
+            if c == "{":
+                stack.append(i)
+            elif c == "}" and stack:
+                o = stack.pop(); self.match[o] = i; self.rmatch[i] = o
+        self.funcs = []     # (name, body_open, body_close)
+        for m in FUNC_RE.finditer(self.t):
+            k = self.t.find("(", m.end() - 1)
+            depth, j = 0, k
+            while j < len(self.t):
+                if self.t[j] == "(": depth += 1
+                elif self.t[j] == ")":
+                    depth -= 1
+                    if depth == 0: break
+                j += 1
+            o = self.t.find("{", j)
+            if o >= 0 and o in self.match:
+                self.funcs.append((m.group(1) or m.group(2), o, self.match[o]))
+
+    def line(self, pos):
+        return self.t.count("\n", 0, pos) + 1
+
+    def header(self, o):
+        k = o
+        while k > 0 and self.t[k - 1] not in ";{}":
+            k -= 1
+        return self.t[k:o].strip()
+
+    def enclosing_func(self, pos):
+        best = None
+        for f in self.funcs:
+            if f[1] < pos < f[2] and (best is None or f[1] > best[1]):
+                best = f
+        return best
+
+    def block_guarded(self, o, depth=0):
+        h = self.header(o)
+        if re.match(r"(else\s+)?if\b", h):
+            return bool(GUARD_RE.search(h))
+        if h == "else" and depth < 8:           # lenient: else of a guard if
+            k = o
+            while k > 0 and self.t[k - 1].isspace():
+                k -= 1
+            if k > 0 and self.t[k - 1] == "}" and (k - 1) in self.rmatch:
+                return self.block_guarded(self.rmatch[k - 1], depth + 1)
+        return False
+
+    def guarded(self, pos):
+        """True if pos is gated lexically (excluding the enclosing-function-name rule)."""
+        t = self.t
+        k = pos
+        while k > 0 and t[k - 1] not in ";{}":
+            k -= 1
+        pre = t[k:pos]                          # brace-less if / ternary / &&
+        if GUARD_RE.search(pre) and (re.match(r"\s*(else\s+)?if\b", pre)
+                                     or "?" in pre or "&&" in pre):
+            return True
+        for o, c in self.match.items():
+            if o < pos < c:
+                if self.block_guarded(o):
+                    return True
+                # early `if (!dbg) { return; }` earlier in this block
+                for m in re.finditer(r"\bif\s*\(([^{};]*)\)\s*\{?\s*return\b", t[o:pos]):
+                    if GUARD_RE.search(m.group(1)):
+                        return True
+        return False
+
+
+def println_check(paths, sources):
+    """Returns (problems, messages). Each println( must be gated by a condition
+    naming debug/print/verbose/trace/dbg/diag/log (if-block, brace-less if,
+    ternary, early return) or sit in a function whose name matches. Helper
+    functions named that way are reported at low severity (not counted) unless a
+    caller (in the given files) is itself ungated."""
+    files = {p: PrintlnFile(p, sources[p]) for p in paths if not println_skipped(p)}
+    problems, msgs, helpers = 0, [], {}
+    for p, f in sorted(files.items()):
+        for m in re.finditer(r"\bprintln\s*\(", f.t):
+            ln = f.line(m.start())
+            if any(ALLOW_RE.search(f.lines[i]) for i in (ln - 1, ln - 2) if 0 <= i < len(f.lines)):
+                continue
+            fn = f.enclosing_func(m.start())
+            if f.guarded(m.start()):
+                continue                    # gated by its own if / ternary: fine in any function
+            if fn and GUARD_RE.search(fn[0]):
+                helpers.setdefault(fn[0], []).append((p, ln))
+            else:
+                msgs.append("%s:%d  [println] unguarded println" % (p, ln)); problems += 1
+    for name, sites in sorted(helpers.items()):
+        bad = []
+        for p, f in files.items():
+            for m in re.finditer(r"\b%s\s*\(" % re.escape(name), f.t):
+                if re.search(r"function\s+$", f.t[max(0, m.start() - 20):m.start()]) \
+                        or re.search(r"=\s*function\s*$", f.t[max(0, m.start() - 20):m.start()]):
+                    continue
+                fn = f.enclosing_func(m.start())
+                if (fn and GUARD_RE.search(fn[0])) or f.guarded(m.start()):
+                    continue
+                if f.line(m.start()) and any(ALLOW_RE.search(f.lines[i]) for i in
+                                             (f.line(m.start()) - 1, f.line(m.start()) - 2)
+                                             if 0 <= i < len(f.lines)):
+                    continue
+                bad.append((p, f.line(m.start())))
+        for p, ln in sites[:1]:
+            if bad:
+                msgs.append("%s:%d  [println] unguarded println via helper %s(); ungated caller(s): %s"
+                            % (p, ln, name, ", ".join("%s:%d" % b for b in bad[:5])))
+                problems += 1
+            else:
+                msgs.append("%s:%d  [println] (low) helper prints; callers must be gated: %s()"
+                            % (p, ln, name))
+    return problems, msgs
+
+
 def main(paths):
+    do_println, only_println = True, False
+    if "--no-println" in paths:
+        do_println = False
+    if "--println-only" in paths:
+        only_println = True
+    paths = [p for p in paths if not p.startswith("--")]
+    if only_println:
+        sources = {p: io.open(p, encoding="utf-8", errors="replace").read() for p in paths}
+        n, msgs = println_check(paths, sources)
+        for m in msgs:
+            print(m)
+        print("\n%s" % ("clean" if n == 0 else "%d problem(s)" % n))
+        return 1 if n else 0
     std = std_symbols()
     sources = {p: io.open(p, encoding="utf-8").read() for p in paths}
     defined = {}
@@ -166,8 +343,13 @@ def main(paths):
             defined.setdefault(name, set()).update(arities)
 
     problems = 0
+    if do_println:
+        n, msgs = println_check(paths, sources)
+        for m in msgs:
+            print(m)
+        problems += n
     for path, src in sources.items():
-        raw = io.open(path, "rb").read()
+        raw =io.open(path, "rb").read()
         text = raw.decode("utf-8")
         body = strip_noise(src)
 

@@ -1,0 +1,73 @@
+{
+    "doc":  "22764764a00a7f607dbc1c4d",
+    "ws":  "3b5e11a121111a161684adee",
+    "shots":  [
+                  {
+                      "elem":  "73222f3cbcfe185c0932d0a4",
+                      "wait":  40,
+                      "featurePrefix":  "M3 Offset+",
+                      "filter":  "M3 Offset",
+                      "dialog":  "docs/decks/offset_plus/shots/dialog_surface.png",
+                      "labels":  [
+                                     {
+                                         "name":  "Offset method",
+                                         "find":  "Offset method"
+                                     },
+                                     {
+                                         "name":  "Output name",
+                                         "find":  "Output name"
+                                     },
+                                     {
+                                         "name":  "Distance",
+                                         "find":  "Distance"
+                                     }
+                                 ]
+                  },
+                  {
+                      "elem":  "73222f3cbcfe185c0932d0a4",
+                      "wait":  40,
+                      "featurePrefix":  "C1 Offset+",
+                      "filter":  "C1 Offset",
+                      "dialog":  "docs/decks/offset_plus/shots/dialog_plane.png",
+                      "labels":  [
+                                     {
+                                         "name":  "Offset type",
+                                         "find":  "Offset type"
+                                     },
+                                     {
+                                         "name":  "Plane normal",
+                                         "find":  "Plane normal"
+                                     },
+                                     {
+                                         "name":  "Distance",
+                                         "find":  "Distance"
+                                     },
+                                     {
+                                         "name":  "Output name",
+                                         "find":  "Output name"
+                                     }
+                                 ]
+                  },
+                  {
+                      "elem":  "73222f3cbcfe185c0932d0a4",
+                      "wait":  40,
+                      "featurePrefix":  "C5 Offset+",
+                      "filter":  "C5 Offset",
+                      "dialog":  "docs/decks/offset_plus/shots/dialog_surfaceframe.png",
+                      "labels":  [
+                                     {
+                                         "name":  "Offset type",
+                                         "find":  "Offset type"
+                                     },
+                                     {
+                                         "name":  "Distance",
+                                         "find":  "Distance"
+                                     },
+                                     {
+                                         "name":  "Output name",
+                                         "find":  "Output name"
+                                     }
+                                 ]
+                  }
+              ]
+}

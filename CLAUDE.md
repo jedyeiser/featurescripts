@@ -138,6 +138,15 @@ keep that current. Exits non-zero on any finding.
 It does NOT type-check, unit-check, or verify enum reachability or runtime behaviour.
 Clean means "worth pushing", not "correct".
 
+**println lint** (on by default, findings tagged `[println]`): a feature must not emit `println` unless the user
+switched on a Debug/print option. Every `println(` must sit lexically inside an `if`/ternary/early-return whose
+condition names `debug|print|verbose|trace|dbg|diag|log`, or inside a function with such a name (reported as a
+low-severity "helper prints; callers must be gated", escalated if a caller in the given files is ungated); otherwise
+it is an "unguarded println". Silence one with `// fscheck: allow-println <reason>` on the same or previous line.
+`--no-println` skips it, `--println-only` runs only it. `*_tests.fs`, `*_spike.fs`, `*_probe.fs`, `std/`, `archive/`,
+`example_1/` and `legacy` paths are skipped (`PRINTLN_SKIP_PATH_RES`). Purely lexical: a gate with a neutral name
+(e.g. `reportsRun(...)`) is flagged and needs the marker or a rename.
+
 ## Live testing (each feature has a build/check pair)
 
 `devtools/onshape/build_<x>_tests.py` inserts real test features into the document's test Part Studio (features named by

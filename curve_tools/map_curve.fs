@@ -974,7 +974,7 @@ function emitRuns(context is Context, id is Id, definition is map, samples is ar
         const shape = shapes[r];
 
         emitRunShape(context, runId, shape, runPoints[r], approximation);
-        if (shape.note != undefined)
+        if (definition.debugPrint && shape.note != undefined)
         {
             println("Map curve run " ~ r ~ " -> " ~ shape.kind ~ ": " ~ shape.note);
         }

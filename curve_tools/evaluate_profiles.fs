@@ -609,7 +609,7 @@ function partProfiles(context is Context, id is Id, definition is map, plane is 
 
         if (wantsMiddle)
         {
-            const middle = middleProfile(definition, plane, heading, top, bottom);
+            const middle = middleProfile(context, id, definition, plane, heading, top, bottom);
             if (size(middle) >= 2)
             {
                 curves = concatenateArrays([curves, emitConstructed(context, id + "middle",
@@ -949,6 +949,7 @@ function traceStep(verbose is boolean, message is string)
 {
     if (verbose)
     {
+        // fscheck: allow-println gated by the verbose argument (the Print scan option)
         println("[profiles] " ~ message);
     }
 }
@@ -1321,7 +1322,7 @@ function fmtLength(value is ValueWithUnits) returns string
  * Only the overlap of their two extents is covered: beyond it there is no second curve to
  * average with, and extrapolating one of them would be inventing geometry.
  */
-function middleProfile(definition is map, plane is Plane, heading is Vector,
+function middleProfile(context is Context, id is Id, definition is map, plane is Plane, heading is Vector,
     top is array, bottom is array) returns array
 {
     const count = definition.samplesPerCurve;
@@ -1333,7 +1334,8 @@ function middleProfile(definition is map, plane is Plane, heading is Vector,
 
     if (hi - lo < TOLERANCE.zeroLength * meter)
     {
-        println("WARNING: the top and bottom profiles do not overlap along the prevailing "
+        // The middle profile was asked for and cannot be built, so this is a warning, not a print.
+        reportFeatureWarning(context, id, "The top and bottom profiles do not overlap along the prevailing "
             ~ "direction, so there is no middle profile to build.");
         return [];
     }

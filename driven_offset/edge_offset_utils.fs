@@ -1742,8 +1742,6 @@ export function referencePlaneNormal(samples is array) returns Vector
         {
             planeNormal = cross(tangent, vector(0, 1, 0));
         }
-        println("NOTE: the reference wire is straight; its offset plane is taken with height along world Z"
-            ~ " (plane normal " ~ fmtVec(normalize(planeNormal), 3, 7) ~ ").");
         return normalize(planeNormal);
     }
 

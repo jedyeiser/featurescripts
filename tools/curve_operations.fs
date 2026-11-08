@@ -465,7 +465,7 @@ export function joinCurves(context is Context, curveA is BSplineCurve, curveB is
     {
         // C2 requires curvature matching - more complex, needs second derivatives
         // For now, issue a warning that C2 is approximated
-        println("WARNING: joinCurves C2 continuity is approximate (tangent-matched only)");
+        // NOTE: joinCurves C2 continuity is approximate (tangent-matched only); no console warning (features must not println).
     }
 
     // Concatenate control points (skip duplicate at join)

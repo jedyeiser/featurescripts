@@ -427,8 +427,6 @@ export const cleanWire = defineFeature(function(context is Context, id is Id, de
                         reportFeatureWarning(context, id, "The constrained wire came out as " ~ toString(size(pieces))
                             ~ " bodies: " ~ toString(droppedCount) ~ " of " ~ toString(size(runs)) ~ " edges projected onto the wall. "
                             ~ "An edge running along the plane normal has no projection; pick a plane the wire lies across.");
-                        println("[constrain] " ~ toString(droppedCount) ~ " edge(s) dropped onto the wall from "
-                            ~ toString(size(runs)) ~ " run(s); " ~ toString(size(pieces)) ~ " wire body(ies) after extraction.");
                     }
                 }
             }
@@ -1069,7 +1067,7 @@ function overshotPlan(context is Context, copyId is Id, planWire is Query, plana
         }
         catch
         {
-            println("NOTE: the wall could not be extended past the plan wire's " ~ (k == 0 ? "start" : "end") ~ ".");
+            // The wall is then only as long as the plan at this end (no println: see the doc comment).
         }
     }
 
@@ -1333,7 +1331,7 @@ function classifyJoints(context is Context, definition is map, chain is map,
             joints[i - 1] = mergeMaps(joints[i - 1], { "sliver" : true, "why" : why });
             joints[i] = mergeMaps(joints[i], { "sliver" : true, "why" : why });
 
-            if (report && !kept)
+            if (report && !kept && definition.debugPrintJoints)
             {
                 println("NOTE: a " ~ fmtMM(edges[i].length, 4, 0) ~ " mm fragment at "
                     ~ pointText(edges[i].startPoint)
@@ -1376,7 +1374,7 @@ function classifyJoints(context is Context, definition is map, chain is map,
             joints[i - 1] = mergeMaps(across, { "why" : "sliver absorbed" });
             joints[i] = mergeMaps(across, { "why" : "sliver absorbed" });
 
-            if (report)
+            if (report && definition.debugPrintJoints)
             {
                 println("NOTE: a " ~ fmtMM(edges[i].length, 4, 0) ~ " mm fragment at "
                     ~ pointText(edges[i].startPoint)
@@ -1896,7 +1894,7 @@ function emitFittedRun(context is Context, runId is Id, definition is map, chain
                         "points" : points,
                         "startDerivative" : first.startTangent,
                         "endDerivative" : last.endTangent
-                    }], settings);
+                    }], mergeMaps(settings, { "warnId" : runId }));
     const curve = curves[0];
 
     if (curve.isRational == true)

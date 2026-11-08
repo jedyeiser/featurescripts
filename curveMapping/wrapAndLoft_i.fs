@@ -57,7 +57,7 @@ export import(path : "683d867c35fdab9c98d47556", version : "2ce76fa46e9966199cf9
 
 
 /** Splits a closed (periodic ring) edge made under `id` at its seam and the opposite point, so the ring has vertices. No-op if it cannot be split. */
-function splitClosedRing(context is Context, id is Id)
+function splitClosedRing(context is Context, id is Id, verbose is boolean)
 {
     try
     {
@@ -65,7 +65,10 @@ function splitClosedRing(context is Context, id is Id)
     }
     catch (splitErr)
     {
-        println("splitClosedRing: the ring could not be split (" ~ toString(splitErr) ~ "); it stays one edge without a vertex");
+        if (verbose)
+        {
+            println("splitClosedRing: the ring could not be split (" ~ toString(splitErr) ~ "); it stays one edge without a vertex");
+        }
     }
 }
 
@@ -625,7 +628,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     }
                     catch (e)
                     {
-                        println("ERROR wrapAndLoft linearFastPath " ~ toString(i) ~ ": " ~ toString(e));
+                        if (definition.debugWrappedCurves)
+                        {
+                            println("ERROR wrapAndLoft linearFastPath " ~ toString(i) ~ ": " ~ toString(e));
+                        }
                         const partial = qUnion([qCreatedBy(linId + "w", EntityType.BODY), qCreatedBy(linId + "p", EntityType.BODY),
                                     qCreatedBy(linId + "s", EntityType.BODY)]);
                         if (!isQueryEmpty(context, partial))
@@ -1100,10 +1106,13 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 if (size(segPoints) < approxDegree + 1)
                 {
                     fitDegree = max([1, size(segPoints) - 1]);
-                    println("WARNING: wrapAndLoft span " ~ toString(i) ~ "." ~ toString(segCount)
-                        ~ " has " ~ toString(size(segPoints)) ~ " point(s), needs "
-                        ~ toString(approxDegree + 1) ~ " for degree " ~ toString(approxDegree)
-                        ~ "; fitting at degree " ~ toString(fitDegree) ~ " instead.");
+                    if (definition.debugWrappedCurves)
+                    {
+                        println("WARNING: wrapAndLoft span " ~ toString(i) ~ "." ~ toString(segCount)
+                            ~ " has " ~ toString(size(segPoints)) ~ " point(s), needs "
+                            ~ toString(approxDegree + 1) ~ " for degree " ~ toString(approxDegree)
+                            ~ "; fitting at degree " ~ toString(fitDegree) ~ " instead.");
+                    }
                 }
 
                 if (size(segPoints) >= 2)
@@ -1360,15 +1369,15 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         // for a loft or a neighbouring edge to meet. The halves are pieces of one C2 curve, so nothing is lost.
                         opCreateBSplineCurve(context, wrappedId, { "bSplineCurve": mappedCurve });
                         if (closedSpan)
-                            splitClosedRing(context, wrappedId);
+                            splitClosedRing(context, wrappedId, definition.debugWrappedCurves);
                         opCreateBSplineCurve(context, primaryOffsetId, { "bSplineCurve": primaryOffsetCurve });
                         if (closedSpan)
-                            splitClosedRing(context, primaryOffsetId);
+                            splitClosedRing(context, primaryOffsetId, definition.debugWrappedCurves);
                         if (secondaryOffsetCurve != undefined)
                         {
                             opCreateBSplineCurve(context, secondaryOffsetId, { "bSplineCurve": secondaryOffsetCurve });
                             if (closedSpan)
-                                splitClosedRing(context, secondaryOffsetId);
+                                splitClosedRing(context, secondaryOffsetId, definition.debugWrappedCurves);
                         }
 
                         allWrappedSegQueries = append(allWrappedSegQueries, closedSpan ? qOwnedByBody(qCreatedBy(wrappedId, EntityType.BODY), EntityType.EDGE) : qCreatedBy(wrappedId, EntityType.EDGE));
@@ -1396,6 +1405,9 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                         {
                             opDeleteBodies(context, id + (toString(i) ~ "_" ~ toString(thisSegCount) ~ "discardPartial"), { "entities": partial });
                         }
+                        // Diagnostics (notices console): only when the user switched on a debug print option.
+                        if (definition.debugWrappedCurves)
+                        {
                         println("ERROR: wrapAndLoft opCreateBSplineCurve BAD_GEOMETRY - " ~ e);
                         println("  curve i=" ~ i ~ "  seg=" ~ thisSegCount ~
                                 "  segPoints count=" ~ size(segPoints));
@@ -1410,6 +1422,7 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                             println("  [" ~ di ~ "] X=" ~ toString(dpt[0] / millimeter) ~
                                     " mm  Y=" ~ toString(dpt[1] / millimeter) ~
                                     " mm  Z=" ~ toString(dpt[2] / millimeter) ~ " mm");
+                        }
                         }
 
                         // Debug geometry: polyline + points
@@ -1428,9 +1441,12 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 {
                     // One point cannot be a curve. This is the only remaining way to lose a
                     // span, and it is always reported.
-                    println("WARNING: wrapAndLoft span " ~ toString(i) ~ "." ~ toString(segCount)
-                        ~ " has only " ~ toString(size(segPoints))
-                        ~ " point(s) and cannot be fitted; the output will have a gap here.");
+                    if (definition.debugWrappedCurves)
+                    {
+                        println("WARNING: wrapAndLoft span " ~ toString(i) ~ "." ~ toString(segCount)
+                            ~ " has only " ~ toString(size(segPoints))
+                            ~ " point(s) and cannot be fitted; the output will have a gap here.");
+                    }
                 }
 
                 segStartIdx = segEndIdx + 1;
@@ -1543,7 +1559,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                     }
                     catch (e)
                     {
-                        println("ERROR: wrapAndLoft loft " ~ toString(li) ~ " failed - " ~ toString(e));
+                        if (definition.debugWrappedCurves)
+                        {
+                            println("ERROR: wrapAndLoft loft " ~ toString(li) ~ " failed - " ~ toString(e));
+                        }
                     }
                 }
 
@@ -1564,7 +1583,10 @@ export function wrapAndLoftEditingLogic(context is Context, id is Id, oldDefinit
                 }
                 catch (e)
                 {
-                    println("Surface union failed (surfaces may not share edges): " ~ toString(e));
+                    if (definition.debugWrappedCurves)
+                    {
+                        println("Surface union failed (surfaces may not share edges): " ~ toString(e));
+                    }
                 }
             }
 

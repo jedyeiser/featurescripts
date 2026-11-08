@@ -1,0 +1,13 @@
+{
+    "doc":  "14cdaad24a8beab67af40fe4",
+    "ws":  "9bfd33d53af778cf02e60d9f",
+    "shots":  [
+                  {
+                      "elem":  "dd2cf287a5c44e5c3408d646",
+                      "wait":  40,
+                      "featurePrefix":  "T10 trim 50",
+                      "filter":  "T10 trim",
+                      "dialog":  "docs/decks/trim_curve_plus/shots/dialog.png"
+                  }
+              ]
+}

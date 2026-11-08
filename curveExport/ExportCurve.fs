@@ -144,14 +144,14 @@ export const exportCurve = defineFeature(function(context is Context, id is Id, 
         {
             var direction = getQueryDirection(context, definition.geomQuery);
             samples = sampleByPlanes(context, orderedCurves, direction,
-                                     definition.numPoints, chainStart, definition.addSlopes);
+                                     definition.numPoints, chainStart, definition.addSlopes, definition.showDebugPoints == true);
         }
         else
         {
             // WORLD mode
             var direction = getAxisDirection(definition.alongAxis);
             samples = sampleByPlanes(context, orderedCurves, direction,
-                                     definition.numPoints, chainStart, definition.addSlopes);
+                                     definition.numPoints, chainStart, definition.addSlopes, definition.showDebugPoints == true);
         }
 
         // Reverse sample order if requested. Rows only: arcLength keeps its origin (chain start in CHAIN mode,

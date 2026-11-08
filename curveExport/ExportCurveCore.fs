@@ -808,7 +808,7 @@ export function intersectCurveWithPlane(curve is BSplineCurve, planeNormal is Ve
  * Returns array of sample maps (same format as sampleChain output).
  */
 export function sampleByPlanes(context is Context, orderedCurves is array, direction is Vector,
-                                numPoints is number, chainStart is Vector, addSlopes is boolean) returns array
+                                numPoints is number, chainStart is Vector, addSlopes is boolean, debug is boolean) returns array
 {
     var bounds = projectCurveBounds(orderedCurves, direction);
     var minT   = bounds.minT;
@@ -838,7 +838,10 @@ export function sampleByPlanes(context is Context, orderedCurves is array, direc
 
         if (size(allIntersections) == 0)
         {
-            println("ExportCurve WARNING: No intersection found for plane " ~ i ~ ". Skipping.");
+            if (debug)
+            {
+                println("ExportCurve WARNING: No intersection found for plane " ~ i ~ ". Skipping.");
+            }
             continue;
         }
 

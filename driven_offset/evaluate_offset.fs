@@ -677,10 +677,6 @@ function measuredRows(stations is array, coords is map, cuts is array, zeroPoint
                 });
     }
 
-    if (folded > 0)
-    {
-        println("NOTE: evaluate offset: " ~ folded ~ " station(s) dropped -- the target lies past the reference's centre of curvature there, where Driven edge offset folds.");
-    }
     return rows;
 }
 

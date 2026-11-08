@@ -1,0 +1,13 @@
+{
+    "doc":  "7183868d32cdc7a6ad14410d",
+    "ws":  "a3ea9a8cd3639eb3be0528c6",
+    "shots":  [
+                  {
+                      "elem":  "0d314483ae862dd10ebfb64e",
+                      "wait":  40,
+                      "featurePrefix":  "OE6 line 400",
+                      "filter":  "OE6 line",
+                      "dialog":  "docs/decks/offset_edges/shots/dialog.png"
+                  }
+              ]
+}

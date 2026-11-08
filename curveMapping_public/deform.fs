@@ -264,7 +264,7 @@ function faceCuts(context is Context, fromFrenetPath is map, face is Query, refi
  * @returns {map} { "body" : the copy (a sheet body made from all of `body`'s faces), or `undefined` when there was nothing to
  *          cut, "ranOps" : whether any modelling operation was run (a failed cut leaves some behind) }
  */
-function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath is map, body is Query, faces is array, refine is array)
+function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath is map, body is Query, faces is array, refine is array, verbose is boolean)
 {
     var cutsOfFace = [];
     var anyCut = false;
@@ -304,7 +304,10 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
         }
         if (target == undefined)
         {
-            println("WARNING: a face that failed to fill was not found on the work copy; it is not cut");
+            if (verbose)
+            {
+                println("WARNING: a face that failed to fill was not found on the work copy; it is not cut");
+            }
             continue;
         }
 
@@ -344,7 +347,10 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
         }
         catch (splitErr)
         {
-            println("WARNING: could not cut a face that failed to fill: " ~ toString(splitErr) ~ " (" ~ size(curveBodies) ~ " curve cut(s), " ~ size(planeFaces) ~ " plane cut(s))");
+            if (verbose)
+            {
+                println("WARNING: could not cut a face that failed to fill: " ~ toString(splitErr) ~ " (" ~ size(curveBodies) ~ " curve cut(s), " ~ size(planeFaces) ~ " plane cut(s))");
+            }
         }
         if (size(curveBodies) > 0 || size(planeFaces) > 0)
         {
@@ -362,7 +368,10 @@ function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath 
         }
         return { "body" : undefined, "ranOps" : true };
     }
-    println("Deform: " ~ size(faces) ~ " face(s) failed to fill; retrying with " ~ totalCuts ~ " cut(s) across them");
+    if (verbose)
+    {
+        println("Deform: " ~ size(faces) ~ " face(s) failed to fill; retrying with " ~ totalCuts ~ " cut(s) across them");
+    }
     return { "body" : copy, "ranOps" : true };
 }
 
@@ -380,7 +389,7 @@ const OUTLINE_CORNER_ANGLE = 30 * degree;
  * @returns {boolean} whether the surface was made (false when the outline does not have exactly four corners or the
  *          kernel refused: the caller then fills the outline instead)
  */
-function boundarySurfaceFace(context is Context, id is Id, outline is Query) returns boolean
+function boundarySurfaceFace(context is Context, id is Id, outline is Query, verbose is boolean) returns boolean
 {
     const edges = evaluateQuery(context, outline);
     const n = size(edges);
@@ -477,7 +486,10 @@ function boundarySurfaceFace(context is Context, id is Id, outline is Query) ret
     }
     catch (bsurfErr)
     {
-        println("boundary surface refused: " ~ toString(bsurfErr));
+        if (verbose)
+        {
+            println("boundary surface refused: " ~ toString(bsurfErr));
+        }
         made = false;
     }
     if (size(sideWires) > 0)
@@ -504,7 +516,7 @@ function planeAngleAt(context is Context, faceA is Query, faceB is Query, point 
  * is measured, and edges that were smooth in the source but are not in the result are listed. The wrap is smooth, so a
  * source edge that is tangent must stay tangent.
  */
-function reportContinuity(context is Context, source is Query, result is Query, fromFrenetPath is map, toFrenetPath is map, fromRefArc, toRefArc, flipToNormal is boolean)
+function debugReportContinuity(context is Context, source is Query, result is Query, fromFrenetPath is map, toFrenetPath is map, fromRefArc, toRefArc, flipToNormal is boolean)
 {
     try
     {
@@ -571,7 +583,7 @@ function reportContinuity(context is Context, source is Query, result is Query, 
  * Debug: how the wrapped edges were fitted: control points per edge, how many needed a refit, and (when an edge accuracy is
  * set) the measured deviation from the exact image of the source edge. Read from what the fit stored: nothing is re-measured.
  */
-function reportEdgeFit(edgeMapping is array)
+function debugReportEdgeFit(edgeMapping is array)
 {
     var counts = [];
     var refit = 0;
@@ -1051,7 +1063,7 @@ function boundaryError(grid is map, probes is array) returns ValueWithUnits
  * @returns {number} the number of points mapped when the sheet was made under `id`; 0, having left nothing, when the face does not qualify
  */
 function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFrenetPath is map, toFrenetPath is map,
-    fromRefArc, toRefArc, flipToNormal is boolean, accuracy is ValueWithUnits, pointBudget is number) returns number
+    fromRefArc, toRefArc, flipToNormal is boolean, accuracy is ValueWithUnits, pointBudget is number, verbose is boolean) returns number
 {
     try
     {
@@ -1127,8 +1139,10 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
         if (outline == undefined)
             return 0;
         opCreateBSplineSurface(context, id + "mapped", { "bSplineSurface" : grid.surface, "boundaryBSplineCurves" : outline });
-        if (spent > 1500)
+        if (verbose && spent > 1500)
+        {
             println("MAPPED grid " ~ nU ~ " x " ~ nV ~ ", " ~ spent ~ " points mapped (budget left " ~ (pointBudget - spent) ~ ")");
+        }
         return spent;
     }
     catch (mappedErr)
@@ -1151,7 +1165,10 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
             faceNote = " | " ~ toString(surfaceKind) ~ ", " ~ size(outlineEdges) ~ " edges (" ~ closedEdges ~ " closed, " ~ vertexless ~ " without a vertex), area "
                 ~ roundToPrecision(evArea(context, { "entities" : face }) / (millimeter ^ 2), 1) ~ " mm2";
         }
-        println("mapped surface refused: " ~ toString(mappedErr) ~ faceNote);
+        if (verbose)
+        {
+            println("mapped surface refused: " ~ toString(mappedErr) ~ faceNote);
+        }
         try silent
         {
             opDeleteBodies(context, id + "dropMapped", { "entities" : qCreatedBy(id, EntityType.BODY) });
@@ -1237,7 +1254,7 @@ function joinLinks(context is Context, edgeMapping is array, fillBodies is map) 
  *
  * @returns {map} { "joined" : faces in the main body, "left" : faces left as separate sheets }
  */
-function incrementalJoin(context is Context, id is Id, links is array, fillBodies is map, makeSolid is boolean) returns map
+function incrementalJoin(context is Context, id is Id, links is array, fillBodies is map, makeSolid is boolean, verbose is boolean) returns map
 {
     var current = fillBodies;
     var seed = undefined;
@@ -1303,7 +1320,10 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
             catch (joinErr)
             {
                 refused[key] = true;
-                println("join refused a face: " ~ toString(joinErr) ~ " (" ~ size(matches) ~ " edge matches)");
+                if (verbose)
+                {
+                    println("join refused a face: " ~ toString(joinErr) ~ " (" ~ size(matches) ~ " edge matches)");
+                }
             }
         }
     }
@@ -1344,7 +1364,7 @@ function faceMaxDeviation(context is Context, id is Id, face is Query, filled is
  * Debug: how far a rebuilt face lies from where the wrap says it should be. Interior points of the source face are
  * mapped exactly (as the guide points are), and the distance from each to the rebuilt face is printed.
  */
-function reportFaceAccuracy(context is Context, id is Id, face is Query, filled is Query, label is string,
+function debugReportFaceAccuracy(context is Context, id is Id, face is Query, filled is Query, label is string,
     fromFrenetPath is map, toFrenetPath is map, settings is map)
 {
     try
@@ -1745,6 +1765,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     "approximationTolerance" : definition.approximationTolerance,
                     "edgeAccuracy"           : definition.edgeAccuracy,
                     "vertexMergeTolerance"   : VERTEX_MERGE_TOLERANCE,
+                    "verbose"                : definition.debug == true,
                     "vertexMap"              : vertexMap
                 };
 
@@ -1764,8 +1785,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         ? qAdjacent(definition.sourceFaces, AdjacencyType.EDGE, EntityType.EDGE)
                         : qOwnedByBody(geomBody, EntityType.EDGE));
                     edgeMapping  = transformEdges(context, uid + "wires", allEdges, fromFrenetPath, toFrenetPath, settings);
-                if (definition.reportAccuracy)
-                    reportEdgeFit(edgeMapping);
+                if (definition.debug && definition.reportAccuracy)
+                    debugReportEdgeFit(edgeMapping);
                 }
 
                 // --- Step 2: Reconstruct faces ---
@@ -1818,8 +1839,11 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             }
                             else
                             {
-                                println("WARNING: face " ~ fIdx ~ " boundary edge " ~ eIdx ~
-                                        " has no wrapped counterpart - it likely failed in transformEdges");
+                                if (definition.debug)
+                                {
+                                    println("WARNING: face " ~ fIdx ~ " boundary edge " ~ eIdx ~
+                                            " has no wrapped counterpart - it likely failed in transformEdges");
+                                }
                             }
                         }
 
@@ -1829,7 +1853,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         // stitch the edges into a proper wire first with opExtractWires.
                         if (size(wrappedBoundaryEdgeQueries) == 0)
                         {
-                            println("WARNING: face " ~ fIdx ~ " has no wrapped boundary edges - skipping fill");
+                            if (definition.debug)
+                            {
+                                println("WARNING: face " ~ fIdx ~ " has no wrapped boundary edges - skipping fill");
+                            }
                             skippedFaces = append(skippedFaces, face);
                             continue;
                         }
@@ -1841,7 +1868,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         }
                         catch (extractErr)
                         {
-                            println("ERROR stitching boundary for face " ~ fIdx ~ ": " ~ toString(extractErr));
+                            if (definition.debug)
+                            {
+                                println("ERROR stitching boundary for face " ~ fIdx ~ ": " ~ toString(extractErr));
+                            }
                             failedFaces = append(failedFaces, face);
 
                             // Cyan = undeformed source boundary edges
@@ -1851,6 +1881,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             for (var beq in wrappedBoundaryEdgeQueries)
                                 addDebugEntities(context, beq, DebugColor.RED);
 
+                            // Diagnostics (notices console): only when the user switched Debug on.
+                            if (definition.debug)
+                            {
                             // -- Source edges with expected mapped positions ----------------------
                             println("  face " ~ fIdx ~ ": " ~ size(faceEdges) ~ " src edges / " ~
                                     size(wrappedBoundaryEdgeQueries) ~ " wrapped:");
@@ -1927,10 +1960,12 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                 }
                             }
 
+                            }
+
                             continue;
                         }
 
-                        var bdryEdges = qCreatedBy(extractId, EntityType.EDGE);
+                        var bdryEdges =qCreatedBy(extractId, EntityType.EDGE);
                         var bdryBody  = qCreatedBy(extractId, EntityType.BODY);
 
                         // Generate mapped interior guide points for this face.
@@ -1969,8 +2004,11 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         }
                         catch (guideErr)
                         {
-                            println("WARNING: guide point generation failed for face " ~ fIdx ~
-                                    ": " ~ toString(guideErr));
+                            if (definition.debug)
+                            {
+                                println("WARNING: guide point generation failed for face " ~ fIdx ~
+                                        ": " ~ toString(guideErr));
+                            }
                             if (size(faceGuideVtxQueries) > 0)
                             {
                                 opDeleteBodies(context, uid + ("discardGuideVtx" ~ fIdx), { "entities": qUnion(faceGuideVtxQueries) });
@@ -1986,14 +2024,14 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             var pointsMapped = 0;
                             if (mapThis)
                                 pointsMapped = mappedSurfaceFace(context, fillId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal,
-                                    definition.mappedAccuracy, pointBudget - mappedPointCount);
+                                    definition.mappedAccuracy, pointBudget - mappedPointCount, definition.debug);
                             if (pointsMapped > 0)
                             {
                                 builder = "mapped";
                                 mappedFaces += 1;
                                 mappedPointCount += pointsMapped;
                             }
-                            else if (definition.useBoundarySurface && boundarySurfaceFace(context, fillId, bdryEdges))
+                            else if (definition.useBoundarySurface && boundarySurfaceFace(context, fillId, bdryEdges, definition.debug))
                             {
                                 builder = "bsurf";
                             }
@@ -2007,9 +2045,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                 });
                             }
                             fillBodies[toString(face)] = qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET);
-                            if (definition.reportAccuracy)
+                            if (definition.debug && definition.reportAccuracy)
                             {
-                                reportFaceAccuracy(context, uid + ("accuracy" ~ fIdx), face, qOwnedByBody(qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET), EntityType.FACE),
+                                debugReportFaceAccuracy(context, uid + ("accuracy" ~ fIdx), face, qOwnedByBody(qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET), EntityType.FACE),
                                     "face " ~ fIdx ~ (attempt == 1 ? " (piece)" : "") ~ " [" ~ builder ~ "]", fromFrenetPath, toFrenetPath, settings);
                             }
                             if (attempt == 0 && !isFacesMode && definition.faceAccuracy > 0 * meter && measuredFaces < MAX_MEASURED_FACES && isThinAndLong(context, face))
@@ -2020,7 +2058,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                 if (deviation > definition.faceAccuracy)
                                 {
                                     poorFaces = append(poorFaces, face);
-                                    println("Deform: face " ~ fIdx ~ " is " ~ roundToPrecision(deviation / meter * 1e6, 0) ~ " um from the mapped shape; it will be rebuilt in shorter pieces");
+                                    if (definition.debug)
+                                    {
+                                        println("Deform: face " ~ fIdx ~ " is " ~ roundToPrecision(deviation / meter * 1e6, 0) ~ " um from the mapped shape; it will be rebuilt in shorter pieces");
+                                    }
                                 }
                             }
                             // Fill succeeded - cleanup intermediates
@@ -2030,21 +2071,27 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         }
                         catch (fillErr)
                         {
-                            println("ERROR fill face " ~ fIdx ~ ": " ~ toString(fillErr));
+                            if (definition.debug)
+                            {
+                                println("ERROR fill face " ~ fIdx ~ ": " ~ toString(fillErr));
+                            }
                             // Last resort: the mapped surface of the face (some faces a fill cannot rebuild, the map can).
                             var recovered = false;
                             if (!isFacesMode && builder != "mapped" && pointBudget - mappedPointCount >= MAPPED_SAMPLES_MIN_U * MAPPED_SAMPLES_MIN_V)
                             {
                                 const recoverId = uid + ("recover" ~ fIdx);
                                 const recoveredPoints = mappedSurfaceFace(context, recoverId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc,
-                                    definition.flipToNormal, definition.mappedAccuracy, pointBudget - mappedPointCount);
+                                    definition.flipToNormal, definition.mappedAccuracy, pointBudget - mappedPointCount, definition.debug);
                                 if (recoveredPoints > 0)
                                 {
                                     recovered = true;
                                     mappedFaces += 1;
                                     mappedPointCount += recoveredPoints;
                                     fillBodies[toString(face)] = qBodyType(qCreatedBy(recoverId, EntityType.BODY), BodyType.SHEET);
-                                    println("Deform: face " ~ fIdx ~ " could not be filled; its mapped surface was used instead");
+                                    if (definition.debug)
+                                    {
+                                        println("Deform: face " ~ fIdx ~ " could not be filled; its mapped surface was used instead");
+                                    }
                                 }
                             }
                             if (!recovered)
@@ -2055,6 +2102,9 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                 addDebugEntities(context, seq, DebugColor.CYAN);
                             addDebugEntities(context, bdryEdges, DebugColor.RED);
 
+                            // Diagnostics (notices console): only when the user switched Debug on.
+                            if (definition.debug)
+                            {
                             // -- Stitched edge endpoints + open endpoint analysis -----------------
                             var stitchedList = evaluateQuery(context, bdryEdges);
                             println("  stitched boundary: " ~ size(stitchedList) ~ " edges");
@@ -2094,6 +2144,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                 }
                             }
                             }
+                            }
 
                             opDeleteBodies(context, uid + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
                             if (guideVtxDeleteId != undefined)
@@ -2112,7 +2163,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         refine = append(refine, definition.faceAccuracy > 0 * meter && isThinAndLong(context, failed));
                     for (var poor in poorFaces)
                         refine = append(refine, true);
-                    const cut = splitFacesBetweenVertices(context, workId, fromFrenetPath, unitBody, concatenateArrays([failedFaces, poorFaces]), refine);
+                    const cut = splitFacesBetweenVertices(context, workId, fromFrenetPath, unitBody, concatenateArrays([failedFaces, poorFaces]), refine, definition.debug);
                     const cutBody = cut.body;
                     if (cutBody == undefined && cut.ranOps)
                     {
@@ -2132,7 +2183,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         }
                         catch (discardErr)
                         {
-                            println("WARNING: could not discard the first attempt: " ~ toString(discardErr));
+                            if (definition.debug)
+                            {
+                                println("WARNING: could not discard the first attempt: " ~ toString(discardErr));
+                            }
                         }
                         geomBody = cutBody;
                         continue;
@@ -2152,7 +2206,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     }
                     catch (matchesErr)
                     {
-                        println("WARNING: the edge matches for the union could not be found: " ~ toString(matchesErr));
+                        if (definition.debug)
+                        {
+                            println("WARNING: the edge matches for the union could not be found: " ~ toString(matchesErr));
+                        }
                     }
                     // Wire cleanup first - so qCreatedBy(uid) only sees face surface bodies
                     // by the time we boolean.
@@ -2219,7 +2276,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             }
                             catch (matchedErr)
                             {
-                                println("WARNING: the union with edge matches was refused (" ~ toString(matchedErr) ~ "); trying a plain union");
+                                if (definition.debug)
+                                {
+                                    println("WARNING: the union with edge matches was refused (" ~ toString(matchedErr) ~ "); trying a plain union");
+                                }
                             }
                         }
                         try
@@ -2238,19 +2298,28 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             // Every face was rebuilt; the kernel would not join them (the edges of neighbouring faces
                             // do not agree closely enough, which a higher control-point limit usually cures).
                             // Keep the faces as separate sheets rather than losing the whole result.
-                            println("WARNING: the " ~ size(surfaceBodiesList) ~ " rebuilt faces could not be joined at once: " ~ toString(unionErr) ~ "; joining them one at a time");
+                            if (definition.debug)
+                            {
+                                println("WARNING: the " ~ size(surfaceBodiesList) ~ " rebuilt faces could not be joined at once: " ~ toString(unionErr) ~ "; joining them one at a time");
+                            }
                             unionFailed = true;
                             if (size(links) > 0)
                             {
                                 try
                                 {
-                                    const stepwise = incrementalJoin(context, joinId + "one", links, fillBodies, inputIsSolid);
-                                    println("Deform: " ~ stepwise.joined ~ " faces joined into one body, " ~ stepwise.left ~ " left as separate sheets");
+                                    const stepwise = incrementalJoin(context, joinId + "one", links, fillBodies, inputIsSolid, definition.debug);
+                                    if (definition.debug)
+                                    {
+                                        println("Deform: " ~ stepwise.joined ~ " faces joined into one body, " ~ stepwise.left ~ " left as separate sheets");
+                                    }
                                     unionFailed = stepwise.left > 0;
                                 }
                                 catch (stepwiseErr)
                                 {
-                                    println("WARNING: joining one at a time failed: " ~ toString(stepwiseErr));
+                                    if (definition.debug)
+                                    {
+                                        println("WARNING: joining one at a time failed: " ~ toString(stepwiseErr));
+                                    }
                                 }
                             }
                         }
@@ -2268,7 +2337,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                         }
                         catch (solidErr)
                         {
-                            println("WARNING: could not close surface into solid: " ~ toString(solidErr));
+                            if (definition.debug)
+                            {
+                                println("WARNING: could not close surface into solid: " ~ toString(solidErr));
+                            }
                         }
                     }
                 }
@@ -2279,10 +2351,13 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     var plain = [];
                     for (var cutFace in firstCutFaces)
                         plain = append(plain, false);
-                    const second = splitFacesBetweenVertices(context, workId2, fromFrenetPath, unitBody, firstCutFaces, plain);
+                    const second = splitFacesBetweenVertices(context, workId2, fromFrenetPath, unitBody, firstCutFaces, plain, definition.debug);
                     if (second.body != undefined)
                     {
-                        println("Deform: the refined pieces could not be joined; recutting without the grid");
+                        if (definition.debug)
+                        {
+                            println("Deform: the refined pieces could not be joined; recutting without the grid");
+                        }
                         try silent
                         {
                             opDeleteBodies(context, id + ("dropRefined" ~ unitIdx), { "entities" : qCreatedBy(uid, EntityType.BODY) });
@@ -2330,8 +2405,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                          qBodyType(qCreatedBy(joinId, EntityType.BODY), BodyType.SOLID),
                                          qBodyType(qCreatedBy(joinId, EntityType.BODY), BodyType.SHEET)]);
                 unitResults[toString(unitBody)] = unitResult;
-                if (definition.reportAccuracy && !isQueryEmpty(context, unitResult))
-                    reportContinuity(context, unitBody, unitResult, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal);
+                if (definition.debug && definition.reportAccuracy && !isQueryEmpty(context, unitResult))
+                    debugReportContinuity(context, unitBody, unitResult, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal);
 
                 // Names come from deformEditLogic (getProperty is not allowed in a feature body);
                 // only trust them when the count still matches the selection.

@@ -109,6 +109,7 @@ first, then open only the entries whose topic matches your task. Entry bodies be
 | 84 | ops | Calling a custom feature from another: export import its tab, pass every parameter, pin and re-pin; move absolute inputs (stations) with a frame. | 2259 |
 | 86 | queries-ids | A "created by <feature>" query variable also returns that feature's sketch construction wires; filter with qSketchFilter (not qConstructionFilter) before opExtractWires. | 2283 |
 | 87 | dialog-ui | A WARNING status is drawn as an error in the feature tree; report a handled fallback that produced the intended result as INFO. | 2294 |
+| 88 | notices | A feature never println's unless the user turned on a Debug / print option; a fit or build problem the user must see goes through reportFeatureWarning, never a gated print. | see entry |
 
 ## Critical top 10
 
@@ -2301,3 +2302,15 @@ definition's stations) must be told to move them when it is run on a shifted cop
 **Fix**: offset_plus.fs reports "The direct offset failed on surface N; it was built by thickening ..." with `reportFeatureInfo`. A failed op inside `try silent` does NOT leak an error status (checked: INFO leaves the feature clean).
 
 **Rule**: use WARNING only for a result the user must fix or distrust; a handled fallback that produced the intended result is INFO. Do not trust an eval's `getFeatureWarning` for how the tree will look: open the studio (class names via Playwright) or compare the stored status.
+
+## Correction 88: no unconditional println; fit problems reach the user as a feature warning, not a print (2026-11-08, repo-wide println audit)
+
+**Symptom**: about 80 files called println; roughly 100 calls ran with every option at its default (progress lines, fallback notes, per-run diagnostics), burying real warnings and errors in the notices pane. The user's rule: a feature must NEVER write to the FeatureScript notices unless a Debug / print option in its dialog is on.
+
+**Fix**: unconditional prints were deleted, or gated behind the feature's existing debug flag. Messages the user should see were NOT left as prints:
+- curve_core.fs pproximateFamily collects one message per fit run (interpolating spline instead of the requested tolerance; cap reached off tolerance) and reports ONE eportFeatureWarning through an optional pproximation.warnId (feature id). emitSplineCurve (so also emitRunShape) supplies its own id; direct callers add "warnId" : id (clean_wire.fs emitFittedRun, driven_offset_surface.fs coupledFits). Without warnId the fit stays silent, so older pinned callers are unaffected. Editing-logic dry fits must NOT set it.
+- evaluate_profiles.fs: "top and bottom profiles do not overlap, no middle profile" is a eportFeatureWarning (the middle profile was asked for and not built).
+
+**Lint**: python fscheck.py now flags any println not lexically guarded by a condition naming debug / print / verbose / trace / dbg / diag / log (finding label [println]; --println-only, --no-println; skips tests, spikes, std, archive, example_1). A reasoned exception is // fscheck: allow-println <why> on the line before. A helper whose NAME contains a guard word is only reported when a caller is ungated. Name a debug gate function after what it does (debugPrintsRun, not reportsRun) so the lint and the reader both see it.
+
+**Rule**: println only behind a user-visible Debug / print checkbox (default off), or an explicit "Print ..." option the user asked for. Everything else is reportFeatureInfo / reportFeatureWarning / regenError, or nothing (see correction 87 for which). Deleting prints from a library imported by VERSION needs a new version and a re-pin.

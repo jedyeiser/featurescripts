@@ -1,0 +1,13 @@
+{
+    "doc":  "08e8748f2ef24eea16072b75",
+    "ws":  "e24fbbae7712ef62dd256c89",
+    "shots":  [
+                  {
+                      "elem":  "645f6b56c7120d8ccdee67eb",
+                      "wait":  40,
+                      "featurePrefix":  "D1 boxes A+B",
+                      "filter":  "D1 boxes",
+                      "dialog":  "docs/decks/deform/shots/dialog.png"
+                  }
+              ]
+}

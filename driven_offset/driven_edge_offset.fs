@@ -1121,8 +1121,6 @@ function insertCrossings(context is Context, chain is map, stations is array, co
                     outStations[last] = mergeMaps(outStations[last], snappedLabels(coord, sides[1], true));
                     values[last - 1] = coord;
                     values[last] = coord;
-                    println("NOTE: profile break at " ~ fmtMM(coord, 3, 0) ~ " mm taken as the source vertex "
-                        ~ fmtMM(abs(coord - before), 3, 0) ~ " mm away.");
                     continue;
                 }
 
@@ -1130,8 +1128,6 @@ function insertCrossings(context is Context, chain is map, stations is array, co
                     && abs(coord - after) < CROSSING_SNAP)
                 {
                     snapAhead = { "coord" : coord, "sides" : sides };
-                    println("NOTE: profile break at " ~ fmtMM(coord, 3, 0) ~ " mm taken as the source vertex "
-                        ~ fmtMM(abs(coord - after), 3, 0) ~ " mm away.");
                     continue;
                 }
 
@@ -1140,8 +1136,6 @@ function insertCrossings(context is Context, chain is map, stations is array, co
                 if ((i == 1 && abs(coord - before) < CROSSING_SNAP)
                     || (i == size(stations) - 1 && abs(coord - after) < CROSSING_SNAP))
                 {
-                    println("NOTE: profile break at " ~ fmtMM(coord, 3, 0) ~ " mm lies within "
-                        ~ fmtMM(CROSSING_SNAP, 1, 0) ~ " mm of the end of the edges; no split made.");
                     continue;
                 }
 
@@ -1417,9 +1411,6 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
         }
         if (size(runPoints) < 2 || runSpan < OFFSET_GEOM_TOL)
         {
-            println("NOTE: run " ~ toString(r) ~ " spans "
-                ~ fmtMM(runSpan, 6, 0) ~ " mm and was not emitted; a profile break"
-                ~ " coincides with a source edge boundary there.");
             if (run.fill != undefined)
             {
                 carriedFill = run.fill;
@@ -1475,8 +1466,6 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
 
     if (size(openJoints) > 0)
     {
-        println("WARNING: the offset wire is open: " ~ join(openJoints, "; ")
-            ~ ". A run between them collapsed to nothing and the corner treatment left no filler.");
         reportFeatureWarning(context, id, "The offset wire has " ~ toString(size(openJoints))
             ~ " open joint(s), first: " ~ openJoints[0] ~ ".");
     }
@@ -1495,10 +1484,6 @@ function emitRuns(context is Context, id is Id, definition is map, stations is a
         const shape = shapes[k];
 
         emitRunShape(context, runId, shape, runPoints, approximation);
-        if (shape.note != undefined)
-        {
-            println("run " ~ toString(r) ~ " -> " ~ shape.kind ~ ": " ~ shape.note);
-        }
 
         var radii = undefined;
         if (shape.kind == "arcs")

@@ -296,10 +296,8 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             const section = makeSection(context, id + ("section" ~ sectionCount), crossPath, u, surfaceFaces, planeSize, symPlane,
                                          definition.divisions, definition.onSymmetryPlane, faceBoxes, tracks);
             sectionCount += 1;
-            if (section == undefined)
-                println("evenlyDivideSurface: the section at " ~ roundToPrecision(u, 4) ~ " could not be divided and was skipped");
-            else
-                sections = append(sections, section);
+            if (section != undefined)
+                sections = append(sections, section);   // an undivisible section is skipped silently
         }
         if (size(sections) < 2)
             throw regenError("Fewer than two cross sections met the surface.", ["surface", "crossWire", "sections"]);
@@ -379,8 +377,6 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 if (intervalDev[j] > surfaceTolerance)
                     weakCount += 1;
             }
-            println("evenlyDivideSurface: round " ~ rounds ~ ": " ~ size(sections) ~ " sections, " ~ weakCount ~ " weak intervals, worst " ~
-                    roundToPrecision(roundWorst / millimeter, 4) ~ " mm");
             if (!definition.refine || weakCount == 0 || rounds >= MAX_REFINE_ROUNDS || size(sections) + weakCount > MAX_SECTIONS)
                 break;
 
@@ -499,7 +495,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
             }
             catch (e)
             {
-                println("evenlyDivideSurface: strip edge " ~ j ~ " could not be extended: " ~ toString(e));
+                // the strip edge is used without its extension
             }
             boundaryExtensions = append(boundaryExtensions, extensionIds);
         }
@@ -550,7 +546,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                 }
                 catch (e)
                 {
-                    println("evenlyDivideSurface: the shared strip split failed (" ~ toString(e) ~ "); strips are cut one by one");
+                    // strips are cut one by one
                 }
             }
 
@@ -597,8 +593,6 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                     const stripArea = evArea(context, { "entities" : candidate });
                     if (stripArea > STRIP_AREA_LIMIT * expectedArea)
                     {
-                        println("evenlyDivideSurface: strip " ~ i ~ " attempt " ~ attempt ~ ": area " ~ roundToPrecision(stripArea / (millimeter ^ 2), 0) ~
-                                " mm2 against about " ~ roundToPrecision(expectedArea / (millimeter ^ 2), 0) ~ " mm2");
                         opDeleteBodies(context, stripId + ("reject" ~ attempt), { "entities" : candidate });
                         continue;
                     }
@@ -657,7 +651,7 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                         }
                         catch (e)
                         {
-                            println("evenlyDivideSurface: strip " ~ i ~ " thickening attempt failed: " ~ toString(e));
+                            // the next, simpler attempt is tried
                         }
                     }
                     if (!thickened)
@@ -729,7 +723,6 @@ export const evenlyDivideSurface = defineFeature(function(context is Context, id
                         (closedCount > 0 ? ", closed sections" : ", open sections") ~
                         (definition.projectWires ? "; " ~ projectedRuns ~ " of " ~ totalRuns ~ " face runs projected onto their face" : "") ~
                         "; widest gap before projection " ~ roundToPrecision(worstOff / millimeter, 4) ~ " mm.";
-        println("evenlyDivideSurface: " ~ summary ~ stripNote);
         if (size(stripWarnings) > 0)
             reportFeatureWarning(context, id, summary ~ stripNote ~ " " ~ join(stripWarnings, " "));
         else if (worstOff > surfaceTolerance)
@@ -775,16 +768,12 @@ function finishWire(context is Context, wireId is Id, projectPrefix is Id, runs 
                         useEdges = projected;
                         projectedRuns += 1;
                     }
-                    else
-                    {
-                        println("evenlyDivideSurface: run " ~ r ~ " projection strayed (" ~ roundToPrecision(projectedLength / millimeter, 2) ~
-                                " mm against " ~ roundToPrecision(fittedLength / millimeter, 2) ~ " mm); the fitted curve is kept");
-                    }
+                    // else: the projection strayed; the fitted curve is kept
                 }
             }
             catch (e)
             {
-                println("evenlyDivideSurface: run " ~ r ~ " not projected: " ~ toString(e));
+                // not projected: the fitted curve is kept
             }
         }
         pieceEdges = append(pieceEdges, useEdges);
@@ -797,7 +786,6 @@ function finishWire(context is Context, wireId is Id, projectPrefix is Id, runs 
     catch
     {
         // Projected pieces that overlap cannot be joined: join the fitted curves instead.
-        println("evenlyDivideSurface: a wire could not be joined after projection; using the fitted curves");
         opExtractWires(context, wireId, { "edges" : qUnion(mapArray(runs, function(run) { return qCreatedBy(run.fitId, EntityType.EDGE); })) });
     }
     return { "edges" : size(evaluateQuery(context, qCreatedBy(wireId, EntityType.EDGE))), "projectedRuns" : projectedRuns, "runs" : size(runs), "scratch" : scratch };
@@ -930,7 +918,6 @@ function stripFromSharedCopy(context is Context, sheetId is Id, copy is map, too
     }
     catch (e)
     {
-        println("evenlyDivideSurface: a strip could not be taken from the shared split: " ~ toString(e));
         return undefined;
     }
 }
@@ -951,7 +938,6 @@ function buildStrip(context is Context, stripId is Id, surfaceFaces is Query, to
     }
     catch (e)
     {
-        println("evenlyDivideSurface: strip could not be built: " ~ toString(e));
         try silent
         {
             opDeleteBodies(context, stripId + "dropCopyAfterError", { "entities" : qCreatedBy(stripId + "copy", EntityType.BODY) });
@@ -1004,7 +990,6 @@ function makeSection(context is Context, id is Id, crossPath is Path, u is numbe
     }
     catch (e)
     {
-        println("evenlyDivideSurface: section at " ~ roundToPrecision(u, 4) ~ " skipped: " ~ toString(e));
         return undefined;
     }
 }

@@ -1,0 +1,23 @@
+{
+    "doc":  "22764764a00a7f607dbc1c4d",
+    "ws":  "3b5e11a121111a161684adee",
+    "shots":  [
+                  {
+                      "elem":  "73222f3cbcfe185c0932d0a4",
+                      "wait":  40,
+                      "featurePrefix":  "T1 Thicken+",
+                      "filter":  "T1 Thicken",
+                      "dialog":  "docs/decks/thicken_plus/shots/dialog.png",
+                      "labels":  [
+                                     {
+                                         "name":  "Keep tools",
+                                         "find":  "Keep tools"
+                                     },
+                                     {
+                                         "name":  "Output name",
+                                         "find":  "Output name"
+                                     }
+                                 ]
+                  }
+              ]
+}

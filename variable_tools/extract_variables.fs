@@ -308,11 +308,13 @@ function showEntry(context is Context, name is string, resolved is map, index is
 {
     if (resolved.kind != "query")
     {
+        // fscheck: allow-println user-requested: the entry's "Show" option
         println("[show] " ~ name ~ " = " ~ toString(resolved.value));
         return;
     }
     const color = resolved.debugColor is DebugColor ? resolved.debugColor : SHOW_COLORS[index % size(SHOW_COLORS)];
     const entities = evaluateQuery(context, resolved.value);
+    // fscheck: allow-println user-requested: the entry's "Show" option
     println("[show] " ~ name ~ ": " ~ size(entities) ~ " entit" ~ (size(entities) == 1 ? "y" : "ies") ~ " (" ~ toString(color) ~ ")");
     if (size(entities) > 0)
     {

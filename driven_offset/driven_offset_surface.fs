@@ -424,7 +424,7 @@ function driveOffsets(context is Context, id is Id, definition is map) returns a
         throw regenError("A loft between profiles cannot leave a corner open: the faces either side "
             ~ "would have nothing to meet on. Round the corner or extend it.", ["cornerGapMode"]);
     }
-    if (paired && definition.cornerOverlapMode == CornerOverlapMode.KEEP)
+    if (paired && definition.cornerOverlapMode == CornerOverlapMode.KEEP && definition.debugPrintSurface)
     {
         println("NOTE: a loft between profiles always trims an offset where it crosses itself; "
             ~ "'Leave crossing' does not apply.");
@@ -803,7 +803,7 @@ function sectionPlan(definition is map, driven is map, span is map, reach is Val
  * @returns {array} : fits[profile][run], undefined where the run is not coupled and the
  *      section emits it on its own.
  */
-function coupledFits(context is Context, definition is map, plans is array) returns array
+function coupledFits(context is Context, id is Id, definition is map, plans is array) returns array
 {
     const runs = size(plans[0]);
 
@@ -836,7 +836,7 @@ function coupledFits(context is Context, definition is map, plans is array) retu
                     });
         }
 
-        const curves = approximateFamily(context, members, fitSettings(definition));
+        const curves = approximateFamily(context, members, mergeMaps(fitSettings(definition), { "warnId" : id }));
 
         for (var i = 0; i < size(plans); i += 1)
         {
@@ -911,7 +911,7 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
 
             // Printed BEFORE the emit, so if a fit is ever rejected again the last line
             // standing names the run it came from.
-            if (reportsRun(definition, r))
+            if (debugPrintsRun(definition, r))
             {
                 println("[section]   reach " ~ toString(roundToPrecision(reach / millimeter, 4))
                     ~ " mm  run " ~ toString(r)
@@ -927,7 +927,7 @@ function emitSection(context is Context, id is Id, definition is map, plans is a
             }
 
             curve = emitShape(context, id + ("piece" ~ r), definition, plan.shape, plan.points,
-                plan.startDerivative, plan.endDerivative, fitted, reportsRun(definition, r));
+                plan.startDerivative, plan.endDerivative, fitted, debugPrintsRun(definition, r));
             kept += 1;
 
             // With one run singled out, show the curve as emitted: what the loft is given.
@@ -1326,7 +1326,7 @@ function loftAcrossOffsets(context is Context, id is Id, definition is map, driv
                 longestSpan(context, id, driven[i]), 0 * meter));
     }
 
-    const fits = coupledFits(context, definition, plans);
+    const fits = coupledFits(context, id, definition, plans);
 
     var sections = [];
 
@@ -1827,7 +1827,7 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
 
             const atCorner = (slot.kind == "corner");
 
-            if (reportsRun(definition, slot.cell))
+            if (debugPrintsRun(definition, slot.cell))
             {
                 var report = "[patch]     " ~ label ~ "  profiles " ~ toString(members)
                     ~ "  sections " ~ toString(size(patch))
@@ -1932,7 +1932,7 @@ function loftColumns(context is Context, id is Id, definition is map, sections i
 
                 // The refusal is the trigger, not a toggle: this is the one patch worth
                 // seeing in full, and it is only ever a handful of curves.
-                if (reportsRun(definition, slot.cell))
+                if (debugPrintsRun(definition, slot.cell))
                 {
                     println("[refused]   " ~ label ~ "  profiles " ~ toString(members)
                         ~ "  by " ~ (built ? "opCreateBSplineSurface" : "opLoft")
@@ -2107,9 +2107,6 @@ function joinSheets(context is Context, id is Id, patchSheets is array, sheetLab
             apart = append(apart, copyLabels[i]);
         }
     }
-
-    println("[join]        the union of all " ~ toString(size(copies)) ~ " patches failed even flattest first; one by one, "
-        ~ toString(size(apart)) ~ " would not join: " ~ join(apart, ", "));
 
     if (size(apart) > 0)
     {
@@ -2598,7 +2595,6 @@ function createdSurface(context is Context, id is Id, surface is map) returns bo
 
     if (refusal != undefined)
     {
-        println("NOTE: the kernel refused an exact patch (" ~ toString(refusal) ~ "); falling back to a loft for it.");
         return false;
     }
 
@@ -2699,7 +2695,7 @@ function fitSettings(definition is map, report is boolean) returns map
 /**
  * Whether the surface debug prints cover run r: the print flag, narrowed by "Only run".
  */
-function reportsRun(definition is map, r is number) returns boolean
+function debugPrintsRun(definition is map, r is number) returns boolean
 {
     return definition.debugPrintSurface && (definition.debugRun < 0 || definition.debugRun == r);
 }

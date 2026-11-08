@@ -363,7 +363,13 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                         fastSegEdges  = append(fastSegEdges,  qCreatedBy(linId, EntityType.EDGE));
                         fastSegBodies = append(fastSegBodies, qCreatedBy(linId, EntityType.BODY));
                     }
-                    catch (e) { println("ERROR wrapCurve linearFastPath " ~ toString(i) ~ ": " ~ toString(e)); }
+                    catch (e)
+                    {
+                        if (definition.debugWrappedCurves)
+                        {
+                            println("ERROR wrapCurve linearFastPath " ~ toString(i) ~ ": " ~ toString(e));
+                        }
+                    }
                     continue;
                 }
             }
@@ -745,10 +751,13 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 if (size(segPoints) < curveDegree + 1)
                 {
                     fitDegree = max([1, size(segPoints) - 1]);
-                    println("WARNING: wrapCurve span " ~ toString(i) ~ "." ~ toString(segCount)
-                        ~ " has " ~ toString(size(segPoints)) ~ " point(s), needs "
-                        ~ toString(curveDegree + 1) ~ " for degree " ~ toString(curveDegree)
-                        ~ "; fitting at degree " ~ toString(fitDegree) ~ " instead.");
+                    if (definition.debugWrappedCurves)
+                    {
+                        println("WARNING: wrapCurve span " ~ toString(i) ~ "." ~ toString(segCount)
+                            ~ " has " ~ toString(size(segPoints)) ~ " point(s), needs "
+                            ~ toString(curveDegree + 1) ~ " for degree " ~ toString(curveDegree)
+                            ~ "; fitting at degree " ~ toString(fitDegree) ~ " instead.");
+                    }
                 }
 
                 if (size(segPoints) >= 2)
@@ -825,9 +834,12 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                     }
                     catch (e)
                     {
-                        println("ERROR: wrapCurve opCreateBSplineCurve BAD_GEOMETRY - " ~ toString(e));
-                        println("  curve i=" ~ toString(i) ~ " seg=" ~ toString(thisSegCount) ~
-                                "  segPoints count=" ~ toString(size(segPoints)));
+                        if (definition.debugWrappedCurves)
+                        {
+                            println("ERROR: wrapCurve opCreateBSplineCurve BAD_GEOMETRY - " ~ toString(e));
+                            println("  curve i=" ~ toString(i) ~ " seg=" ~ toString(thisSegCount) ~
+                                    "  segPoints count=" ~ toString(size(segPoints)));
+                        }
                         for (var di = 0; di < size(segPoints) - 1; di += 1)
                         {
                             if (norm(segPoints[di + 1] - segPoints[di]) > 1e-10 * meter)
@@ -841,9 +853,12 @@ export const wrapCurve = defineFeature(function(context is Context, id is Id, de
                 {
                     // One point cannot be a curve. This is the only remaining way to lose a
                     // span, and it is now always reported.
-                    println("WARNING: wrapCurve span " ~ toString(i) ~ "." ~ toString(segCount)
-                        ~ " has only " ~ toString(size(segPoints))
-                        ~ " point(s) and cannot be fitted; the output will have a gap here.");
+                    if (definition.debugWrappedCurves)
+                    {
+                        println("WARNING: wrapCurve span " ~ toString(i) ~ "." ~ toString(segCount)
+                            ~ " has only " ~ toString(size(segPoints))
+                            ~ " point(s) and cannot be fitted; the output will have a gap here.");
+                    }
                 }
 
                 segStartIdx = segEndIdx + 1;

@@ -2459,7 +2459,8 @@ export function closedInterpolatingSpline(points is array) returns BSplineCurve
  * @param settings  {map}    : {
  *   fromRefArc, toRefArc, flipToNormal,
  *   samplingMode (SamplingMode), samplingDensity (LENGTH_BASED), sourceCPMultiplier (CP_BASED),
- *   approximationDegree, approximationMaxCPs, approximationTolerance
+ *   approximationDegree, approximationMaxCPs, approximationTolerance,
+ *   verbose (optional boolean; true prints the edges that failed to the notices console, off by default)
  * }
  * @returns {array} : [{ "sourceEdge": Query, "wrappedEdge": Query, "wrappedBody": Query }, ...]
  */
@@ -2501,7 +2502,13 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
                         "wrappedBody": qCreatedBy(linId, EntityType.BODY)
                     });
                 }
-                catch (e) { println("ERROR linearFastPath " ~ i ~ ": " ~ toString(e)); }
+                catch (e)
+                {
+                    if (settings.verbose == true)
+                    {
+                        println("ERROR linearFastPath " ~ i ~ ": " ~ toString(e));
+                    }
+                }
                 continue;
             }
         }
@@ -2569,7 +2576,13 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
                     "deviation"  : undefined
                 });
             }
-            catch (closedErr) { println("ERROR transformEdge " ~ i ~ " (closed): " ~ toString(closedErr)); }
+            catch (closedErr)
+            {
+                if (settings.verbose == true)
+                {
+                    println("ERROR transformEdge " ~ i ~ " (closed): " ~ toString(closedErr));
+                }
+            }
             continue;
         }
 
@@ -2628,7 +2641,13 @@ export function transformEdges(context is Context, id is Id, edgeArray is array,
                 "deviation"  : deviation
             });
         }
-        catch (e) { println("ERROR transformEdge " ~ i ~ ": " ~ toString(e)); }
+        catch (e)
+        {
+            if (settings.verbose == true)
+            {
+                println("ERROR transformEdge " ~ i ~ ": " ~ toString(e));
+            }
+        }
     }
     return result;
 }

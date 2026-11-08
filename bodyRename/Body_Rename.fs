@@ -29,7 +29,6 @@ export function elFunction(context is Context, id is Id, oldDefinition is map, d
    
     var bodyArray = [];
     var bodyIndivArray = [];
-    println('size(allBodies) = ' ~ size(evAllBodies));
     for (var i = 0; i < size(evAllBodies); i += 1)
     {
         var body = qNthElement(definition.allBodies, i);
@@ -39,7 +38,6 @@ export function elFunction(context is Context, id is Id, oldDefinition is map, d
         });
         if (!(bodyName is undefined))
         {
-            println('bodyName is not undefined');
             bodyArray = append(bodyArray, {'query' : body, 'bodyName' : bodyName}); 
             bodyIndivArray = append(bodyIndivArray, {'bodyQueryAllIndiv' : body, 'curName' : bodyName});
         }
@@ -196,7 +194,6 @@ export const findReplaceName = defineFeature(function(context is Context, id is 
                     if (match(bdy.bodyName, ".*" ~ definition.findStringALL ~ ".*").hasMatch)
                     {
                         var newName = replace(bdy.bodyName, definition.findStringALL, definition.replaceStringALL);
-                        println('newName = ' ~ newName);
                         
                         setProperty(context, {
                                 "entities" : bdy.query,

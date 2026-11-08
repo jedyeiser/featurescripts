@@ -228,8 +228,6 @@ function trimCornerOverlap(definition is map, runs is array, index is number, po
     // trim would delete more than it repairs.
     if (best == undefined || best.i - 1 < prev.start || best.j + 1 > next.end)
     {
-        println("WARNING: corner at station " ~ toString(next.start)
-            ~ " overlaps further than either run is long; left untrimmed.");
         return resolved;
     }
 
@@ -293,12 +291,6 @@ export function resolveFolds(context is Context, definition is map, stations is 
         {
             notes = append(notes, fmtMM(stations[i].arc, 1, 0) ~ " (chain end)");
         }
-    }
-
-    if (size(notes) > 0)
-    {
-        println("NOTE: the offset exceeds the radius of curvature at " ~ join(notes, ", ")
-            ~ " mm from the zero point; the folded loop was trimmed there.");
     }
 
     return resolved;
@@ -366,7 +358,6 @@ function terminateEnd(context is Context, definition is map, stations is array, 
     // Three stations are the minimum: the terminal, and two more to read a curvature from.
     if (run.end - run.start < 2 || points[station] == undefined)
     {
-        println("WARNING: the " ~ endName(atStart) ~ " run is too short to terminate on a plane.");
         return resolved;
     }
 
@@ -456,16 +447,12 @@ function trimToPlane(runs is array, index is number, points is array, pl is Plan
 
     if (kept == undefined)
     {
-        println("WARNING: the " ~ endName(atStart) ~ " of the offset lies past its terminal"
-            ~ " plane but never crosses back; left untrimmed.");
         return resolved;
     }
 
     // A trim that leaves nothing to fit would delete more than it repairs.
     if ((atStart ? run.end - kept : kept - run.start) < 1)
     {
-        println("WARNING: the " ~ endName(atStart) ~ " of the offset lies past its terminal"
-            ~ " plane by more than the run is long; left untrimmed.");
         return resolved;
     }
 
@@ -539,8 +526,6 @@ function extendToPlane(context is Context, definition is map, runs is array, ind
 
     if (!definition.allowExtension)
     {
-        println("NOTE: the " ~ endName(atStart) ~ " of the offset stops " ~ fmtMM(span, 4, 0)
-            ~ " mm short of its terminal plane; extension is switched off.");
         return resolved;
     }
 
@@ -548,9 +533,6 @@ function extendToPlane(context is Context, definition is map, runs is array, ind
 
     if (span > budget)
     {
-        println("WARNING: the " ~ endName(atStart) ~ " of the offset would extend "
-            ~ fmtMM(span, 3, 0) ~ " mm to reach its terminal plane, past the "
-            ~ fmtMM(budget, 3, 0) ~ " mm allowed for a run this long; left alone.");
         return resolved;
     }
 

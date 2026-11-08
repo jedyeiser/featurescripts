@@ -100,7 +100,7 @@ export const recognizeArcs = defineFeature(function(context is Context, id is Id
             }
         }
 
-        printReport(results, definition);
+        // printReport(results, definition) removed 2026-11-08: no Debug option yet (rule: no unrequested println).
 
         var output = qNothing();
         if (definition.replace)

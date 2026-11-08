@@ -571,7 +571,6 @@ function sanitizeParams(params is array, minSpacing is number) returns map
     if (requiredRange > 1)
     {
         // Not enough room - fall back to uniform spacing
-        println("Warning: params too close together, using uniform spacing");
         var result = makeArray(n);
         for (var i = 0; i < n; i += 1)
         {

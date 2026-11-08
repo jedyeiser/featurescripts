@@ -471,7 +471,7 @@ export const eiXSect = defineFeature(function(context is Context, id is Id, defi
             debugVisualization(context, id, crossSectionData, definition);
         }
 
-        reportSectionDiagnostics(context, id, sectionDiagnostics, fcpX, acpX);
+        reportSectionRepairs(context, id, sectionDiagnostics, fcpX, acpX, definition.debug == true);
     });
 
 // The stations AT FCP and ACP belong to the reference region; their x differs from the
@@ -485,7 +485,7 @@ const REFERENCE_REGION_TOL = 0.01 * millimeter;
  * (all stations when either is unset) can raise a warning: outside the reference region a
  * lost body is reported, but it does not make the feature look failed.
  */
-function reportSectionDiagnostics(context is Context, id is Id, diagnostics, fcpX, acpX)
+function reportSectionRepairs(context is Context, id is Id, diagnostics, fcpX, acpX, debug is boolean)
 {
     if (!(diagnostics is array) || size(diagnostics) == 0)
     {
@@ -501,23 +501,26 @@ function reportSectionDiagnostics(context is Context, id is Id, diagnostics, fcp
         {
             failed += 1;
         }
-        println("xSect: station " ~ d.stationNumber ~ " (x = " ~ roundToPrecision(d.xCoord / millimeter, 1) ~ " mm), "
-            ~ (d.bodyName == undefined ? ("body " ~ d.bodyIdx) : d.bodyName) ~ ": "
-            ~ (d.duplicatesRemoved > 0 ? (d.duplicatesRemoved ~ " duplicate edge(s) removed; ") : "")
-            ~ (d.degenerateRemoved > 0 ? (d.degenerateRemoved ~ " zero-length edge(s) removed; ") : "")
-            ~ (d.maxBridge > 0 * meter ? ("gap of " ~ roundToPrecision(d.maxBridge / millimeter * 1000, 1) ~ " um bridged; ") : "")
-            ~ (d.openChains > 0 ? (d.openChains ~ " outline(s) left open and closed by a chord; ") : "")
-            ~ (d.failedIntersect == true ? "plane could not be intersected with this body, even when shifted up to 0.1 mm -- this body is missing from the section; " : "")
-            ~ (d.nudge != undefined ? ("plane shifted " ~ roundToPrecision(d.nudge / millimeter, 2) ~ " mm to intersect; ") : "")
-            ~ (d.zeroArea ? "NO AREA -- this body is missing from the section" : "")
-            ~ (inReference ? "" : " (outside FCP-ACP)"));
+        if (debug)
+        {
+            println("xSect: station " ~ d.stationNumber ~ " (x = " ~ roundToPrecision(d.xCoord / millimeter, 1) ~ " mm), "
+                ~ (d.bodyName == undefined ? ("body " ~ d.bodyIdx) : d.bodyName) ~ ": "
+                ~ (d.duplicatesRemoved > 0 ? (d.duplicatesRemoved ~ " duplicate edge(s) removed; ") : "")
+                ~ (d.degenerateRemoved > 0 ? (d.degenerateRemoved ~ " zero-length edge(s) removed; ") : "")
+                ~ (d.maxBridge > 0 * meter ? ("gap of " ~ roundToPrecision(d.maxBridge / millimeter * 1000, 1) ~ " um bridged; ") : "")
+                ~ (d.openChains > 0 ? (d.openChains ~ " outline(s) left open and closed by a chord; ") : "")
+                ~ (d.failedIntersect == true ? "plane could not be intersected with this body, even when shifted up to 0.1 mm -- this body is missing from the section; " : "")
+                ~ (d.nudge != undefined ? ("plane shifted " ~ roundToPrecision(d.nudge / millimeter, 2) ~ " mm to intersect; ") : "")
+                ~ (d.zeroArea ? "NO AREA -- this body is missing from the section" : "")
+                ~ (inReference ? "" : " (outside FCP-ACP)"));
+        }
     }
     if (failed > 0)
     {
-        reportFeatureWarning(context, id, failed ~ " body section(s) between FCP and ACP could not be intersected, could not be closed, or came out with no area; EI is low there. See the console.");
+        reportFeatureWarning(context, id, failed ~ " body section(s) between FCP and ACP could not be intersected, could not be closed, or came out with no area; EI is low there. Turn on Debug to list them in the console.");
     }
     else
     {
-        reportFeatureInfo(context, id, "Repaired or adjusted " ~ size(diagnostics) ~ " body section(s) (duplicate edges, micron gaps from the cut, or a station plane shifted to intersect). See the console.");
+        reportFeatureInfo(context, id, "Repaired or adjusted " ~ size(diagnostics) ~ " body section(s) (duplicate edges, micron gaps from the cut, or a station plane shifted to intersect). Turn on Debug to list them in the console.");
     }
 }

@@ -2052,11 +2052,13 @@ export function knotText(knots is array) returns string
  */
 export function emitSplineCurve(context is Context, id is Id, points is array, startDerivative, endDerivative, approximation is map)
 {
+    // The fit's own warning goes to this feature unless the caller named another id.
+    const warned = approximation.warnId == undefined ? mergeMaps(approximation, { "warnId" : id }) : approximation;
     const curves = approximateFamily(context, [{
                         "points" : points,
                         "startDerivative" : startDerivative,
                         "endDerivative" : endDerivative
-                    }], approximation);
+                    }], warned);
 
     emitFittedCurve(context, id, curves[0], points, approximation);
 }
@@ -2159,6 +2161,13 @@ export function approximateFamily(context is Context, members is array, approxim
     // that size and says nothing, "tolerance will not be satisfied" being in the doc only.
     // The parameters pin every point to a parameter, so the second is measurable exactly:
     // the curve at each parameter against the point it was meant to pass.
+    //
+    // Both are reported to the feature, not printed: the curve the user gets is not within the
+    // tolerance they asked for. A caller opts in by putting its feature id in
+    // approximation.warnId (emitSplineCurve does it for every caller of emitRunShape and
+    // emitSplineCurve); without it the fit stays silent, as before. Several runs in one call
+    // make ONE warning, so a later run cannot overwrite an earlier one.
+    var notes = [];
     for (var k = 0; k < size(curves); k += 1)
     {
         const first = members[k].points[0];
@@ -2166,11 +2175,16 @@ export function approximateFamily(context is Context, members is array, approxim
 
         if (count > approximation.approximationMaxCPs)
         {
-            println("WARNING: a run of " ~ toString(size(members[k].points)) ~ " points starting at "
+            const message = "A run of " ~ toString(size(members[k].points)) ~ " points starting at "
                 ~ fmtVec(first / millimeter, 1, 8) ~ " mm could not be fitted to "
                 ~ fmtMM(approximation.approximationTolerance, 4, 0) ~ " mm within "
                 ~ toString(approximation.approximationMaxCPs) ~ " control points; an interpolating spline of "
-                ~ toString(count) ~ " was used instead.");
+                ~ toString(count) ~ " was used instead. Raise the maximum control points.";
+            notes = append(notes, message);
+            if (approximation.debugFit == true)
+            {
+                println("WARNING: " ~ message);
+            }
             continue;
         }
 
@@ -2185,12 +2199,23 @@ export function approximateFamily(context is Context, members is array, approxim
 
             if (worst > approximation.approximationTolerance)
             {
-                println("WARNING: a run of " ~ toString(size(members[k].points)) ~ " points starting at "
+                const message = "A run of " ~ toString(size(members[k].points)) ~ " points starting at "
                     ~ fmtVec(first / millimeter, 1, 8) ~ " mm reached the cap of " ~ toString(approximation.approximationMaxCPs)
                     ~ " control points " ~ fmtMM(worst, 4, 0) ~ " mm from its points, against a tolerance of "
-                    ~ fmtMM(approximation.approximationTolerance, 4, 0) ~ " mm. Raise the maximum control points.");
+                    ~ fmtMM(approximation.approximationTolerance, 4, 0) ~ " mm. Raise the maximum control points.";
+                notes = append(notes, message);
+                if (approximation.debugFit == true)
+                {
+                    println("WARNING: " ~ message);
+                }
             }
         }
+    }
+
+    if (approximation.warnId != undefined && size(notes) > 0)
+    {
+        reportFeatureWarning(context, approximation.warnId, notes[0]
+            ~ (size(notes) > 1 ? " " ~ toString(size(notes) - 1) ~ " more run(s) had the same problem." : ""));
     }
 
     return curves;

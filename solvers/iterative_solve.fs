@@ -442,8 +442,11 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                         if (!isIn(i, overriddenBy[]))
                         {
                             overriddenBy[] = append(overriddenBy[], i);
-                            println("NOTE: listed feature " ~ (i + 1) ~ " (" ~ toString(featureIds[i]) ~ ") assigns #"
-                                ~ definition.iterationName ~ "; the solver's value is restored after it on every trial.");
+                            if (debug)
+                            {
+                                println("NOTE: listed feature " ~ (i + 1) ~ " (" ~ toString(featureIds[i]) ~ ") assigns #"
+                                    ~ definition.iterationName ~ "; the solver's value is restored after it on every trial.");
+                            }
                         }
                     }
                 }
@@ -459,12 +462,15 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
                     }
                 }
 
-                println("trial " ~ k ~ " (" ~ kind ~ "): #" ~ definition.iterationName ~ " = " ~ valueText(value)
-                    ~ (failure == undefined
-                        ? ("  result " ~ valueText(outcome.result) ~ "  target " ~ valueText(outcome.target)
-                            ~ (outcome.accepted ? "  ACCEPTED" : ""))
-                        : ("  FAILED: " ~ failure))
-                    ~ (trace ? "" : watchText(context, watch)));
+                if (debug)
+                {
+                    println("trial " ~ k ~ " (" ~ kind ~ "): #" ~ definition.iterationName ~ " = " ~ valueText(value)
+                        ~ (failure == undefined
+                            ? ("  result " ~ valueText(outcome.result) ~ "  target " ~ valueText(outcome.target)
+                                ~ (outcome.accepted ? "  ACCEPTED" : ""))
+                            : ("  FAILED: " ~ failure))
+                        ~ (trace ? "" : watchText(context, watch)));
+                }
 
                 const keep = outcome.accepted || probe || (keepFailed && failure != undefined);
                 if (!keep)
@@ -486,7 +492,10 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
             // One trial at the typed value, kept whatever it gives; the originals go so it is seen alone.
             const probed = trial(probeValue(definition), "probe");
             deleteOriginals(context, id, definition);
-            printTrialLog(trialLog[], debug);
+            if (debug)
+            {
+                printTrialLog(trialLog[], debug);
+            }
             const solution = lastTrial[];
             if (solution.failure != undefined)
             {
@@ -517,7 +526,10 @@ export const iterativeSolve = defineFeature(function(context is Context, id is I
             }
             solved = solveTargetFromStart(trial, x0, step, bounds[0], bounds[1], definition.maxTrials);
         }
-        printTrialLog(trialLog[], debug);
+        if (debug)
+        {
+            printTrialLog(trialLog[], debug);
+        }
 
         if (stoppedAt[] != undefined)
         {

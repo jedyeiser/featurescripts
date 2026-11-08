@@ -23,6 +23,4 @@ export const partVol = defineFeature(function(context is Context, id is Id, defi
 
         // ValueWithUnits divided by its unit is a plain number: m^3 -> mm^3 without a hand-typed factor.
         setVariable(context, definition.varName, vol / millimeter ^ 3);
-
-        println("vol: " ~ toString(vol / millimeter ^ 3) ~ " mm^3");
     });

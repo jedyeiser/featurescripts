@@ -17,8 +17,10 @@ export function debugOutput(context is Context, id is Id, definition is map, sou
 
     if (definition.debugPrintFromChain)
     {
+        // fscheck: allow-println every block here is gated by its own definition.debugPrint* flag
         println("offset edges: " ~ toString(size(sourceChain.links)) ~ " link(s), length "
             ~ toString(sourceChain.totalLength) ~ ", zero at " ~ toString(sourceChain.zeroArc));
+        // fscheck: allow-println inside the debugPrintFromChain block
         println("stations: " ~ toString(size(stations)) ~ ", runs: " ~ toString(size(runs)));
         printJunctions(stations);
         printCorners(runs, stations);
@@ -262,6 +264,7 @@ function drawChainEnds(context is Context, definition is map, stations is array,
         addDebugArrow(context, at, at + DEBUG_END_ARROW * outward, DEBUG_END_ARROW_RADIUS,
             end.atStart ? DebugColor.GREEN : DebugColor.RED);
 
+        // fscheck: allow-println only called from debugOutput's debugPrint* blocks
         println("chain " ~ (end.atStart ? "START (green)" : "END   (red)  ")
             ~ " at " ~ fmtMM(at[0], 3, 9) ~ ", " ~ fmtMM(at[1], 3, 9) ~ ", " ~ fmtMM(at[2], 3, 9)
             ~ " mm   heading out " ~ fmtVec(outward, 4, 9));
