@@ -46,7 +46,7 @@ f = {"btType": "BTMFeature-134", "featureType": "cleanSurfaces", "name": "D1 ski
                     en("mode", "CleanMode", os.environ.get("CS_CLEAN", "DIAGNOSE"), "e%s::m%s" % (TAB["id"], TAB["microversionId"])),
                     num("maxChange", os.environ.get("CS_MAXCHANGE", "0.05") + " mm"), b("useCache", os.environ.get("CS_USECACHE", "0") == "1"), q("cachedFaces"), s("cacheKey", ""), s("cacheStatus", "Not resolved yet."),
                     en("colorBy", "CleanColorBy", os.environ.get("CS_MODE", "SEVERITY"), "e%s::m%s" % (TAB["id"], TAB["microversionId"])),
-                    num("offsetDistance", os.environ.get("CS_DIST", "0.5") + " mm"), b("offsetFlip", os.environ.get("CS_FLIP", "0") == "1"), b("offsetTrim", os.environ.get("CS_TRIM", "0") == "1"), b("offsetBoth", os.environ.get("CS_BOTH", "0") == "1"), b("verifyResult", os.environ.get("CS_VERIFY", "0") == "1"), b("markEdges", os.environ.get("CS_MARK", "1") == "1"), b("debugOutput", os.environ.get("CS_DEBUG", "1") == "1")]}
+                    num("offsetDistance", os.environ.get("CS_DIST", "0.5") + " mm"), b("offsetFlip", os.environ.get("CS_FLIP", "0") == "1"), en("offsetSide", "OffsetSide", os.environ.get("CS_SIDE", "BOTH"), "e%s::m%s" % (TAB["id"], TAB["microversionId"])), q("sideReference", *([os.environ["CS_REF"]] if os.environ.get("CS_REF") else [])), b("towardReference", os.environ.get("CS_TOWARD", "1") == "1"), b("offsetTrim", os.environ.get("CS_TRIM", "0") == "1"), b("verifyResult", os.environ.get("CS_VERIFY", "0") == "1"), b("markEdges", os.environ.get("CS_MARK", "1") == "1"), b("debugOutput", os.environ.get("CS_DEBUG", "1") == "1")]}
 resp = write_feature(BASE, f, {}, client=c)
 print(resp.get("featureState", {}).get("featureStatus"))
 

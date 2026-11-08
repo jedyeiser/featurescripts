@@ -75,6 +75,15 @@ export enum CleanMode
     THOROUGH
 }
 
+/** Which side(s) of the surface the offset test runs on. Query = toward (or away from) a reference, read per body as Offset+ does. */
+export enum OffsetSide
+{
+    annotation { "Name" : "Both sides" }
+    BOTH,
+    annotation { "Name" : "Toward a reference" }
+    QUERY
+}
+
 /** Max change: 0.001 mm min, 0.05 mm default, 10 mm max. No resurfaced face may stray further than this from the original. */
 export const MaxChangeBounds =
 {
@@ -183,14 +192,23 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
             annotation { "Name" : "Offset distance" }
             isLength(definition.offsetDistance, OffsetTestBounds);
 
-            annotation { "Name" : "Flip offset side" }
-            definition.offsetFlip is boolean;
+            annotation { "Name" : "Offset side", "UIHint" : UIHint.SHOW_LABEL }
+            definition.offsetSide is OffsetSide;
+
+            if (definition.offsetSide == OffsetSide.QUERY)
+            {
+                annotation { "Name" : "Side reference", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                            "Description" : "Geometry on the side to test the offset toward (as in Offset+). The side is read per surface body." }
+                definition.sideReference is Query;
+
+                annotation { "Name" : "Offset toward reference", "Default" : true, "UIHint" : UIHint.OPPOSITE_DIRECTION,
+                            "Description" : "On: test toward the reference. Off: away from it." }
+                definition.towardReference is boolean;
+            }
 
             annotation { "Name" : "Neighbours trim the offset", "Description" : "Off (default) offsets each face on its own, as Offset+ does. On is the kernel's default, where the extensions of the surrounding faces trim the offset: far more faces refuse, partly because of their neighbours." }
             definition.offsetTrim is boolean;
 
-            annotation { "Name" : "Test both sides", "Description" : "A face counts as refusing if it refuses the offset on either side (the flip setting is then ignored). Doubles the analysis time." }
-            definition.offsetBoth is boolean;
         }
 
         if (!(definition.mode == CleanMode.DIAGNOSE))
@@ -265,6 +283,7 @@ function diagnose(context is Context, id is Id, definition is map)
         const cleanSet = copyKeys(context, definition.cleanFaces, srcIndex, srcFaces, faces);
         const keepSet = copyKeys(context, definition.keepFaces, srcIndex, srcFaces, faces);
         const hasScope = size(evaluateQuery(context, definition.cleanFaces)) > 0;
+        definition.offsetSigns = offsetSignsFor(context, copy, definition);
         const cachedFails = cachedFailing(context, definition, srcIndex, srcFaces, faces);
 
         const widthCrit = definition.sliverWidth / millimeter;
@@ -376,7 +395,6 @@ function diagnose(context is Context, id is Id, definition is map)
         }
         else if (definition.colorBy == CleanColorBy.OFFSET || definition.colorBy == CleanColorBy.RADIUS)
         {
-            const signedDistance = (definition.offsetFlip ? -1 : 1) * definition.offsetDistance;
             var probe = [[], [], [], []];
             for (var i = 0; i < size(rows); i += 1)
             {
@@ -390,7 +408,7 @@ function diagnose(context is Context, id is Id, definition is map)
                 }
                 else
                 {
-                    const t = tightness(context, rows[i].face, signedDistance);
+                    const t = tightnessFor(context, rows[i].face, definition);
                     rows[i].tight = t;
                     const bucket = t <= 0 ? 3 : (t < 0.5 ? 2 : (t < 0.8 ? 1 : 0));
                     probe[bucket] = append(probe[bucket], rows[i].face);
@@ -945,7 +963,7 @@ function resurface(context is Context, id is Id, definition is map)
     const cleanSet = copyKeys(context, definition.cleanFaces, srcIndex, srcFaces, faces);
     const keepSet = copyKeys(context, definition.keepFaces, srcIndex, srcFaces, faces);
     const hasScope = size(evaluateQuery(context, definition.cleanFaces)) > 0;
-    const signedDistance = (definition.offsetFlip ? -1 : 1) * definition.offsetDistance;
+    definition.offsetSigns = offsetSignsFor(context, body, definition);
     const before = bodyStats(context, body);
     const cachedFails = cachedFailing(context, definition, srcIndex, srcFaces, faces);
     const stale = definition.useCache == true && cachedFails == undefined;
@@ -1086,6 +1104,7 @@ function resurface(context is Context, id is Id, definition is map)
     var checked = 0;
     if (definition.verifyResult == true || definition.debugOutput)
     {
+        definition.offsetSigns = offsetSignsFor(context, result, definition);
         for (var f in evaluateQuery(context, qOwnedByBody(result, EntityType.FACE)))
         {
             checked += 1;
@@ -1215,7 +1234,7 @@ function buildPatch(context is Context, id is Id, t is number, face is Query, de
         return { "ok" : false, "reason" : reason, "where" : where, "anchor" : anchor, "t" : t };
     }
     const patch = qCreatedBy(patchId, EntityType.BODY);
-    if (offsetFails(context, patchId + "off", qOwnedByBody(patch, EntityType.FACE), definition))
+    if (offsetFailsAs(context, patchId + "off", qOwnedByBody(patch, EntityType.FACE), face, definition))
     {
         deleteBodies(context, patchId + "del", patch);
         return { "ok" : false, "reason" : "rebuilt face still refuses the offset", "where" : where, "anchor" : anchor, "t" : t };
@@ -1267,7 +1286,7 @@ function bodyStats(context is Context, body is Query) returns map
 function cacheKeyOf(context is Context, definition is map) returns string
 {
     const faceCount = size(evaluateQuery(context, qOwnedByBody(qBodyType(definition.surfaces, BodyType.SHEET), EntityType.FACE)));
-    return roundToPrecision(definition.offsetDistance / millimeter, 6) ~ "|" ~ (definition.offsetBoth == true ? "B" : (definition.offsetFlip ? "1" : "0")) ~ (definition.offsetTrim == true ? "T" : "F") ~ "|" ~ faceCount ~ "|"
+    return roundToPrecision(definition.offsetDistance / millimeter, 6) ~ "|" ~ (definition.offsetSide == OffsetSide.QUERY ? (definition.towardReference ? "Qt" : "Qa") ~ size(evaluateQuery(context, definition.sideReference)) : "B") ~ (definition.offsetTrim == true ? "T" : "F") ~ "|" ~ faceCount ~ "|"
         ~ size(evaluateQuery(context, definition.cleanFaces)) ~ "|" ~ size(evaluateQuery(context, definition.keepFaces));
 }
 
@@ -1337,7 +1356,7 @@ export function cleanSurfacesEditLogic(context is Context, id is Id, oldDefiniti
     const cleanKeys = faceKeys(context, definition.cleanFaces);
     const keepKeys = faceKeys(context, definition.keepFaces);
     const hasScope = size(cleanKeys) > 0;
-    const signedDistance = (definition.offsetFlip ? -1 : 1) * definition.offsetDistance;
+    definition.offsetSigns = offsetSignsFor(context, qUnion(sources), definition);
     var failing = [];
     var tested = 0;
     for (var i = 0; i < size(faces); i += 1)
@@ -1356,19 +1375,111 @@ export function cleanSurfacesEditLogic(context is Context, id is Id, oldDefiniti
     definition.cachedFaces = qUnion(failing);
     definition.cacheKey = cacheKeyOf(context, definition);
     definition.cacheStatus = "Resolved: " ~ size(failing) ~ " of " ~ tested ~ " faces refuse an offset of "
-        ~ roundToPrecision(definition.offsetDistance / millimeter, 3) ~ " mm" ~ (definition.offsetFlip ? " (flipped side)." : ".");
+        ~ roundToPrecision(definition.offsetDistance / millimeter, 3) ~ " mm" ~ (definition.offsetSide == OffsetSide.QUERY ? " (toward the reference)." : " (either side).");
     return definition;
 }
 
-/** True when the kernel refuses to offset the face on the tested side(s): the side set by Flip, or either side when Test both sides is on. */
+/** True when the kernel refuses to offset `face` on the tested side(s): either side for Both, else toward the reference. */
 function offsetFails(context is Context, probeId is Id, face is Query, definition is map) returns boolean
 {
-    if (definition.offsetBoth == true)
+    return offsetFailsAs(context, probeId, face, face, definition);
+}
+
+/** As offsetFails, for `testFace`, with the side taken from `sideFace` (a patch or a rehearsal copy is tested on the side of the face it stands for). */
+function offsetFailsAs(context is Context, probeId is Id, testFace is Query, sideFace is Query, definition is map) returns boolean
+{
+    const trim = definition.offsetTrim == true;
+    if (definition.offsetSide == OffsetSide.QUERY)
     {
-        return offsetRefused(context, probeId + "p", face, definition.offsetDistance, definition.offsetTrim == true)
-            || offsetRefused(context, probeId + "n", face, -definition.offsetDistance, definition.offsetTrim == true);
+        return offsetRefused(context, probeId, testFace, faceDirection(context, sideFace, definition) * definition.offsetDistance, trim);
     }
-    return offsetRefused(context, probeId, face, (definition.offsetFlip ? -1 : 1) * definition.offsetDistance, definition.offsetTrim == true);
+    return offsetRefused(context, probeId + "p", testFace, definition.offsetDistance, trim) || offsetRefused(context, probeId + "n", testFace, -definition.offsetDistance, trim);
+}
+
+/** +1 / -1: the way the offset test runs on this face's body (Query mode); the sides were read once by offsetSignsFor. */
+function faceDirection(context is Context, face is Query, definition is map) returns number
+{
+    const owner = evaluateQuery(context, qOwnerBody(face));
+    const direction = size(owner) == 1 ? definition.offsetSigns[transientQueriesToStrings(owner[0])] : undefined;
+    if (direction == undefined)
+    {
+        throw regenError("Internal: the offset side of a face's surface was not resolved.");
+    }
+    return direction;
+}
+
+/** Offset tightness of a face: for Both the tighter side, otherwise the tested side. */
+function tightnessFor(context is Context, face is Query, definition is map) returns number
+{
+    if (definition.offsetSide == OffsetSide.QUERY)
+    {
+        return tightness(context, face, faceDirection(context, face, definition) * definition.offsetDistance);
+    }
+    return min(tightness(context, face, definition.offsetDistance), tightness(context, face, -definition.offsetDistance));
+}
+
+/**
+ * For Query mode, which way the offset test runs on each body of `bodies`: toward the side of the body the reference is on (+1 = along the
+ * face normal), or away from it with Offset toward reference off. Same rule as Offset+ (reference_side/offset_plus.fs); empty map for Both.
+ */
+function offsetSignsFor(context is Context, bodies is Query, definition is map) returns map
+{
+    if (definition.offsetSide != OffsetSide.QUERY)
+    {
+        return {};
+    }
+    const probe = sideProbe(context, definition.sideReference);
+    if (probe == undefined)
+    {
+        throw regenError("Offset side is Toward a reference: pick a side reference (or set Offset side to Both sides).", ["sideReference"]);
+    }
+    var signs = {};
+    for (var b in evaluateQuery(context, bodies))
+    {
+        const side = sideOfProbe(context, probe, qOwnedByBody(b, EntityType.FACE));
+        if (side == 0)
+        {
+            throw regenError("The side reference lies on a surface (or no side of it can be read there); pick something clearly to one side.", ["sideReference"]);
+        }
+        signs[transientQueriesToStrings(b)] = definition.towardReference ? side : -side;
+    }
+    return signs;
+}
+
+/** The side reference as something evDistance can measure from (a mate connector's origin, else the entity); undefined when nothing is picked. Mirrors referenceProbe in reference_side_utils.fs. */
+function sideProbe(context is Context, reference is Query)
+{
+    if (isQueryEmpty(context, reference))
+    {
+        return undefined;
+    }
+    if (!isQueryEmpty(context, qBodyType(reference, BodyType.MATE_CONNECTOR)))
+    {
+        return evMateConnector(context, { "mateConnector" : reference }).origin;
+    }
+    return reference;
+}
+
+/** +1 when the probe is on the side the surface normal points to at the closest point, -1 on the other side, 0 when it lies on the surface or no side can be read. Mirrors sideSign in reference_side_utils.fs. */
+function sideOfProbe(context is Context, probe, faces is Query) returns number
+{
+    const list = evaluateQuery(context, faces);
+    if (size(list) == 0)
+    {
+        return 0;
+    }
+    const result = evDistance(context, { "side0" : probe, "side1" : qUnion(list) });
+    var normal = undefined;
+    try silent
+    {
+        normal = evFaceTangentPlane(context, { "face" : list[result.sides[1].index], "parameter" : result.sides[1].parameter }).normal;
+    }
+    if (normal == undefined)
+    {
+        return 0;
+    }
+    const s = dot(result.sides[0].point - result.sides[1].point, normal);
+    return abs(s) <= 1e-6 * meter ? 0 : (s > 0 * meter ? 1 : -1);
 }
 
 /** Largest edge or vertex tolerance of a body, in metres. */
@@ -1423,12 +1534,14 @@ function trialSwap(context is Context, id is Id, job is map, cur is Query, defin
     }
     const ring = evaluateQuery(context, qAdjacent(found[0], AdjacencyType.EDGE, EntityType.FACE));
     var ringPoints = [];
+    var ringFaces = [];
     for (var r in ring)
     {
         const p = interiorPoint(context, r);
         if (p != undefined)
         {
             ringPoints = append(ringPoints, p);
+            ringFaces = append(ringFaces, r);
         }
     }
     opExtractSurface(context, trialId + "mini", { "faces" : qUnion(append(ring, found[0])), "tangentPropagation" : false });
@@ -1439,7 +1552,7 @@ function trialSwap(context is Context, id is Id, job is map, cur is Query, defin
     for (var i = 0; i < size(ringPoints); i += 1)
     {
         const rf = evaluateQuery(context, qContainsPoint(qOwnedByBody(mini, EntityType.FACE), ringPoints[i]));
-        ringRefusedBefore = append(ringRefusedBefore, size(rf) != 1 || offsetFails(context, trialId + ("rb" ~ i), rf[0], definition));
+        ringRefusedBefore = append(ringRefusedBefore, size(rf) != 1 || offsetFailsAs(context, trialId + ("rb" ~ i), rf[0], ringFaces[i], definition));
     }
     var reason = "";
     opPattern(context, trialId + "pat", { "entities" : job.patch, "transforms" : [identityTransform()], "instanceNames" : ["Trial_patch"] });
@@ -1472,14 +1585,14 @@ function trialSwap(context is Context, id is Id, job is map, cur is Query, defin
         else
         {
             const nf = evaluateQuery(context, qContainsPoint(qOwnedByBody(mini, EntityType.FACE), job.anchor));
-            if (size(nf) != 1 || offsetFails(context, trialId + "nf", nf[0], definition))
+            if (size(nf) != 1 || offsetFailsAs(context, trialId + "nf", nf[0], found[0], definition))
             {
                 reason = "the new face refuses the offset once sewn in";
             }
             for (var i = 0; i < size(ringPoints) && reason == ""; i += 1)
             {
                 const rf = evaluateQuery(context, qContainsPoint(qOwnedByBody(mini, EntityType.FACE), ringPoints[i]));
-                if (!ringRefusedBefore[i] && (size(rf) != 1 || offsetFails(context, trialId + ("ra" ~ i), rf[0], definition)))
+                if (!ringRefusedBefore[i] && (size(rf) != 1 || offsetFailsAs(context, trialId + ("ra" ~ i), rf[0], ringFaces[i], definition)))
                 {
                     reason = "a neighbouring face that offset before would refuse";
                 }
