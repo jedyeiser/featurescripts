@@ -446,18 +446,20 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
                 {
                     var lowKnot = 0;
                     var lowCp = 0;
+                    var lowGap = 0;
                     var ratios = [];
                     for (var nm in grp[1])
                     {
                         lowKnot += nm.knotRatio < 0.05 ? 1 : 0;
                         lowCp += nm.cpRatio < 0.05 ? 1 : 0;
+                        lowGap += nm.minGap < 0.05 ? 1 : 0;
                         ratios = append(ratios, nm.cpRatio);
                     }
                     ratios = sort(ratios, function(a, b)
                         {
                             return a - b;
                         });
-                    println("NETSUM " ~ grp[0] ~ " n=" ~ size(grp[1]) ~ " knotRatio<0.05: " ~ lowKnot ~ " cpRatio<0.05: " ~ lowCp
+                    println("NETSUM " ~ grp[0] ~ " n=" ~ size(grp[1]) ~ " knotRatio<0.05: " ~ lowKnot ~ " cpRatio<0.05: " ~ lowCp ~ " minGap<0.05mm: " ~ lowGap
                             ~ (size(ratios) > 0 ? " cpRatio median " ~ roundToPrecision(ratios[floor(size(ratios) / 2)], 3) ~ " min " ~ roundToPrecision(ratios[0], 4) : ""));
                 }
                 // does the curvature number predict the failures? (sign check: which side is "positive")
