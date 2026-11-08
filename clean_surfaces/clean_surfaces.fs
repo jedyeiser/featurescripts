@@ -1032,6 +1032,14 @@ function resurface(context is Context, id is Id, definition is map)
         println("CLEAN tested " ~ tested ~ " faces, " ~ size(targets) ~ " refuse the offset (" ~ (cachedFails != undefined ? "cached" : "live") ~ "), patches built " ~ size(jobs)
                 ~ ", swapped in " ~ size(sewnAnchors) ~ ", original kept " ~ keptOriginal ~ ", holes " ~ holes);
         println("CLEAN faces " ~ before.faces ~ " -> " ~ after.faces ~ ", edges " ~ before.edges ~ " -> " ~ after.edges ~ ", naked " ~ before.naked ~ " -> " ~ after.naked);
+        var refusing = 0;
+        var checked = 0;
+        for (var f in evaluateQuery(context, qOwnedByBody(result, EntityType.FACE)))
+        {
+            checked += 1;
+            refusing += offsetRefused(context, id + ("ver" ~ checked), f, signedDistance) ? 1 : 0;
+        }
+        println("VERIFY faces of the result that still refuse the offset: " ~ refusing ~ " of " ~ checked);
         for (var s in skipped)
         {
             println("SKIPPED at " ~ s.where ~ ": " ~ s.reason);
