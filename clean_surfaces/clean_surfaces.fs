@@ -86,6 +86,10 @@ export const MaxChangeBounds =
 
 /** Fit tolerance (plain number, metres) of the rebuilt patches: tight so that a patch edge lands inside the 1 micron sewing tolerance. */
 const PATCH_TOLERANCE = 1e-7;
+/** An edge or vertex tolerance above this (metres) is "tolerant": the kernel had to loosen it to make the geometry fit (0.5 micron). */
+const TOLERANT_TOLERANCE = 5e-7;
+/** A trial swap may raise the largest edge / vertex tolerance of its neighbourhood by at most this (metres, 0.2 micron). */
+const TRIAL_TOLERANCE_GROWTH = 2e-7;
 /** Offset distance used to prove that offsets can run at all (the editing-logic self check). */
 const SELF_CHECK_OFFSET = 1e-5 * meter;
 
@@ -178,12 +182,18 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
 
             annotation { "Name" : "Flip offset side" }
             definition.offsetFlip is boolean;
+
+            annotation { "Name" : "Test both sides", "Description" : "A face counts as refusing if it refuses the offset on either side (the flip setting is then ignored). Doubles the analysis time." }
+            definition.offsetBoth is boolean;
         }
 
         if (!(definition.mode == CleanMode.DIAGNOSE))
         {
             annotation { "Name" : "Max change" }
             isLength(definition.maxChange, MaxChangeBounds);
+
+            annotation { "Name" : "Verify result", "Description" : "After cleaning, run the offset test on every face of the result and report how many still refuse. Slow." }
+            definition.verifyResult is boolean;
         }
 
         annotation { "Name" : "Use cached analysis" }
@@ -279,6 +289,18 @@ function diagnose(context is Context, id is Id, definition is map)
             }
         }
 
+        // Tolerant edges: the kernel loosened their tolerance (sewn or imported geometry); a likely cause of offset refusals.
+        var tolerantEdges = [];
+        var maxTolerantEdge = 0;
+        for (var q, v in evTolerances(context, { "entities" : qOwnedByBody(copy, EntityType.EDGE) }))
+        {
+            maxTolerantEdge = max(maxTolerantEdge, v / meter);
+            if (v / meter > TOLERANT_TOLERANCE)
+            {
+                tolerantEdges = append(tolerantEdges, q);
+            }
+        }
+
         var rows = [];
         var byLevel = [[], [], [], [], [], [], []];
         var counts = [0, 0, 0, 0, 0, 0, 0];
@@ -354,7 +376,7 @@ function diagnose(context is Context, id is Id, definition is map)
             {
                 if (definition.colorBy == CleanColorBy.OFFSET)
                 {
-                    const fails = cachedFails != undefined ? cachedFails[transientQueriesToStrings(rows[i].face)] != undefined : offsetRefused(context, id + ("off" ~ i), rows[i].face, signedDistance);
+                    const fails = cachedFails != undefined ? cachedFails[transientQueriesToStrings(rows[i].face)] != undefined : offsetFails(context, id + ("off" ~ i), rows[i].face, definition);
                     rows[i].offsetFail = fails;
                     probe[fails ? 1 : 0] = append(probe[fails ? 1 : 0], rows[i].face);
                     offsetTested += 1;
@@ -457,6 +479,10 @@ function diagnose(context is Context, id is Id, definition is map)
         {
             addDebugEntities(context, qUnion(corners), DebugColor.RED);
         }
+        if (size(tolerantEdges) > 0)
+        {
+            addDebugEntities(context, qUnion(tolerantEdges), DebugColor.MAGENTA);
+        }
 
         const worstFaces = counts[3] + counts[4];
         const needsCleanup = worstFaces > 0 || size(mergeable) > 0 || offsetFailed > 0;
@@ -549,7 +575,8 @@ function diagnose(context is Context, id is Id, definition is map)
         }
 
         reportFeatureInfo(context, id, (needsCleanup ? "Needs cleanup: " : "Looks clean: ") ~ worstFaces ~ " critical+ faces (" ~ issues ~ "), "
-                ~ size(mergeable) ~ " mergeable short edges"
+                ~ size(mergeable) ~ " mergeable short edges, " ~ size(tolerantEdges) ~ " tolerant edges (magenta; tolerance above 0.5 um, largest "
+                ~ roundToPrecision(maxTolerantEdge * 1e6, 2) ~ " um)"
                 ~ (definition.colorBy == CleanColorBy.OFFSET ? ", offset test " ~ offsetFailed ~ " of " ~ offsetTested ~ " faces refuse" : "")
                 ~ ". " ~ size(shortEdges) ~ " short edges (" ~ size(mergeable) ~ " line up within " ~ roundToPrecision(tangentDeg, 2)
                 ~ " deg: green; " ~ size(corners) ~ " corners: red). " ~ size(faces) ~ " faces: ok " ~ counts[0] ~ " | watch " ~ counts[1] ~ " | bad " ~ counts[2]
@@ -918,7 +945,7 @@ function resurface(context is Context, id is Id, definition is map)
             continue;
         }
         tested += 1;
-        const refused = cachedFails != undefined ? cachedFails[key] != undefined : offsetRefused(context, id + ("off" ~ i), faces[i], signedDistance);
+        const refused = cachedFails != undefined ? cachedFails[key] != undefined : offsetFails(context, id + ("off" ~ i), faces[i], definition);
         if (refused)
         {
             targets = append(targets, faces[i]);
@@ -930,7 +957,7 @@ function resurface(context is Context, id is Id, definition is map)
     var skipped = [];
     for (var t = 0; t < size(targets); t += 1)
     {
-        const r = buildPatch(context, id, t, targets[t], definition.maxChange, signedDistance);
+        const r = buildPatch(context, id, t, targets[t], definition);
         if (r.ok)
         {
             jobs = append(jobs, r);
@@ -953,6 +980,13 @@ function resurface(context is Context, id is Id, definition is map)
         {
             skipped = append(skipped, { "where" : job.where, "anchor" : job.anchor, "reason" : "face not found again" });
             deleteBodies(context, id + ("gone" ~ job.t), job.patch);
+            continue;
+        }
+        const trial = trialSwap(context, id, job, cur, definition);
+        if (!trial.ok)
+        {
+            skipped = append(skipped, { "where" : job.where, "anchor" : job.anchor, "reason" : "trial swap rejected: " ~ trial.reason });
+            deleteBodies(context, id + ("trialdel" ~ job.t), job.patch);
             continue;
         }
         const sewId = id + ("sew" ~ job.t);
@@ -1027,25 +1061,31 @@ function resurface(context is Context, id is Id, definition is map)
     colorFacesAt(context, result, skippedAnchors, color(1.00, 0.50, 0.10));
     const after = bodyStats(context, result);
 
-    if (definition.debugOutput)
+    var refusing = 0;
+    var checked = 0;
+    if (definition.verifyResult == true || definition.debugOutput)
     {
-        println("CLEAN tested " ~ tested ~ " faces, " ~ size(targets) ~ " refuse the offset (" ~ (cachedFails != undefined ? "cached" : "live") ~ "), patches built " ~ size(jobs)
-                ~ ", swapped in " ~ size(sewnAnchors) ~ ", original kept " ~ keptOriginal ~ ", holes " ~ holes);
-        println("CLEAN faces " ~ before.faces ~ " -> " ~ after.faces ~ ", edges " ~ before.edges ~ " -> " ~ after.edges ~ ", naked " ~ before.naked ~ " -> " ~ after.naked);
-        var refusing = 0;
-        var checked = 0;
         for (var f in evaluateQuery(context, qOwnedByBody(result, EntityType.FACE)))
         {
             checked += 1;
-            if (offsetRefused(context, id + ("ver" ~ checked), f, signedDistance))
+            if (offsetFails(context, id + ("ver" ~ checked), f, definition))
             {
                 refusing += 1;
-                const sm = stripMeasure(context, f);
-                println("STILL-REFUSES area " ~ roundToPrecision(evArea(context, { "entities" : f }) / millimeter ^ 2, 2) ~ " " ~ faceType(context, f) ~ " at " ~ sm.where
-                        ~ " edges " ~ size(evaluateQuery(context, qAdjacent(f, AdjacencyType.EDGE, EntityType.EDGE))));
+                if (definition.debugOutput)
+                {
+                    const sm = stripMeasure(context, f);
+                    println("STILL-REFUSES area " ~ roundToPrecision(evArea(context, { "entities" : f }) / millimeter ^ 2, 2) ~ " " ~ faceType(context, f) ~ " at " ~ sm.where
+                            ~ " edges " ~ size(evaluateQuery(context, qAdjacent(f, AdjacencyType.EDGE, EntityType.EDGE))));
+                }
             }
         }
+    }
+    if (definition.debugOutput)
+    {
         println("VERIFY faces of the result that still refuse the offset: " ~ refusing ~ " of " ~ checked);
+        println("CLEAN tested " ~ tested ~ " faces, " ~ size(targets) ~ " refuse the offset (" ~ (cachedFails != undefined ? "cached" : "live") ~ "), patches built " ~ size(jobs)
+                ~ ", swapped in " ~ size(sewnAnchors) ~ ", original kept " ~ keptOriginal ~ ", holes " ~ holes);
+        println("CLEAN faces " ~ before.faces ~ " -> " ~ after.faces ~ ", edges " ~ before.edges ~ " -> " ~ after.edges ~ ", naked " ~ before.naked ~ " -> " ~ after.naked);
         for (var s in skipped)
         {
             println("SKIPPED at " ~ s.where ~ ": " ~ s.reason);
@@ -1079,6 +1119,10 @@ function resurface(context is Context, id is Id, definition is map)
     {
         text = text ~ " Thorough mode is not built yet; this is the quick result.";
     }
+    if (checked > 0)
+    {
+        text = text ~ " Verify: " ~ refusing ~ " of " ~ checked ~ " faces of the result still refuse the offset (before: " ~ size(targets) ~ " of " ~ tested ~ ").";
+    }
     text = text ~ " Green = resurfaced. Original is unchanged; hide it to see the result.";
     if (size(skipped) > 0 || holes > 0 || stale)
     {
@@ -1095,7 +1139,7 @@ function resurface(context is Context, id is Id, definition is map)
  * face with the approximated outer loop, then prove it offsets and stays within maxChange. On any failure the patch is deleted and the reason returned.
  * Returns { ok, reason, where, anchor, patch, dev, t }.
  */
-function buildPatch(context is Context, id is Id, t is number, face is Query, maxChange is ValueWithUnits, signedDistance is ValueWithUnits) returns map
+function buildPatch(context is Context, id is Id, t is number, face is Query, definition is map) returns map
 {
     var params = [];
     for (var i = 1; i < 7; i += 1)
@@ -1150,7 +1194,7 @@ function buildPatch(context is Context, id is Id, t is number, face is Query, ma
         return { "ok" : false, "reason" : reason, "where" : where, "anchor" : anchor, "t" : t };
     }
     const patch = qCreatedBy(patchId, EntityType.BODY);
-    if (offsetRefused(context, patchId + "off", qOwnedByBody(patch, EntityType.FACE), signedDistance))
+    if (offsetFails(context, patchId + "off", qOwnedByBody(patch, EntityType.FACE), definition))
     {
         deleteBodies(context, patchId + "del", patch);
         return { "ok" : false, "reason" : "rebuilt face still refuses the offset", "where" : where, "anchor" : anchor, "t" : t };
@@ -1160,7 +1204,7 @@ function buildPatch(context is Context, id is Id, t is number, face is Query, ma
     {
         worst = max(worst, evDistance(context, { "side0" : p, "side1" : patch }).distance);
     }
-    if (worst > maxChange)
+    if (worst > definition.maxChange)
     {
         deleteBodies(context, patchId + "del", patch);
         return { "ok" : false, "reason" : "rebuilt face is more than Max change from the original", "where" : where, "anchor" : anchor, "t" : t };
@@ -1202,7 +1246,7 @@ function bodyStats(context is Context, body is Query) returns map
 function cacheKeyOf(context is Context, definition is map) returns string
 {
     const faceCount = size(evaluateQuery(context, qOwnedByBody(qBodyType(definition.surfaces, BodyType.SHEET), EntityType.FACE)));
-    return roundToPrecision(definition.offsetDistance / millimeter, 6) ~ "|" ~ (definition.offsetFlip ? "1" : "0") ~ "|" ~ faceCount ~ "|"
+    return roundToPrecision(definition.offsetDistance / millimeter, 6) ~ "|" ~ (definition.offsetBoth == true ? "B" : (definition.offsetFlip ? "1" : "0")) ~ "|" ~ faceCount ~ "|"
         ~ size(evaluateQuery(context, definition.cleanFaces)) ~ "|" ~ size(evaluateQuery(context, definition.keepFaces));
 }
 
@@ -1283,7 +1327,7 @@ export function cleanSurfacesEditLogic(context is Context, id is Id, oldDefiniti
             continue;
         }
         tested += 1;
-        if (offsetRefused(context, id + ("r" ~ i), faces[i], signedDistance))
+        if (offsetFails(context, id + ("r" ~ i), faces[i], definition))
         {
             failing = append(failing, faces[i]);
         }
@@ -1293,4 +1337,137 @@ export function cleanSurfacesEditLogic(context is Context, id is Id, oldDefiniti
     definition.cacheStatus = "Resolved: " ~ size(failing) ~ " of " ~ tested ~ " faces refuse an offset of "
         ~ roundToPrecision(definition.offsetDistance / millimeter, 3) ~ " mm" ~ (definition.offsetFlip ? " (flipped side)." : ".");
     return definition;
+}
+
+/** True when the kernel refuses to offset the face on the tested side(s): the side set by Flip, or either side when Test both sides is on. */
+function offsetFails(context is Context, probeId is Id, face is Query, definition is map) returns boolean
+{
+    if (definition.offsetBoth == true)
+    {
+        return offsetRefused(context, probeId + "p", face, definition.offsetDistance) || offsetRefused(context, probeId + "n", face, -definition.offsetDistance);
+    }
+    return offsetRefused(context, probeId, face, (definition.offsetFlip ? -1 : 1) * definition.offsetDistance);
+}
+
+/** Largest edge or vertex tolerance of a body, in metres. */
+function maxTolerance(context is Context, body is Query) returns number
+{
+    var worst = 0;
+    for (var q, v in evTolerances(context, { "entities" : qUnion([qOwnedByBody(body, EntityType.EDGE), qOwnedByBody(body, EntityType.VERTEX)]) }))
+    {
+        worst = max(worst, v / meter);
+    }
+    return worst;
+}
+
+/** A point well inside a face (the sample nearest the middle of its parameter box that lies on the face), or undefined. */
+function interiorPoint(context is Context, face is Query)
+{
+    var params = [];
+    for (var i = 1; i < 7; i += 1)
+    {
+        for (var j = 1; j < 7; j += 1)
+        {
+            params = append(params, vector(i / 7, j / 7));
+        }
+    }
+    const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : params, "returnUndefinedOutsideFace" : true });
+    var anchor = undefined;
+    var nearest = 1e9;
+    for (var i = 0; i < size(params); i += 1)
+    {
+        if (planes[i] != undefined && norm(params[i] - vector(0.5, 0.5)) < nearest)
+        {
+            nearest = norm(params[i] - vector(0.5, 0.5));
+            anchor = planes[i].origin;
+        }
+    }
+    return anchor;
+}
+
+/**
+ * Rehearse one swap on a small copy (the face and the faces that share an edge with it) before touching the real body. Accepted only if the
+ * patch sews, the faces and edges do not increase, the largest edge/vertex tolerance of the neighbourhood does not rise by more than
+ * TRIAL_TOLERANCE_GROWTH, the new face still passes the offset test AFTER sewing, and no neighbour that passed the offset test starts to refuse.
+ * Returns { ok, reason }. Kernel refusals (void, sew) are read with try/catch, as in resurface.
+ */
+function trialSwap(context is Context, id is Id, job is map, cur is Query, definition is map) returns map
+{
+    const trialId = id + ("trial" ~ job.t);
+    const found = evaluateQuery(context, qContainsPoint(qOwnedByBody(cur, EntityType.FACE), job.anchor));
+    if (size(found) != 1)
+    {
+        return { "ok" : false, "reason" : "face not found again" };
+    }
+    const ring = evaluateQuery(context, qAdjacent(found[0], AdjacencyType.EDGE, EntityType.FACE));
+    var ringPoints = [];
+    for (var r in ring)
+    {
+        const p = interiorPoint(context, r);
+        if (p != undefined)
+        {
+            ringPoints = append(ringPoints, p);
+        }
+    }
+    opExtractSurface(context, trialId + "mini", { "faces" : qUnion(append(ring, found[0])), "tangentPropagation" : false });
+    const mini = qBodyType(qCreatedBy(trialId + "mini", EntityType.BODY), BodyType.SHEET);
+    const before = bodyStats(context, mini);
+    const tolBefore = maxTolerance(context, mini);
+    var ringRefusedBefore = [];
+    for (var i = 0; i < size(ringPoints); i += 1)
+    {
+        const rf = evaluateQuery(context, qContainsPoint(qOwnedByBody(mini, EntityType.FACE), ringPoints[i]));
+        ringRefusedBefore = append(ringRefusedBefore, size(rf) != 1 || offsetFails(context, trialId + ("rb" ~ i), rf[0], definition));
+    }
+    var reason = "";
+    opPattern(context, trialId + "pat", { "entities" : job.patch, "transforms" : [identityTransform()], "instanceNames" : ["Trial_patch"] });
+    const trialPatch = qCreatedBy(trialId + "pat", EntityType.BODY);
+    const target = evaluateQuery(context, qContainsPoint(qOwnedByBody(mini, EntityType.FACE), job.anchor));
+    if (size(target) != 1)
+    {
+        reason = "face not found in the rehearsal copy";
+    }
+    else
+    {
+        try
+        {
+            opDeleteFace(context, trialId + "void", { "deleteFaces" : target[0], "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
+            opBoolean(context, id + ("trialjoin" ~ job.t), { "tools" : qUnion([mini, trialPatch]), "operationType" : BooleanOperationType.UNION });
+        }
+        catch (e)
+        {
+            reason = "would not sew: " ~ e.message;
+        }
+    }
+    if (reason == "")
+    {
+        const after = bodyStats(context, mini);
+        const tolAfter = maxTolerance(context, mini);
+        if (after.faces > before.faces || after.edges > before.edges)
+        {
+            reason = "it would add faces or edges (" ~ before.faces ~ "/" ~ before.edges ~ " -> " ~ after.faces ~ "/" ~ after.edges ~ ")";
+        }
+        else if (tolAfter > tolBefore + TRIAL_TOLERANCE_GROWTH)
+        {
+            reason = "sewing raises the edge tolerance to " ~ roundToPrecision(tolAfter * 1e6, 2) ~ " um (was " ~ roundToPrecision(tolBefore * 1e6, 2) ~ ")";
+        }
+        else
+        {
+            const nf = evaluateQuery(context, qContainsPoint(qOwnedByBody(mini, EntityType.FACE), job.anchor));
+            if (size(nf) != 1 || offsetFails(context, trialId + "nf", nf[0], definition))
+            {
+                reason = "the new face refuses the offset once sewn in";
+            }
+            for (var i = 0; i < size(ringPoints) && reason == ""; i += 1)
+            {
+                const rf = evaluateQuery(context, qContainsPoint(qOwnedByBody(mini, EntityType.FACE), ringPoints[i]));
+                if (!ringRefusedBefore[i] && (size(rf) != 1 || offsetFails(context, trialId + ("ra" ~ i), rf[0], definition)))
+                {
+                    reason = "a neighbouring face that offset before would refuse";
+                }
+            }
+        }
+    }
+    deleteBodies(context, trialId + "cleanup", qCreatedBy(trialId + "mini", EntityType.BODY));
+    return { "ok" : reason == "", "reason" : reason };
 }
