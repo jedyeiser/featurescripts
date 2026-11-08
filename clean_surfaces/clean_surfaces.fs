@@ -216,6 +216,9 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
             annotation { "Name" : "Max change" }
             isLength(definition.maxChange, MaxChangeBounds);
 
+            annotation { "Name" : "Check Offset+ Auto result", "Description" : "Run what Offset+ in Auto mode would do (direct offset, then thicken) on the whole surface, before and after, and report it. Slow and heavy on the modeler: off by default." }
+            definition.autoCheck is boolean;
+
             annotation { "Name" : "Verify result", "Description" : "After cleaning, run the offset test on every face of the result and report how many still refuse. Slow." }
             definition.verifyResult is boolean;
         }
@@ -1136,12 +1139,17 @@ function resurface(context is Context, id is Id, definition is map)
         }
     }
 
-    var defSource = definition;
-    defSource.offsetSigns = offsetSignsFor(context, qUnion(sources), definition);
-    var defResult = definition;
-    defResult.offsetSigns = offsetSignsFor(context, result, definition);
-    const autoBefore = autoOffsetReport(context, id + "autoB", qUnion(sources), defSource);
-    const autoAfter = autoOffsetReport(context, id + "autoA", result, defResult);
+    var autoBefore = "";
+    var autoAfter = "";
+    if (definition.autoCheck == true)
+    {
+        var defSource = definition;
+        defSource.offsetSigns = offsetSignsFor(context, qUnion(sources), definition);
+        var defResult = definition;
+        defResult.offsetSigns = offsetSignsFor(context, result, definition);
+        autoBefore = autoOffsetReport(context, id + "autoB", qUnion(sources), defSource);
+        autoAfter = autoOffsetReport(context, id + "autoA", result, defResult);
+    }
 
     var text = "Clean (quick): " ~ size(sewnAnchors) ~ " of " ~ size(targets) ~ " faces that refuse an offset of " ~ roundToPrecision(definition.offsetDistance / millimeter, 3)
         ~ " mm were resurfaced (" ~ (cachedFails != undefined ? "cached analysis" : "live analysis") ~ "). Faces " ~ before.faces ~ " -> " ~ after.faces
@@ -1170,8 +1178,11 @@ function resurface(context is Context, id is Id, definition is map)
     {
         text = text ~ " Verify: " ~ refusing ~ " of " ~ checked ~ " faces of the result still refuse the offset (before: " ~ size(targets) ~ " of " ~ tested ~ ").";
     }
-    text = text ~ " Offset+ Auto (direct offset, then thicken) at " ~ roundToPrecision(definition.offsetDistance / millimeter, 3) ~ " mm, whole surface: original " ~ autoBefore
-        ~ "; result " ~ autoAfter ~ ".";
+    if (definition.autoCheck == true)
+    {
+        text = text ~ " Offset+ Auto (direct offset, then thicken) at " ~ roundToPrecision(definition.offsetDistance / millimeter, 3) ~ " mm, whole surface: original " ~ autoBefore
+            ~ "; result " ~ autoAfter ~ ".";
+    }
     text = text ~ " Green = resurfaced. Original is unchanged; hide it to see the result.";
     if (size(skipped) > 0 || holes > 0 || stale)
     {
