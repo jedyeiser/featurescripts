@@ -1494,7 +1494,10 @@ function markEdges(context is Context, id is Id, edges is array, shade is Color,
     {
         return;
     }
-    opExtractWires(context, id, { "edges" : qUnion(edges) });
+    for (var i = 0; i < size(edges); i += 1)
+    {
+        opExtractWires(context, id + ("e" ~ i), { "edges" : edges[i] });
+    }
     const wires = qCreatedBy(id, EntityType.BODY);
     setProperty(context, { "entities" : wires, "propertyType" : PropertyType.APPEARANCE, "value" : shade });
     setProperty(context, { "entities" : wires, "propertyType" : PropertyType.NAME, "value" : label });

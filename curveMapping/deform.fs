@@ -1418,10 +1418,12 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
         }
     }
     var left = 0;
+    var leftBodies = [];
     for (var entry in fillBodies)
         if (done[entry.key] == undefined)
         {
             left += 1;
+            leftBodies = append(leftBodies, current[entry.key]);
             if (verbose)
             {
                 var placeNote = "";
@@ -1440,7 +1442,99 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
                     ~ (refusedWhy[entry.key] == undefined ? "never touched the main body" : refusedWhy[entry.key]));
             }
         }
-    return { "joined" : size(done), "left" : left };
+    return { "joined" : size(done), "left" : left, "main" : current[seed], "leftBodies" : leftBodies };
+}
+
+/** The distance from a patch's edge midpoints to the old sheet's edges within which a naked edge of the main body is part of the hole. */
+const PATCH_EDGE_GATE = 5e-5 * meter;
+
+/** A left-over sheet smaller than this has collapsed (all its edges merged): it is dropped, not joined. */
+const PATCH_DEGENERATE_AREA = 1e-9 * meter ^ 2;
+
+/**
+ * The sheets the kernel would not sew into the main body, replaced by patches built from the hole they leave: the naked edges of
+ * the main body that lie along the sheet's edges form the hole's boundary (they ARE the neighbours' edges, so a surface bounded
+ * by them meets the neighbours exactly, which the sheet's own edges, a few microns off, do not). The patch is joined first; only
+ * then is the old sheet deleted, so a sheet that cannot be replaced stays. A collapsed sheet (no area) is just dropped.
+ *
+ * @returns {number} how many sheets were replaced or dropped
+ */
+function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies is array, verbose is boolean) returns number
+{
+    var patched = 0;
+    for (var i = 0; i < size(leftBodies); i += 1)
+    {
+        const sheet = leftBodies[i];
+        if (isQueryEmpty(context, sheet))
+            continue;
+        const patchId = id + ("patch" ~ i);
+        var done = false;
+        var note = "";
+        try
+        {
+            const area = evArea(context, { "entities" : sheet });
+            if (area < PATCH_DEGENERATE_AREA)
+            {
+                opDeleteBodies(context, id + ("drop" ~ i), { "entities" : sheet });
+                done = true;
+                note = "dropped (collapsed, area " ~ roundToPrecision(area / (millimeter ^ 2), 6) ~ " mm2)";
+            }
+            else
+            {
+                const sheetBox = evBox3d(context, { "topology" : sheet });
+                const pad = vector(5e-4, 5e-4, 5e-4) * meter;
+                const region = box3d(sheetBox.minCorner - pad, sheetBox.maxCorner + pad);
+                const nakedNear = qContainedInBox(qEdgeTopologyFilter(qOwnedByBody(main, EntityType.EDGE), EdgeTopology.ONE_SIDED), region);
+                const sheetEdges = qOwnedByBody(sheet, EntityType.EDGE);
+                var loop = [];
+                for (var e in evaluateQuery(context, nakedNear))
+                {
+                    const middle = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin;
+                    if (evDistance(context, { "side0" : middle, "side1" : sheetEdges }).distance < PATCH_EDGE_GATE)
+                        loop = append(loop, e);
+                }
+                if (size(loop) < 2)
+                {
+                    note = "not patched: only " ~ size(loop) ~ " naked edge(s) of the main body along it";
+                }
+                else
+                {
+                    opFillSurface(context, patchId, { "edgesG0" : qUnion(loop), "edgesG1" : qNothing(), "edgesG2" : qNothing(), "guideVertices" : qNothing() });
+                    const patch = qBodyType(qCreatedBy(patchId, EntityType.BODY), BodyType.SHEET);
+                    var deviation = undefined;
+                    try silent
+                    {
+                        const probes = evFaceTangentPlanes(context, { "face" : qOwnedByBody(sheet, EntityType.FACE),
+                            "parameters" : [vector(0.5, 0.5), vector(0.25, 0.25), vector(0.75, 0.25), vector(0.25, 0.75), vector(0.75, 0.75)] });
+                        deviation = 0 * meter;
+                        for (var pl in probes)
+                            deviation = max(deviation, evDistance(context, { "side0" : pl.origin, "side1" : patch }).distance);
+                    }
+                    opBoolean(context, id + ("patchJoin" ~ i), { "tools" : qUnion([main, patch]), "operationType" : BooleanOperationType.UNION,
+                                                                 "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true });
+                    opDeleteBodies(context, id + ("dropSheet" ~ i), { "entities" : sheet });
+                    done = true;
+                    note = "replaced by a patch of " ~ size(loop) ~ " boundary edges" ~ (deviation == undefined ? "" : ", mid-face deviation from the mapped sheet "
+                        ~ roundToPrecision(deviation / millimeter, 5) ~ " mm");
+                }
+            }
+        }
+        catch (patchErr)
+        {
+            note = "patch failed: " ~ toString(patchErr);
+            try silent
+            {
+                opDeleteBodies(context, id + ("dropPatch" ~ i), { "entities" : qCreatedBy(patchId, EntityType.BODY) });
+            }
+        }
+        if (done)
+            patched += 1;
+        if (verbose)
+        {
+            println("PATCH sheet " ~ i ~ ": " ~ note);
+        }
+    }
+    return patched;
 }
 
 /** Whether (diagonal of the face's box)^2 / its area is above `aspect`. */
@@ -2458,7 +2552,17 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                     {
                                         println("Deform: " ~ stepwise.joined ~ " faces joined into one body, " ~ stepwise.left ~ " left as separate sheets");
                                     }
-                                    unionFailed = stepwise.left > 0;
+                                    var stillLeft = stepwise.left;
+                                    if (stepwise.left > 0)
+                                    {
+                                        const patched = patchLeftSheets(context, joinId + "patches", stepwise.main, stepwise.leftBodies, definition.debug);
+                                        stillLeft = stepwise.left - patched;
+                                        if (definition.debug)
+                                        {
+                                            println("Deform: " ~ patched ~ " of " ~ stepwise.left ~ " left-over sheets replaced by patches or dropped, " ~ stillLeft ~ " still separate");
+                                        }
+                                    }
+                                    unionFailed = stillLeft > 0;
                                 }
                                 catch (stepwiseErr)
                                 {
