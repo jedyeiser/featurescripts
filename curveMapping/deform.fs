@@ -26,8 +26,13 @@ export import(path : "683d867c35fdab9c98d47556", version : "2ce76fa46e9966199cf9
 
 export const FaceControlMultiplierBounds = {(unitless) : [2, 3, 10]} as IntegerBoundSpec;
 
-/** Mapped vertices closer than this are one vertex: edges ending at them then share exact end points. */
-const VERTEX_MERGE_TOLERANCE = 5e-6 * meter;
+/**
+ * Mapped vertices closer than this are one vertex: edges ending at them then share exact end points, and an edge whose two ends
+ * merge is not rebuilt at all (its faces close their loops through the merged vertex). 20 microns, twice the kernel's curve
+ * resolution (about 10 microns): the old 5 micron value let a 5.05 micron edge through to opCreateBSplineCurve, which refused it
+ * (BAD_GEOMETRY), and every face that had the edge then lost a boundary curve and was not rebuilt.
+ */
+const VERTEX_MERGE_TOLERANCE = 2e-5 * meter;
 
 /** Maximum wrapped-edge deviation (default 0 = off while the refit cost is tuned; 2 microns is the target): lengths in meter [min, default, max] and the other units. */
 const EDGE_ACCURACY_BOUND = { (meter) : [0, 0, 1e-4], (centimeter) : 0, (millimeter) : 0, (inch) : 0, (foot) : 0, (yard) : 0 } as LengthBoundSpec;
@@ -744,12 +749,17 @@ function faceUvOutline(context is Context, face is Query)
     if (norm(tail - ends[0][0]) > OUTLINE_VERTEX_TOLERANCE)
         return undefined;
 
-    var curves = [];
+    var curveSpecs = [];
     var previousEnd = undefined;
     for (var k = 0; k < n; k += 1)
     {
         const edge = edges[order[k]];
         const length = evLength(context, { "entities" : edge });
+        // An edge shorter than the vertex merge is not rebuilt in 3D either (its ends are one vertex), and as a 2D curve it is
+        // degenerate (all its samples coincide: "No approximation found", then BSPLINESURFACE_BOUNDARY_NOT_SINGLE_CLOSED_LOOP).
+        // Leave it out: the next curve starts where the previous one ended, and the loop is closed below.
+        if (length < VERTEX_MERGE_TOLERANCE && n > 3)
+            continue;
         const count = clamp(ceil(length / OUTLINE_SAMPLE_SPACING) + 1, 6, OUTLINE_MAX_SAMPLES);
         // taus: positions along the traversal of the edge (0 at the start of the walk); the edge's own parameter runs the other way on a reversed edge
         const taus = range(0, 1, count);
@@ -770,10 +780,16 @@ function faceUvOutline(context is Context, face is Query)
         var controlPoints = mapArray(fitted.controlPoints, function(c) { return vector(c[0] / meter, c[1] / meter); });
         controlPoints[0] = uv[0];
         controlPoints[size(controlPoints) - 1] = uv[size(uv) - 1];
-        const curve = bSplineCurve({ "degree" : fitted.degree, "isPeriodic" : false, "controlPoints" : controlPoints, "knots" : fitted.knots });
         previousEnd = uv[size(uv) - 1];
-        curves = append(curves, curve);
+        curveSpecs = append(curveSpecs, { "degree" : fitted.degree, "controlPoints" : controlPoints, "knots" : fitted.knots });
     }
+    if (size(curveSpecs) == 0)
+        return undefined;
+    // Close the loop exactly: the first curve starts where the last one ends (they differ only by the left-out edges).
+    curveSpecs[0].controlPoints[0] = previousEnd;
+    var curves = [];
+    for (var spec in curveSpecs)
+        curves = append(curves, bSplineCurve({ "degree" : spec.degree, "isPeriodic" : false, "controlPoints" : spec.controlPoints, "knots" : spec.knots }));
     return curves;
 }
 
@@ -1061,11 +1077,13 @@ function boundaryError(grid is map, probes is array) returns ValueWithUnits
  * @returns {number} the number of points mapped when the sheet was made under `id`; 0, having left nothing, when the face does not qualify
  */
 function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFrenetPath is map, toFrenetPath is map,
-    fromRefArc, toRefArc, flipToNormal is boolean, accuracy is ValueWithUnits, pointBudget is number, verbose is boolean) returns number
+    fromRefArc, toRefArc, flipToNormal is boolean, accuracy is ValueWithUnits, pointBudget is number, verbose is boolean, approximations is map) returns number
 {
     try
     {
-        const approximation = evApproximateBSplineSurface(context, { "face" : face, "tolerance" : 1e-6 });
+        // `approximations` holds the approximations the caller already made for its budget shares (toString(face) -> result)
+        const cached = approximations[toString(face)];
+        const approximation = cached != undefined ? cached : evApproximateBSplineSurface(context, { "face" : face, "tolerance" : 1e-6 });
         const net = approximation.bSplineSurface.controlPoints;
         var nU = clamp(size(net), MAPPED_SAMPLES_MIN_U, MAPPED_SAMPLES_MAX_U);
         var nV = clamp(size(net[0]), MAPPED_SAMPLES_MIN_V, MAPPED_SAMPLES_MAX_V);
@@ -1178,8 +1196,18 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
 /** The edge of `edges` nearest to a point, and how far it is. */
 function nearestEdgeTo(context is Context, point is Vector, edges is Query) returns map
 {
-    const nearest = evDistance(context, { "side0" : point, "side1" : edges });
-    return { "edge" : evaluateQuery(context, edges)[nearest.sides[1].index], "distance" : nearest.distance };
+    // A sheet with no edges (or one that is gone) has nothing to match: report "infinitely far" so the caller skips the pair
+    // instead of letting evDistance throw CANNOT_RESOLVE_ENTITIES, which used to abort the whole join.
+    const none = { "edge" : undefined, "distance" : 1e3 * meter };
+    const candidates = evaluateQuery(context, edges);
+    if (size(candidates) == 0)
+        return none;
+    try silent
+    {
+        const nearest = evDistance(context, { "side0" : point, "side1" : edges });
+        return { "edge" : candidates[nearest.sides[1].index], "distance" : nearest.distance };
+    }
+    return none;
 }
 
 /** The matches without repeats (an edge can be linked through more than one pair of faces). */
@@ -1219,7 +1247,7 @@ function weldMatches(context is Context, edgeMapping is array, fillBodies is map
         const middle = evEdgeTangentLine(context, { "edge" : m.wrappedEdge, "parameter" : 0.5 }).origin;
         const a = nearestEdgeTo(context, middle, qOwnedByBody(bodyA, EntityType.EDGE));
         const b = nearestEdgeTo(context, middle, qOwnedByBody(bodyB, EntityType.EDGE));
-        if (a.distance < 5e-5 * meter && b.distance < 5e-5 * meter)
+        if (a.edge != undefined && b.edge != undefined && a.distance < 5e-5 * meter && b.distance < 5e-5 * meter)
         {
             matches = append(matches, { "topology1" : a.edge, "topology2" : b.edge, "matchType" : TopologyMatchType.COINCIDENT });
         }
@@ -1294,7 +1322,7 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
                 touching = true;
                 const a = nearestEdgeTo(context, link.middle, qOwnedByBody(current[other], EntityType.EDGE));
                 const b = nearestEdgeTo(context, link.middle, qOwnedByBody(current[key], EntityType.EDGE));
-                if (a.distance < JOIN_MATCH_GATE && b.distance < JOIN_MATCH_GATE)
+                if (a.edge != undefined && b.edge != undefined && a.distance < JOIN_MATCH_GATE && b.distance < JOIN_MATCH_GATE)
                 {
                     matches = append(matches, { "topology1" : a.edge, "topology2" : b.edge, "matchType" : TopologyMatchType.COINCIDENT });
                 }
@@ -1812,6 +1840,29 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             evaluateQuery(context, qAdjacent(allFaces[fIdx], AdjacencyType.EDGE, EntityType.EDGE)));
                     }
 
+                    // Starting grid (cells) of every face, from its own approximation (kept for mappedSurfaceFace), and the sum over
+                    // the faces from each index on: the weights of the point budget's fair shares.
+                    var approximations = {};
+                    var faceCells = makeArray(size(allFaces), 0);
+                    var faceCellsFrom = makeArray(size(allFaces) + 1, 0);
+                    if (!isFacesMode && definition.faceBuilder == FaceBuilder.MAP_ALL)
+                    {
+                        for (var cIdx = 0; cIdx < size(allFaces); cIdx += 1)
+                        {
+                            faceCells[cIdx] = MAPPED_SAMPLES_MIN_U * MAPPED_SAMPLES_MIN_V;
+                            try silent
+                            {
+                                const approx = evApproximateBSplineSurface(context, { "face" : allFaces[cIdx], "tolerance" : 1e-6 });
+                                approximations[toString(allFaces[cIdx])] = approx;
+                                const approxNet = approx.bSplineSurface.controlPoints;
+                                faceCells[cIdx] = clamp(size(approxNet), MAPPED_SAMPLES_MIN_U, MAPPED_SAMPLES_MAX_U)
+                                    * clamp(size(approxNet[0]), MAPPED_SAMPLES_MIN_V, MAPPED_SAMPLES_MAX_V);
+                            }
+                        }
+                        for (var sIdx = size(allFaces) - 1; sIdx >= 0; sIdx -= 1)
+                            faceCellsFrom[sIdx] = faceCellsFrom[sIdx + 1] + faceCells[sIdx];
+                    }
+
                     for (var fIdx = 0; fIdx < size(allFaces); fIdx += 1)
                     {
                         var face      = allFaces[fIdx];
@@ -2021,8 +2072,17 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                 (definition.faceBuilder == FaceBuilder.MAP_THIN && mappedFaces < MAX_MAPPED_FACES && isThinAndLong(context, face)));
                             var pointsMapped = 0;
                             if (mapThis)
+                            {
+                                // This face's allowance: up to twice its share of what is left, the share following the starting grid of
+                                // each face still to be built. Faces are built in index order, so without a share the first big faces
+                                // took the whole budget and the rest (here the last ~170 of 193) were left a minimal grid.
+                                const budgetLeft = pointBudget - mappedPointCount;
+                                var allowance = budgetLeft;
+                                if (faceCellsFrom[fIdx] > 0)
+                                    allowance = min(budgetLeft, floor(2 * budgetLeft * faceCells[fIdx] / faceCellsFrom[fIdx]));
                                 pointsMapped = mappedSurfaceFace(context, fillId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal,
-                                    definition.mappedAccuracy, pointBudget - mappedPointCount, definition.debug);
+                                    definition.mappedAccuracy, allowance, definition.debug, approximations);
+                            }
                             if (pointsMapped > 0)
                             {
                                 builder = "mapped";
@@ -2079,7 +2139,7 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             {
                                 const recoverId = uid + ("recover" ~ fIdx);
                                 const recoveredPoints = mappedSurfaceFace(context, recoverId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc,
-                                    definition.flipToNormal, definition.mappedAccuracy, pointBudget - mappedPointCount, definition.debug);
+                                    definition.flipToNormal, definition.mappedAccuracy, pointBudget - mappedPointCount, definition.debug, approximations);
                                 if (recoveredPoints > 0)
                                 {
                                     recovered = true;
