@@ -1037,7 +1037,13 @@ function resurface(context is Context, id is Id, definition is map)
         for (var f in evaluateQuery(context, qOwnedByBody(result, EntityType.FACE)))
         {
             checked += 1;
-            refusing += offsetRefused(context, id + ("ver" ~ checked), f, signedDistance) ? 1 : 0;
+            if (offsetRefused(context, id + ("ver" ~ checked), f, signedDistance))
+            {
+                refusing += 1;
+                const sm = stripMeasure(context, f);
+                println("STILL-REFUSES area " ~ roundToPrecision(evArea(context, { "entities" : f }) / millimeter ^ 2, 2) ~ " " ~ faceType(context, f) ~ " at " ~ sm.where
+                        ~ " edges " ~ size(evaluateQuery(context, qAdjacent(f, AdjacencyType.EDGE, EntityType.EDGE))));
+            }
         }
         println("VERIFY faces of the result that still refuse the offset: " ~ refusing ~ " of " ~ checked);
         for (var s in skipped)
