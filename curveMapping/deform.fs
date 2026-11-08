@@ -627,13 +627,6 @@ const MAPPED_MIN_SPACING = 4 * millimeter;
 /** The cost of a face beyond its grid: boundary probes and one round of interpolation probes (mapped points). */
 const MAPPED_FACE_OVERHEAD = 70;
 
-/** The part of the point budget held back for refining the faces that miss their accuracy after the first grid. */
-const MAPPED_REFINE_RESERVE = 0.3;
-
-/** A face this small (both extents) needs few boundary probes: its boundary is short and its map nearly rigid. */
-const MAPPED_SMALL_FACE = 0.02 * meter;
-const MAPPED_SMALL_FACE_PROBES = 16;
-
 /** A face is always given at least this many points, even when the feature's budget is spent: a face left to a fill cannot be welded to its mapped neighbours. */
 const MAPPED_FACE_FLOOR = 110;
 /** How far a mapped surface may lie from the exactly mapped face between its samples (default 2 microns): lengths in meter [min, default, max] and the other units. */
@@ -1046,12 +1039,12 @@ const BOUNDARY_PROBES_PER_FACE = 48;
  * miss the boundary of a face whose outline is a curve in parameter space.
  * @returns {array} [{ "u", "v", "image" }, ...]
  */
-function boundaryProbes(context is Context, face is Query, fromFrenetPath is map, toFrenetPath is map, fromRefArc, toRefArc, flipToNormal is boolean, total is number) returns array
+function boundaryProbes(context is Context, face is Query, fromFrenetPath is map, toFrenetPath is map, fromRefArc, toRefArc, flipToNormal is boolean) returns array
 {
     var probes = [];
     const edges = evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE));
-    // about `total` probes in all (BOUNDARY_PROBES_PER_FACE, fewer for a small face), spread evenly along every edge (a face with many edges gets fewer on each)
-    const perEdge = clamp(floor(total / max(1, size(edges))), 1, 9);
+    // about BOUNDARY_PROBES_PER_FACE probes in all, spread evenly along every edge (a face with many edges gets fewer on each)
+    const perEdge = clamp(floor(BOUNDARY_PROBES_PER_FACE / max(1, size(edges))), 1, 9);
     var parameters = [];
     for (var k = 0; k < perEdge; k += 1)
         parameters = append(parameters, (k + 0.5) / perEdge);
@@ -1129,8 +1122,7 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
         var samples = mapGridSamples(context, face, us, vs, undefined, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
         var spent = samples.points;
         var grid = interpolateGrid(samples.mapped, us, vs);
-        const probeTotal = (lengthU < MAPPED_SMALL_FACE && lengthV < MAPPED_SMALL_FACE) ? MAPPED_SMALL_FACE_PROBES : BOUNDARY_PROBES_PER_FACE;
-        const probes = boundaryProbes(context, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, probeTotal);
+        const probes = boundaryProbes(context, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
         spent += size(probes);
         var lastError = undefined;      // the interior probes of the last pass (for the debug line of the long faces)
         var passesRun = 0;
@@ -2338,7 +2330,6 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     // Starting grid (cells) of every face, from its own approximation (kept for mappedSurfaceFace), and the sum over
                     // the faces from each index on: the weights of the point budget's fair shares.
                     var approximations = {};
-                    var refineReserve = floor(MAPPED_REFINE_RESERVE * pointBudget);    // points held back for the faces that miss their accuracy (see the allowance below)
                     var faceCells = makeArray(size(allFaces), 0);
                     var faceCellsFrom = makeArray(size(allFaces) + 1, 0);
                     if (!isFacesMode && definition.faceBuilder == FaceBuilder.MAP_ALL)
@@ -2567,25 +2558,18 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                             const mapThis = !isFacesMode && (definition.faceBuilder == FaceBuilder.MAP_ALL ||
                                 (definition.faceBuilder == FaceBuilder.MAP_THIN && mappedFaces < MAX_MAPPED_FACES && isThinAndLong(context, face)));
                             var pointsMapped = 0;
-                            var thisAllowance = 0;
                             if (mapThis)
                             {
                                 // This face's allowance: up to twice its share of what is left, the share following the starting grid of
                                 // each face still to be built. Faces are built in index order, so without a share the first big faces
                                 // took the whole budget and the rest (here the last ~170 of 193) were left a minimal grid.
-                                // A part of the budget is held back as a REFINEMENT RESERVE (not part of the shares): a face that misses its
-                                // accuracy after the first grid may refine into it, up to what is left of it. Measured on the lid: every long
-                                // face that missed (7 to 93 um against 2) had stopped after one pass because refining would have gone just
-                                // over its allowance, while the faces that were accurate spent about the same.
                                 const budgetLeft = pointBudget - mappedPointCount;
-                                const baseLeft = max(0, budgetLeft - refineReserve);
-                                var allowance = baseLeft;
+                                var allowance = budgetLeft;
                                 if (faceCellsFrom[fIdx] > 0)
-                                    allowance = min(baseLeft, floor(2 * baseLeft * faceCells[fIdx] / faceCellsFrom[fIdx]));
+                                    allowance = min(budgetLeft, floor(2 * budgetLeft * faceCells[fIdx] / faceCellsFrom[fIdx]));
                                 allowance = max(allowance, MAPPED_FACE_FLOOR);
-                                thisAllowance = allowance;
                                 pointsMapped = mappedSurfaceFace(context, fillId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal,
-                                    definition.mappedAccuracy, allowance + refineReserve, definition.debug, approximations);
+                                    definition.mappedAccuracy, allowance, definition.debug, approximations);
                                 if (definition.debug)
                                 {
                                     println("FACE " ~ fIdx ~ " of " ~ size(allFaces) ~ ": allowance " ~ allowance ~ ", mapped " ~ pointsMapped ~ " points, running total " ~ (mappedPointCount + pointsMapped) ~ " of " ~ pointBudget);
@@ -2596,9 +2580,6 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                 builder = "mapped";
                                 mappedFaces += 1;
                                 mappedPointCount += pointsMapped;
-                                // what the face spent beyond its allowance came out of the reserve
-                                if (thisAllowance > 0)
-                                    refineReserve = max(0, refineReserve - max(0, pointsMapped - thisAllowance));
                             }
                             else if (definition.useBoundarySurface && boundarySurfaceFace(context, fillId, bdryEdges, definition.debug))
                             {
