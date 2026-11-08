@@ -2082,6 +2082,10 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                     allowance = min(budgetLeft, floor(2 * budgetLeft * faceCells[fIdx] / faceCellsFrom[fIdx]));
                                 pointsMapped = mappedSurfaceFace(context, fillId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal,
                                     definition.mappedAccuracy, allowance, definition.debug, approximations);
+                                if (definition.debug)
+                                {
+                                    println("FACE " ~ fIdx ~ " of " ~ size(allFaces) ~ ": allowance " ~ allowance ~ ", mapped " ~ pointsMapped ~ " points, running total " ~ (mappedPointCount + pointsMapped) ~ " of " ~ pointBudget);
+                                }
                             }
                             if (pointsMapped > 0)
                             {
