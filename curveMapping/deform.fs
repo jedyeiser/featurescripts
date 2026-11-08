@@ -28,11 +28,12 @@ export const FaceControlMultiplierBounds = {(unitless) : [2, 3, 10]} as IntegerB
 
 /**
  * Mapped vertices closer than this are one vertex: edges ending at them then share exact end points, and an edge whose two ends
- * merge is not rebuilt at all (its faces close their loops through the merged vertex). 20 microns, twice the kernel's curve
- * resolution (about 10 microns): the old 5 micron value let a 5.05 micron edge through to opCreateBSplineCurve, which refused it
- * (BAD_GEOMETRY), and every face that had the edge then lost a boundary curve and was not rebuilt.
+ * merge is not rebuilt at all (its faces close their loops through the merged vertex). 10 microns: the old 5 micron value let a
+ * 5.05 micron edge through to opCreateBSplineCurve, which refused it (BAD_GEOMETRY), and every face that had the edge then lost
+ * a boundary curve and was not rebuilt. NOT wider: at 20 microns the 15.24 micron edges of cd_surf (which rebuilt fine) were
+ * collapsed too and kt_bs_deform broke (EXTRACT_WIRES_OVERLAPPING_EDGES).
  */
-const VERTEX_MERGE_TOLERANCE = 2e-5 * meter;
+const VERTEX_MERGE_TOLERANCE = 1e-5 * meter;
 
 /** Maximum wrapped-edge deviation (default 0 = off while the refit cost is tuned; 2 microns is the target): lengths in meter [min, default, max] and the other units. */
 const EDGE_ACCURACY_BOUND = { (meter) : [0, 0, 1e-4], (centimeter) : 0, (millimeter) : 0, (inch) : 0, (foot) : 0, (yard) : 0 } as LengthBoundSpec;
