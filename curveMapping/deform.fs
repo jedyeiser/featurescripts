@@ -1124,9 +1124,13 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
         var grid = interpolateGrid(samples.mapped, us, vs);
         const probes = boundaryProbes(context, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
         spent += size(probes);
+        var lastError = undefined;      // the interior probes of the last pass (for the debug line)
+        var passesRun = 0;
         for (var pass = 0; pass < MAPPED_REFINE_PASSES; pass += 1)
         {
             const error = mappedGridError(context, face, grid, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
+            lastError = error;
+            passesRun += 1;
             spent += error.points;
             const edgeMiss = boundaryError(grid, probes) > accuracy;
             const uLonger = lengthU / (nU - 1) >= lengthV / (nV - 1);
@@ -1167,6 +1171,19 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
             grid = interpolateGrid(samples.mapped, us, vs);
         }
 
+        if (verbose)
+        {
+            // one line per face: what it got and how close the grid is to the exact map (um); the boundary figure is for the FINAL grid,
+            // the interior ones (u, v, cell centres) are from the last pass measured, before its refinement
+            try silent
+            {
+                const finalMiss = boundaryError(grid, probes);
+                println("MAPPED face area " ~ roundToPrecision(evArea(context, { "entities" : face }) / (millimeter ^ 2), 1) ~ " mm2, extent " ~ roundToPrecision(lengthU / millimeter, 1) ~ " x "
+                    ~ roundToPrecision(lengthV / millimeter, 1) ~ " mm, grid " ~ nU ~ " x " ~ nV ~ ", spent " ~ spent ~ " of " ~ pointBudget ~ ", passes " ~ passesRun
+                    ~ ", boundary miss " ~ roundToPrecision(finalMiss / meter * 1e6, 1) ~ " um, interior u/v/centre " ~ roundToPrecision(lastError.u / meter * 1e6, 1) ~ "/"
+                    ~ roundToPrecision(lastError.v / meter * 1e6, 1) ~ "/" ~ roundToPrecision(lastError.centre / meter * 1e6, 1) ~ " um (target " ~ roundToPrecision(accuracy / meter * 1e6, 1) ~ ")");
+            }
+        }
         const outline = faceUvOutline(context, face);
         if (outline == undefined)
             return 0;
