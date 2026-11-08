@@ -1432,7 +1432,7 @@ function trialSwap(context is Context, id is Id, job is map, cur is Query, defin
         try
         {
             opDeleteFace(context, trialId + "void", { "deleteFaces" : target[0], "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
-            opBoolean(context, id + ("trialjoin" ~ job.t), { "tools" : qUnion([mini, trialPatch]), "operationType" : BooleanOperationType.UNION });
+            opBoolean(context, trialId + "join", { "tools" : qUnion([mini, trialPatch]), "operationType" : BooleanOperationType.UNION });
         }
         catch (e)
         {
