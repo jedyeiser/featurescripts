@@ -1136,6 +1136,13 @@ function resurface(context is Context, id is Id, definition is map)
         }
     }
 
+    var defSource = definition;
+    defSource.offsetSigns = offsetSignsFor(context, qUnion(sources), definition);
+    var defResult = definition;
+    defResult.offsetSigns = offsetSignsFor(context, result, definition);
+    const autoBefore = autoOffsetReport(context, id + "autoB", qUnion(sources), defSource);
+    const autoAfter = autoOffsetReport(context, id + "autoA", result, defResult);
+
     var text = "Clean (quick): " ~ size(sewnAnchors) ~ " of " ~ size(targets) ~ " faces that refuse an offset of " ~ roundToPrecision(definition.offsetDistance / millimeter, 3)
         ~ " mm were resurfaced (" ~ (cachedFails != undefined ? "cached analysis" : "live analysis") ~ "). Faces " ~ before.faces ~ " -> " ~ after.faces
         ~ ", naked edges " ~ before.naked ~ " -> " ~ after.naked ~ ".";
@@ -1163,6 +1170,8 @@ function resurface(context is Context, id is Id, definition is map)
     {
         text = text ~ " Verify: " ~ refusing ~ " of " ~ checked ~ " faces of the result still refuse the offset (before: " ~ size(targets) ~ " of " ~ tested ~ ").";
     }
+    text = text ~ " Offset+ Auto (direct offset, then thicken) at " ~ roundToPrecision(definition.offsetDistance / millimeter, 3) ~ " mm, whole surface: original " ~ autoBefore
+        ~ "; result " ~ autoAfter ~ ".";
     text = text ~ " Green = resurfaced. Original is unchanged; hide it to see the result.";
     if (size(skipped) > 0 || holes > 0 || stale)
     {
@@ -1636,4 +1645,70 @@ function markEdges(context is Context, id is Id, edges is array, shade is Color,
     const wires = qCreatedBy(id, EntityType.BODY);
     setProperty(context, { "entities" : wires, "propertyType" : PropertyType.APPEARANCE, "value" : shade });
     setProperty(context, { "entities" : wires, "propertyType" : PropertyType.NAME, "value" : label });
+}
+
+/**
+ * What Offset+ in Auto mode would do with a whole body: the direct offset (no neighbour trim, as Offset+ calls it), and when that fails the
+ * one-sided thicken keeping the offset-side cap. Returns "direct", "thicken" or "FAILS". The bodies made on the way are deleted.
+ */
+function autoOffsetOutcome(context is Context, id is Id, faces is Query, signed is ValueWithUnits) returns string
+{
+    var direct = false;
+    try silent
+    {
+        opExtractSurface(context, id + "d", { "faces" : faces, "tangentPropagation" : false, "offset" : signed, "useFacesAroundToTrimOffset" : false });
+        direct = true;
+    }
+    if (direct)
+    {
+        deleteBodies(context, id + "dx", qCreatedBy(id + "d", EntityType.BODY));
+        return "direct";
+    }
+    const along = signed > 0 * meter;
+    var solid = false;
+    try silent
+    {
+        opThicken(context, id + "s", { "entities" : faces, "thickness1" : along ? abs(signed) : 0 * meter, "thickness2" : along ? 0 * meter : abs(signed) });
+        solid = true;
+    }
+    if (!solid)
+    {
+        return "FAILS";
+    }
+    var cap = false;
+    try silent
+    {
+        opExtractSurface(context, id + "c", { "faces" : qCapEntity(id + "s", along ? CapType.START : CapType.END, EntityType.FACE) });
+        cap = true;
+    }
+    deleteBodies(context, id + "sx", qCreatedBy(id + "s", EntityType.BODY));
+    if (cap)
+    {
+        deleteBodies(context, id + "cx", qCreatedBy(id + "c", EntityType.BODY));
+    }
+    return cap ? "thicken" : "FAILS";
+}
+
+/** autoOffsetOutcome for every body of `bodies` on the tested side(s), as text: "along the normal OK (direct), against the normal FAILS". */
+function autoOffsetReport(context is Context, id is Id, bodies is Query, definition is map) returns string
+{
+    var parts = [];
+    var k = 0;
+    for (var b in evaluateQuery(context, bodies))
+    {
+        const faces = qOwnedByBody(b, EntityType.FACE);
+        var sides = [1, -1];
+        if (definition.offsetSide == OffsetSide.QUERY)
+        {
+            sides = [faceDirection(context, evaluateQuery(context, faces)[0], definition)];
+        }
+        for (var s in sides)
+        {
+            k += 1;
+            const outcome = autoOffsetOutcome(context, id + ("o" ~ k), faces, s * definition.offsetDistance);
+            const label = definition.offsetSide == OffsetSide.QUERY ? (definition.towardReference ? "toward the reference" : "away from the reference") : (s > 0 ? "along the normal" : "against the normal");
+            parts = append(parts, label ~ (outcome == "FAILS" ? " FAILS" : " ok (" ~ outcome ~ ")"));
+        }
+    }
+    return joinArray(parts, ", ");
 }
