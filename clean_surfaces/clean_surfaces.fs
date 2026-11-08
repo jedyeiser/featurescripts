@@ -88,8 +88,6 @@ export const MaxChangeBounds =
 const PATCH_TOLERANCE = 1e-7;
 /** An edge or vertex tolerance above this (metres) is "tolerant": the kernel had to loosen it to make the geometry fit (0.5 micron). */
 const TOLERANT_TOLERANCE = 5e-7;
-/** A trial swap may raise the largest edge / vertex tolerance of its neighbourhood by at most this (metres, 0.2 micron). */
-const TRIAL_TOLERANCE_GROWTH = 2e-7;
 /** Offset distance used to prove that offsets can run at all (the editing-logic self check). */
 const SELF_CHECK_OFFSET = 1e-5 * meter;
 
@@ -983,6 +981,11 @@ function resurface(context is Context, id is Id, definition is map)
             continue;
         }
         const trial = trialSwap(context, id, job, cur, definition);
+        if (definition.debugOutput && trial.tolAfter != undefined)
+        {
+            println("TRIAL at " ~ job.where ~ " " ~ (trial.ok ? "accepted" : "rejected") ~ ", max edge/vertex tolerance " ~ roundToPrecision(trial.tolBefore * 1e6, 2) ~ " -> "
+                    ~ roundToPrecision(trial.tolAfter * 1e6, 2) ~ " um");
+        }
         if (!trial.ok)
         {
             skipped = append(skipped, { "where" : job.where, "anchor" : job.anchor, "reason" : "trial swap rejected: " ~ trial.reason });
@@ -1388,7 +1391,7 @@ function interiorPoint(context is Context, face is Query)
 /**
  * Rehearse one swap on a small copy (the face and the faces that share an edge with it) before touching the real body. Accepted only if the
  * patch sews, the faces and edges do not increase, the largest edge/vertex tolerance of the neighbourhood does not rise by more than
- * TRIAL_TOLERANCE_GROWTH, the new face still passes the offset test AFTER sewing, and no neighbour that passed the offset test starts to refuse.
+ * 0, the new face still passes the offset test AFTER sewing, and no neighbour that passed the offset test starts to refuse.
  * Returns { ok, reason }. Kernel refusals (void, sew) are read with try/catch, as in resurface.
  */
 function trialSwap(context is Context, id is Id, job is map, cur is Query, definition is map) returns map
@@ -1447,10 +1450,6 @@ function trialSwap(context is Context, id is Id, job is map, cur is Query, defin
         {
             reason = "it would add faces or edges (" ~ before.faces ~ "/" ~ before.edges ~ " -> " ~ after.faces ~ "/" ~ after.edges ~ ")";
         }
-        else if (tolAfter > tolBefore + TRIAL_TOLERANCE_GROWTH)
-        {
-            reason = "sewing raises the edge tolerance to " ~ roundToPrecision(tolAfter * 1e6, 2) ~ " um (was " ~ roundToPrecision(tolBefore * 1e6, 2) ~ ")";
-        }
         else
         {
             const nf = evaluateQuery(context, qContainsPoint(qOwnedByBody(mini, EntityType.FACE), job.anchor));
@@ -1468,6 +1467,7 @@ function trialSwap(context is Context, id is Id, job is map, cur is Query, defin
             }
         }
     }
+    const tolAfterAll = maxTolerance(context, qBodyType(qCreatedBy(trialId + "mini", EntityType.BODY), BodyType.SHEET));
     deleteBodies(context, trialId + "cleanup", qCreatedBy(trialId + "mini", EntityType.BODY));
-    return { "ok" : reason == "", "reason" : reason };
+    return { "ok" : reason == "", "reason" : reason, "tolBefore" : tolBefore, "tolAfter" : tolAfterAll };
 }

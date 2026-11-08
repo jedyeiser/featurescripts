@@ -1362,7 +1362,10 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
                 opBoolean(context, joinId, { "tools" : qUnion([current[seed], current[key]]), "operationType" : BooleanOperationType.UNION,
                                              "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true,
                                              "matches" : uniqueMatches(matches), "recomputeMatches" : true });
-                const merged = qBodyType(qCreatedBy(joinId, EntityType.BODY), BodyType.SHEET);
+                // The union's result is the first tool's body, modified: qCreatedBy(joinId) alone is EMPTY (a join then handed the next
+                // step one tool, BOOLEAN_BAD_INPUT, and no face after the second ever joined). The tools' own queries still resolve
+                // to the survivor (the consumed body resolves to nothing), so the merged body is whichever of them exists.
+                const merged = qBodyType(qUnion([qCreatedBy(joinId, EntityType.BODY), current[seed], current[key]]), BodyType.SHEET);
                 for (var member in done)
                     current[member.key] = merged;
                 current[key] = merged;
