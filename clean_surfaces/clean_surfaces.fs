@@ -1487,7 +1487,14 @@ function trialSwap(context is Context, id is Id, job is map, cur is Query, defin
     return { "ok" : reason == "", "reason" : reason, "tolBefore" : tolBefore, "tolAfter" : tolAfterAll };
 }
 
-/** Draw a list of edges as thin curves (wire bodies of the copy's edges) in one colour, named so they can be picked in the Parts list. */
+/** Edges shorter than this get a cross marker as well (a curve this short cannot be seen), and the cross is CROSS_SIZE long. */
+const MARKER_MIN_LENGTH = 1 * millimeter;
+const CROSS_SIZE = 3 * millimeter;
+
+/**
+ * Draw a list of edges as thin curves (one wire body per edge) in one colour, named so they can be picked in the Parts list. An edge shorter
+ * than MARKER_MIN_LENGTH is invisible, so it also gets a small cross (two short lines) at its middle.
+ */
 function markEdges(context is Context, id is Id, edges is array, shade is Color, label is string)
 {
     if (size(edges) == 0)
@@ -1497,6 +1504,17 @@ function markEdges(context is Context, id is Id, edges is array, shade is Color,
     for (var i = 0; i < size(edges); i += 1)
     {
         opExtractWires(context, id + ("e" ~ i), { "edges" : edges[i] });
+        if (evLength(context, { "entities" : edges[i] }) < MARKER_MIN_LENGTH)
+        {
+            const tl = evEdgeTangentLine(context, { "edge" : edges[i], "parameter" : 0.5 });
+            const across = cross(tl.direction, abs(tl.direction[2]) < 0.9 ? vector(0, 0, 1) : vector(1, 0, 0));
+            const side = across / norm(across);
+            const half = CROSS_SIZE / 2;
+            opCreateBSplineCurve(context, id + ("a" ~ i), { "bSplineCurve" : bSplineCurve({ "degree" : 1, "isPeriodic" : false,
+                            "controlPoints" : [tl.origin - tl.direction * half, tl.origin + tl.direction * half], "knots" : knotArray([0, 0, 1, 1]) }) });
+            opCreateBSplineCurve(context, id + ("b" ~ i), { "bSplineCurve" : bSplineCurve({ "degree" : 1, "isPeriodic" : false,
+                            "controlPoints" : [tl.origin - side * half, tl.origin + side * half], "knots" : knotArray([0, 0, 1, 1]) }) });
+        }
     }
     const wires = qCreatedBy(id, EntityType.BODY);
     setProperty(context, { "entities" : wires, "propertyType" : PropertyType.APPEARANCE, "value" : shade });
