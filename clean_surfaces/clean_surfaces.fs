@@ -83,7 +83,7 @@ const CUSP_DEGREES = 20;
 /** Taper (narrowest / widest) below this means the face comes to a point. */
 const POINTED_TAPER = 0.05;
 /** UV samples per direction for the curvature test. */
-const CURVATURE_GRID = 5;
+const CURVATURE_GRID = 12;
 
 /** Short edges are listed (and tested for alignment) below this many times the Short edge threshold. */
 const SHORT_EDGE_LIST_FACTOR = 10;

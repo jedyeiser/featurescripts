@@ -44,9 +44,10 @@ f = {"btType": "BTMFeature-134", "featureType": "cleanSurfaces", "name": "D1 ski
                     q("cleanFaces"), q("keepFaces", "qContainsPoint(qEverything(EntityType.FACE), vector(%s, %s, %s) * millimeter)" % (x, y, z)),
                     num("sliverWidth", "0.1 mm"), num("shortEdge", "0.01 mm"), num("maxTangent", "0.5 deg"),
                     en("colorBy", "CleanColorBy", os.environ.get("CS_MODE", "SEVERITY"), "e%s::m%s" % (TAB["id"], TAB["microversionId"])),
-                    num("offsetDistance", "0.5 mm"), b("offsetFlip", os.environ.get("CS_FLIP", "0") == "1"), b("debugOutput", os.environ.get("CS_DEBUG", "1") == "1")]}
+                    num("offsetDistance", os.environ.get("CS_DIST", "0.5") + " mm"), b("offsetFlip", os.environ.get("CS_FLIP", "0") == "1"), b("debugOutput", os.environ.get("CS_DEBUG", "1") == "1")]}
 resp = write_feature(BASE, f, {}, client=c)
 print(resp.get("featureState", {}).get("featureStatus"))
+
 
 
 

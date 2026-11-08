@@ -7,7 +7,11 @@
                       "wait":  40,
                       "featurePrefix":  "D1 boxes A+B",
                       "filter":  "D1 boxes",
-                      "dialog":  "docs/decks/deform/shots/dialog.png"
+                      "expand":  [
+                                     "Faces",
+                                     "Setup"
+                                 ],
+                      "dialog":  "docs/decks/deform/shots/dialog_faces.png"
                   }
               ]
 }
