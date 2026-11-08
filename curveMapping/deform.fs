@@ -1171,7 +1171,8 @@ function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFren
             grid = interpolateGrid(samples.mapped, us, vs);
         }
 
-        if (verbose)
+        // Only the long faces (a line per face for all 193 cost enough interpreter steps to push the lid over the limit).
+        if (verbose && (lengthU > 0.04 * meter || lengthV > 0.04 * meter))
         {
             // one line per face: what it got and how close the grid is to the exact map (um); the boundary figure is for the FINAL grid,
             // the interior ones (u, v, cell centres) are from the last pass measured, before its refinement
