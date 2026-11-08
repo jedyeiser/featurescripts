@@ -1454,6 +1454,14 @@ const PATCH_DEGENERATE_AREA = 5e-8 * meter ^ 2;
 /** Interior sample positions (u and v) of the old sheet that guide the patch's fill, so it follows the mapped shape and not the flattest surface through its boundary. */
 const PATCH_GUIDE_PARAMETERS = [0.15, 0.325, 0.5, 0.675, 0.85];
 
+/** An edge's end points as text, in mm (debug output). */
+function edgeEndsText(context is Context, edge is Query) returns string
+{
+    const lp = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 1] });
+    return "(" ~ roundToPrecision(lp[0].origin[0] / millimeter, 3) ~ "," ~ roundToPrecision(lp[0].origin[1] / millimeter, 3) ~ "," ~ roundToPrecision(lp[0].origin[2] / millimeter, 3)
+        ~ ")->(" ~ roundToPrecision(lp[1].origin[0] / millimeter, 3) ~ "," ~ roundToPrecision(lp[1].origin[1] / millimeter, 3) ~ "," ~ roundToPrecision(lp[1].origin[2] / millimeter, 3) ~ ")";
+}
+
 /**
  * The sheets the kernel would not sew into the main body, replaced by patches built from the hole they leave: the naked edges of
  * the main body that lie along the sheet's edges form the hole's boundary (they ARE the neighbours' edges, so a surface bounded
@@ -1618,6 +1626,29 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                     if (patchFill == undefined)
                     {
                         note = "not patched: " ~ failure;
+                        if (verbose)
+                        {
+                            // the geometry of the boundary, to see why no loop closes: the sheet's own edges, and the main body's naked edges within 2 mm of them
+                            for (var dumpGap in sheetGaps)
+                            {
+                                try silent
+                                {
+                                    println("  SHEET " ~ i ~ " edge: len " ~ roundToPrecision(evLength(context, { "entities" : dumpGap.edge }) / millimeter, 3) ~ " mm, gap to a main naked edge "
+                                        ~ roundToPrecision(dumpGap.gap / millimeter, 4) ~ " mm, " ~ edgeEndsText(context, dumpGap.edge));
+                                }
+                            }
+                            for (var dumpNaked in nakedGaps)
+                            {
+                                if (dumpNaked.gap < 2 * millimeter)
+                                {
+                                    try silent
+                                    {
+                                        println("  MAIN naked edge: len " ~ roundToPrecision(evLength(context, { "entities" : dumpNaked.edge }) / millimeter, 3) ~ " mm, gap to the sheet "
+                                            ~ roundToPrecision(dumpNaked.gap / millimeter, 4) ~ " mm, " ~ edgeEndsText(context, dumpNaked.edge));
+                                    }
+                                }
+                            }
+                        }
                     }
                     else
                     {
