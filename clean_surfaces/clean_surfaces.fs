@@ -186,6 +186,9 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
             annotation { "Name" : "Flip offset side" }
             definition.offsetFlip is boolean;
 
+            annotation { "Name" : "Neighbours trim the offset", "Description" : "Off (default) offsets each face on its own, as Offset+ does. On is the kernel's default, where the extensions of the surrounding faces trim the offset: far more faces refuse, partly because of their neighbours." }
+            definition.offsetTrim is boolean;
+
             annotation { "Name" : "Test both sides", "Description" : "A face counts as refusing if it refuses the offset on either side (the flip setting is then ignored). Doubles the analysis time." }
             definition.offsetBoth is boolean;
         }
@@ -651,15 +654,15 @@ function edgeReport(context is Context, edge is Query, keepSet is map, cleanSet 
 }
 
 /**
- * True when the kernel refuses to offset this one face by `distance` (the offset is made on its own and deleted again).
+ * True when the kernel refuses to offset this one face by `distance` (trim = whether the surrounding faces' extensions trim the offset; Offset+ uses false) (the offset is made on its own and deleted again).
  * `try silent` is used here deliberately: the op failing IS the measurement; nothing else is hidden by it.
  */
-function offsetRefused(context is Context, probeId is Id, face is Query, distance is ValueWithUnits) returns boolean
+function offsetRefused(context is Context, probeId is Id, face is Query, distance is ValueWithUnits, trim is boolean) returns boolean
 {
     var ok = false;
     try silent
     {
-        opExtractSurface(context, probeId, { "faces" : face, "tangentPropagation" : false, "offset" : distance });
+        opExtractSurface(context, probeId, { "faces" : face, "tangentPropagation" : false, "offset" : distance, "useFacesAroundToTrimOffset" : trim });
         ok = true;
     }
     if (ok)
@@ -1264,7 +1267,7 @@ function bodyStats(context is Context, body is Query) returns map
 function cacheKeyOf(context is Context, definition is map) returns string
 {
     const faceCount = size(evaluateQuery(context, qOwnedByBody(qBodyType(definition.surfaces, BodyType.SHEET), EntityType.FACE)));
-    return roundToPrecision(definition.offsetDistance / millimeter, 6) ~ "|" ~ (definition.offsetBoth == true ? "B" : (definition.offsetFlip ? "1" : "0")) ~ "|" ~ faceCount ~ "|"
+    return roundToPrecision(definition.offsetDistance / millimeter, 6) ~ "|" ~ (definition.offsetBoth == true ? "B" : (definition.offsetFlip ? "1" : "0")) ~ (definition.offsetTrim == true ? "T" : "F") ~ "|" ~ faceCount ~ "|"
         ~ size(evaluateQuery(context, definition.cleanFaces)) ~ "|" ~ size(evaluateQuery(context, definition.keepFaces));
 }
 
@@ -1324,7 +1327,7 @@ export function cleanSurfacesEditLogic(context is Context, id is Id, oldDefiniti
     var selfRefused = 0;
     for (var i = 0; i < min(3, size(faces)); i += 1)
     {
-        selfRefused += offsetRefused(context, id + ("self" ~ i), faces[i], SELF_CHECK_OFFSET) ? 1 : 0;
+        selfRefused += offsetRefused(context, id + ("self" ~ i), faces[i], SELF_CHECK_OFFSET, false) ? 1 : 0;
     }
     if (selfRefused >= min(3, size(faces)))
     {
@@ -1362,9 +1365,10 @@ function offsetFails(context is Context, probeId is Id, face is Query, definitio
 {
     if (definition.offsetBoth == true)
     {
-        return offsetRefused(context, probeId + "p", face, definition.offsetDistance) || offsetRefused(context, probeId + "n", face, -definition.offsetDistance);
+        return offsetRefused(context, probeId + "p", face, definition.offsetDistance, definition.offsetTrim == true)
+            || offsetRefused(context, probeId + "n", face, -definition.offsetDistance, definition.offsetTrim == true);
     }
-    return offsetRefused(context, probeId, face, (definition.offsetFlip ? -1 : 1) * definition.offsetDistance);
+    return offsetRefused(context, probeId, face, (definition.offsetFlip ? -1 : 1) * definition.offsetDistance, definition.offsetTrim == true);
 }
 
 /** Largest edge or vertex tolerance of a body, in metres. */
