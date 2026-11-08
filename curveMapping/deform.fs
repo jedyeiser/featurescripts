@@ -1481,10 +1481,8 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
             }
             else
             {
-                const sheetBox = evBox3d(context, { "topology" : sheet });
-                const pad = vector(5e-4, 5e-4, 5e-4) * meter;
-                const region = box3d(sheetBox.minCorner - pad, sheetBox.maxCorner + pad);
-                const nakedNear = qContainedInBox(qEdgeTopologyFilter(qOwnedByBody(main, EntityType.EDGE), EdgeTopology.ONE_SIDED), region);
+                // all naked edges of the main body (a few dozen: the source's own boundary and the holes), tested against the sheet's edges
+                const nakedNear = qEdgeTopologyFilter(qOwnedByBody(main, EntityType.EDGE), EdgeTopology.ONE_SIDED);
                 const sheetEdges = qOwnedByBody(sheet, EntityType.EDGE);
                 var loop = [];
                 for (var e in evaluateQuery(context, nakedNear))
