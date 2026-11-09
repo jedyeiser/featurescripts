@@ -1,0 +1,35 @@
+- generic [ref=f25e3]:
+  - navigation [ref=f25e4]:
+    - generic [ref=f25e5]:
+      - link [ref=f25e8] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f25e9]
+      - generic [ref=f25e11] [cursor=pointer]
+    - generic [ref=f25e14]:
+      - generic [ref=f25e16]:
+        - generic [ref=f25e17]: CurveWrapping_Full
+        - generic [ref=f25e18]: Main
+      - generic [ref=f25e20] [cursor=pointer]
+    - generic [ref=f25e23]:
+      - button "Notifications" [ref=f25e25] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f25e33]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f25e36] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f25e41] [cursor=pointer]
+      - button "Share" [ref=f25e45] [cursor=pointer]
+      - generic "Help menu" [ref=f25e47] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f25e51] [cursor=pointer]
+  - generic [ref=f25e61]:
+    - generic [ref=f25e63]:
+      - generic [ref=f25e64]:
+        - generic [ref=f25e65]:
+          - generic [ref=f25e66] [cursor=pointer]
+          - generic [ref=f25e69] [cursor=pointer]
+          - generic [ref=f25e72] [cursor=pointer]
+          - generic [ref=f25e75] [cursor=pointer]
+          - generic [ref=f25e78] [cursor=pointer]
+          - generic [ref=f25e81] [cursor=pointer]
+          - generic [ref=f25e84] [cursor=pointer]
+          - generic [ref=f25e87] [cursor=pointer]
+        - generic [ref=f25e91] [cursor=pointer]
+      - generic [ref=f25e95] [cursor=pointer]
+    - paragraph [ref=f25e109]: Loading workspace…
