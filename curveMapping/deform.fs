@@ -8,7 +8,7 @@ import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 // export-import of the core could bring a second version of the core into this scope.
 // Pinned to the core at curveMapping V28 (adds mapCoordSystems).
 // Pinned to the core tab's microversion with the closed-edge fit, adaptive mapped-surface grid support and the pushforward (2026-10-20).
-export import(path : "683d867c35fdab9c98d47556", version : "2ce76fa46e9966199cf9231b");
+export import(path : "683d867c35fdab9c98d47556", version : "1d8139232bc3475c93706cac");
 
 
 
@@ -627,8 +627,13 @@ const MAPPED_MIN_SPACING = 4 * millimeter;
 /** The cost of a face beyond its grid: boundary probes and one round of interpolation probes (mapped points). */
 const MAPPED_FACE_OVERHEAD = 70;
 
-/** The part of the point budget held back for refining the faces that miss their accuracy after the first grid. */
-const MAPPED_REFINE_RESERVE = 0.3;
+/**
+ * The part of the point budget held back for refining the faces that miss their accuracy after the first grid. 0 = off: with 0.3 on the
+ * lid (after the core and join savings, so it ran) the reserve went to the first faces in index order, the strip stayed at 93.5 um
+ * (11 of 28 long faces still over their target) and the knitting got WORSE (185 joined, 7 left, 2 sheets). A reserve has to be
+ * given to the faces that need it most, not to the first ones; kept as a switch for that.
+ */
+const MAPPED_REFINE_RESERVE = 0;
 
 /** A face this small (both extents) needs few boundary probes: its boundary is short and its map nearly rigid. */
 const MAPPED_SMALL_FACE = 0.02 * meter;
@@ -1698,6 +1703,140 @@ function isFailedFaceCovered(context is Context, face is Query, fromFrenetPath i
         return evDistance(context, { "side0" : mapped, "side1" : resultFaces }).distance < FAILED_FACE_COVERED_GATE;
     }
     return false;
+}
+
+/** How many edges of a face (or faces) belong to no other face: its naked edges. */
+function nakedEdgeCount(context is Context, faces is Query) returns number
+{
+    var count = 0;
+    for (var faceEdge in evaluateQuery(context, qAdjacent(faces, AdjacencyType.EDGE, EntityType.EDGE)))
+        if (size(evaluateQuery(context, qAdjacent(faceEdge, AdjacencyType.EDGE, EntityType.FACE))) < 2)
+            count += 1;
+    return count;
+}
+
+/** Two naked edges whose middles are this close (and whose lengths agree) are the two sides of an unsewn seam. */
+const SEAM_PAIR_GATE = 5e-5 * meter;
+
+/** Seams shorter than this are not worth lifting a face for. */
+const SEAM_MIN_LENGTH = 3e-4 * meter;
+
+/** At most this many seams are repaired in one feature (each costs a few operations). */
+const SEAM_MAX_REPAIRS = 16;
+
+/**
+ * Sews the seams left inside a joined sheet: pairs of naked edges that lie side by side (the lid had 9, 83.6 mm in all, each between the
+ * huge top face and a small neighbour, the two edges 0.1-0.9 um apart but not merged: a face that joins along several edges can have one
+ * of them left unsewn and the kernel raises no error). For each pair the SMALLER of the two faces is lifted out and put back: copied
+ * (opExtractSurface), removed from the sheet (opDeleteFace, leaveOpen), and the copy unioned back with an explicit COINCIDENT match for
+ * every one of its edges, the way the standard Fill adds its surface. It counts as sewn when the face has fewer naked edges than before.
+ * The copy is the original face, so it also goes back unchanged when the sewing fails (the structure follows clean_surfaces' sew).
+ *
+ * @returns {map} { "pairs" : seams found, "sewn" : repaired }
+ */
+function sewSeams(context is Context, id is Id, main is Query, verbose is boolean) returns map
+{
+    var sewn = 0;
+    var pairsAtStart = 0;
+    var remaining = 0;
+    var failedAt = [];      // middles of the seams that could not be sewn: they are skipped from then on
+    // Every round finds the seams afresh (a union renames the edges of the sheet, so a list made once went stale after the first repair: three of
+    // the seven later lifts failed with EXTRACT_SURFACE_NO_FACES) and repairs the first one that has not failed.
+    for (var k = 0; k < SEAM_MAX_REPAIRS; k += 1)
+    {
+        const nakedEdges = evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(main, EntityType.EDGE), EdgeTopology.ONE_SIDED));
+        var middles = [];
+        var lengths = [];
+        for (var edge in nakedEdges)
+        {
+            middles = append(middles, evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 }).origin);
+            lengths = append(lengths, evLength(context, { "entities" : edge }));
+        }
+        var seamCount = 0;
+        var seamEdges = undefined;
+        var seamMiddle = undefined;
+        for (var i = 0; i < size(nakedEdges); i += 1)
+            for (var j = i + 1; j < size(nakedEdges); j += 1)
+                if (lengths[i] > SEAM_MIN_LENGTH && norm(middles[i] - middles[j]) < SEAM_PAIR_GATE
+                    && abs(lengths[i] - lengths[j]) < 0.1 * max(lengths[i], lengths[j]))
+                {
+                    seamCount += 1;
+                    var skipped = false;
+                    for (var failedMiddle in failedAt)
+                        if (norm(middles[i] - failedMiddle) < 2e-4 * meter)
+                            skipped = true;
+                    if (!skipped && seamEdges == undefined)
+                    {
+                        seamEdges = [nakedEdges[i], nakedEdges[j]];
+                        seamMiddle = middles[i];
+                    }
+                }
+        if (k == 0)
+            pairsAtStart = seamCount;
+        remaining = seamCount;
+        if (seamEdges == undefined)
+            break;
+        var note = "";
+        var done = false;
+        try
+        {
+            // the smaller of the two faces is the one lifted
+            const faceA = qAdjacent(seamEdges[0], AdjacencyType.EDGE, EntityType.FACE);
+            const faceB = qAdjacent(seamEdges[1], AdjacencyType.EDGE, EntityType.FACE);
+            const areaA = evArea(context, { "entities" : faceA });
+            const areaB = evArea(context, { "entities" : faceB });
+            const lifted = areaA <= areaB ? faceA : faceB;
+            const nakedBefore = nakedEdgeCount(context, lifted);
+            const copyId = id + ("copy" ~ k);
+            opExtractSurface(context, copyId, { "faces" : lifted, "tangentPropagation" : false });
+            const copy = qCreatedBy(copyId, EntityType.BODY);
+            opDeleteFace(context, id + ("lift" ~ k), { "deleteFaces" : lifted, "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
+            // a match for every edge of the copy: the nearest naked edge of the sheet (now including the hole's edges)
+            const nowNaked = qEdgeTopologyFilter(qOwnedByBody(main, EntityType.EDGE), EdgeTopology.ONE_SIDED);
+            var seamMatches = [];
+            for (var copyEdge in evaluateQuery(context, qOwnedByBody(copy, EntityType.EDGE)))
+            {
+                const copyMiddle = evEdgeTangentLine(context, { "edge" : copyEdge, "parameter" : 0.5 }).origin;
+                const partner = nearestEdgeTo(context, copyMiddle, nowNaked);
+                if (partner.edge != undefined && partner.distance < PATCH_MATCH_GATE)
+                    seamMatches = append(seamMatches, { "topology1" : partner.edge, "topology2" : copyEdge, "matchType" : TopologyMatchType.COINCIDENT });
+            }
+            var rejoined = false;
+            try
+            {
+                opBoolean(context, id + ("sew" ~ k), { "tools" : qUnion([main, copy]), "operationType" : BooleanOperationType.UNION, "makeSolid" : false,
+                                                       "allowSheets" : true, "eraseImprintedEdges" : true, "matches" : uniqueMatches(seamMatches), "recomputeMatches" : true });
+                rejoined = true;
+            }
+            catch (matchedErr)
+            {
+                note = "with matches: " ~ toString(matchedErr) ~ "; ";
+            }
+            if (!rejoined)
+            {
+                opBoolean(context, id + ("sewPlain" ~ k), { "tools" : qUnion([main, copy]), "operationType" : BooleanOperationType.UNION, "makeSolid" : false,
+                                                            "allowSheets" : true });
+            }
+            // The copy's BODY is gone after the union (it is part of the sheet), its FACE is not: ask the face (an empty answer = unknown, not sewn).
+            const copyFace = qCreatedBy(copyId, EntityType.FACE);
+            const nakedAfter = isQueryEmpty(context, copyFace) ? nakedBefore : nakedEdgeCount(context, copyFace);
+            done = nakedAfter < nakedBefore;
+            note = note ~ "lifted a face of " ~ roundToPrecision(min(areaA, areaB) / (millimeter ^ 2), 2) ~ " mm2; its naked edges " ~ nakedBefore ~ " -> " ~ nakedAfter ~ " (" ~ size(seamMatches) ~ " edge matches)";
+        }
+        catch (seamErr)
+        {
+            note = note ~ "failed: " ~ toString(seamErr);
+        }
+        if (done)
+            sewn += 1;
+        else
+            failedAt = append(failedAt, seamMiddle);
+        if (verbose)
+        {
+            println("SEAM round " ~ k ~ " (" ~ seamCount ~ " seams found): " ~ (done ? "sewn" : "NOT sewn") ~ ", " ~ note);
+        }
+    }
+    return { "pairs" : pairsAtStart, "sewn" : sewn, "remaining" : remaining };
 }
 
 /** A patch edge is matched to a naked edge of the main body when its middle is within this distance of it. */
@@ -3051,6 +3190,12 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                     }
                                     // A separate sheet that lies on the main sheet (the sliver whose place the strip's patch spans) adds nothing: drop it.
                                     dropCoveredSheets(context, joinId + "covered", qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET), definition.debug);
+                                    // Sew the seams inside the joined sheet (pairs of naked edges left side by side).
+                                    const seamResult = sewSeams(context, joinId + "seams", stepwise.main, definition.debug);
+                                    if (definition.debug)
+                                    {
+                                        println("Deform: " ~ seamResult.sewn ~ " of " ~ seamResult.pairs ~ " seams sewn, " ~ seamResult.remaining ~ " left");
+                                    }
                                     // What is actually in the result, not what the bookkeeping says: the sheets made under this unit that are still bodies.
                                     const remainingSheets = size(evaluateQuery(context, qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET)));
                                     if (remainingSheets > 1)

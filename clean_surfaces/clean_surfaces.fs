@@ -61,8 +61,23 @@ export enum CleanColorBy
     annotation { "Name" : "Tight curvature" }
     RADIUS,
     annotation { "Name" : "No face colour" }
-    NONE
+    NONE,
+    annotation { "Name" : "Culprit faces" }
+    CULPRITS
 }
+
+/** The operation the surface has to survive; the culprit search asks the kernel whether it works. */
+export enum OffsetConsumer
+{
+    annotation { "Name" : "Offset+ (Auto)" }
+    OFFSET,
+    annotation { "Name" : "Thicken+" }
+    THICKEN
+}
+
+/** The culprit search stops after this many kernel tests (a regen budget), and looks for at most this many separate culprit sets. */
+const CULPRIT_TEST_BUDGET = 150;
+const CULPRIT_MAX_ROUNDS = 4;
 
 /** What the feature does. Quick = resurface the faces that refuse an offset; Thorough (not built yet) also joins broken loops, splits creased faces and sews with explicit matches. */
 export enum CleanMode
@@ -187,10 +202,13 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
             definition.markEdges is boolean;
         }
 
-        if (!(definition.mode == CleanMode.DIAGNOSE) || definition.colorBy == CleanColorBy.OFFSET || definition.colorBy == CleanColorBy.RADIUS)
+        if (!(definition.mode == CleanMode.DIAGNOSE) || definition.colorBy == CleanColorBy.OFFSET || definition.colorBy == CleanColorBy.RADIUS || definition.colorBy == CleanColorBy.CULPRITS)
         {
             annotation { "Name" : "Offset distance" }
             isLength(definition.offsetDistance, OffsetTestBounds);
+
+            annotation { "Name" : "Prepare for", "UIHint" : UIHint.SHOW_LABEL, "Description" : "The operation the surface must survive at this distance: Offset+ in Auto mode (direct offset, then thicken), or a Thicken+." }
+            definition.consumer is OffsetConsumer;
 
             annotation { "Name" : "Offset side", "UIHint" : UIHint.SHOW_LABEL }
             definition.offsetSide is OffsetSide;
@@ -223,12 +241,12 @@ export const cleanSurfaces = defineFeature(function(context is Context, id is Id
             definition.verifyResult is boolean;
         }
 
-        annotation { "Name" : "Use cached analysis" }
+        annotation { "Name" : "Use cached analysis", "Default" : true, "Description" : "Keep the culprit search out of the dialog: press Resolve once, and the stored culprit faces are used until the inputs change. Off: the feature runs the search itself on every regeneration (slow)." }
         definition.useCache is boolean;
 
         if (definition.useCache)
         {
-            annotation { "Name" : "Resolve", "Description" : "Run the offset analysis now and store which faces refuse the offset. Needed again after the surfaces, the distance, the side or the face selections change." }
+            annotation { "Name" : "Resolve", "Description" : "Run the culprit search now and store the faces that stop the operation. Needed again after the surfaces, the distance, the side or the face selections change." }
             isButton(definition.resolve);
 
             annotation { "Name" : "Cached faces", "Filter" : EntityType.FACE, "UIHint" : UIHint.ALWAYS_HIDDEN }
@@ -287,7 +305,7 @@ function diagnose(context is Context, id is Id, definition is map)
         const keepSet = copyKeys(context, definition.keepFaces, srcIndex, srcFaces, faces);
         const hasScope = size(evaluateQuery(context, definition.cleanFaces)) > 0;
         definition.offsetSigns = offsetSignsFor(context, copy, definition);
-        const cachedFails = cachedFailing(context, definition, srcIndex, srcFaces, faces);
+        const cachedCulprits = cachedFailing(context, definition, srcIndex, srcFaces, faces);
 
         const widthCrit = definition.sliverWidth / millimeter;
         const edgeCrit = definition.shortEdge / millimeter;
@@ -389,12 +407,52 @@ function diagnose(context is Context, id is Id, definition is map)
             ];
         var offsetTested = 0;
         var offsetFailed = 0;
+        var culpritReport = "";
         if (definition.colorBy == CleanColorBy.SEVERITY)
         {
             for (var lv = 0; lv < LEVEL_KEEP; lv += 1)
             {
                 groups = append(groups, { "faces" : byLevel[lv], "color" : LEVEL_COLORS[lv] });
             }
+        }
+        else if (definition.colorBy == CleanColorBy.CULPRITS)
+        {
+            var culpritKeys = cachedCulprits;
+            var culpritNote = "cached";
+            if (culpritKeys == undefined)
+            {
+                if (definition.useCache == true)
+                {
+                    culpritNote = "not resolved: press Resolve";
+                    culpritKeys = {};
+                }
+                else
+                {
+                    const search = findCulprits(context, id + "cul", scopeItems(context, rows), definition);
+                    culpritKeys = {};
+                    for (var item in search.culprits)
+                    {
+                        culpritKeys[transientQueriesToStrings(item.face)] = true;
+                    }
+                    culpritNote = "live, " ~ search.tests ~ " tests" ~ (search.complete ? "" : ", search cut short");
+                }
+            }
+            var culpritFaces = [];
+            var otherFaces = [];
+            for (var r in rows)
+            {
+                if (culpritKeys[transientQueriesToStrings(r.face)] != undefined)
+                {
+                    culpritFaces = append(culpritFaces, r.face);
+                }
+                else
+                {
+                    otherFaces = append(otherFaces, r.face);
+                }
+            }
+            groups = append(groups, { "faces" : otherFaces, "color" : LEVEL_COLORS[0] });
+            groups = append(groups, { "faces" : culpritFaces, "color" : LEVEL_COLORS[3] });
+            culpritReport = size(culpritFaces) ~ " culprit faces (" ~ culpritNote ~ ")";
         }
         else if (definition.colorBy == CleanColorBy.OFFSET || definition.colorBy == CleanColorBy.RADIUS)
         {
@@ -403,7 +461,7 @@ function diagnose(context is Context, id is Id, definition is map)
             {
                 if (definition.colorBy == CleanColorBy.OFFSET)
                 {
-                    const fails = cachedFails != undefined ? cachedFails[transientQueriesToStrings(rows[i].face)] != undefined : offsetFails(context, id + ("off" ~ i), rows[i].face, definition);
+                    const fails = offsetFails(context, id + ("off" ~ i), rows[i].face, definition);
                     rows[i].offsetFail = fails;
                     probe[fails ? 1 : 0] = append(probe[fails ? 1 : 0], rows[i].face);
                     offsetTested += 1;
@@ -611,7 +669,8 @@ function diagnose(context is Context, id is Id, definition is map)
             }
         }
 
-        reportFeatureInfo(context, id, (needsCleanup ? "Needs cleanup: " : "Looks clean: ") ~ worstFaces ~ " critical+ faces (" ~ issues ~ "), "
+        reportFeatureInfo(context, id, (culpritReport == "" ? "" : "Culprits for " ~ (definition.consumer == OffsetConsumer.THICKEN ? "Thicken+" : "Offset+") ~ " at "
+                ~ roundToPrecision(definition.offsetDistance / millimeter, 3) ~ " mm: " ~ culpritReport ~ ". ") ~ (needsCleanup ? "Needs cleanup: " : "Looks clean: ") ~ worstFaces ~ " critical+ faces (" ~ issues ~ "), "
                 ~ size(mergeable) ~ " mergeable short edges, " ~ size(tolerantEdges) ~ " tolerant edges (cyan; tolerance above 0.5 um, largest "
                 ~ roundToPrecision(maxTolerantEdge * 1e6, 2) ~ " um)"
                 ~ (definition.colorBy == CleanColorBy.OFFSET ? ", offset test " ~ offsetFailed ~ " of " ~ offsetTested ~ " faces refuse" : "")
@@ -971,9 +1030,8 @@ function resurface(context is Context, id is Id, definition is map)
     const cachedFails = cachedFailing(context, definition, srcIndex, srcFaces, faces);
     const stale = definition.useCache == true && cachedFails == undefined;
 
-    // 1. the faces to resurface: those that refuse the offset (tested here, or taken from the cache)
-    var targets = [];
-    var tested = 0;
+    // 1. the faces to resurface: the culprits (taken from the cache, or searched for here when the cache is off)
+    var items = [];
     for (var i = 0; i < size(faces); i += 1)
     {
         const key = transientQueriesToStrings(faces[i]);
@@ -981,12 +1039,34 @@ function resurface(context is Context, id is Id, definition is map)
         {
             continue;
         }
-        tested += 1;
-        const refused = cachedFails != undefined ? cachedFails[key] != undefined : offsetFails(context, id + ("off" ~ i), faces[i], definition);
-        if (refused)
+        items = append(items, { "face" : faces[i], "key" : key, "i" : size(items), "body" : transientQueriesToStrings(evaluateQuery(context, qOwnerBody(faces[i]))[0]) });
+    }
+    const tested = size(items);
+    if (stale)
+    {
+        reportFeatureWarning(context, id, "The cached analysis is not resolved or is out of date, so nothing was cleaned (the copy is unchanged). Press Resolve, or turn off Use cached analysis to run the search here (slow).");
+        return;
+    }
+    var targets = [];
+    var searchNote = "";
+    if (cachedFails != undefined)
+    {
+        for (var item in items)
         {
-            targets = append(targets, faces[i]);
+            if (cachedFails[item.key] != undefined)
+            {
+                targets = append(targets, item.face);
+            }
         }
+    }
+    else
+    {
+        const search = findCulprits(context, id + "cul", items, definition);
+        for (var item in search.culprits)
+        {
+            targets = append(targets, item.face);
+        }
+        searchNote = " Culprit search: " ~ search.tests ~ " tests" ~ (search.complete ? "." : ", cut short (more culprits may remain).");
     }
 
     // 2. a patch for each, proved before anything is cut
@@ -1151,8 +1231,8 @@ function resurface(context is Context, id is Id, definition is map)
         autoAfter = autoOffsetReport(context, id + "autoA", result, defResult);
     }
 
-    var text = "Clean (quick): " ~ size(sewnAnchors) ~ " of " ~ size(targets) ~ " faces that refuse an offset of " ~ roundToPrecision(definition.offsetDistance / millimeter, 3)
-        ~ " mm were resurfaced (" ~ (cachedFails != undefined ? "cached analysis" : "live analysis") ~ "). Faces " ~ before.faces ~ " -> " ~ after.faces
+    var text = "Clean (quick): " ~ size(sewnAnchors) ~ " of " ~ size(targets) ~ " culprit faces for " ~ (definition.consumer == OffsetConsumer.THICKEN ? "Thicken+" : "Offset+") ~ " at " ~ roundToPrecision(definition.offsetDistance / millimeter, 3)
+        ~ " mm were resurfaced (" ~ (cachedFails != undefined ? "cached analysis" : "live analysis") ~ ")." ~ searchNote ~ " Faces " ~ before.faces ~ " -> " ~ after.faces
         ~ ", naked edges " ~ before.naked ~ " -> " ~ after.naked ~ ".";
     if (size(skipped) > 0)
     {
@@ -1176,7 +1256,7 @@ function resurface(context is Context, id is Id, definition is map)
     }
     if (checked > 0)
     {
-        text = text ~ " Verify: " ~ refusing ~ " of " ~ checked ~ " faces of the result still refuse the offset (before: " ~ size(targets) ~ " of " ~ tested ~ ").";
+        text = text ~ " Verify: " ~ refusing ~ " of " ~ checked ~ " faces of the result still refuse the offset (before: " ~ size(targets) ~ " culprits among " ~ tested ~ " faces).";
     }
     if (definition.autoCheck == true)
     {
@@ -1306,7 +1386,7 @@ function bodyStats(context is Context, body is Query) returns map
 function cacheKeyOf(context is Context, definition is map) returns string
 {
     const faceCount = size(evaluateQuery(context, qOwnedByBody(qBodyType(definition.surfaces, BodyType.SHEET), EntityType.FACE)));
-    return roundToPrecision(definition.offsetDistance / millimeter, 6) ~ "|" ~ (definition.offsetSide == OffsetSide.QUERY ? (definition.towardReference ? "Qt" : "Qa") ~ size(evaluateQuery(context, definition.sideReference)) : "B") ~ (definition.offsetTrim == true ? "T" : "F") ~ "|" ~ faceCount ~ "|"
+    return roundToPrecision(definition.offsetDistance / millimeter, 6) ~ "|" ~ (definition.offsetSide == OffsetSide.QUERY ? (definition.towardReference ? "Qt" : "Qa") ~ size(evaluateQuery(context, definition.sideReference)) : "B") ~ (definition.offsetTrim == true ? "T" : "F") ~ (definition.consumer == OffsetConsumer.THICKEN ? "k" : "o") ~ "|" ~ faceCount ~ "|"
         ~ size(evaluateQuery(context, definition.cleanFaces)) ~ "|" ~ size(evaluateQuery(context, definition.keepFaces));
 }
 
@@ -1377,8 +1457,7 @@ export function cleanSurfacesEditLogic(context is Context, id is Id, oldDefiniti
     const keepKeys = faceKeys(context, definition.keepFaces);
     const hasScope = size(cleanKeys) > 0;
     definition.offsetSigns = offsetSignsFor(context, qUnion(sources), definition);
-    var failing = [];
-    var tested = 0;
+    var items = [];
     for (var i = 0; i < size(faces); i += 1)
     {
         const key = transientQueriesToStrings(faces[i]);
@@ -1386,16 +1465,20 @@ export function cleanSurfacesEditLogic(context is Context, id is Id, oldDefiniti
         {
             continue;
         }
-        tested += 1;
-        if (offsetFails(context, id + ("r" ~ i), faces[i], definition))
-        {
-            failing = append(failing, faces[i]);
-        }
+        items = append(items, { "face" : faces[i], "key" : key, "i" : size(items), "body" : transientQueriesToStrings(evaluateQuery(context, qOwnerBody(faces[i]))[0]) });
     }
+    const search = findCulprits(context, id + "cul", items, definition);
+    var failing = [];
+    for (var item in search.culprits)
+    {
+        failing = append(failing, item.face);
+    }
+    const tested = size(items);
     definition.cachedFaces = qUnion(failing);
     definition.cacheKey = cacheKeyOf(context, definition);
-    definition.cacheStatus = "Resolved: " ~ size(failing) ~ " of " ~ tested ~ " faces refuse an offset of "
-        ~ roundToPrecision(definition.offsetDistance / millimeter, 3) ~ " mm" ~ (definition.offsetSide == OffsetSide.QUERY ? " (toward the reference)." : " (either side).");
+    definition.cacheStatus = "Resolved for " ~ (definition.consumer == OffsetConsumer.THICKEN ? "Thicken+" : "Offset+") ~ " at " ~ roundToPrecision(definition.offsetDistance / millimeter, 3) ~ " mm"
+        ~ (definition.offsetSide == OffsetSide.QUERY ? " (toward the reference): " : " (either side): ")
+        ~ (size(failing) == 0 ? "the surface works, nothing to clean" : size(failing) ~ " culprit face(s) of " ~ tested) ~ " in " ~ search.tests ~ " tests" ~ (search.complete ? "." : "; the search was cut short, more culprits may remain.");
     return definition;
 }
 
@@ -1722,4 +1805,153 @@ function autoOffsetReport(context is Context, id is Id, bodies is Query, definit
         }
     }
     return joinArray(parts, ", ");
+}
+
+/** The in-scope faces of the diagnose rows as search items. */
+function scopeItems(context is Context, rows is array) returns array
+{
+    var items = [];
+    for (var r in rows)
+    {
+        items = append(items, { "face" : r.face, "key" : transientQueriesToStrings(r.face), "i" : size(items),
+                    "body" : transientQueriesToStrings(evaluateQuery(context, qOwnerBody(r.face))[0]) });
+    }
+    return items;
+}
+
+/** True when the chosen operation (Offset+ Auto, or a Thicken+) fails on this side of these faces. A fold-free one-sided thicken is what Thicken+ asks of the kernel. */
+function consumerFails(context is Context, id is Id, faces is Query, signed is ValueWithUnits, definition is map) returns boolean
+{
+    if (definition.consumer == OffsetConsumer.THICKEN)
+    {
+        var ok = false;
+        try silent
+        {
+            opThicken(context, id + "k", { "entities" : faces, "thickness1" : signed > 0 * meter ? signed : 0 * meter, "thickness2" : signed > 0 * meter ? 0 * meter : -signed });
+            ok = true;
+        }
+        if (ok)
+        {
+            deleteBodies(context, id + "kx", qCreatedBy(id + "k", EntityType.BODY));
+        }
+        return !ok;
+    }
+    return autoOffsetOutcome(context, id, faces, signed) == "FAILS";
+}
+
+/** True when the chosen operation fails on the tested side(s) of a set of search items (each item: face, body key, index); faces of one body go together. */
+function itemsFail(context is Context, id is Id, items is array, definition is map) returns boolean
+{
+    var byBody = {};
+    var order = [];
+    for (var item in items)
+    {
+        if (byBody[item.body] == undefined)
+        {
+            byBody[item.body] = [];
+            order = append(order, item.body);
+        }
+        byBody[item.body] = append(byBody[item.body], item.face);
+    }
+    var n = 0;
+    for (var key in order)
+    {
+        var sides = [1, -1];
+        if (definition.offsetSide == OffsetSide.QUERY)
+        {
+            const direction = definition.offsetSigns[key];
+            if (direction == undefined)
+            {
+                throw regenError("Internal: the offset side of a surface was not resolved.");
+            }
+            sides = [direction];
+        }
+        for (var s in sides)
+        {
+            n += 1;
+            if (consumerFails(context, id + ("b" ~ n), qUnion(byBody[key]), s * definition.offsetDistance, definition))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * The few faces that stop the chosen operation (delta debugging): while the whole set fails, split it and keep a half or a complement that still
+ * fails, down to a set that no longer fails when any part is removed; take those faces out and look again (up to CULPRIT_MAX_ROUNDS times), at most
+ * CULPRIT_TEST_BUDGET kernel tests in all. Returns { culprits (items), tests, complete }; complete is false when the budget ran out or culprits remain.
+ */
+function findCulprits(context is Context, id is Id, allItems is array, definition is map) returns map
+{
+    var remaining = allItems;
+    var culprits = [];
+    var tests = 0;
+    var complete = true;
+    for (var round = 0; round < CULPRIT_MAX_ROUNDS; round += 1)
+    {
+        tests += 1;
+        if (!itemsFail(context, id + ("t" ~ tests), remaining, definition))
+        {
+            return { "culprits" : culprits, "tests" : tests, "complete" : true };
+        }
+        var current = remaining;
+        var granularity = 2;
+        while (size(current) > 1 && tests < CULPRIT_TEST_BUDGET)
+        {
+            const chunk = ceil(size(current) / granularity);
+            var reduced = false;
+            for (var i = 0; i < size(current) && !reduced; i += chunk)
+            {
+                const part = subArray(current, i, min(i + chunk, size(current)));
+                tests += 1;
+                if (itemsFail(context, id + ("t" ~ tests), part, definition))
+                {
+                    current = part;
+                    granularity = 2;
+                    reduced = true;
+                }
+            }
+            for (var i = 0; i < size(current) && !reduced && granularity > 2; i += chunk)
+            {
+                const rest = concatenateArrays([subArray(current, 0, i), subArray(current, min(i + chunk, size(current)), size(current))]);
+                tests += 1;
+                if (size(rest) > 0 && itemsFail(context, id + ("t" ~ tests), rest, definition))
+                {
+                    current = rest;
+                    granularity = max(granularity - 1, 2);
+                    reduced = true;
+                }
+            }
+            if (!reduced)
+            {
+                if (granularity >= size(current))
+                {
+                    break;
+                }
+                granularity = min(size(current), granularity * 2);
+            }
+        }
+        culprits = concatenateArrays([culprits, current]);
+        var inCurrent = {};
+        for (var item in current)
+        {
+            inCurrent[item.i] = true;
+        }
+        var next = [];
+        for (var item in remaining)
+        {
+            if (inCurrent[item.i] == undefined)
+            {
+                next = append(next, item);
+            }
+        }
+        remaining = next;
+        if (tests >= CULPRIT_TEST_BUDGET)
+        {
+            return { "culprits" : culprits, "tests" : tests, "complete" : false };
+        }
+    }
+    return { "culprits" : culprits, "tests" : tests, "complete" : false };
 }

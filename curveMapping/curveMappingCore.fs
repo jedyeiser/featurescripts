@@ -1157,27 +1157,35 @@ export function projectOntoFrenetPath(frenetPath is map, point is Vector, hint) 
         centre     = coarse.edge;
         centreSeed = coarse.localArc;
     }
-    var candidates = [{ "edge": centre, "seed": centreSeed }];
-    if (centre > 0)
-    {
-        candidates = append(candidates, { "edge": centre - 1, "seed": edgeData[centre - 1].length });
-    }
-    if (centre < nEdges - 1)
-    {
-        candidates = append(candidates, { "edge": centre + 1, "seed": 0 * meter });
-    }
-
-    var bestDist     = inf * meter;
+    // The hinted edge first. Every mapped point of a deform used to run Newton on the hinted edge AND both neighbours (3 solves); a foot
+    // strictly inside the hinted edge is a local minimum of the distance and, on a path that does not come back to itself, the answer,
+    // so the neighbours are searched only when the foot is at an end of the edge (the point may be beyond the junction) or when there
+    // was no hint (the coarse scan chose the edge from a table, so the neighbours stay candidates).
+    var centreFoot   = footOnEdge(edgeData[centre], point, centreSeed);
+    var bestDist     = centreFoot.distance;
     var bestEdgeIdx  = centre;
-    var bestLocalArc = 0 * meter;
-    for (var c in candidates)
+    var bestLocalArc = centreFoot.localArc;
+    var atEnd = centreFoot.localArc < CM_FOOT_END_MARGIN || centreFoot.localArc > edgeData[centre].length - CM_FOOT_END_MARGIN;
+    if (hint == undefined || atEnd)
     {
-        var foot = footOnEdge(edgeData[c.edge], point, c.seed);
-        if (foot.distance < bestDist)
+        var neighbours = [];
+        if (centre > 0)
         {
-            bestDist     = foot.distance;
-            bestEdgeIdx  = c.edge;
-            bestLocalArc = foot.localArc;
+            neighbours = append(neighbours, { "edge": centre - 1, "seed": edgeData[centre - 1].length });
+        }
+        if (centre < nEdges - 1)
+        {
+            neighbours = append(neighbours, { "edge": centre + 1, "seed": 0 * meter });
+        }
+        for (var c in neighbours)
+        {
+            var foot = footOnEdge(edgeData[c.edge], point, c.seed);
+            if (foot.distance < bestDist)
+            {
+                bestDist     = foot.distance;
+                bestEdgeIdx  = c.edge;
+                bestLocalArc = foot.localArc;
+            }
         }
     }
 
@@ -1189,6 +1197,15 @@ export function projectOntoFrenetPath(frenetPath is map, point is Vector, hint) 
 
 /** Table stride of the coarse scan; the best stride sample is then refined by Newton. */
 const CM_PROJECTION_STRIDE = 5;
+
+/** A foot within this of an end of its edge may have a closer foot on the neighbouring edge. */
+const CM_FOOT_END_MARGIN = 1e-6 * meter;
+
+/**
+ * Newton stops when a step moves less than this. 10 nm: the iteration converges quadratically, so the error left after a step this small
+ * is ~1e-14 m; the old 0.1 nm (1e-10 m) cost an extra iteration on every point for nothing.
+ */
+const CM_FOOT_TOLERANCE = 1e-8 * meter;
 
 /**
  * The edge and local arc of the table sample nearest `point`, over the whole path: every
@@ -1271,7 +1288,7 @@ function footOnEdge(edgeDat is map, point is Vector, seed is ValueWithUnits) ret
         var next  = clamp(s + g / denom, 0 * meter, length);
         var moved = abs(next - s);
         s = next;
-        if (moved < 1e-10 * meter)
+        if (moved < CM_FOOT_TOLERANCE)
         {
             break;
         }
