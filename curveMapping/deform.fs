@@ -1848,13 +1848,15 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                         if (size(patchMatches) > 0)
                             patchJoinOptions = mergeMaps(patchJoinOptions, { "matches" : uniqueMatches(patchMatches), "recomputeMatches" : true });
                         opBoolean(context, id + ("patchJoin" ~ tag), patchJoinOptions);
-                        // A union of sheets that do not touch raises no error and leaves them apart: the patch must now be part of the main body.
-                        if (size(evaluateQuery(context, qUnion([main, patchFill]))) != 1)
-                            throw "the patch was not sewn to the main body (" ~ size(patchMatches) ~ " edge matches)";
+                        // A union of sheets that do not touch raises no error and leaves them apart, so whether the patch is now part of the
+                        // main body has to be asked (the first version of this reported "0 still separate" for a patch that was not sewn).
+                        const sewn = size(evaluateQuery(context, qUnion([main, patchFill]))) == 1;
+                        // The patch stands in for the old sheet either way (keeping both would leave a stray copy of the face in the result).
                         opDeleteBodies(context, id + ("dropSheet" ~ tag), { "entities" : sheet });
-                        done = true;
-                        note = "replaced by a patch of " ~ usedLoop ~ " boundary edges" ~ (usedGuides ? " and " ~ size(guideBodies) ~ " guide points" : " (unguided)")
-                            ~ (deviation == undefined ? "" : ", mid-face deviation from the mapped sheet " ~ roundToPrecision(deviation / millimeter, 5) ~ " mm");
+                        note = (sewn ? "replaced by a patch of " : "replaced by a patch of ") ~ usedLoop ~ " boundary edges" ~ (usedGuides ? " and " ~ size(guideBodies) ~ " guide points" : " (unguided)")
+                            ~ (deviation == undefined ? "" : ", mid-face deviation from the mapped sheet " ~ roundToPrecision(deviation / millimeter, 5) ~ " mm")
+                            ~ (sewn ? "" : "; NOT SEWN to the main body (" ~ size(patchMatches) ~ " edge matches): it stays a separate sheet");
+                        done = sewn;
                     }
                 }
             }
@@ -1864,15 +1866,9 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
             note = "patch failed: " ~ toString(patchErr) ~ " (" ~ loopSize ~ " boundary edges, " ~ size(guideBodies) ~ " guide points)";
             if (patchFill != undefined)
             {
-                // Remove the patch, and only the patch. A union that did not sew it to the main body can still have merged it with a
-                // neighbouring sheet (the tiny sliver shares an edge with the strip), so deleting its BODY would take that sheet too, and
-                // when the union consumed the patch's body the body query is empty and nothing at all was deleted (a stray copy of the
-                // strip was left in the result). Its faces are deleted instead, leaving the other sheet as it was.
-                try silent
-                {
-                    if (!isQueryEmpty(context, patchFaces))
-                        opDeleteFace(context, id + ("dropPatchFace" ~ tag), { "deleteFaces" : patchFaces, "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
-                }
+                // An error before or inside the union: the patch body is intact, delete it. (Deleting the patch's faces instead, as an
+                // attempt to avoid taking a sheet the patch had merged with, removed the old strip and the sliver as well: the result lost
+                // them. A patch that was merged but not sewn is NOT handled here: it is kept, see the join above.)
                 try silent
                 {
                     if (!isQueryEmpty(context, patchFill))
