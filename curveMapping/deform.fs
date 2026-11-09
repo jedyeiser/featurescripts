@@ -1611,12 +1611,18 @@ function edgeEndsText(context is Context, edge is Query) returns string
 function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies is array, verbose is boolean) returns number
 {
     var patched = 0;
+    var handled = makeArray(size(leftBodies), false);
+    // Two passes: first every sheet gets only the clean attempts (a boundary of naked edges that closes by itself), then the ones left get
+    // the chained attempts. The hard one goes in last because its patch overlaps a sliver and leaves the main body in a state later
+    // unions refuse (sheet 4 patched fine until the 413 mm2 strip was patched before it).
+    for (var pass = 0; pass < 2; pass += 1)
     for (var i = 0; i < size(leftBodies); i += 1)
     {
         const sheet = leftBodies[i];
-        if (isQueryEmpty(context, sheet))
+        if (handled[i] || isQueryEmpty(context, sheet))
             continue;
-        const patchId = id + ("patch" ~ i);
+        const tag = i ~ "p" ~ pass;     // ids must be new in each pass
+        const patchId = id + ("patch" ~ tag);
         var done = false;
         var note = "";
         var loopSize = 0;
@@ -1627,7 +1633,7 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
             const area = evArea(context, { "entities" : sheet });
             if (area < PATCH_DEGENERATE_AREA)
             {
-                opDeleteBodies(context, id + ("drop" ~ i), { "entities" : sheet });
+                opDeleteBodies(context, id + ("drop" ~ tag), { "entities" : sheet });
                 done = true;
                 note = "dropped (collapsed, area " ~ roundToPrecision(area / (millimeter ^ 2), 6) ~ " mm2)";
             }
@@ -1670,7 +1676,7 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                             // the parameter box is bigger than the trimmed face: keep the samples that lie on the face
                             if (evDistance(context, { "side0" : guidePlanes[g].origin, "side1" : oldFace }).distance < 5e-6 * meter)
                             {
-                                const guideId = id + ("guide" ~ i ~ "_" ~ g);
+                                const guideId = id + ("guide" ~ tag ~ "_" ~ g);
                                 opPoint(context, guideId, { "point" : guidePlanes[g].origin });
                                 guideBodies = append(guideBodies, qCreatedBy(guideId, EntityType.BODY));
                             }
@@ -1682,7 +1688,7 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                     var usedLoop = 0;
                     var usedGuides = false;
                     var chainSummary = "";
-                    for (var attempt = 0; attempt < 8 && patchFill == undefined; attempt += 1)
+                    for (var attempt = (pass == 0 ? 0 : 2); attempt < (pass == 0 ? 2 : 8) && patchFill == undefined; attempt += 1)
                     {
                         // 0-1: the naked edges along the sheet (tight gate), guided / unguided: what works for a face with a clean boundary.
                         // 2-7: the naked edges within a wide gate with duplicates reduced to one edge per group and NO bridges (a gap of ~10-20 um
@@ -1786,7 +1792,7 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                     if (patchFill == undefined)
                     {
                         note = "not patched: " ~ failure;
-                        if (verbose)
+                        if (verbose && pass == 1)
                         {
                             // the geometry of the boundary, to see why no loop closes: the sheet's own edges, and the main body's naked edges within 2 mm of them
                             for (var dumpGap in sheetGaps)
@@ -1821,9 +1827,9 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                             for (var pl in probes)
                                 deviation = max(deviation, evDistance(context, { "side0" : pl.origin, "side1" : patchFill }).distance);
                         }
-                        opBoolean(context, id + ("patchJoin" ~ i), { "tools" : qUnion([main, patchFill]), "operationType" : BooleanOperationType.UNION,
+                        opBoolean(context, id + ("patchJoin" ~ tag), { "tools" : qUnion([main, patchFill]), "operationType" : BooleanOperationType.UNION,
                                                                      "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true });
-                        opDeleteBodies(context, id + ("dropSheet" ~ i), { "entities" : sheet });
+                        opDeleteBodies(context, id + ("dropSheet" ~ tag), { "entities" : sheet });
                         done = true;
                         note = "replaced by a patch of " ~ usedLoop ~ " boundary edges" ~ (usedGuides ? " and " ~ size(guideBodies) ~ " guide points" : " (unguided)")
                             ~ (deviation == undefined ? "" : ", mid-face deviation from the mapped sheet " ~ roundToPrecision(deviation / millimeter, 5) ~ " mm");
@@ -1838,7 +1844,7 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
             {
                 try silent
                 {
-                    opDeleteBodies(context, id + ("dropPatch" ~ i), { "entities" : patchFill });
+                    opDeleteBodies(context, id + ("dropPatch" ~ tag), { "entities" : patchFill });
                 }
             }
         }
@@ -1847,14 +1853,18 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
         {
             try silent
             {
-                opDeleteBodies(context, id + ("dropGuides" ~ i), { "entities" : qUnion(guideBodies) });
+                opDeleteBodies(context, id + ("dropGuides" ~ tag), { "entities" : qUnion(guideBodies) });
             }
         }
         if (done)
-            patched += 1;
-        if (verbose)
         {
-            println("PATCH sheet " ~ i ~ ": " ~ note);
+            patched += 1;
+            handled[i] = true;
+        }
+        // the first pass only reports what it did; the second reports every sheet that is still left
+        if (verbose && (done || pass == 1))
+        {
+            println("PATCH sheet " ~ i ~ " (pass " ~ pass ~ "): " ~ note);
         }
     }
     return patched;
