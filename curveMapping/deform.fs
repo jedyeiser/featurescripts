@@ -1631,6 +1631,7 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
         var loopSize = 0;
         var guideBodies = [];
         var patchFill = undefined;      // the fill that was made for the sheet (a query), once there is one
+        var patchFaces = qNothing();    // its face(s): they survive a union that merged the patch's body into another (the body query then resolves to nothing)
         try
         {
             const area = evArea(context, { "entities" : sheet });
@@ -1749,6 +1750,7 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                                 opFillSurface(context, attemptId, { "edgesG0" : boundary, "edgesG1" : qNothing(), "edgesG2" : qNothing(),
                                                                     "guideVertices" : withGuides ? qUnion(guideBodies) : qNothing() });
                                 patchFill = qBodyType(qCreatedBy(attemptId, EntityType.BODY), BodyType.SHEET);
+                                patchFaces = qCreatedBy(attemptId, EntityType.FACE);
                                 usedLoop = size(loop);
                                 usedGuides = withGuides;
                                 if (withFree || bridged)
@@ -1862,9 +1864,19 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
             note = "patch failed: " ~ toString(patchErr) ~ " (" ~ loopSize ~ " boundary edges, " ~ size(guideBodies) ~ " guide points)";
             if (patchFill != undefined)
             {
+                // Remove the patch, and only the patch. A union that did not sew it to the main body can still have merged it with a
+                // neighbouring sheet (the tiny sliver shares an edge with the strip), so deleting its BODY would take that sheet too, and
+                // when the union consumed the patch's body the body query is empty and nothing at all was deleted (a stray copy of the
+                // strip was left in the result). Its faces are deleted instead, leaving the other sheet as it was.
                 try silent
                 {
-                    opDeleteBodies(context, id + ("dropPatch" ~ tag), { "entities" : patchFill });
+                    if (!isQueryEmpty(context, patchFaces))
+                        opDeleteFace(context, id + ("dropPatchFace" ~ tag), { "deleteFaces" : patchFaces, "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
+                }
+                try silent
+                {
+                    if (!isQueryEmpty(context, patchFill))
+                        opDeleteBodies(context, id + ("dropPatch" ~ tag), { "entities" : patchFill });
                 }
             }
         }
