@@ -1850,12 +1850,19 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                         opBoolean(context, id + ("patchJoin" ~ tag), patchJoinOptions);
                         // A union of sheets that do not touch raises no error and leaves them apart, so whether the patch is now part of the
                         // main body has to be asked (the first version of this reported "0 still separate" for a patch that was not sewn).
-                        const sewn = size(evaluateQuery(context, qUnion([main, patchFill]))) == 1;
+                        // Asked of the patch's own edges: after the union the body queries do not say reliably (patchFill resolves to the
+                        // consumed body, and the check reported "not sewn" for a patch that was sewn on all four sides). A patch that is
+                        // sewn has no naked edge.
+                        var patchNaked = 0;
+                        for (var checkEdge in evaluateQuery(context, qAdjacent(patchFaces, AdjacencyType.EDGE, EntityType.EDGE)))
+                            if (size(evaluateQuery(context, qAdjacent(checkEdge, AdjacencyType.EDGE, EntityType.FACE))) < 2)
+                                patchNaked += 1;
+                        const sewn = patchNaked == 0;
                         // The patch stands in for the old sheet either way (keeping both would leave a stray copy of the face in the result).
                         opDeleteBodies(context, id + ("dropSheet" ~ tag), { "entities" : sheet });
                         note = (sewn ? "replaced by a patch of " : "replaced by a patch of ") ~ usedLoop ~ " boundary edges" ~ (usedGuides ? " and " ~ size(guideBodies) ~ " guide points" : " (unguided)")
                             ~ (deviation == undefined ? "" : ", mid-face deviation from the mapped sheet " ~ roundToPrecision(deviation / millimeter, 5) ~ " mm")
-                            ~ (sewn ? "" : "; NOT SEWN to the main body (" ~ size(patchMatches) ~ " edge matches): it stays a separate sheet");
+                            ~ (sewn ? "" : "; NOT SEWN to the main body (" ~ patchNaked ~ " naked edge(s) left, " ~ size(patchMatches) ~ " edge matches): it stays a separate sheet");
                         done = sewn;
                     }
                 }
@@ -2922,6 +2929,17 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                         {
                                             println("Deform: " ~ patched ~ " of " ~ stepwise.left ~ " left-over sheets replaced by patches or dropped, " ~ stillLeft ~ " still separate");
                                         }
+                                    }
+                                    // What is actually in the result, not what the bookkeeping says: the sheets made under this unit that are still bodies.
+                                    const remainingSheets = size(evaluateQuery(context, qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET)));
+                                    if (remainingSheets > 1)
+                                    {
+                                        reportFeatureWarning(context, id, "The result has " ~ remainingSheets ~ " separate sheets: the joined surface and " ~ (remainingSheets - 1)
+                                            ~ " small piece(s) the kernel would not sew to it.");
+                                    }
+                                    if (definition.debug)
+                                    {
+                                        println("Deform: " ~ remainingSheets ~ " sheet body(ies) in the result");
                                     }
                                     unionFailed = stillLeft > 0;
                                 }
