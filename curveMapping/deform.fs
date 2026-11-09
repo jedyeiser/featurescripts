@@ -1592,6 +1592,100 @@ function bridgedBoundary(context is Context, id is Id, edges is array, variant i
              "summary" : size(chosen) ~ " edges after dropping " ~ (size(items) - size(chosen)) ~ " duplicate(s), " ~ bridgeCount ~ " bridge(s), gaps " ~ gapNote ~ " um" };
 }
 
+/** A separate one-face sheet whose sample points are all this close to the main sheet lies ON it: it adds nothing and is dropped. */
+const COVERED_SHEET_GATE = 5e-6 * meter;
+
+/** ... but only a small one (a real face that is merely unjoined must stay). */
+const COVERED_SHEET_MAX_AREA = 1e-6 * meter ^ 2;
+
+/** A face that could not be rebuilt leaves no hole when an interior point of it, mapped, is this close to the faces that were built. */
+const FAILED_FACE_COVERED_GATE = 2e-5 * meter;
+
+/**
+ * Drops the separate sheets of a result that the main sheet already covers (measured: the 0.028 mm2 sliver sheet of the lid lay 0.5-0.9 um
+ * from the main sheet at every sample point, because the strip's patch spans the sliver's place). The main sheet is the one with the
+ * most faces. A sheet is dropped only when it has one face, under COVERED_SHEET_MAX_AREA, and every one of 5 points across it is within
+ * COVERED_SHEET_GATE of the main sheet's faces.
+ *
+ * @returns {number} how many sheets were dropped
+ */
+function dropCoveredSheets(context is Context, id is Id, sheets is Query, verbose is boolean) returns number
+{
+    const bodies = evaluateQuery(context, sheets);
+    if (size(bodies) < 2)
+        return 0;
+    var mainIndex = 0;
+    var mostFaces = -1;
+    for (var i = 0; i < size(bodies); i += 1)
+    {
+        const count = size(evaluateQuery(context, qOwnedByBody(bodies[i], EntityType.FACE)));
+        if (count > mostFaces)
+        {
+            mostFaces = count;
+            mainIndex = i;
+        }
+    }
+    const mainFaces = qOwnedByBody(bodies[mainIndex], EntityType.FACE);
+    var dropped = 0;
+    for (var i = 0; i < size(bodies); i += 1)
+    {
+        if (i == mainIndex)
+            continue;
+        var covered = false;
+        var farthest = 0 * meter;
+        try silent
+        {
+            const faceQuery = qOwnedByBody(bodies[i], EntityType.FACE);
+            if (size(evaluateQuery(context, faceQuery)) == 1 && evArea(context, { "entities" : faceQuery }) < COVERED_SHEET_MAX_AREA)
+            {
+                const planes = evFaceTangentPlanes(context, { "face" : faceQuery,
+                    "parameters" : [vector(0.5, 0.5), vector(0.2, 0.5), vector(0.8, 0.5), vector(0.5, 0.2), vector(0.5, 0.8)] });
+                covered = true;
+                for (var plane in planes)
+                {
+                    const gap = evDistance(context, { "side0" : plane.origin, "side1" : mainFaces }).distance;
+                    farthest = max(farthest, gap);
+                    if (gap >= COVERED_SHEET_GATE)
+                        covered = false;
+                }
+            }
+        }
+        if (covered)
+        {
+            opDeleteBodies(context, id + ("dropCovered" ~ i), { "entities" : bodies[i] });
+            dropped += 1;
+        }
+        if (verbose)
+        {
+            println("COVERED sheet check " ~ i ~ ": " ~ (covered ? "dropped, lies on the main sheet (farthest sample " ~ roundToPrecision(farthest / meter * 1e6, 2) ~ " um)" : "kept"));
+        }
+    }
+    return dropped;
+}
+
+/**
+ * Whether the place of a source face that could not be rebuilt is covered by the faces that were: an interior point of the face
+ * (the nearest point of the face to the mean of its vertices), mapped like the rest, is within FAILED_FACE_COVERED_GATE of `resultFaces`.
+ * A tiny face between two others (the lid's 0.0067 mm2 triangle at the sliver cluster) leaves no hole; a real missing face does.
+ */
+function isFailedFaceCovered(context is Context, face is Query, fromFrenetPath is map, toFrenetPath is map, fromRefArc, toRefArc, flipToNormal is boolean,
+    resultFaces is Query) returns boolean
+{
+    try silent
+    {
+        const vertices = evaluateQuery(context, qAdjacent(face, AdjacencyType.VERTEX, EntityType.VERTEX));
+        if (size(vertices) == 0)
+            return false;
+        var sum = vector(0, 0, 0) * meter;
+        for (var vertex in vertices)
+            sum += evVertexPoint(context, { "vertex" : vertex });
+        const onFace = evDistance(context, { "side0" : sum / size(vertices), "side1" : face }).sides[1].point;
+        const mapped = mapWorldPoints(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, [onFace])[0];
+        return evDistance(context, { "side0" : mapped, "side1" : resultFaces }).distance < FAILED_FACE_COVERED_GATE;
+    }
+    return false;
+}
+
 /** A patch edge is matched to a naked edge of the main body when its middle is within this distance of it. */
 const PATCH_MATCH_GATE = 1e-4 * meter;
 
@@ -2930,6 +3024,8 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                                             println("Deform: " ~ patched ~ " of " ~ stepwise.left ~ " left-over sheets replaced by patches or dropped, " ~ stillLeft ~ " still separate");
                                         }
                                     }
+                                    // A separate sheet that lies on the main sheet (the sliver whose place the strip's patch spans) adds nothing: drop it.
+                                    dropCoveredSheets(context, joinId + "covered", qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET), definition.debug);
                                     // What is actually in the result, not what the bookkeeping says: the sheets made under this unit that are still bodies.
                                     const remainingSheets = size(evaluateQuery(context, qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET)));
                                     if (remainingSheets > 1)
@@ -3015,14 +3111,33 @@ export const deform = defineFeature(function(context is Context, id is Id, defin
                     opDeleteBodies(context, id + ("dropWork" ~ unitIdx), { "entities" : geomBody });
                 }
             }
-            if (size(failedFaces) + size(skippedFaces) > 0)
+            // A face that failed to rebuild is only MISSING if the faces that were built do not cover its place: a tiny face between its
+            // neighbours (the lid's 0.0067 mm2 triangle) leaves no hole, and reporting it as missing turned the whole feature red.
+            var missingFaces = [];
+            var coveredFaces = 0;
+            if (size(failedFaces) > 0)
             {
-                reportFeatureWarning(context, id, (size(failedFaces) + size(skippedFaces)) ~ " face(s) of a source body could not be rebuilt and are missing from the result"
+                const builtFaces = qOwnedByBody(qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET), EntityType.FACE);
+                for (var failedFace in failedFaces)
+                {
+                    if (!isFailedFaceCovered(context, failedFace, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal, builtFaces))
+                        missingFaces = append(missingFaces, failedFace);
+                    else
+                        coveredFaces += 1;
+                }
+            }
+            if (size(missingFaces) + size(skippedFaces) > 0)
+            {
+                reportFeatureWarning(context, id, (size(missingFaces) + size(skippedFaces)) ~ " face(s) of a source body could not be rebuilt and are missing from the result"
                     ~ (size(skippedFaces) > 0 ? " (" ~ size(skippedFaces) ~ " with no edges to rebuild from, e.g. a full sphere)" : "") ~ "; they are highlighted (see the notices).");
                 try silent
                 {
-                    setErrorEntities(context, id, { "entities" : qUnion(concatenateArrays([failedFaces, skippedFaces])) });
+                    setErrorEntities(context, id, { "entities" : qUnion(concatenateArrays([missingFaces, skippedFaces])) });
                 }
+            }
+            else if (coveredFaces > 0)
+            {
+                reportFeatureInfo(context, id, coveredFaces ~ " tiny face(s) of the source could not be rebuilt; their place is covered by the neighbouring faces, so the result has no hole there.");
             }
 
             // Record this unit's deformed body and name it. Source names cannot be read here
