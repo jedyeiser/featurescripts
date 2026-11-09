@@ -1337,6 +1337,16 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
     var doneAtLastPass = 1;
     var step = 0;
     var progress = true;
+    // The interpreter's step limit is the feature's real constraint, and this function used to scan ALL links for every unjoined face on
+    // every pass (193 faces x ~460 links) and to rewrite the map entry of every joined face after every join (190 x 190). Links are indexed
+    // by face once, and the main body is ONE query (every joined face is part of it).
+    var linksOf = {};
+    for (var indexed in links)
+    {
+        linksOf[indexed.a] = append(linksOf[indexed.a] == undefined ? [] : linksOf[indexed.a], indexed);
+        linksOf[indexed.b] = append(linksOf[indexed.b] == undefined ? [] : linksOf[indexed.b], indexed);
+    }
+    var mainQuery = current[seed];
     while (progress)
     {
         progress = false;
@@ -1347,7 +1357,7 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
                 continue;
             var matches = [];
             var touching = false;
-            for (var link in links)
+            for (var link in (linksOf[key] == undefined ? [] : linksOf[key]))
             {
                 var other = undefined;
                 if (link.a == key && done[link.b] != undefined)
@@ -1357,7 +1367,7 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
                 if (other == undefined)
                     continue;
                 touching = true;
-                const a = nearestEdgeTo(context, link.middle, qOwnedByBody(current[other], EntityType.EDGE));
+                const a = nearestEdgeTo(context, link.middle, qOwnedByBody(mainQuery, EntityType.EDGE));
                 const b = nearestEdgeTo(context, link.middle, qOwnedByBody(current[key], EntityType.EDGE));
                 if (a.edge != undefined && b.edge != undefined && a.distance < JOIN_MATCH_GATE && b.distance < JOIN_MATCH_GATE)
                 {
@@ -1375,8 +1385,7 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
             const joinId = id + ("join" ~ step);
             if (verbose)
             {
-                println("JOIN step " ~ step ~ ": face " ~ key ~ ", main body " ~ size(evaluateQuery(context, current[seed])) ~ " sheet(s), this face "
-                    ~ size(evaluateQuery(context, current[key])) ~ " sheet(s), " ~ size(matches) ~ " edge matches");
+                println("JOIN step " ~ step ~ ": face " ~ key ~ ", " ~ size(matches) ~ " edge matches");
             }
             // First with the edge matches; when the kernel refuses that, as a plain union (the nearest edges found for the matches
             // can be the wrong ones, and the kernel sews edges that are close enough on its own).
@@ -1388,7 +1397,7 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
                 if (variant == 1 && size(matches) == 0)
                     break;
                 const variantId = joinId + ("v" ~ variant);
-                var joinOptions = { "tools" : qUnion([current[seed], current[key]]), "operationType" : BooleanOperationType.UNION,
+                var joinOptions = { "tools" : qUnion([mainQuery, current[key]]), "operationType" : BooleanOperationType.UNION,
                                     "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true };
                 if (variant == 0)
                     joinOptions = mergeMaps(joinOptions, { "matches" : uniqueMatches(matches), "recomputeMatches" : true });
@@ -1408,10 +1417,7 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
                 // The union's result is the first tool's body, modified: qCreatedBy(joinId) alone is EMPTY (a join then handed the next
                 // step one tool, BOOLEAN_BAD_INPUT, and no face after the second ever joined). The tools' own queries still resolve
                 // to the survivor (the consumed body resolves to nothing), so the merged body is whichever of them exists.
-                const merged = qBodyType(qUnion(concatenateArrays([joinIds, [current[seed], current[key]]])), BodyType.SHEET);
-                for (var member in done)
-                    current[member.key] = merged;
-                current[key] = merged;
+                mainQuery = qBodyType(qUnion(concatenateArrays([joinIds, [mainQuery, current[key]]])), BodyType.SHEET);
                 done[key] = true;
                 progress = true;
             }
@@ -1460,7 +1466,7 @@ function incrementalJoin(context is Context, id is Id, links is array, fillBodie
                     ~ (refusedWhy[entry.key] == undefined ? "never touched the main body" : refusedWhy[entry.key]));
             }
         }
-    return { "joined" : size(done), "left" : left, "main" : current[seed], "leftBodies" : leftBodies };
+    return { "joined" : size(done), "left" : left, "main" : mainQuery, "leftBodies" : leftBodies };
 }
 
 /** The distance from a patch's edge midpoints to the old sheet's edges within which a naked edge of the main body is part of the hole. */
