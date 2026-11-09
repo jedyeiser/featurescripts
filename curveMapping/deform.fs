@@ -1592,6 +1592,9 @@ function bridgedBoundary(context is Context, id is Id, edges is array, variant i
              "summary" : size(chosen) ~ " edges after dropping " ~ (size(items) - size(chosen)) ~ " duplicate(s), " ~ bridgeCount ~ " bridge(s), gaps " ~ gapNote ~ " um" };
 }
 
+/** A patch edge is matched to a naked edge of the main body when its middle is within this distance of it. */
+const PATCH_MATCH_GATE = 1e-4 * meter;
+
 /** An edge's end points as text, in mm (debug output). */
 function edgeEndsText(context is Context, edge is Query) returns string
 {
@@ -1827,8 +1830,25 @@ function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies
                             for (var pl in probes)
                                 deviation = max(deviation, evDistance(context, { "side0" : pl.origin, "side1" : patchFill }).distance);
                         }
-                        opBoolean(context, id + ("patchJoin" ~ tag), { "tools" : qUnion([main, patchFill]), "operationType" : BooleanOperationType.UNION,
-                                                                     "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true });
+                        // Explicit matches, as the standard Fill feature makes when it adds its surface to a body: each edge of the patch with the
+                        // nearest naked edge of the main body. The fill refits its boundary, so a long edge (the 137 mm strip) is a few microns
+                        // off the edge it was built on and a plain union leaves the sheets unsewn WITHOUT an error.
+                        var patchMatches = [];
+                        for (var patchEdge in evaluateQuery(context, qOwnedByBody(patchFill, EntityType.EDGE)))
+                        {
+                            const patchMiddle = evEdgeTangentLine(context, { "edge" : patchEdge, "parameter" : 0.5 }).origin;
+                            const mainEdge = nearestEdgeTo(context, patchMiddle, nakedNear);
+                            if (mainEdge.edge != undefined && mainEdge.distance < PATCH_MATCH_GATE)
+                                patchMatches = append(patchMatches, { "topology1" : mainEdge.edge, "topology2" : patchEdge, "matchType" : TopologyMatchType.COINCIDENT });
+                        }
+                        var patchJoinOptions = { "tools" : qUnion([main, patchFill]), "operationType" : BooleanOperationType.UNION,
+                                                 "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true };
+                        if (size(patchMatches) > 0)
+                            patchJoinOptions = mergeMaps(patchJoinOptions, { "matches" : uniqueMatches(patchMatches), "recomputeMatches" : true });
+                        opBoolean(context, id + ("patchJoin" ~ tag), patchJoinOptions);
+                        // A union of sheets that do not touch raises no error and leaves them apart: the patch must now be part of the main body.
+                        if (size(evaluateQuery(context, qUnion([main, patchFill]))) != 1)
+                            throw "the patch was not sewn to the main body (" ~ size(patchMatches) ~ " edge matches)";
                         opDeleteBodies(context, id + ("dropSheet" ~ tag), { "entities" : sheet });
                         done = true;
                         note = "replaced by a patch of " ~ usedLoop ~ " boundary edges" ~ (usedGuides ? " and " ~ size(guideBodies) ~ " guide points" : " (unguided)")
