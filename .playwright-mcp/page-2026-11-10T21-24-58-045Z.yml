@@ -1,0 +1,96 @@
+- generic [ref=f30e5]:
+  - navigation [ref=f30e6]:
+    - generic [ref=f30e7]:
+      - link [ref=f30e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f30e11]
+      - generic [ref=f30e13] [cursor=pointer]
+    - generic [ref=f30e16]:
+      - generic [ref=f30e18]:
+        - generic [ref=f30e19]: CurveWrapping_Full
+        - generic [ref=f30e20]: Main
+      - generic [ref=f30e22] [cursor=pointer]
+      - link "Curve Features" [ref=f30e26] [cursor=pointer]:
+        - /url: /documents?nodeId=51ee18495de21143dcea6ac7&resourceType=folder
+    - generic [ref=f30e30]:
+      - generic [ref=f30e41] [cursor=pointer]
+      - generic [ref=f30e47] [cursor=pointer]
+      - button "Notifications" [ref=f30e52] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f30e60]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f30e63] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f30e68] [cursor=pointer]
+      - button "Share" [ref=f30e72] [cursor=pointer]
+      - generic "Help menu" [ref=f30e74] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f30e78] [cursor=pointer]
+  - generic [ref=f30e88]:
+    - generic [ref=f30e90]:
+      - generic [ref=f30e91]:
+        - generic [ref=f30e92]:
+          - generic [ref=f30e93] [cursor=pointer]
+          - generic [ref=f30e96] [cursor=pointer]
+          - generic [ref=f30e99] [cursor=pointer]
+          - generic [ref=f30e102] [cursor=pointer]
+          - generic [ref=f30e105] [cursor=pointer]
+          - generic [ref=f30e108] [cursor=pointer]
+          - generic [ref=f30e111] [cursor=pointer]
+          - generic [ref=f30e114] [cursor=pointer]
+        - generic [ref=f30e118] [cursor=pointer]
+      - generic [ref=f30e122] [cursor=pointer]
+    - generic [ref=f30e129]:
+      - generic [ref=f30e130]:
+        - paragraph [ref=f30e136]: Loading studio data…
+        - generic [ref=f30e137]:
+          - generic [ref=f30e140]:
+            - generic [ref=f30e142]:
+              - generic [ref=f30e143]:
+                - generic [ref=f30e145]:
+                  - button [ref=f30e147] [cursor=pointer]
+                  - textbox "Filter by name or type" [ref=f30e152]
+                - generic [ref=f30e153]:
+                  - generic [ref=f30e154]: Features (0)
+                  - button [disabled] [ref=f30e155]
+                  - button [ref=f30e158] [cursor=pointer]
+                  - button [ref=f30e161] [cursor=pointer]
+              - generic [ref=f30e165]:
+                - list
+            - generic [ref=f30e172]:
+              - generic [ref=f30e174] [cursor=pointer]
+              - generic [ref=f30e177]: Parts (0)
+          - generic [ref=f30e181]:
+            - generic [ref=f30e183] [cursor=pointer]
+            - generic [ref=f30e188]:
+              - button [ref=f30e189] [cursor=pointer]
+              - button [ref=f30e193] [cursor=pointer]
+              - button [ref=f30e197] [cursor=pointer]
+            - generic [ref=f30e201]:
+              - generic [ref=f30e202] [cursor=pointer]
+              - generic [ref=f30e206] [cursor=pointer]
+              - generic [ref=f30e210] [cursor=pointer]
+              - generic [ref=f30e214] [cursor=pointer]
+              - generic [ref=f30e217] [cursor=pointer]
+      - generic [ref=f30e221]:
+        - img [ref=f30e224] [cursor=pointer]
+        - generic [ref=f30e227]:
+          - generic [ref=f30e228] [cursor=pointer]: Test
+          - generic [ref=f30e234]: K032_Test Copy 1
+          - generic [ref=f30e245] [cursor=pointer]: SKH_Test
+          - generic [ref=f30e253] [cursor=pointer]: SWCNT_Tests
+          - generic [ref=f30e259] [cursor=pointer]: SWCNT_Tests Copy 2
+          - generic [ref=f30e270] [cursor=pointer]: Test2
+          - generic [ref=f30e278] [cursor=pointer]: ONE Testing
+          - generic [ref=f30e286] [cursor=pointer]: CNT Testing
+          - generic [ref=f30e294] [cursor=pointer]: CNT Testing Copy 1
+          - generic [ref=f30e302] [cursor=pointer]: CNT Testing Copy 1 Copy 1
+          - generic [ref=f30e310] [cursor=pointer]: deform
+          - generic [ref=f30e316] [cursor=pointer]: wrapAndLoft_i
+          - generic [ref=f30e322] [cursor=pointer]: wrapCurve
+          - generic [ref=f30e328] [cursor=pointer]: Utils
+          - generic [ref=f30e334] [cursor=pointer]: curveMappingCore
+          - generic [ref=f30e340] [cursor=pointer]: Deform tests
+          - generic [ref=f30e346] [cursor=pointer]: stress_sources
+          - generic [ref=f30e352] [cursor=pointer]: canonical_edges
+          - generic [ref=f30e358] [cursor=pointer]: deform_weld
+          - generic [ref=f30e364] [cursor=pointer]: deform_wrapped
+        - generic [ref=f30e370]:
+          - listitem [ref=f30e371]
+          - listitem [ref=f30e375]

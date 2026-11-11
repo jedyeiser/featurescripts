@@ -1,0 +1,165 @@
+- generic [ref=f41e5]:
+  - navigation [ref=f41e6]:
+    - generic [ref=f41e7]:
+      - link [ref=f41e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f41e11]
+      - generic [ref=f41e13] [cursor=pointer]
+    - generic [ref=f41e16]:
+      - generic [ref=f41e18]:
+        - generic [ref=f41e19]: Curve_Wrapping_Public
+        - generic [ref=f41e20]: B1
+      - generic [ref=f41e22] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f41e26] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f41e30]:
+      - generic [ref=f41e33] [cursor=pointer]
+      - generic [ref=f41e39] [cursor=pointer]
+      - button "Notifications" [ref=f41e44] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f41e52]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f41e55] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f41e60] [cursor=pointer]
+      - button "Share" [ref=f41e64] [cursor=pointer]
+      - generic "Help menu" [ref=f41e66] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f41e70] [cursor=pointer]
+  - generic [ref=f41e80]:
+    - generic [ref=f41e82]:
+      - generic [ref=f41e83]:
+        - generic [ref=f41e84]:
+          - generic [ref=f41e85] [cursor=pointer]
+          - generic [ref=f41e88] [cursor=pointer]
+          - generic [ref=f41e91] [cursor=pointer]
+          - generic [ref=f41e94] [cursor=pointer]
+          - generic [ref=f41e97] [cursor=pointer]
+          - generic [ref=f41e100] [cursor=pointer]
+          - generic [ref=f41e103] [cursor=pointer]
+          - generic [ref=f41e106] [cursor=pointer]
+        - generic [ref=f41e110] [cursor=pointer]
+      - generic [ref=f41e114] [cursor=pointer]
+    - generic [ref=f41e121]:
+      - generic [ref=f41e128]:
+        - generic [ref=f41e140]:
+          - generic [ref=f41e141]: Sketch
+          - generic [ref=f41e153]:
+            - generic [ref=f41e154] [cursor=pointer]
+            - generic [ref=f41e158] [cursor=pointer]
+            - generic [ref=f41e162] [cursor=pointer]
+            - generic [ref=f41e166] [cursor=pointer]
+            - generic [ref=f41e171]:
+              - generic [ref=f41e172] [cursor=pointer]
+              - generic [ref=f41e176] [cursor=pointer]
+          - generic [ref=f41e182]:
+            - generic [ref=f41e184]:
+              - generic [ref=f41e185] [cursor=pointer]
+              - generic [ref=f41e189] [cursor=pointer]
+            - generic [ref=f41e192] [cursor=pointer]
+            - generic [ref=f41e197]:
+              - generic [ref=f41e198] [cursor=pointer]
+              - generic [ref=f41e202] [cursor=pointer]
+            - generic [ref=f41e205] [cursor=pointer]
+            - generic [ref=f41e209] [cursor=pointer]
+            - generic [ref=f41e213] [cursor=pointer]
+            - generic [ref=f41e217] [cursor=pointer]
+          - generic [ref=f41e224]:
+            - generic [ref=f41e226]:
+              - generic [ref=f41e227] [cursor=pointer]
+              - generic [ref=f41e231] [cursor=pointer]
+            - generic [ref=f41e234] [cursor=pointer]
+          - generic [ref=f41e241]:
+            - generic [ref=f41e242] [cursor=pointer]
+            - generic [ref=f41e246] [cursor=pointer]
+            - generic [ref=f41e251]:
+              - generic [ref=f41e252] [cursor=pointer]
+              - generic [ref=f41e256] [cursor=pointer]
+            - generic [ref=f41e259] [cursor=pointer]
+          - generic [ref=f41e266]:
+            - generic [ref=f41e267] [cursor=pointer]
+            - generic [ref=f41e271] [cursor=pointer]
+            - generic [ref=f41e275] [cursor=pointer]
+            - generic [ref=f41e279] [cursor=pointer]
+          - generic [ref=f41e287]:
+            - generic [ref=f41e288] [cursor=pointer]
+            - generic [ref=f41e292] [cursor=pointer]
+          - generic [ref=f41e299]:
+            - generic [ref=f41e300] [cursor=pointer]: SA
+            - generic [ref=f41e303] [cursor=pointer]
+          - generic [ref=f41e310] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f41e317] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f41e318]:
+            - generic [ref=f41e319]: alt/⌥
+            - generic [ref=f41e320]: c
+      - generic [ref=f41e324]:
+        - generic [ref=f41e327]:
+          - generic [ref=f41e329]:
+            - generic [ref=f41e330]:
+              - generic [ref=f41e332]:
+                - button [ref=f41e334] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f41e339]
+              - generic [ref=f41e340]:
+                - generic [ref=f41e341]: Features (10)
+                - button [ref=f41e342] [cursor=pointer]
+                - button [ref=f41e345] [cursor=pointer]
+                - button [ref=f41e348] [cursor=pointer]
+            - generic [ref=f41e352]:
+              - generic [ref=f41e353]:
+                - generic [ref=f41e355]:
+                  - generic [ref=f41e356] [cursor=pointer]
+                  - generic [ref=f41e359]: Default geometry
+                - generic [ref=f41e361]: Origin
+                - generic [ref=f41e371]: Top
+                - generic [ref=f41e381]: Front
+                - generic [ref=f41e391]: Right
+                - generic [ref=f41e402]:
+                  - generic [ref=f41e404] [cursor=pointer]
+                  - generic [ref=f41e407]: Derived 1
+                - generic [ref=f41e417]: Transform 1
+                - generic [ref=f41e425]: Transform 2
+                - generic [ref=f41e433]: Sketch 1
+                - generic [ref=f41e441]: Derived 2
+                - generic [ref=f41e454]: Wrap and Loft 1
+              - list
+          - generic [ref=f41e469]:
+            - generic [ref=f41e471]:
+              - generic [ref=f41e473] [cursor=pointer]
+              - generic [ref=f41e476]: Parts (0)
+            - generic [ref=f41e480]:
+              - generic [ref=f41e482] [cursor=pointer]
+              - generic [ref=f41e485]: Surfaces (1)
+            - generic [ref=f41e490]:
+              - generic [ref=f41e492] [cursor=pointer]
+              - generic [ref=f41e495]: Curves (4)
+        - generic [ref=f41e500]:
+          - generic [ref=f41e502] [cursor=pointer]
+          - generic [ref=f41e506]:
+            - generic [ref=f41e508]:
+              - button [ref=f41e509] [cursor=pointer]
+              - button [ref=f41e513] [cursor=pointer]
+              - button [ref=f41e517] [cursor=pointer]
+            - generic [ref=f41e521] [cursor=pointer]
+          - generic [ref=f41e526]:
+            - generic [ref=f41e527] [cursor=pointer]
+            - generic [ref=f41e531] [cursor=pointer]
+            - generic [ref=f41e535] [cursor=pointer]
+            - generic [ref=f41e539] [cursor=pointer]
+            - generic [ref=f41e543] [cursor=pointer]
+            - generic [ref=f41e547] [cursor=pointer]
+            - generic [ref=f41e550] [cursor=pointer]
+      - generic [ref=f41e554]:
+        - img [ref=f41e557] [cursor=pointer]
+        - generic [ref=f41e560]:
+          - generic [ref=f41e561] [cursor=pointer]: Test
+          - generic [ref=f41e567]: SKH_Testing
+          - generic [ref=f41e575] [cursor=pointer]: ONE Testing
+          - generic [ref=f41e583] [cursor=pointer]: CNT_Testing
+          - generic [ref=f41e591] [cursor=pointer]: Test_Real
+          - generic [ref=f41e599] [cursor=pointer]: measureBetweenCurves
+          - generic [ref=f41e605] [cursor=pointer]: Curve Wrapping Info.pdf
+          - generic [ref=f41e611] [cursor=pointer]: resources
+          - generic [ref=f41e617] [cursor=pointer]: wrapAndLoft
+          - generic [ref=f41e623] [cursor=pointer]: wrapCurve
+          - generic [ref=f41e629] [cursor=pointer]: deform
+          - generic [ref=f41e635] [cursor=pointer]: Deform tests
+        - generic [ref=f41e641]:
+          - listitem [ref=f41e642]
+          - listitem [ref=f41e646]

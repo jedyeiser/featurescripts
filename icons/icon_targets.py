@@ -51,4 +51,5 @@ TARGETS = [
     ("publish_tools", "primitive/primitive_table", "primitive_tables"),  # 2026-09-28, draft A; table annotation wired by hand
     ("publish_tools", "layout/auto_layout", "auto_layout"),  # 2026-10-28, packed boxes + blue origin dot
     ("publish_tools", "export/export_tag", "export_tag"),  # 2026-10-28, tag outline + blue hole and line
+    ("curveMapping_public", "deformTag", "deform_tag"),  # 2026-11-11, grey From line, blue To curve, dashed links
 ]

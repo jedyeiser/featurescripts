@@ -1,0 +1,412 @@
+FeatureScript 3083;
+import(path : "onshape/std/common.fs", version : "3083.0");
+// IMPORT: deform_tag_icon.svg (feature icon)
+IconNamespace::import(path : "416d971d75cdf57db8f459e6", version : "1d0a4cbca37efaa00cc6e0f3");
+
+/**
+ * Deform tag: prepares geometry for the eocDataTools API deform (Geometry > Deform). It changes no geometry. It writes
+ * a schema-versioned attribute (deformRole, value schema "deformRole/1") on the picked entities, and the app reads the
+ * tags with one evaluateFeatureScript (qHasAttribute / getAttribute, grouped on `group` and `role`).
+ *
+ * One tag feature per deform group. A group is named by the user and must be unique in the Part Studio.
+ *
+ * The attribute value is an ARRAY of tag maps (an entity may belong to several groups or roles). Each tag map:
+ *   schema, group, role ("from" | "to" | "source" | "refFrom" | "refTo"), index (pick order within the role),
+ *   name (the owner body's name when the dialog was last edited), feature (this feature's id), extra (hidden text),
+ *   and on from / to / refFrom / refTo entities the options: prevailing, extension, flipFrom, flipTo, maxKinkDeg,
+ *   smoothMaxDeviationMm, accuracy, outputName. Reference points also carry originMm.
+ *
+ * The dialog's parameter list is frozen once published (correction 64): new options go into `extraOptions`, which is
+ * copied into the attribute as text.
+ */
+
+/** Attribute name; the value carries the schema string. */
+export const DEFORM_TAG_ATTRIBUTE = "deformRole";
+export const DEFORM_TAG_SCHEMA = "deformRole/1";
+
+/** Direction that stays fixed while the chains are matched (or none). */
+export enum DeformTagPrevailing
+{
+    annotation { "Name" : "None" }
+    NONE,
+    annotation { "Name" : "+X" }
+    PLUS_X,
+    annotation { "Name" : "-X" }
+    MINUS_X,
+    annotation { "Name" : "+Y" }
+    PLUS_Y,
+    annotation { "Name" : "-Y" }
+    MINUS_Y,
+    annotation { "Name" : "+Z" }
+    PLUS_Z,
+    annotation { "Name" : "-Z" }
+    MINUS_Z
+}
+
+/** How the mapping continues past the ends of a chain. */
+export enum DeformTagExtension
+{
+    annotation { "Name" : "Tangent" }
+    TANGENT,
+    annotation { "Name" : "Osculating" }
+    OSCULATING
+}
+
+/** Fit accuracy the backend should use. */
+export enum DeformTagAccuracy
+{
+    annotation { "Name" : "Standard" }
+    STANDARD,
+    annotation { "Name" : "Fine" }
+    FINE
+}
+
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Deform tag",
+            "Feature Type Description" : "Tags the From and To chains, reference points and source geometry of one deform group, and records the deform options, for the API deform. Changes no geometry.",
+            "Editing Logic Function" : "deformTagEditLogic" }
+export const deformTag = defineFeature(function(context is Context, id is Id, definition is map)
+    precondition
+    {
+        annotation { "Group Name" : "Group", "Collapsed By Default" : false }
+        {
+            annotation { "Name" : "Group name", "Default" : "", "MaxLength" : 128,
+                        "Description" : "Names this deform. Must be unique in the Part Studio: the app keys its records on it." }
+            definition.groupName is string;
+
+            annotation { "Name" : "Output name", "Default" : "", "MaxLength" : 128,
+                        "Description" : "Names the deformed result. Empty = the app's default." }
+            definition.outputName is string;
+        }
+
+        annotation { "Group Name" : "Geometry", "Collapsed By Default" : false }
+        {
+            annotation { "Name" : "From chain", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
+                        "Description" : "Edges or wire bodies the source currently follows." }
+            definition.fromChain is Query;
+
+            annotation { "Name" : "To chain", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
+                        "Description" : "Edges or wire bodies the source is deformed onto." }
+            definition.toChain is Query;
+
+            annotation { "Name" : "Reference point on From", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                        "Description" : "Optional vertex or mate connector on the From chain." }
+            definition.refFrom is Query;
+
+            annotation { "Name" : "Reference point on To", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1,
+                        "Description" : "Optional vertex or mate connector on the To chain." }
+            definition.refTo is Query;
+
+            annotation { "Name" : "Source", "Filter" : (EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE)) || EntityType.FACE,
+                        "Description" : "Bodies, faces or wire bodies to deform." }
+            definition.source is Query;
+        }
+
+        annotation { "Group Name" : "Options", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Prevailing direction", "Default" : DeformTagPrevailing.NONE, "UIHint" : UIHint.SHOW_LABEL }
+            definition.prevailing is DeformTagPrevailing;
+
+            annotation { "Name" : "End extension", "Default" : DeformTagExtension.TANGENT, "UIHint" : UIHint.SHOW_LABEL }
+            definition.extension is DeformTagExtension;
+
+            annotation { "Name" : "Flip From direction", "Default" : false }
+            definition.flipFrom is boolean;
+
+            annotation { "Name" : "Flip To direction", "Default" : false }
+            definition.flipTo is boolean;
+
+            annotation { "Name" : "Max kink angle", "Description" : "0 = the app's default." }
+            isAngle(definition.maxKink, { (degree) : [0, 0, 180] } as AngleBoundSpec);
+
+            annotation { "Name" : "Smooth max deviation", "Description" : "0 = the app's default." }
+            isLength(definition.smoothMaxDeviation, { (millimeter) : [0, 0, 1000] } as LengthBoundSpec);
+
+            annotation { "Name" : "Accuracy", "Default" : DeformTagAccuracy.STANDARD, "UIHint" : UIHint.SHOW_LABEL }
+            definition.accuracy is DeformTagAccuracy;
+
+            // Room for options added after the first version (correction 64); copied into the attribute as text.
+            annotation { "Name" : "Extra options", "Default" : "", "MaxLength" : 4096, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
+            definition.extraOptions is string;
+        }
+
+        // Owner-body names, one line per picked entity in pick order, captured by the editing logic (the feature body
+        // cannot read names, correction 36).
+        annotation { "Name" : "From names", "Default" : "", "MaxLength" : 8192, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
+        definition.fromNames is string;
+
+        annotation { "Name" : "To names", "Default" : "", "MaxLength" : 8192, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
+        definition.toNames is string;
+
+        annotation { "Name" : "Source names", "Default" : "", "MaxLength" : 8192, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
+        definition.sourceNames is string;
+    }
+    {
+        definition.groupName = replace(definition.groupName, "^\\s+|\\s+$", "");
+        if (definition.groupName == "")
+        {
+            throw regenError("Enter a group name.", ["groupName"]);
+        }
+        if (isQueryEmpty(context, definition.fromChain))
+        {
+            throw regenError("Select the From chain.", ["fromChain"]);
+        }
+        if (isQueryEmpty(context, definition.toChain))
+        {
+            throw regenError("Select the To chain.", ["toChain"]);
+        }
+        if (isQueryEmpty(context, definition.source))
+        {
+            throw regenError("Select the geometry to deform.", ["source"]);
+        }
+
+        var warnings = [];
+
+        // Another tag with this group name: the app would merge the two.
+        if (groupInUse(context, definition.groupName))
+        {
+            warnings = append(warnings, "Another Deform tag already uses the group name '" ~ definition.groupName ~ "'.");
+        }
+
+        const options = {
+                "prevailing" : prevailingText(definition.prevailing),
+                "extension" : definition.extension == DeformTagExtension.OSCULATING ? "osculating" : "tangent",
+                "flipFrom" : definition.flipFrom,
+                "flipTo" : definition.flipTo,
+                "maxKinkDeg" : definition.maxKink / degree,
+                "smoothMaxDeviationMm" : definition.smoothMaxDeviation / millimeter,
+                "accuracy" : definition.accuracy == DeformTagAccuracy.FINE ? "fine" : "standard",
+                "outputName" : definition.outputName
+            };
+
+        // Reference points first: their origins (mm) ride on every From / To tag as refFromOriginMm / refToOriginMm,
+        // so the app has them even when a mate connector cannot carry a tag (unverified).
+        var refTargets = {};
+        var chainOptions = options;
+        for (var spec in [{ "role" : "refFrom", "query" : definition.refFrom }, { "role" : "refTo", "query" : definition.refTo }])
+        {
+            if (isQueryEmpty(context, spec.query))
+            {
+                continue;
+            }
+            const connectors = evaluateQuery(context, qBodyType(qOwnerBody(spec.query), BodyType.MATE_CONNECTOR));
+            var origin;
+            if (size(connectors) > 0)
+            {
+                refTargets[spec.role] = { "entity" : connectors[0], "isConnector" : true };
+                origin = evMateConnector(context, { "mateConnector" : connectors[0] }).origin;
+            }
+            else
+            {
+                refTargets[spec.role] = { "entity" : evaluateQuery(context, spec.query)[0], "isConnector" : false };
+                origin = evVertexPoint(context, { "vertex" : spec.query });
+            }
+            chainOptions[spec.role ~ "OriginMm"] = [origin[0] / millimeter, origin[1] / millimeter, origin[2] / millimeter];
+        }
+
+        var replaced = 0;
+        var counts = { "refFrom" : 0, "refTo" : 0 };
+        const roles = [
+                { "role" : "from", "query" : definition.fromChain, "names" : definition.fromNames, "options" : chainOptions },
+                { "role" : "to", "query" : definition.toChain, "names" : definition.toNames, "options" : chainOptions },
+                { "role" : "source", "query" : definition.source, "names" : definition.sourceNames, "options" : {} }
+            ];
+        for (var spec in roles)
+        {
+            const entities = evaluateQuery(context, spec.query);
+            const names = splitNames(spec.names, size(entities));
+            for (var i = 0; i < size(entities); i += 1)
+            {
+                replaced += tagEntity(context, id, definition, entities[i], spec.role, i, names[i], spec.options, {});
+            }
+            counts[spec.role] = size(entities);
+        }
+
+        for (var role in keys(refTargets))
+        {
+            const refInfo = refTargets[role];
+            const refOptions = { "originMm" : chainOptions[role ~ "OriginMm"] };
+            if (refInfo.isConnector)
+            {
+                // Setting an attribute on a mate connector body is unverified: a refusal is reported, not fatal.
+                var tagged = false;
+                try silent
+                {
+                    replaced += tagEntity(context, id, definition, refInfo.entity, role, 0, "", options, refOptions);
+                    tagged = true;
+                }
+                if (!tagged)
+                {
+                    warnings = append(warnings, "The mate connector could not take a tag; its origin is carried on the " ~ (role == "refFrom" ? "From" : "To") ~ " tags instead.");
+                }
+            }
+            else
+            {
+                replaced += tagEntity(context, id, definition, refInfo.entity, role, 0, "", options, refOptions);
+            }
+            counts[role] = 1;
+        }
+
+        if (replaced > 0)
+        {
+            warnings = append(warnings, replaced ~ " tag" ~ (replaced == 1 ? "" : "s")
+                ~ " of an earlier Deform tag with this group and role were replaced.");
+        }
+
+        const summary = "Tagged group '" ~ definition.groupName ~ "': " ~ counts.from ~ " From, " ~ counts.to ~ " To, "
+            ~ counts.source ~ " source" ~ (counts.refFrom == 1 ? ", From reference" : "") ~ (counts.refTo == 1 ? ", To reference" : "") ~ ".";
+        if (size(warnings) > 0)
+        {
+            reportFeatureWarning(context, id, join(warnings, " ") ~ " " ~ summary);
+        }
+        else
+        {
+            reportFeatureInfo(context, id, summary);
+        }
+    }, { "groupName" : "", "outputName" : "", "prevailing" : DeformTagPrevailing.NONE, "extension" : DeformTagExtension.TANGENT,
+         "flipFrom" : false, "flipTo" : false, "maxKink" : 0 * degree, "smoothMaxDeviation" : 0 * millimeter,
+         "accuracy" : DeformTagAccuracy.STANDARD, "extraOptions" : "", "fromNames" : "", "toNames" : "", "sourceNames" : "",
+         "refFrom" : qNothing(), "refTo" : qNothing() });
+
+/** Writes one tag; returns 1 when it replaced an existing Deform tag on the entity, else 0. */
+function tagEntity(context is Context, id is Id, definition is map, entity is Query, role is string, index is number,
+    entityName is string, options is map, more is map) returns number
+{
+    var data = {
+            "schema" : DEFORM_TAG_SCHEMA,
+            "group" : definition.groupName,
+            "role" : role,
+            "index" : index,
+            "name" : entityName,
+            "feature" : toString(id),
+            "extra" : definition.extraOptions
+        };
+    for (var entry in options)
+    {
+        data[entry.key] = entry.value;
+    }
+    for (var entry in more)
+    {
+        data[entry.key] = entry.value;
+    }
+    // The attribute is an ARRAY of tag maps, so several groups (or roles) can share one entity: keep the others,
+    // replace the entry of the same group and role.
+    var tags = [];
+    var replaced = 0;
+    const existing = getAttribute(context, { "entity" : entity, "name" : DEFORM_TAG_ATTRIBUTE });
+    if (existing is array)
+    {
+        for (var tag in existing)
+        {
+            if (tag is map && tag.group == data.group && tag.role == data.role)
+            {
+                replaced = 1;
+            }
+            else
+            {
+                tags = append(tags, tag);
+            }
+        }
+    }
+    tags = append(tags, data);
+    setAttribute(context, { "entities" : entity, "name" : DEFORM_TAG_ATTRIBUTE, "attribute" : tags });
+    return replaced;
+}
+
+/** True when an earlier Deform tag (any entity type) already uses the group name. */
+function groupInUse(context is Context, groupName is string) returns boolean
+{
+    const tagged = qUnion([
+                qHasAttribute(qEverything(EntityType.BODY), DEFORM_TAG_ATTRIBUTE),
+                qHasAttribute(qEverything(EntityType.EDGE), DEFORM_TAG_ATTRIBUTE),
+                qHasAttribute(qEverything(EntityType.FACE), DEFORM_TAG_ATTRIBUTE),
+                qHasAttribute(qEverything(EntityType.VERTEX), DEFORM_TAG_ATTRIBUTE)
+            ]);
+    for (var entity in evaluateQuery(context, tagged))
+    {
+        const tags = getAttribute(context, { "entity" : entity, "name" : DEFORM_TAG_ATTRIBUTE });
+        if (tags is array)
+        {
+            for (var tag in tags)
+            {
+                if (tag is map && tag.group == groupName)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/** The stored names as an array of exactly `count` strings; empty strings when the count no longer matches. */
+function splitNames(stored is string, count is number) returns array
+{
+    var names = [];
+    if (stored != "")
+    {
+        names = splitByRegexp(stored, "\n");
+    }
+    if (size(names) != count)
+    {
+        names = [];
+    }
+    var result = [];
+    for (var i = 0; i < count; i += 1)
+    {
+        result = append(result, size(names) == 0 ? "" : names[i]);
+    }
+    return result;
+}
+
+function prevailingText(p is DeformTagPrevailing) returns string
+{
+    if (p == DeformTagPrevailing.PLUS_X)
+    {
+        return "+x";
+    }
+    if (p == DeformTagPrevailing.MINUS_X)
+    {
+        return "-x";
+    }
+    if (p == DeformTagPrevailing.PLUS_Y)
+    {
+        return "+y";
+    }
+    if (p == DeformTagPrevailing.MINUS_Y)
+    {
+        return "-y";
+    }
+    if (p == DeformTagPrevailing.PLUS_Z)
+    {
+        return "+z";
+    }
+    if (p == DeformTagPrevailing.MINUS_Z)
+    {
+        return "-z";
+    }
+    return "none";
+}
+
+/** One line per entity: the name of its owner body (the entity itself when it is a body), in pick order. */
+function ownerNames(context is Context, selection is Query) returns string
+{
+    var lines = [];
+    for (var entity in evaluateQuery(context, selection))
+    {
+        const owner = evaluateQuery(context, qOwnerBody(entity));
+        const target = size(owner) > 0 ? owner[0] : entity;
+        const name = getProperty(context, { "entity" : target, "propertyType" : PropertyType.NAME });
+        lines = append(lines, name is string ? name : "");
+    }
+    return join(lines, "\n");
+}
+
+/** Captures the owner-body names of the picks, so a later rename of a source does not lose the pairing. */
+export function deformTagEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
+    isCreating is boolean, specifiedParameters is map, hiddenBodies is Query) returns map
+{
+    definition.fromNames = ownerNames(context, definition.fromChain);
+    definition.toNames = ownerNames(context, definition.toChain);
+    definition.sourceNames = ownerNames(context, definition.source);
+    return definition;
+}

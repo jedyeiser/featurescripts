@@ -1,0 +1,189 @@
+- generic [ref=f40e3]:
+  - navigation [ref=f40e4]:
+    - generic [ref=f40e5]:
+      - link [ref=f40e8] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f40e9]
+      - generic [ref=f40e11] [cursor=pointer]
+    - generic [ref=f40e14]:
+      - generic [ref=f40e16]:
+        - generic [ref=f40e17]: Curve_Wrapping_Public
+        - generic [ref=f40e18]: B1
+      - generic [ref=f40e78] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f40e82] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f40e19]:
+      - generic [ref=f40e87] [cursor=pointer]
+      - generic [ref=f40e93] [cursor=pointer]
+      - button "Notifications" [ref=f40e21] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f40e29]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f40e32] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f40e37] [cursor=pointer]
+      - button "Share" [ref=f40e99] [cursor=pointer]
+      - generic "Help menu" [ref=f40e41] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f40e45] [cursor=pointer]
+  - generic [ref=f40e55]:
+    - generic [ref=f40e57]:
+      - generic [ref=f40e58]:
+        - generic [ref=f40e100]:
+          - generic [ref=f40e101] [cursor=pointer]
+          - generic [ref=f40e104] [cursor=pointer]
+          - generic [ref=f40e107] [cursor=pointer]
+          - generic [ref=f40e110] [cursor=pointer]
+          - generic [ref=f40e113] [cursor=pointer]
+          - generic [ref=f40e116] [cursor=pointer]
+          - generic [ref=f40e119] [cursor=pointer]
+          - generic [ref=f40e122] [cursor=pointer]
+        - generic [ref=f40e125] [cursor=pointer]
+      - generic [ref=f40e129] [cursor=pointer]
+    - generic [ref=f40e64]:
+      - generic [ref=f40e138]:
+        - generic [ref=f40e150]:
+          - generic [ref=f40e151]: Sketch
+          - generic [ref=f40e163]:
+            - generic [ref=f40e164] [cursor=pointer]
+            - generic [ref=f40e168] [cursor=pointer]
+            - generic [ref=f40e172] [cursor=pointer]
+            - generic [ref=f40e176] [cursor=pointer]
+            - generic [ref=f40e181]:
+              - generic [ref=f40e182] [cursor=pointer]
+              - generic [ref=f40e186] [cursor=pointer]
+          - generic [ref=f40e192]:
+            - generic [ref=f40e194]:
+              - generic [ref=f40e195] [cursor=pointer]
+              - generic [ref=f40e199] [cursor=pointer]
+            - generic [ref=f40e202] [cursor=pointer]
+            - generic [ref=f40e207]:
+              - generic [ref=f40e208] [cursor=pointer]
+              - generic [ref=f40e212] [cursor=pointer]
+            - generic [ref=f40e215] [cursor=pointer]
+            - generic [ref=f40e219] [cursor=pointer]
+            - generic [ref=f40e223] [cursor=pointer]
+            - generic [ref=f40e227] [cursor=pointer]
+          - generic [ref=f40e234]:
+            - generic [ref=f40e236]:
+              - generic [ref=f40e237] [cursor=pointer]
+              - generic [ref=f40e241] [cursor=pointer]
+            - generic [ref=f40e244] [cursor=pointer]
+          - generic [ref=f40e251]:
+            - generic [ref=f40e252] [cursor=pointer]
+            - generic [ref=f40e256] [cursor=pointer]
+            - generic [ref=f40e261]:
+              - generic [ref=f40e262] [cursor=pointer]
+              - generic [ref=f40e266] [cursor=pointer]
+            - generic [ref=f40e269] [cursor=pointer]
+          - generic [ref=f40e276]:
+            - generic [ref=f40e277] [cursor=pointer]
+            - generic [ref=f40e281] [cursor=pointer]
+            - generic [ref=f40e285] [cursor=pointer]
+            - generic [ref=f40e289] [cursor=pointer]
+          - generic [ref=f40e297]:
+            - generic [ref=f40e298] [cursor=pointer]
+            - generic [ref=f40e302] [cursor=pointer]
+          - generic [ref=f40e309]:
+            - generic [ref=f40e310] [cursor=pointer]: SA
+            - generic [ref=f40e313] [cursor=pointer]
+          - generic [ref=f40e320] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f40e327] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f40e328]:
+            - generic [ref=f40e329]: alt/⌥
+            - generic [ref=f40e330]: c
+      - generic [ref=f40e72]:
+        - generic [ref=f40e334]:
+          - generic [ref=f40e336]:
+            - generic [ref=f40e337]:
+              - generic [ref=f40e339]:
+                - button [ref=f40e341] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f40e346]
+              - generic [ref=f40e347]:
+                - generic [ref=f40e348]: Features (26)
+                - button [ref=f40e349] [cursor=pointer]
+                - button [ref=f40e352] [cursor=pointer]
+                - button [ref=f40e355] [cursor=pointer]
+            - generic [ref=f40e359]:
+              - generic [ref=f40e360]:
+                - generic [ref=f40e362]:
+                  - generic [ref=f40e363] [cursor=pointer]
+                  - generic [ref=f40e366]: Default geometry
+                - generic [ref=f40e368]: Origin
+                - generic [ref=f40e378]: Top
+                - generic [ref=f40e388]: Front
+                - generic [ref=f40e398]: Right
+                - generic [ref=f40e408]: Sketch 1
+                - generic [ref=f40e418]: Routing curve (1262.029 mm)
+                - generic [ref=f40e426]: Sketch 2
+                - generic [ref=f40e436]: Sketch 3
+                - generic [ref=f40e446]: Wrap Curve 1
+                - generic [ref=f40e453]: Sketch 4
+                - generic [ref=f40e463]: Sketch 5
+                - generic [ref=f40e473]: Wrap and Loft 1
+                - generic [ref=f40e481]:
+                  - generic [ref=f40e483] [cursor=pointer]
+                  - generic [ref=f40e486]: Derive_Pucks
+                - generic [ref=f40e496]: Replace face 1
+                - generic [ref=f40e504]: Replace face 2
+                - generic [ref=f40e512]: toCurve
+                - generic [ref=f40e520]: Trim curve 1
+                - generic [ref=f40e528]: Trim curve 2
+                - generic [ref=f40e536]: CopyFromCurve
+                - generic [ref=f40e544]: CreateToCurve
+                - generic [ref=f40e552]: Deform 1
+                - generic [ref=f40e559]: "#TransformedFaces"
+                - generic [ref=f40e567]: Wrap Curve 3
+                - generic [ref=f40e574]: 3D fit spline 1
+                - generic [ref=f40e582]: Transform 1
+                - generic [ref=f40e590]: Wrap Curve 2
+              - list
+          - generic [ref=f40e605]:
+            - generic [ref=f40e607]:
+              - generic [ref=f40e609] [cursor=pointer]
+              - generic [ref=f40e612]: Parts (4)
+            - generic [ref=f40e616]: 25A
+            - generic [ref=f40e628]: 25B
+            - generic [ref=f40e640]: Fillets Removed A
+            - generic [ref=f40e652]: Fillets Removed B
+            - generic [ref=f40e665]:
+              - generic [ref=f40e667] [cursor=pointer]
+              - generic [ref=f40e670]: Composite parts (1)
+            - generic [ref=f40e675]:
+              - generic [ref=f40e677] [cursor=pointer]
+              - generic [ref=f40e680]: Surfaces (3)
+            - generic [ref=f40e685]:
+              - generic [ref=f40e687] [cursor=pointer]
+              - generic [ref=f40e690]: Curves (6)
+        - generic [ref=f40e73]:
+          - generic [ref=f40e696] [cursor=pointer]
+          - generic [ref=f40e74]:
+            - generic [ref=f40e701]:
+              - button [ref=f40e702] [cursor=pointer]
+              - button [ref=f40e706] [cursor=pointer]
+              - button [ref=f40e710] [cursor=pointer]
+            - generic [ref=f40e714] [cursor=pointer]
+          - generic [ref=f40e719]:
+            - generic [ref=f40e720] [cursor=pointer]
+            - generic [ref=f40e724] [cursor=pointer]
+            - generic [ref=f40e728] [cursor=pointer]
+            - generic [ref=f40e732] [cursor=pointer]
+            - generic [ref=f40e736] [cursor=pointer]
+            - generic [ref=f40e740] [cursor=pointer]
+            - generic [ref=f40e744] [cursor=pointer]
+            - generic [ref=f40e747] [cursor=pointer]
+      - generic [ref=f40e751]:
+        - img [ref=f40e754] [cursor=pointer]
+        - generic [ref=f40e757]:
+          - generic [ref=f40e758]: Test
+          - generic [ref=f40e764] [cursor=pointer]: SKH_Testing
+          - generic [ref=f40e772] [cursor=pointer]: ONE Testing
+          - generic [ref=f40e780] [cursor=pointer]: CNT_Testing
+          - generic [ref=f40e788] [cursor=pointer]: Test_Real
+          - generic [ref=f40e796] [cursor=pointer]: measureBetweenCurves
+          - generic [ref=f40e802] [cursor=pointer]: Curve Wrapping Info.pdf
+          - generic [ref=f40e808] [cursor=pointer]: resources
+          - generic [ref=f40e814] [cursor=pointer]: wrapAndLoft
+          - generic [ref=f40e820] [cursor=pointer]: wrapCurve
+          - generic [ref=f40e826] [cursor=pointer]: deform
+          - generic [ref=f40e832] [cursor=pointer]: Deform tests
+        - generic [ref=f40e838]:
+          - listitem [ref=f40e839]
+          - listitem [ref=f40e843]

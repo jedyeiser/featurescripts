@@ -1,0 +1,92 @@
+- generic [ref=f6e5]:
+  - navigation [ref=f6e6]:
+    - generic [ref=f6e7]:
+      - link [ref=f6e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f6e11]
+      - generic [ref=f6e13] [cursor=pointer]
+    - generic [ref=f6e16]:
+      - generic [ref=f6e18]:
+        - generic [ref=f6e19]: CurveWrapping_Full
+        - generic [ref=f6e20]: Main
+      - generic [ref=f6e22] [cursor=pointer]
+      - link "Curve Features" [ref=f6e26] [cursor=pointer]:
+        - /url: /documents?nodeId=51ee18495de21143dcea6ac7&resourceType=folder
+    - generic [ref=f6e30]:
+      - generic [ref=f6e44] [cursor=pointer]
+      - generic [ref=f6e50] [cursor=pointer]
+      - button "Notifications" [ref=f6e55] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f6e63]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f6e66] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f6e71] [cursor=pointer]
+      - button "Share" [ref=f6e75] [cursor=pointer]
+      - generic "Help menu" [ref=f6e77] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f6e81] [cursor=pointer]
+  - generic [ref=f6e91]:
+    - generic [ref=f6e93]:
+      - generic [ref=f6e94]:
+        - generic [ref=f6e95]:
+          - generic [ref=f6e96] [cursor=pointer]
+          - generic [ref=f6e99] [cursor=pointer]
+          - generic [ref=f6e102] [cursor=pointer]
+          - generic [ref=f6e105] [cursor=pointer]
+          - generic [ref=f6e108] [cursor=pointer]
+          - generic [ref=f6e111] [cursor=pointer]
+          - generic [ref=f6e114] [cursor=pointer]
+          - generic [ref=f6e117] [cursor=pointer]
+        - generic [ref=f6e121] [cursor=pointer]
+      - generic [ref=f6e125] [cursor=pointer]
+    - generic [ref=f6e132]:
+      - generic [ref=f6e133]:
+        - paragraph [ref=f6e139]: Loading studio data…
+        - generic [ref=f6e140]:
+          - generic [ref=f6e143]:
+            - generic [ref=f6e145]:
+              - generic [ref=f6e146]:
+                - generic [ref=f6e148]:
+                  - button [ref=f6e150] [cursor=pointer]
+                  - textbox "Filter by name or type" [ref=f6e155]
+                - generic [ref=f6e156]:
+                  - generic [ref=f6e157]: Features (0)
+                  - button [disabled] [ref=f6e158]
+                  - button [ref=f6e161] [cursor=pointer]
+                  - button [ref=f6e164] [cursor=pointer]
+              - generic [ref=f6e168]:
+                - list
+            - generic [ref=f6e175]:
+              - generic [ref=f6e177] [cursor=pointer]
+              - generic [ref=f6e180]: Parts (0)
+          - generic [ref=f6e184]:
+            - generic [ref=f6e186] [cursor=pointer]
+            - generic [ref=f6e191]:
+              - button [ref=f6e192] [cursor=pointer]
+              - button [ref=f6e196] [cursor=pointer]
+              - button [ref=f6e200] [cursor=pointer]
+            - generic [ref=f6e204]:
+              - generic [ref=f6e205] [cursor=pointer]
+              - generic [ref=f6e209] [cursor=pointer]
+              - generic [ref=f6e213] [cursor=pointer]
+              - generic [ref=f6e217] [cursor=pointer]
+              - generic [ref=f6e220] [cursor=pointer]
+      - generic [ref=f6e224]:
+        - img [ref=f6e227] [cursor=pointer]
+        - generic [ref=f6e230]:
+          - generic [ref=f6e231] [cursor=pointer]: Test
+          - generic [ref=f6e237] [cursor=pointer]: K032_Test
+          - generic [ref=f6e253] [cursor=pointer]: SKH_Test
+          - generic [ref=f6e261]: SWCNT_Tests
+          - generic [ref=f6e272] [cursor=pointer]: Test2
+          - generic [ref=f6e280] [cursor=pointer]: ONE Testing
+          - generic [ref=f6e288] [cursor=pointer]: CNT Testing
+          - generic [ref=f6e296] [cursor=pointer]: CNT Testing Copy 1
+          - generic [ref=f6e304] [cursor=pointer]: CNT Testing Copy 1 Copy 1
+          - generic [ref=f6e312] [cursor=pointer]: deform
+          - generic [ref=f6e318] [cursor=pointer]: wrapAndLoft_i
+          - generic [ref=f6e324] [cursor=pointer]: wrapCurve
+          - generic [ref=f6e330] [cursor=pointer]: Utils
+          - generic [ref=f6e336] [cursor=pointer]: curveMappingCore
+          - generic [ref=f6e342] [cursor=pointer]: Deform tests
+          - generic [ref=f6e348] [cursor=pointer]: stress_sources
+        - generic [ref=f6e354]:
+          - listitem [ref=f6e355]
+          - listitem [ref=f6e359]

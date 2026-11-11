@@ -110,6 +110,10 @@ first, then open only the entries whose topic matches your task. Entry bodies be
 | 86 | queries-ids | A "created by <feature>" query variable also returns that feature's sketch construction wires; filter with qSketchFilter (not qConstructionFilter) before opExtractWires. | 2283 |
 | 87 | dialog-ui | A WARNING status is drawn as an error in the feature tree; report a handled fallback that produced the intended result as INFO. | 2294 |
 | 88 | notices | A feature never println's unless the user turned on a Debug / print option; a fit or build problem the user must see goes through reportFeatureWarning, never a gated print. | see entry |
+| 89 | ops | A union of sheets that do not touch raises NO error; qCreatedBy(id, BODY) is empty after a union (the result is the first tool's body). Ask the new faces' edges for naked edges to know whether it sewed. | see entry |
+| 90 | eval-api | An eval at the end of the tree includes the user's later features (use rollbackBarIndex); heavy evals need FS_SYNC_TIMEOUT; qAdjacent(edge, FACE) counts faces of every body; range(a, b) includes b; box is reserved. | see entry |
+| 91 | performance | "Too many steps" is the per-FEATURE step limit: a println per face, or refinement of big faces, breaks a 193-face deform; there is no profiler, so measure by experiment. A first-come point budget starves late faces and stops the faces that miss their accuracy. | see entry |
+| 92 | geometry-frames | A fill meets its neighbours (G0) but creases against them; a creased sheet cannot be offset or thickened (measured: lid 44 edges over 1 deg, source 1). Use G1 fills (edgesG1) and measure the angle across every edge. | see entry |
 
 ## Critical top 10
 
@@ -2308,9 +2312,50 @@ definition's stations) must be told to move them when it is run on a shifted cop
 **Symptom**: about 80 files called println; roughly 100 calls ran with every option at its default (progress lines, fallback notes, per-run diagnostics), burying real warnings and errors in the notices pane. The user's rule: a feature must NEVER write to the FeatureScript notices unless a Debug / print option in its dialog is on.
 
 **Fix**: unconditional prints were deleted, or gated behind the feature's existing debug flag. Messages the user should see were NOT left as prints:
-- curve_core.fs pproximateFamily collects one message per fit run (interpolating spline instead of the requested tolerance; cap reached off tolerance) and reports ONE eportFeatureWarning through an optional pproximation.warnId (feature id). emitSplineCurve (so also emitRunShape) supplies its own id; direct callers add "warnId" : id (clean_wire.fs emitFittedRun, driven_offset_surface.fs coupledFits). Without warnId the fit stays silent, so older pinned callers are unaffected. Editing-logic dry fits must NOT set it.
-- evaluate_profiles.fs: "top and bottom profiles do not overlap, no middle profile" is a eportFeatureWarning (the middle profile was asked for and not built).
+- curve_core.fs pproximateFamily collects one message per fit run (interpolating spline instead of the requested tolerance; cap reached off tolerance) and reports ONE 
+eportFeatureWarning through an optional pproximation.warnId (feature id). emitSplineCurve (so also emitRunShape) supplies its own id; direct callers add "warnId" : id (clean_wire.fs emitFittedRun, driven_offset_surface.fs coupledFits). Without warnId the fit stays silent, so older pinned callers are unaffected. Editing-logic dry fits must NOT set it.
+- evaluate_profiles.fs: "top and bottom profiles do not overlap, no middle profile" is a 
+eportFeatureWarning (the middle profile was asked for and not built).
 
 **Lint**: python fscheck.py now flags any println not lexically guarded by a condition naming debug / print / verbose / trace / dbg / diag / log (finding label [println]; --println-only, --no-println; skips tests, spikes, std, archive, example_1). A reasoned exception is // fscheck: allow-println <why> on the line before. A helper whose NAME contains a guard word is only reported when a caller is ungated. Name a debug gate function after what it does (debugPrintsRun, not reportsRun) so the lint and the reader both see it.
 
 **Rule**: println only behind a user-visible Debug / print checkbox (default off), or an explicit "Print ..." option the user asked for. Everything else is reportFeatureInfo / reportFeatureWarning / regenError, or nothing (see correction 87 for which). Deleting prints from a library imported by VERSION needs a new version and a re-pin.
+
+
+## Correction 89: a union of sheets that do not touch raises no error; ask the geometry whether it sewed (2026-11-09, Deform on a 193-face ski sheet)
+
+**Symptom**: Deform reported "0 still separate" while a patch sat unsewn beside the main sheet, and a later "not sewn" check reported a patch that WAS sewn. Before that, a join loop joined 2 of 192 faces: every later join failed with BOOLEAN_BAD_INPUT.
+
+**Facts**: opBoolean UNION of sheets whose edges do not meet returns without an error and leaves both bodies. The union's result is the FIRST tool's body, modified: qCreatedBy(joinId, BODY) is EMPTY, and the consumed tool's own query resolves to nothing, so a loop that points "the main body" at qCreatedBy(joinId) hands the next join one tool. Keep the main body as qUnion([createdBy, mainQuery, toolQuery]). Body queries after a union cannot say whether it sewed; the FACES survive (qCreatedBy(id, FACE)), so count its edges that have fewer than two adjacent faces (naked): none = sewn. A patch that is only merged with a neighbour is not sewn.
+
+**Also**: after a failed patch, deleting the patch's BODY removes whatever the failed union merged it with, and deleting its FACES (opDeleteFace) removed the old strip and a sliver too: the result lost geometry. Delete by body only when the union never ran, and put a lifted face back from a copy (opExtractSurface) before deleting it; when it cannot be put back there is a hole and a stray face. Explicit TopologyMatches (COINCIDENT, nearest naked edge of each side, as the standard Fill ADD does) are needed when an edge is refit, but edges more than about 10 microns apart are not sewn by any match: the geometry has to move (rebuild the face from its neighbour's edges).
+
+**Rule**: verify the RESULT (naked edges, body count, face count at the rollback bar after the feature), never the feature's own bookkeeping.
+
+## Correction 90: eval-API traps found while verifying Deform (2026-11-09)
+
+- An eval without `rollbackBarIndex` runs the END of the tree, so it includes features the user added after yours (Fill, Boolean, Thicken) and any face-sharing edge count; pass query_params {"rollbackBarIndex": n} with n = the index just after the feature (the lid was 11).
+- A heavy eval (regen plus opThicken) exceeds the client's 30 s read timeout: set FS_SYNC_TIMEOUT=600 and run it again.
+- `qAdjacent(edge, AdjacencyType.EDGE, EntityType.FACE)` returns the faces of EVERY body at that edge, so an edge looks interior when another body shares it.
+- `range(a, b)` includes b (`range(0, n)` has n + 1 entries): it crashed every deform; use range(0, n - 1).
+- `box`, `type` are reserved words (fscheck does not catch `box`).
+- A local lambda cannot be called by fscheck (reports "undefined"): write a top-level function. `sort(array, function(a, b) {...})` works with a number comparator.
+- A feature's real message is the tooltip on its tree row (hover `.os-list-item-name`); REST says WARNING for what the UI draws red (correction 87).
+
+## Correction 91: the per-feature step limit and the first-come point budget (2026-11-09, Deform lid)
+
+**Symptom**: "Too many steps: possible infinite loop" (the limit is steps per FEATURE, cumulative; it is not catchable, later code fails too). It hit when (a) a debug line was printed for each of 193 faces, (b) a 30% refinement reserve was added before the core was cheaper.
+
+**Measured**: the 458 edges of the lid map only about 8,600 points; `inverse` and `approximateSpline` are native; the per-point cost is the projection onto the from-path (Newton on the hinted edge AND both neighbours = 3 solves). Skipping the neighbours when the foot is strictly inside the hinted edge, a 10 nm Newton tolerance, and an incrementalJoin that is linear (links indexed by face, one main-body query) cut the lid from 192 s to 172 s and made 5k more mapped points affordable. There is no step counter: find costs by experiment, keep any per-face debug output to a handful of faces.
+
+**Deform budget**: faces were built in index order from one pool, each with an allowance of twice its share. A face that misses its accuracy target stopped after ONE refinement pass whenever the next pass exceeded its allowance (the lid: a 38.8 mm2 face 22 um off, the strip 93.5 um, two 644 mm faces 11-17 um). Those boundary errors ARE the gaps between neighbouring faces (a 25 um wedge between two faces that share one exact edge in the source). A reserve that only faces missing by more than 8 um may use goes to the worst offenders; building the long faces first stops late faces being starved. Both are switches in deform.fs (MAPPED_REFINE_RESERVE, MAPPED_LONG_FACES_FIRST), OFF by default because with them the strip maps directly and its 137 mm edges miss their neighbours (4 seams left instead of 1).
+
+**Rule**: when something refuses a fix for accuracy, find out which face carries the error and why before adding a repair pass; and test every budget change on the case that already works.
+
+## Correction 92: a fill creases against its neighbours; a creased sheet will not offset or thicken (2026-11-09, Deform lid, Thicken 1 2 mm)
+
+**Symptom**: Thicken 1 (2 mm, "Opposite direction" = thickness2) failed with "Failed to thicken all selections" on the deformed lid while the source sheet thickens at every thickness up to 2 mm on that side.
+
+**Measured**: neither the selection nor the faces individually (the same 10 faces refuse 2 mm alone in the source, whose whole sheet still passes). The angle between neighbouring faces across every edge: source 404 edges, 1 over 1 deg, none over 5; lid 400 edges, 44 over 1 deg, 11 over 5, worst 17 deg, at the faces rebuilt by opFillSurface (31 faces fall back to a fill; the patches). A fill matches the boundary position only (G0), so it meets its neighbours at a kink; offsetting a creased sheet by 2 mm opens gaps. Whole lid at 0.2 and 0.5 mm passes, 0.05 and 2 mm fail.
+
+**Fix direction**: patches and re-filled faces with `edgesG1` = the hole's naked edges (adjacent to the neighbours' faces), plain G0 only as the fallback; then re-measure the crease angle across every two-face edge (an eval using evFaceTangentPlane on both faces at the edge midpoint) and re-run the thickness sweep. Not done yet; patchLeftSheets already takes a `tangent` flag.

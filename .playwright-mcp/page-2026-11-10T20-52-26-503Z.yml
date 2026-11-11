@@ -1,0 +1,191 @@
+- generic [ref=f26e5]:
+  - navigation [ref=f26e6]:
+    - generic [ref=f26e7]:
+      - link [ref=f26e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f26e11]
+      - generic [ref=f26e13] [cursor=pointer]
+    - generic [ref=f26e16]:
+      - generic [ref=f26e18]:
+        - generic [ref=f26e19]: CurveWrapping_Full
+        - generic [ref=f26e20]: Main
+      - generic [ref=f26e22] [cursor=pointer]
+      - link "Curve Features" [ref=f26e26] [cursor=pointer]:
+        - /url: /documents?nodeId=51ee18495de21143dcea6ac7&resourceType=folder
+    - generic [ref=f26e30]:
+      - generic [ref=f26e38] [cursor=pointer]
+      - generic [ref=f26e44] [cursor=pointer]
+      - button "Notifications" [ref=f26e49] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f26e57]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f26e60] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f26e65] [cursor=pointer]
+      - button "Share" [ref=f26e69] [cursor=pointer]
+      - generic "Help menu" [ref=f26e71] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f26e75] [cursor=pointer]
+  - generic [ref=f26e85]:
+    - generic [ref=f26e87]:
+      - generic [ref=f26e88]:
+        - generic [ref=f26e89]:
+          - generic [ref=f26e90] [cursor=pointer]
+          - generic [ref=f26e93] [cursor=pointer]
+          - generic [ref=f26e96] [cursor=pointer]
+          - generic [ref=f26e99] [cursor=pointer]
+          - generic [ref=f26e102] [cursor=pointer]
+          - generic [ref=f26e105] [cursor=pointer]
+          - generic [ref=f26e108] [cursor=pointer]
+          - generic [ref=f26e111] [cursor=pointer]
+        - generic [ref=f26e115] [cursor=pointer]
+      - generic [ref=f26e119] [cursor=pointer]
+    - generic [ref=f26e126]:
+      - generic [ref=f26e133]:
+        - generic [ref=f26e145]:
+          - generic [ref=f26e146]: Sketch
+          - generic [ref=f26e158]:
+            - generic [ref=f26e159] [cursor=pointer]
+            - generic [ref=f26e163] [cursor=pointer]
+            - generic [ref=f26e167] [cursor=pointer]
+            - generic [ref=f26e171] [cursor=pointer]
+            - generic [ref=f26e176]:
+              - generic [ref=f26e177] [cursor=pointer]
+              - generic [ref=f26e181] [cursor=pointer]
+          - generic [ref=f26e187]:
+            - generic [ref=f26e189]:
+              - generic [ref=f26e190] [cursor=pointer]
+              - generic [ref=f26e194] [cursor=pointer]
+            - generic [ref=f26e197] [cursor=pointer]
+            - generic [ref=f26e202]:
+              - generic [ref=f26e203] [cursor=pointer]
+              - generic [ref=f26e207] [cursor=pointer]
+            - generic [ref=f26e210] [cursor=pointer]
+            - generic [ref=f26e214] [cursor=pointer]
+            - generic [ref=f26e218] [cursor=pointer]
+            - generic [ref=f26e222] [cursor=pointer]
+          - generic [ref=f26e229]:
+            - generic [ref=f26e231]:
+              - generic [ref=f26e232] [cursor=pointer]
+              - generic [ref=f26e236] [cursor=pointer]
+            - generic [ref=f26e239] [cursor=pointer]
+          - generic [ref=f26e246]:
+            - generic [ref=f26e247] [cursor=pointer]
+            - generic [ref=f26e251] [cursor=pointer]
+            - generic [ref=f26e256]:
+              - generic [ref=f26e257] [cursor=pointer]
+              - generic [ref=f26e261] [cursor=pointer]
+            - generic [ref=f26e264] [cursor=pointer]
+          - generic [ref=f26e271]:
+            - generic [ref=f26e272] [cursor=pointer]
+            - generic [ref=f26e276] [cursor=pointer]
+            - generic [ref=f26e280] [cursor=pointer]
+            - generic [ref=f26e284] [cursor=pointer]
+          - generic [ref=f26e292]:
+            - generic [ref=f26e293] [cursor=pointer]
+            - generic [ref=f26e297] [cursor=pointer]
+          - generic [ref=f26e304]:
+            - generic [ref=f26e305] [cursor=pointer]: SA
+            - generic [ref=f26e308] [cursor=pointer]
+          - generic [ref=f26e315] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f26e322] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f26e323]:
+            - generic [ref=f26e324]: alt/⌥
+            - generic [ref=f26e325]: c
+      - generic [ref=f26e329]:
+        - generic [ref=f26e332]:
+          - generic [ref=f26e334]:
+            - generic [ref=f26e335]:
+              - generic [ref=f26e337]:
+                - button [ref=f26e339] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f26e344]
+              - generic [ref=f26e345]:
+                - generic [ref=f26e346]: Features (15)
+                - button [ref=f26e347] [cursor=pointer]
+                - button [ref=f26e350] [cursor=pointer]
+                - button [ref=f26e353] [cursor=pointer]
+            - generic [ref=f26e357]:
+              - generic [ref=f26e358]:
+                - generic [ref=f26e360]:
+                  - generic [ref=f26e361] [cursor=pointer]
+                  - generic [ref=f26e364]: Default geometry
+                - generic [ref=f26e366]: Origin
+                - generic [ref=f26e376]: Top
+                - generic [ref=f26e386]: Front
+                - generic [ref=f26e396]: Right
+                - generic [ref=f26e407]:
+                  - generic [ref=f26e409] [cursor=pointer]
+                  - generic [ref=f26e412]: Derived 1
+                - generic [ref=f26e422]: "#extract_qvs"
+                - generic [ref=f26e437]:
+                  - generic [ref=f26e438]: De
+                  - generic [ref=f26e440]: kt_bs_deform
+                - generic [ref=f26e441]: "#kt_bs_bodies"
+                - generic [ref=f26e449]: kt_bs_composite
+                - generic [ref=f26e457]: name_kt_bs_compsoite
+                - generic [ref=f26e476]:
+                  - generic [ref=f26e477]: D(
+                  - generic [ref=f26e479]: Deform (weld prototype) 1
+                - generic [ref=f26e480]: fix_fill
+                - generic [ref=f26e488]: Thicken 1
+                - generic [ref=f26e496]: Boolean 1
+                - generic [ref=f26e504]: Fill 1
+              - list
+          - generic [ref=f26e516]:
+            - generic [ref=f26e518]:
+              - generic [ref=f26e520] [cursor=pointer]
+              - generic [ref=f26e523]: Parts (5)
+            - generic [ref=f26e527]: Part 1
+            - generic [ref=f26e539]: 20B
+            - generic [ref=f26e551]: 20B_SUBTRACT
+            - generic [ref=f26e563]: 15A
+            - generic [ref=f26e575]: 15A_SUBTRACT
+            - generic [ref=f26e588]:
+              - generic [ref=f26e590] [cursor=pointer]
+              - generic [ref=f26e593]: Composite parts (2)
+            - generic [ref=f26e598]:
+              - generic [ref=f26e600] [cursor=pointer]
+              - generic [ref=f26e603]: Surfaces (23)
+            - generic [ref=f26e608]:
+              - generic [ref=f26e610] [cursor=pointer]
+              - generic [ref=f26e613]: Curves (8)
+        - generic [ref=f26e618]:
+          - generic [ref=f26e620] [cursor=pointer]
+          - generic [ref=f26e624]:
+            - generic [ref=f26e626]:
+              - button [ref=f26e627] [cursor=pointer]
+              - button [ref=f26e631] [cursor=pointer]
+              - button [ref=f26e635] [cursor=pointer]
+            - generic [ref=f26e639] [cursor=pointer]
+          - generic [ref=f26e644]:
+            - generic [ref=f26e645] [cursor=pointer]
+            - generic [ref=f26e649] [cursor=pointer]
+            - generic [ref=f26e653] [cursor=pointer]
+            - generic [ref=f26e657] [cursor=pointer]
+            - generic [ref=f26e661] [cursor=pointer]
+            - generic [ref=f26e665] [cursor=pointer]
+            - generic [ref=f26e669] [cursor=pointer]
+            - generic [ref=f26e672] [cursor=pointer]
+      - generic [ref=f26e676]:
+        - img [ref=f26e679] [cursor=pointer]
+        - generic [ref=f26e682]:
+          - generic [ref=f26e683] [cursor=pointer]: Test
+          - generic [ref=f26e689]: K032_Test Copy 1
+          - generic [ref=f26e700] [cursor=pointer]: SKH_Test
+          - generic [ref=f26e708] [cursor=pointer]: SWCNT_Tests
+          - generic [ref=f26e714] [cursor=pointer]: SWCNT_Tests Copy 2
+          - generic [ref=f26e720] [cursor=pointer]: Test2
+          - generic [ref=f26e728] [cursor=pointer]: ONE Testing
+          - generic [ref=f26e736] [cursor=pointer]: CNT Testing
+          - generic [ref=f26e744] [cursor=pointer]: CNT Testing Copy 1
+          - generic [ref=f26e752] [cursor=pointer]: CNT Testing Copy 1 Copy 1
+          - generic [ref=f26e760] [cursor=pointer]: deform
+          - generic [ref=f26e766] [cursor=pointer]: wrapAndLoft_i
+          - generic [ref=f26e772] [cursor=pointer]: wrapCurve
+          - generic [ref=f26e778] [cursor=pointer]: Utils
+          - generic [ref=f26e784] [cursor=pointer]: curveMappingCore
+          - generic [ref=f26e790] [cursor=pointer]: Deform tests
+          - generic [ref=f26e796] [cursor=pointer]: stress_sources
+          - generic [ref=f26e802] [cursor=pointer]: canonical_edges
+          - generic [ref=f26e808] [cursor=pointer]: deform_weld
+          - generic [ref=f26e814] [cursor=pointer]: deform_wrapped
+        - generic [ref=f26e820]:
+          - listitem [ref=f26e821]
+          - listitem [ref=f26e825]
