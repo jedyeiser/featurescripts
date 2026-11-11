@@ -318,12 +318,10 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
                 ~ " of an earlier Deform tag with this group and role were replaced.");
         }
 
-        // What the user needs to see in the feature tree: the deform name, what is in each role (with body names), and the
-        // reference points. Names are the ones captured by the editing logic (empty when the feature was inserted by API).
+        // What the user needs to see in the feature tree: the deform name and what is in each role (with body names). Names are the ones captured by the editing logic (empty when the feature was inserted by API).
         const summary = "Deform '" ~ definition.groupName ~ "'. From: " ~ chainLabel(counts.from, chainNames.from)
             ~ ". To: " ~ chainLabel(counts.to, chainNames.to)
             ~ ". Source: " ~ join(sourceLabels, ", ")
-            ~ (counts.refFrom == 1 || counts.refTo == 1 ? ". Reference points:" ~ (counts.refFrom == 1 ? " From" : "") ~ (counts.refTo == 1 ? " To" : "") : "")
             ~ ".";
         if (size(warnings) > 0)
         {
