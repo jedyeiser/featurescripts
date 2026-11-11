@@ -14,7 +14,7 @@ IconNamespace::import(path : "416d971d75cdf57db8f459e6", version : "1d0a4cbca37e
  *   schema, group, role ("from" | "to" | "source" | "refFrom" | "refTo"), index (pick order within the role),
  *   name (the owner body's name when the dialog was last edited), feature (this feature's id), extra (hidden text),
  *   and on from / to / refFrom / refTo entities the options: prevailing, extension, flipFrom, flipTo, maxKinkDeg,
- *   smoothMaxDeviationMm, accuracy, outputName. Reference points also carry originMm. A source body picked in
+ *   smoothMaxDeviationMm, accuracy. `group` is the deform name: the record key AND the name of the result. Reference points also carry originMm. A source body picked in
  *   "Bodies with mate connectors" also carries mateConnectors: [{ id (REST id), originMm, xAxis, zAxis }]; the app
  *   reads each connector's name through the API and re-creates it on the deformed body.
  *
@@ -69,15 +69,11 @@ annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Deform ta
 export const deformTag = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Group Name" : "Group", "Collapsed By Default" : false }
+        annotation { "Group Name" : "Name", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "Group name", "Default" : "", "MaxLength" : 128,
-                        "Description" : "Names this deform. Must be unique in the Part Studio: the app keys its records on it." }
+            annotation { "Name" : "Deform name", "Default" : "", "MaxLength" : 128,
+                        "Description" : "Names this deform and its result (the step file, etc). Unique in the Part Studio: the app keys its records on it, so renaming starts a new record." }
             definition.groupName is string;
-
-            annotation { "Name" : "Output name", "Default" : "", "MaxLength" : 128,
-                        "Description" : "Names the deformed result. Empty = the app's default." }
-            definition.outputName is string;
         }
 
         annotation { "Group Name" : "Geometry", "Collapsed By Default" : false }
@@ -166,7 +162,7 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
         definition.groupName = replace(definition.groupName, "^\\s+|\\s+$", "");
         if (definition.groupName == "")
         {
-            throw regenError("Enter a group name.", ["groupName"]);
+            throw regenError("Enter a deform name.", ["groupName"]);
         }
         if (isQueryEmpty(context, definition.fromChain))
         {
@@ -186,7 +182,7 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
         // Another tag with this group name: the app would merge the two.
         if (groupInUse(context, definition.groupName))
         {
-            warnings = append(warnings, "Another Deform tag already uses the group name '" ~ definition.groupName ~ "'.");
+            warnings = append(warnings, "Another Deform tag already uses the deform name '" ~ definition.groupName ~ "'.");
         }
 
         var options = {
@@ -194,8 +190,7 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
                 "extension" : definition.extension == DeformTagExtension.OSCULATING ? "osculating" : "tangent",
                 "flipFrom" : definition.flipFrom,
                 "flipTo" : definition.flipTo,
-                "accuracy" : definition.accuracy == DeformTagAccuracy.FINE ? "fine" : "standard",
-                "outputName" : definition.outputName
+                "accuracy" : definition.accuracy == DeformTagAccuracy.FINE ? "fine" : "standard"
             };
         // 0 means "the app's default": leave the key out, so the engine does not read 0 as a zero tolerance.
         if (definition.maxKink > 0 * degree)
@@ -329,7 +324,7 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
                 ~ " of an earlier Deform tag with this group and role were replaced.");
         }
 
-        const summary = "Tagged group '" ~ definition.groupName ~ "': " ~ counts.from ~ " From, " ~ counts.to ~ " To, "
+        const summary = "Tagged deform '" ~ definition.groupName ~ "': " ~ counts.from ~ " From, " ~ counts.to ~ " To, "
             ~ counts.source ~ " source" ~ (counts.mateConnectors == undefined ? "" : " (" ~ counts.mateConnectors ~ " mate connectors)") ~ (counts.refFrom == 1 ? ", From reference" : "") ~ (counts.refTo == 1 ? ", To reference" : "") ~ ".";
         if (size(warnings) > 0)
         {
@@ -339,7 +334,7 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
         {
             reportFeatureInfo(context, id, summary);
         }
-    }, { "groupName" : "", "outputName" : "", "prevailing" : DeformTagPrevailing.PLUS_X, "extension" : DeformTagExtension.TANGENT,
+    }, { "groupName" : "", "prevailing" : DeformTagPrevailing.PLUS_X, "extension" : DeformTagExtension.TANGENT,
          "flipFrom" : false, "flipTo" : false, "maxKink" : 0 * degree, "smoothMaxDeviation" : 0 * millimeter,
          "accuracy" : DeformTagAccuracy.STANDARD, "extraOptions" : "", "fromNames" : "", "toNames" : "", "sourceNames" : "", "mcNames" : "",
          "refFrom" : qNothing(), "refTo" : qNothing() });
