@@ -9,7 +9,7 @@ import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/a19a275a032ee47
 // IMPORT: tools/printing.fs
 import(path : "b1e8bfe71f67389ca210ed8b/82e98a4cc11d1d3bbe2adf53/b02d6a2bac551b24347c983f", version : "1e0bae3406841d8a831e1f1d");
 // IMPORT: curveMappingCore.fs
-export import(path : "08e8748f2ef24eea16072b75/ba8568eda07a12e345381e48/683d867c35fdab9c98d47556", version : "2ce76fa46e9966199cf9231b");
+export import(path : "08e8748f2ef24eea16072b75/eb610bcc55659f2073dece9c/683d867c35fdab9c98d47556", version : "1d8139232bc3475c93706cac");
 
 
 // wrapCurve is deliberately NOT imported: nothing here uses it, and its export-import of

@@ -21,6 +21,7 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | x_footprint | Footprint | **draft** | - | `docs/explainers/footprint/footprint_explained.md` | 2026-11-06 written by Claude |
 | x_gordon_surface | Gordon surface | **draft** | code changed since written | `docs/explainers/gordon_surface/gordon_surface_explained.md` | 2026-11-06 written by Claude |
 | x_xsection | Cross-section (xSection) | **draft** | code changed since written | `docs/explainers/xsection/xsection_explained.md` | 2026-11-06 written by Claude |
+| x_deform | Deform, explained (designers; PDF for upload) | **draft** | - | `docs/explainers/deform/deform_explained.md` | 2026-11-10 written by Claude |
 
 ## Feature decks (.pptx -> .pdf for Onshape)
 
@@ -53,7 +54,7 @@ States: planned -> draft -> reviewed -> approved (= moved to Onshape, only on th
 | d_trim_curve_plus | Trim curve + | **draft** | - | `docs/decks/trim_curve_plus/trim_curve_plus.pptx` | 2026-11-08 written by Claude |
 | d_wrap_curve | Wrap Curve | **draft** | code changed since written | `docs/decks/wrap_curve/wrap_curve.pptx` | 2026-11-06 written by Claude |
 | d_wrap_and_loft | Wrap and Loft | **draft** | code changed since written | `docs/decks/wrap_and_loft/wrap_and_loft.pptx` | 2026-11-06 written by Claude |
-| d_deform | Deform | **draft** | - | `docs/decks/deform/deform.pptx` | 2026-11-08 written by Claude |
+| d_deform | Deform | **draft** | - | `docs/decks/deform/deform.pptx` | 2026-11-10 written by Claude |
 | d_offset_edges | Offset edges | **draft** | - | `docs/decks/offset_edges/offset_edges.pptx` | 2026-11-08 written by Claude |
 | d_generate_footprint_points | Generate Footprint Points | **draft** | - | `docs/decks/generate_footprint_points/generate_footprint_points.pptx` | 2026-11-06 written by Claude |
 | d_analyze_footprint | Analyze footprint | **draft** | - | `docs/decks/analyze_footprint/analyze_footprint.pptx` | 2026-11-06 written by Claude |

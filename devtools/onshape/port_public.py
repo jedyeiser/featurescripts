@@ -2,7 +2,7 @@
 
   PYTHONPATH=. python devtools/onshape/port_public.py                       # dry run: report what would change
   PYTHONPATH=. python devtools/onshape/port_public.py --write               # write the three public files locally (no Onshape calls)
-  PYTHONPATH=. python devtools/onshape/port_public.py --write --version <private doc version id> --core-micro <core microversion at that version>
+  PYTHONPATH=. python devtools/onshape/port_public.py --write --version <private doc version id> --core-micro <core microversion at that version> --canonical-micro <canonical_edges microversion at that version>
                                                                             # also point the public core imports at that version
 
 What it does
@@ -23,12 +23,14 @@ import sys
 BASELINE = "5703da50af7712c8c842e4c1d408464bd3caa6a5"          # engine wrap files before the closed-curve work (2026-10-20)
 PRIVATE_DOC = "08e8748f2ef24eea16072b75"
 CORE_ELEMENT = "683d867c35fdab9c98d47556"
+CANONICAL_ELEMENT = "9e2185ec79a911e453e72cf6"        # canonical_edges: the engine deform.fs imports it (same-document microversion pin)
 ASCII = {"—": "-", "→": "->", "─": "-", "ε": "eps", "×": "x", "²": "^2", "≈": "~", "κ": "kappa"}
 
 args = sys.argv[1:]
 write = "--write" in args
 version = args[args.index("--version") + 1] if "--version" in args else None
 core_micro = args[args.index("--core-micro") + 1] if "--core-micro" in args else None
+canonical_micro = args[args.index("--canonical-micro") + 1] if "--canonical-micro" in args else None   # canonical_edges microversion at that version
 
 
 def read(path):
@@ -100,6 +102,11 @@ def main():
     line = core_import(None) or 'export import(path : "%s/<private version id>/%s", version : "<core microversion>");' % (PRIVATE_DOC, CORE_ELEMENT)
     d, n = re.subn(r'export import\(path : "%s", version : "[0-9a-f]*"\);' % CORE_ELEMENT, line + '\n\nIconNamespace::import(path : "c20a7510f15da01b0a06a167", version : "f014fb4b0c37e21215ee7872");', d)
     assert n == 1, "core import line not found in the engine deform.fs"
+    # canonical_edges: the public deform.fs is a COPY of the engine file, so its same-document pin cannot resolve here; import it through the private document's version, like the core
+    canon = ('import(path : "%s/%s/%s", version : "%s");' % (PRIVATE_DOC, version, CANONICAL_ELEMENT, canonical_micro)) if (version and canonical_micro) else \
+        'import(path : "%s/<private version id>/%s", version : "<canonical_edges microversion>");' % (PRIVATE_DOC, CANONICAL_ELEMENT)
+    d, n = re.subn(r'(?m)^import\(path : "%s", version : "[0-9a-f]+"\);$' % CANONICAL_ELEMENT, canon, d)
+    assert n == 1, "canonical_edges import line not found in the engine deform.fs"
     old_ann = 'Wraps the body from the from edges to the to edges" }'
     assert d.count(old_ann) == 1
     d = d.replace(old_ann, 'Wraps the body from the from edges to the to edges", "Icon" : IconNamespace::BLOB_DATA }')

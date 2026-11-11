@@ -1,0 +1,3752 @@
+FeatureScript 3083;
+// deform_weld: the WELD PROTOTYPE of Deform (kept as its own tab so it can be compared with the engine's `deform`): every source edge gets ONE canonical curve
+// (its exact image under the map), every mapped face is pinned to the canonical curves of its edges, slivers are consumed, and Edge accuracy 0.5 um makes the
+// plane-fill faces meet the pinned faces. On the SWCNT ski it gave 75 faces and 30 naked edges (the source's own boundary) and a surface Enclose accepts.
+// Feature name: 'Deform (weld prototype)'. The engine's `deform` imports the same ideas from canonical_edges.fs.
+import(path : "onshape/std/common.fs", version : "3083.0");
+import(path : "onshape/std/approximationUtils.fs", version : "3083.0");
+import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
+
+// curveMappingCore, EXPORT-imported: the dialog's enums (SamplingMode, FrameNormalMode,
+// BinormalSource) come from it. wrapCurve is not imported: nothing here uses it, and its own
+// export-import of the core could bring a second version of the core into this scope.
+// Pinned to the core at curveMapping V28 (adds mapCoordSystems).
+// Pinned to the core tab's microversion with the closed-edge fit, adaptive mapped-surface grid support and the pushforward (2026-10-20).
+export import(path : "683d867c35fdab9c98d47556", version : "1d8139232bc3475c93706cac");
+
+
+
+/**
+ * This feature extends the concepts from wrapCurve to deform an entire solid or surface body.
+ *
+ * Given a source body and two reference edge chains (from/to), every point on the body is
+ * mapped from the from-path Frenet frame to the to-path Frenet frame.
+ *
+ * Debug mode steps through three cumulative sub-operations:
+ *   1. createWires  - transform all edges (creates wire bodies)
+ *   2. createFaces  - reconstruct all faces using opFillSurface with interior guide points
+ *   3. createBodies - union faces into a single body, delete intermediate wire/vertex bodies
+ */
+
+export const FaceControlMultiplierBounds = {(unitless) : [2, 3, 10]} as IntegerBoundSpec;
+
+/**
+ * Mapped vertices closer than this are one vertex: edges ending at them then share exact end points, and an edge whose two ends
+ * merge is not rebuilt at all (its faces close their loops through the merged vertex). 10 microns: the old 5 micron value let a
+ * 5.05 micron edge through to opCreateBSplineCurve, which refused it (BAD_GEOMETRY), and every face that had the edge then lost
+ * a boundary curve and was not rebuilt. NOT wider: at 20 microns the 15.24 micron edges of cd_surf (which rebuilt fine) were
+ * collapsed too and kt_bs_deform broke (EXTRACT_WIRES_OVERLAPPING_EDGES).
+ */
+const VERTEX_MERGE_TOLERANCE = 1e-5 * meter;
+
+/** Maximum wrapped-edge deviation (default 0 = off while the refit cost is tuned; 2 microns is the target): lengths in meter [min, default, max] and the other units. */
+const EDGE_ACCURACY_BOUND = { (meter) : [0, 0, 1e-4], (centimeter) : 0, (millimeter) : 0, (inch) : 0, (foot) : 0, (yard) : 0 } as LengthBoundSpec;
+
+/** Mapped positions with the ones that fall within VERTEX_MERGE_TOLERANCE of an earlier one moved onto it. */
+function mergeCloseVertices(positions is array) returns array
+{
+    var merged = positions;
+    for (var i = 1; i < size(merged); i += 1)
+        for (var j = 0; j < i; j += 1)
+            if (norm(merged[i] - merged[j]) < VERTEX_MERGE_TOLERANCE && norm(merged[i] - merged[j]) > 0 * meter)
+            {
+                merged[i] = merged[j];
+                break;
+            }
+    return merged;
+}
+
+/** A mate connector within this distance of a deformed source body is attached to that body's result. */
+const MC_ON_BODY_TOLERANCE = 1e-5 * meter;
+
+const NAME_SEPARATOR ="\n"; // also used as a regexp by splitByRegexp
+
+function splitNames(joined is string) returns array
+{
+    return joined == "" ? [] : splitByRegexp(joined, NAME_SEPARATOR);
+}
+
+/**
+ * Editing logic: record the source bodies' names (getProperty works here, not in the feature
+ * body) so the feature can name each deformed result "<source name><suffix>".
+ */
+export function deformWeldEditLogic(context is Context, id is Id, oldDefinition is map, definition is map,
+    isCreating is boolean, specifiedParameters is map, hiddenBodies is Query) returns map
+{
+    if (definition.deformMode == DeformMode.FACES)
+    {
+        definition.sourceNames = "";
+        return definition;
+    }
+    var names = [];
+    for (var body in evaluateQuery(context, definition.sourceBody))
+    {
+        var name = getProperty(context, { "entity" : body, "propertyType" : PropertyType.NAME });
+        names = append(names, (name is string && name != "") ? name : "Part");
+    }
+    definition.sourceNames = (size(names) == 0) ? "" : join(names, NAME_SEPARATOR);
+    return definition;
+}
+
+/**
+ * How the faces of the deformed body are rebuilt. A fill builds a face from its wrapped outline alone, so its interior (and
+ * its tangency to the neighbours) is whatever the kernel finds smoothest; mapping a face's SURFACE carries the source
+ * face's own shape through the deform and trims it to its outline.
+ */
+export enum FaceBuilder
+{
+    annotation { "Name" : "Fill (from the wrapped outline)" }
+    FILL,
+    annotation { "Name" : "Map the surface of long thin faces" }
+    MAP_THIN,
+    annotation { "Name" : "Map the surface of every face (test)" }
+    MAP_ALL
+}
+
+/** Whether to deform a whole body or a user-selected set of faces. */
+export enum DeformMode
+{
+    annotation { "Name" : "Bodies" }
+    BODIES,
+    annotation { "Name" : "Faces" }
+    FACES
+}
+
+
+/** Vertices of a face closer than this along the from path lie in one cross-section; the cut across the face runs through them. */
+const SPLIT_CLUSTER_GAP = 1e-3 * meter;
+/** A cluster of vertices must span at least this much to cut across the face (two vertices a hair apart on one side do not). */
+const SPLIT_MIN_SPAN = 1e-3 * meter;
+/** A face with no vertex clusters to cut at (only its two ends) is cut in the middle of the gap, when the gap is at least this wide. */
+const SPLIT_MIN_GAP = 2e-3 * meter;
+/** A face is long and thin enough to be worth measuring when (diagonal of its box)^2 / area exceeds this. */
+const THIN_FACE_ASPECT = 80;
+/** In the rebuild of cut faces, a piece with (diagonal of its box)^2 / area above this (and an area above GUIDED_FACE_MIN_AREA) is filled with guide points: a fill of a thin piece is flat across its width, and its end curves are too far away to hold the cross-section. */
+const GUIDED_FACE_ASPECT = 20;
+const GUIDED_FACE_MIN_AREA = 2e-5 * meter ^ 2;     // 20 mm2
+/** At most this many thin faces of one body are measured (each measurement maps interior points; the interpreter has a step limit). */
+const MAX_MEASURED_FACES = 4;
+/** A thin face whose fill is too far from the mapped shape is recut into pieces about this long (cross cuts on a grid along the from path). */
+const REFINE_PIECE_LENGTH = 100 * meter;
+/** Face accuracy (default 0 = off until the cost is tuned; 0.05 mm is the intended value): lengths in meter [min, default, max] and the other units. */
+const FACE_ACCURACY_BOUND = { (meter) : [0, 0, 1e-3], (centimeter) : 0, (millimeter) : 0, (inch) : 0, (foot) : 0, (yard) : 0 } as LengthBoundSpec;
+/** At most this many cuts are made across one face. */
+const SPLIT_MAX_CUTS = 40;
+
+/**
+ * Arc length along a path of a point, extended past either end along the end tangent (projectOntoFrenetPath clamps
+ * to the path, but a face can reach well past the end of the reference).
+ */
+function pathArcOf(context is Context, path is map, point is Vector) returns ValueWithUnits
+{
+    const arc = projectOntoFrenetPath(path, point, undefined).arcLength;
+    const atStart = arc <= 1e-9 * meter;
+    const atEnd = arc >= path.totalLength - 1e-9 * meter;
+    if (!atStart && !atEnd)
+        return arc;
+    const endArc = atStart ? 0 * meter : path.totalLength;
+    const endFrame = getFrameAtArcLength(context, path, endArc).frame;
+    return endArc + dot(point - endFrame.origin, endFrame.zAxis);
+}
+
+/**
+ * The cuts that divide a face into pieces, found from its own vertices.
+ *
+ * Vertices that lie in one cross-section (within SPLIT_CLUSTER_GAP of each other along the from path) are joined by a
+ * curve across the face (from one side of the face to the other, never along an edge it already has): it starts and ends exactly on existing vertices, so the cut can never leave an edge a few
+ * microns long beside a vertex (a plane through one vertex does, and slivers that small make a later union invalid).
+ * The two clusters at the ends of the face are not cut. A face with no cluster in between is cut by a plane in the
+ * middle of its widest gap instead.
+ *
+ * @returns {array} of { "points" : array of Vector } (a curve through these vertices) or { "point" : Vector, "arc" : ValueWithUnits } (a plane there)
+ */
+function faceCuts(context is Context, fromFrenetPath is map, face is Query, refine is boolean) returns array
+{
+    const points = mapArray(evaluateQuery(context, qAdjacent(face, AdjacencyType.VERTEX, EntityType.VERTEX)),
+        function(v) { return evVertexPoint(context, { "vertex" : v }); });
+    var items = mapArray(points, function(p) { return { "arc" : pathArcOf(context, fromFrenetPath, p), "point" : p }; });
+    items = sort(items, function(a, b) { return (a.arc - b.arc) / meter; });
+
+    var clusters = [];
+    var lastArc = undefined;
+    for (var item in items)
+    {
+        if (lastArc == undefined || item.arc - lastArc >= SPLIT_CLUSTER_GAP)
+            clusters = append(clusters, [item]);
+        else
+            clusters[size(clusters) - 1] = append(clusters[size(clusters) - 1], item);
+        lastArc = item.arc;
+    }
+
+    // Vertices already joined by an edge of the face (a short edge between two vertices of one cross-section) belong
+    // together; a cut must not run along such an edge, or it would duplicate it.
+    var edgeEnds = [];
+    for (var e in evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE)))
+        edgeEnds = append(edgeEnds, mapArray(evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 1] }), function(l) { return l.origin; }));
+
+    var cuts = [];
+    for (var c = 1; c < size(clusters) - 1 && size(cuts) < SPLIT_MAX_CUTS; c += 1)
+    {
+        const cluster = clusters[c];
+        // Group the cluster's vertices: two are in one group when an edge of the face joins them.
+        var group = [];
+        for (var i = 0; i < size(cluster); i += 1)
+            group = append(group, i);
+        for (var ends in edgeEnds)
+        {
+            var first = undefined;
+            var second = undefined;
+            for (var i = 0; i < size(cluster); i += 1)
+            {
+                if (norm(cluster[i].point - ends[0]) < 1e-6 * meter)
+                    first = i;
+                if (norm(cluster[i].point - ends[1]) < 1e-6 * meter)
+                    second = i;
+            }
+            if (first != undefined && second != undefined && group[first] != group[second])
+            {
+                const from = group[second];
+                for (var i = 0; i < size(cluster); i += 1)
+                    if (group[i] == from)
+                        group[i] = group[first];
+            }
+        }
+        // The cut joins the nearest pair of vertices from two different groups (a single plane cut when there is only one group).
+        var bestPair = undefined;
+        var bestDistance = undefined;
+        for (var i = 0; i < size(cluster); i += 1)
+            for (var j = i + 1; j < size(cluster); j += 1)
+            {
+                const distance = norm(cluster[i].point - cluster[j].point);
+                if (group[i] != group[j] && distance >= SPLIT_MIN_SPAN && (bestDistance == undefined || distance < bestDistance))
+                {
+                    bestPair = [cluster[i].point, cluster[j].point];
+                    bestDistance = distance;
+                }
+            }
+        if (bestPair != undefined)
+            cuts = append(cuts, { "points" : bestPair });
+        else if (size(cluster) == 1)
+            cuts = append(cuts, { "point" : cluster[0].point, "arc" : cluster[0].arc });
+    }
+    // A face that is being refined (its fill was too far from the mapped shape) also gets cross cuts on a grid along the
+    // path, away from its vertices, so that no piece is longer than about REFINE_PIECE_LENGTH: the fill of each piece is then
+    // held by the cut curves at both ends, which carry the cross-section of the face.
+    if (refine && size(items) > 1)
+    {
+        const lowest = items[0].arc;
+        const highest = items[size(items) - 1].arc;
+        const margin = SPLIT_MIN_GAP;
+        for (var g = ceil((lowest + margin) / REFINE_PIECE_LENGTH) * REFINE_PIECE_LENGTH; g < highest - margin && size(cuts) < SPLIT_MAX_CUTS; g += REFINE_PIECE_LENGTH)
+        {
+            var clear = true;
+            for (var item in items)
+                if (abs(item.arc - g) < SPLIT_MIN_GAP)
+                    clear = false;
+            if (clear)
+                cuts = append(cuts, { "point" : getFrameAtArcLength(context, fromFrenetPath, g).frame.origin, "arc" : g });
+        }
+    }
+    if (size(cuts) == 0 && size(clusters) >= 2)
+    {
+        var widest = 0;
+        for (var c = 1; c < size(clusters); c += 1)
+            if (clusters[c][0].arc - clusters[c - 1][size(clusters[c - 1]) - 1].arc > clusters[widest + 1][0].arc - clusters[widest][size(clusters[widest]) - 1].arc)
+                widest = c - 1;
+        const before = clusters[widest][size(clusters[widest]) - 1].arc;
+        const after = clusters[widest + 1][0].arc;
+        if (after - before >= SPLIT_MIN_GAP)
+        {
+            const arc = (before + after) / 2;
+            cuts = append(cuts, { "point" : getFrameAtArcLength(context, fromFrenetPath, arc).frame.origin, "arc" : arc });
+        }
+    }
+    return cuts;
+}
+
+/**
+ * A work copy of `body` in which each face in `faces` is cut across (see faceCuts). A face with a long, many-edged
+ * outline (a band running the length of the part, say) can defeat opFillSurface; the pieces between two such cuts
+ * are short and have few edges, and fill well.
+ *
+ * @returns {map} { "body" : the copy (a sheet body made from all of `body`'s faces), or `undefined` when there was nothing to
+ *          cut, "ranOps" : whether any modelling operation was run (a failed cut leaves some behind) }
+ */
+function splitFacesBetweenVertices(context is Context, id is Id, fromFrenetPath is map, body is Query, faces is array, refine is array, verbose is boolean)
+{
+    var cutsOfFace = [];
+    var anyCut = false;
+    for (var f = 0; f < size(faces); f += 1)
+    {
+        const cuts = faceCuts(context, fromFrenetPath, faces[f], refine[f]);
+        cutsOfFace = append(cutsOfFace, cuts);
+        anyCut = anyCut || size(cuts) > 0;
+    }
+    if (!anyCut)
+        return { "body" : undefined, "ranOps" : false };
+
+    opExtractSurface(context, id + "copy", { "faces" : qOwnedByBody(body, EntityType.FACE) });
+    const copy = qCreatedBy(id + "copy", EntityType.BODY);
+
+    var totalCuts = 0;
+    for (var f = 0; f < size(faces); f += 1)
+    {
+        if (size(cutsOfFace[f]) == 0)
+            continue;
+
+        // The face on the copy: the one with the same area and corner. Looked up afresh for every face, because cutting
+        // one face changes the edges (and so the handles) of the faces beside it.
+        const face = faces[f];
+        const area = evArea(context, { "entities" : face });
+        const corner = evBox3d(context, { "topology" : face }).minCorner;
+        var target = undefined;
+        var targetGap = 1e-4 * meter;      // box corners of the same face agree to far better than this
+        for (var candidate in evaluateQuery(context, qOwnedByBody(copy, EntityType.FACE)))
+        {
+            const gap = norm(evBox3d(context, { "topology" : candidate }).minCorner - corner);
+            if (gap < targetGap && abs(evArea(context, { "entities" : candidate }) - area) < 1e-2 * area)
+            {
+                target = candidate;
+                targetGap = gap;
+            }
+        }
+        if (target == undefined)
+        {
+            if (verbose)
+            {
+                println("WARNING: a face that failed to fill was not found on the work copy; it is not cut");
+            }
+            continue;
+        }
+
+        // The tools: a curve through each cluster of vertices (projected onto the face, so it ends exactly on them), or a plane.
+        var curveBodies = [];
+        var planeFaces = [];
+        for (var k = 0; k < size(cutsOfFace[f]); k += 1)
+        {
+            const cut = cutsOfFace[f][k];
+            const toolId = id + ("tool" ~ f ~ "_" ~ k);
+            if (cut.points != undefined)
+            {
+                opPolyline(context, toolId, { "points" : cut.points });
+                curveBodies = append(curveBodies, qCreatedBy(toolId, EntityType.BODY));
+            }
+            else
+            {
+                const frame = getFrameAtArcLength(context, fromFrenetPath, cut.arc).frame;
+                opPlane(context, toolId, { "plane" : plane(cut.point, frame.zAxis) });
+                planeFaces = append(planeFaces, qCreatedBy(toolId, EntityType.FACE));
+            }
+        }
+        var splitDefinition = {
+                "faceTargets" : target,
+                "projectionType" : ProjectionType.NORMAL_TO_TARGET,
+                "extendToCompletion" : true,
+                "keepToolSurfaces" : false
+            };
+        if (size(curveBodies) > 0)
+            splitDefinition.edgeTools = qOwnedByBody(qUnion(curveBodies), EntityType.EDGE);
+        if (size(planeFaces) > 0)
+            splitDefinition.planeTools = qUnion(planeFaces);
+        try
+        {
+            opSplitFace(context, id + ("split" ~ f), splitDefinition);
+            totalCuts += size(cutsOfFace[f]);
+        }
+        catch (splitErr)
+        {
+            if (verbose)
+            {
+                println("WARNING: could not cut a face that failed to fill: " ~ toString(splitErr) ~ " (" ~ size(curveBodies) ~ " curve cut(s), " ~ size(planeFaces) ~ " plane cut(s))");
+            }
+        }
+        if (size(curveBodies) > 0 || size(planeFaces) > 0)
+        {
+            try silent
+            {
+                opDeleteBodies(context, id + ("dropTools" ~ f), { "entities" : qUnion([qUnion(curveBodies), qOwnerBody(qUnion(planeFaces))]) });
+            }
+        }
+    }
+    if (totalCuts == 0)
+    {
+        try silent
+        {
+            opDeleteBodies(context, id + "dropWork", { "entities" : copy });
+        }
+        return { "body" : undefined, "ranOps" : true };
+    }
+    if (verbose)
+    {
+        println("Deform: " ~ size(faces) ~ " face(s) failed to fill; retrying with " ~ totalCuts ~ " cut(s) across them");
+    }
+    return { "body" : copy, "ranOps" : true };
+}
+
+/** Two points of a face outline closer than this are the same vertex. */
+const OUTLINE_VERTEX_TOLERANCE = 1e-6 * meter;
+/** A junction of two outline edges turns by more than this for it to be a corner of the face. */
+const OUTLINE_CORNER_ANGLE = 30 * degree;
+
+/**
+ * Build a face from its wrapped outline with opBoundarySurface when the outline is four-sided: the outline edges are
+ * walked in order, the junctions that turn by more than OUTLINE_CORNER_ANGLE are the four corners, and the two pairs of
+ * opposite sides are the profiles. Unlike a fill, the surface takes its shape from all four sides, so the cross-section
+ * of a long thin band (carried by its two ends) is kept. Creates the surface as a body under `id`.
+ *
+ * @returns {boolean} whether the surface was made (false when the outline does not have exactly four corners or the
+ *          kernel refused: the caller then fills the outline instead)
+ */
+function boundarySurfaceFace(context is Context, id is Id, outline is Query, verbose is boolean) returns boolean
+{
+    const edges = evaluateQuery(context, outline);
+    const n = size(edges);
+    if (n < 4)
+        return false;
+    var ends = [];
+    for (var e in edges)
+    {
+        const l = evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 1] });
+        ends = append(ends, { "p0" : l[0].origin, "d0" : l[0].direction, "p1" : l[1].origin, "d1" : l[1].direction });
+    }
+
+    // Walk the outline: order[k] is the k-th edge, forward[k] whether it is traversed from its start.
+    var order = [0];
+    var forward = [true];
+    var used = makeArray(n, false);
+    used[0] = true;
+    var tail = ends[0].p1;
+    for (var step = 1; step < n; step += 1)
+    {
+        var next = -1;
+        var nextForward = true;
+        for (var k = 0; k < n && next < 0; k += 1)
+        {
+            if (used[k])
+                continue;
+            if (norm(ends[k].p0 - tail) < OUTLINE_VERTEX_TOLERANCE)
+            {
+                next = k;
+                nextForward = true;
+            }
+            else if (norm(ends[k].p1 - tail) < OUTLINE_VERTEX_TOLERANCE)
+            {
+                next = k;
+                nextForward = false;
+            }
+        }
+        if (next < 0)
+            return false;
+        used[next] = true;
+        order = append(order, next);
+        forward = append(forward, nextForward);
+        tail = nextForward ? ends[next].p1 : ends[next].p0;
+    }
+    if (norm(tail - ends[0].p0) > OUTLINE_VERTEX_TOLERANCE)
+        return false;
+
+    // Corners: the junction at the start of the i-th edge turns sharply.
+    var corners = [];
+    for (var i = 0; i < n; i += 1)
+    {
+        const prev = (i + n - 1) % n;
+        const dirIn = forward[prev] ? ends[order[prev]].d1 : -ends[order[prev]].d0;
+        const dirOut = forward[i] ? ends[order[i]].d0 : -ends[order[i]].d1;
+        if (dot(normalize(dirIn), normalize(dirOut)) < cos(OUTLINE_CORNER_ANGLE))
+            corners = append(corners, i);
+    }
+    if (size(corners) != 4)
+        return false;
+
+    // The four sides, each a run of edges; a side of several edges becomes one wire body.
+    var profiles = [];
+    var sideWires = [];
+    for (var c = 0; c < 4; c += 1)
+    {
+        var side = [];
+        var i = corners[c];
+        const stop = corners[(c + 1) % 4];
+        for (var count = 0; count < n; count += 1)
+        {
+            side = append(side, edges[order[i]]);
+            i = (i + 1) % n;
+            if (i == stop)
+                break;
+        }
+        if (size(side) == 1)
+        {
+            profiles = append(profiles, side[0]);
+        }
+        else
+        {
+            opExtractWires(context, id + ("side" ~ c), { "edges" : qUnion(side) });
+            const wire = qCreatedBy(id + ("side" ~ c), EntityType.BODY);
+            sideWires = append(sideWires, wire);
+            profiles = append(profiles, wire);
+        }
+    }
+
+    var made = true;
+    try
+    {
+        opBoundarySurface(context, id + "bsurf", { "uProfileSubqueries" : [profiles[0], profiles[2]],
+                                                   "vProfileSubqueries" : [profiles[1], profiles[3]] });
+    }
+    catch (bsurfErr)
+    {
+        if (verbose)
+        {
+            println("boundary surface refused: " ~ toString(bsurfErr));
+        }
+        made = false;
+    }
+    if (size(sideWires) > 0)
+    {
+        try silent
+        {
+            opDeleteBodies(context, id + "dropSides", { "entities" : qUnion(sideWires) });
+        }
+    }
+    return made;
+}
+
+/** Angle (degrees) between the tangent planes of two faces at a point where they meet (orientation ignored). */
+function planeAngleAt(context is Context, faceA is Query, faceB is Query, point is Vector) returns number
+{
+    const nA = evFaceTangentPlane(context, { "face" : faceA, "parameter" : evDistance(context, { "side0" : point, "side1" : faceA }).sides[1].parameter }).normal;
+    const nB = evFaceTangentPlane(context, { "face" : faceB, "parameter" : evDistance(context, { "side0" : point, "side1" : faceB }).sides[1].parameter }).normal;
+    return acos(min(1, abs(dot(nA, nB)))) / degree;
+}
+
+/**
+ * Debug: continuity between faces. Every edge of the source body that joins two faces is classified by the angle between
+ * the faces along it (smooth when under 1 degree, as a fillet is to its neighbours); the same place on the deformed result
+ * is measured, and edges that were smooth in the source but are not in the result are listed. The wrap is smooth, so a
+ * source edge that is tangent must stay tangent.
+ */
+function debugReportContinuity(context is Context, source is Query, result is Query, fromFrenetPath is map, toFrenetPath is map, fromRefArc, toRefArc, flipToNormal is boolean)
+{
+    try
+    {
+        const resultEdges = qOwnedByBody(result, EntityType.EDGE);
+        const resultEdgeList = evaluateQuery(context, resultEdges);
+        var rows = [];
+        var smooth = 0;
+        var unmatched = 0;
+        for (var e in evaluateQuery(context, qOwnedByBody(source, EntityType.EDGE)))
+        {
+            const faces = evaluateQuery(context, qAdjacent(e, AdjacencyType.EDGE, EntityType.FACE));
+            if (size(faces) != 2)
+                continue;
+            const lines = evEdgeTangentLines(context, { "edge" : e, "parameters" : [0.2, 0.5, 0.8] });
+            var sourceAngle = 0;
+            for (var l in lines)
+                sourceAngle = max(sourceAngle, planeAngleAt(context, faces[0], faces[1], l.origin));
+            const mapped = mapWorldPoints(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal,
+                mapArray(lines, function(l) { return l.origin; }));
+            var resultAngle = 0;
+            var matched = true;
+            for (var p in mapped)
+            {
+                const nearest = evDistance(context, { "side0" : p, "side1" : resultEdges });
+                const resultFaces = nearest.distance < 5e-5 * meter ? evaluateQuery(context, qAdjacent(resultEdgeList[nearest.sides[1].index], AdjacencyType.EDGE, EntityType.FACE)) : [];
+                if (size(resultFaces) != 2)
+                {
+                    matched = false;
+                    continue;
+                }
+                resultAngle = max(resultAngle, planeAngleAt(context, resultFaces[0], resultFaces[1], p));
+            }
+            if (sourceAngle < 1)
+                smooth += 1;
+            if (!matched)
+                unmatched += 1;
+            else
+                rows = append(rows, { "source" : sourceAngle, "result" : resultAngle, "length" : evLength(context, { "entities" : e }) / meter * 1e3,
+                                      "x" : mapped[1][0] / meter * 1e3, "y" : mapped[1][1] / meter * 1e3, "z" : mapped[1][2] / meter * 1e3 });
+        }
+        var lost = [];
+        for (var r in rows)
+            if (r.source < 1 && r.result > 1)
+                lost = append(lost, r);
+        lost = sort(lost, function(a, b) { return b.result - a.result; });
+        println("CONTINUITY " ~ size(rows) ~ " two-face source edges measured (" ~ smooth ~ " smooth in the source, " ~ unmatched ~ " not found in the result): "
+            ~ size(lost) ~ " smooth edges are NOT smooth after the deform (over 1 degree)");
+        for (var k = 0; k < min(size(lost), 12); k += 1)
+            println("CONTINUITY   lost #" ~ k ~ ": " ~ roundToPrecision(lost[k].source, 2) ~ " deg -> " ~ roundToPrecision(lost[k].result, 2) ~ " deg, edge "
+                ~ roundToPrecision(lost[k].length, 1) ~ " mm long at (" ~ roundToPrecision(lost[k].x, 0) ~ ", " ~ roundToPrecision(lost[k].y, 0) ~ ", " ~ roundToPrecision(lost[k].z, 0) ~ ") mm");
+        var worstSharp = [];
+        for (var r in rows)
+            if (r.source >= 1 && abs(r.result - r.source) > 2)
+                worstSharp = append(worstSharp, r);
+        println("CONTINUITY " ~ size(worstSharp) ~ " creased source edges changed their angle by more than 2 degrees");
+    }
+    catch (continuityErr)
+    {
+        println("CONTINUITY could not be measured (" ~ toString(continuityErr) ~ ")");
+    }
+}
+
+/**
+ * Debug: how the wrapped edges were fitted: control points per edge, how many needed a refit, and (when an edge accuracy is
+ * set) the measured deviation from the exact image of the source edge. Read from what the fit stored: nothing is re-measured.
+ */
+function debugReportEdgeFit(edgeMapping is array)
+{
+    var counts = [];
+    var refit = 0;
+    var rows = [];
+    for (var m in edgeMapping)
+    {
+        if (m.controlPoints == undefined)
+            continue;
+        counts = append(counts, m.controlPoints);
+        if (m.fitPasses > 1)
+            refit += 1;
+        if (m.deviation != undefined)
+            rows = append(rows, { "dev" : m.deviation / meter * 1e6, "cps" : m.controlPoints, "passes" : m.fitPasses });
+    }
+    counts = sort(counts, function(a, b) { return a - b; });
+    rows = sort(rows, function(a, b) { return b.dev - a.dev; });
+    println("EDGEFIT " ~ size(counts) ~ " fitted edges, control points min " ~ (size(counts) > 0 ? counts[0] : 0) ~ " median " ~ (size(counts) > 0 ? counts[floor(size(counts) / 2)] : 0)
+        ~ " max " ~ (size(counts) > 0 ? counts[size(counts) - 1] : 0) ~ ", " ~ refit ~ " refitted with a higher limit"
+        ~ (size(rows) > 0 ? ", worst measured deviation " ~ roundToPrecision(rows[0].dev, 2) ~ " um" : ""));
+    for (var k = 0; k < min(size(rows), 6); k += 1)
+        println("EDGEFIT   worst #" ~ k ~ ": " ~ roundToPrecision(rows[k].dev, 2) ~ " um with " ~ rows[k].cps ~ " control points after " ~ rows[k].passes ~ " fit(s)");
+}
+
+/** At most this many faces per body get their surface mapped with MAP_THIN (every mapped point costs interpreter steps). */
+const MAX_MAPPED_FACES = 6;
+/** Samples per direction of a mapped surface (at least, at most). */
+const MAPPED_SAMPLES_MIN_U = 12;
+const MAPPED_SAMPLES_MAX_U = 400;
+const MAPPED_SAMPLES_MIN_V = 8;
+const MAPPED_SAMPLES_MAX_V = 40;
+/** Points mapped for mapped surfaces in one feature (each costs interpreter steps; the budget of a whole feature is about 20-30k). */
+const MAPPED_POINT_BUDGET = 24000;
+
+/** The starting grid of a small face has a sample about this far apart (never fewer than 5 per direction, never more than the minimum above). */
+const MAPPED_MIN_SPACING = 4 * millimeter;
+
+/** The cost of a face beyond its grid: boundary probes and one round of interpolation probes (mapped points). */
+const MAPPED_FACE_OVERHEAD = 70;
+
+/**
+ * A face whose wrapped boundary and mapped interior all lie within this distance of one plane is built as a PLANE. Measured on the
+ * SWCNT test (ski laid flat): nine faces of 300 to 60,000 mm2 were flat to 0.0-0.2 um but came back from the map as B-splines; a fill
+ * from their own boundary edges comes back as a true PLANE of the same area.
+ */
+const FLAT_FACE_TOLERANCE = 2e-6 * meter;
+
+/** A face this small (both extents) needs few boundary probes: its boundary is short and its map nearly rigid. */
+const MAPPED_SMALL_FACE = 0.02 * meter;
+const MAPPED_SMALL_FACE_PROBES = 16;
+
+/** A face is always given at least this many points, even when the feature's budget is spent: a face left to a fill cannot be welded to its mapped neighbours. */
+const MAPPED_FACE_FLOOR = 110;
+/** How far a mapped surface may lie from the exactly mapped face between its samples (default 2 microns): lengths in meter [min, default, max] and the other units. */
+const MAPPED_ACCURACY_BOUND = { (meter) : [1e-7, 2e-6, 1e-4], (centimeter) : 0.0002, (millimeter) : 0.002, (inch) : 0.00008, (foot) : 0.000007, (yard) : 0.0000022 } as LengthBoundSpec;
+/** Times the sampling grid of a mapped surface may be refined (each time the directions that miss the accuracy get twice the intervals). */
+const MAPPED_REFINE_PASSES = 5;
+/** Sample spacing along a mapped surface (the old control, no longer used: the grid follows the measured error). */
+const MAPPED_SPACING_BOUND = { (meter) : [1e-3, 6e-3, 5e-2], (centimeter) : 0.6, (millimeter) : 6, (inch) : 0.24, (foot) : 0.02, (yard) : 0.0066 } as LengthBoundSpec;
+/** A wrapped edge farther than this from an edge of a built sheet is not matched with it. */
+const JOIN_MATCH_GATE = 2e-5 * meter;
+/** A sample step of this much in the trim loop (meters of edge) between UV samples. */
+const OUTLINE_SAMPLE_SPACING = 0.004 * meter;
+/** Most UV samples taken along one outline edge. */
+const OUTLINE_MAX_SAMPLES = 300;
+/** Values of all n basis functions of a clamped B-spline (degree, knots) at u. */
+function basisValues(knots is array, degree is number, n is number, u is number) returns array
+{
+    var span = degree;
+    while (span < n - 1 && u >= knots[span + 1])
+        span += 1;
+    var left = makeArray(degree + 1, 0);
+    var right = makeArray(degree + 1, 0);
+    var basis = makeArray(degree + 1, 0);
+    basis[0] = 1;
+    for (var j = 1; j <= degree; j += 1)
+    {
+        left[j] = u - knots[span + 1 - j];
+        right[j] = knots[span + j] - u;
+        var saved = 0;
+        for (var r = 0; r < j; r += 1)
+        {
+            const denominator = right[r + 1] + left[j - r];
+            const ratio = denominator == 0 ? 0 : basis[r] / denominator;
+            basis[r] = saved + right[r + 1] * ratio;
+            saved = left[j - r] * ratio;
+        }
+        basis[j] = saved;
+    }
+    var values = makeArray(n, 0);
+    for (var i = 0; i <= degree; i += 1)
+        values[span - degree + i] = basis[i];
+    return values;
+}
+
+/** The clamped knot vector of the global interpolation of data at the (increasing, 0..1) parameters (knot averaging). */
+function interpolationKnots(parameters is array, degree is number) returns array
+{
+    const n = size(parameters);
+    var knots = makeArray(degree + 1, 0);
+    for (var j = 1; j <= n - degree - 1; j += 1)
+    {
+        var sum = 0;
+        for (var i = j; i < j + degree; i += 1)
+            sum += parameters[i];
+        knots = append(knots, sum / degree);
+    }
+    return concatenateArrays([knots, makeArray(degree + 1, 1)]);
+}
+
+/** The collocation matrix N_k(parameter_i) of the interpolation. */
+function collocationMatrix(parameters is array, knots is array, degree is number) returns Matrix
+{
+    var rows = [];
+    for (var u in parameters)
+        rows = append(rows, basisValues(knots, degree, size(parameters), u));
+    return matrix(rows);
+}
+
+/** The points of an edge at the traversal positions taus (0..1 along the walk; reversed edges are walked from their end). */
+function outlinePoints(context is Context, edge is Query, forward is boolean, taus is array) returns array
+{
+    var parameters = taus;
+    if (!forward)
+    {
+        parameters = [];
+        for (var tau in taus)
+            parameters = append(parameters, 1 - tau);
+    }
+    return mapArray(evEdgeTangentLines(context, { "edge" : edge, "parameters" : parameters }), function(l) { return l.origin; });
+}
+
+/**
+ * The UV outline (in the face's normalized parameter space, the one evFaceTangentPlanes uses) of a face with one outer loop, as
+ * closed, joined 2D B-spline curves for opCreateBSplineSurface. `undefined` when the face has holes, wraps around its surface
+ * (an outline that jumps across the parameter range) or the walk of its edges does not close.
+ */
+function faceUvOutline(context is Context, face is Query)
+{
+    // Edges shorter than the vertex merge are collapsed in the wrapped result (their two ends are one vertex): they are not part of the outline, and
+    // the walk joins the others within the merge tolerance (a face with such an edge dead-ended or would not close at the 1 um it used to demand).
+    var edges = [];
+    for (var candidate in evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE)))
+        if (evLength(context, { "entities" : candidate }) >= VERTEX_MERGE_TOLERANCE)
+            edges = append(edges, candidate);
+    const n = size(edges);
+    const joinTolerance = 1.5 * VERTEX_MERGE_TOLERANCE;
+    if (n < 2)
+        return undefined;
+    var ends = [];
+    for (var e in edges)
+    {
+        const l = evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 1] });
+        ends = append(ends, [l[0].origin, l[1].origin]);
+    }
+    var order = [0];
+    var forward = [true];
+    var used = makeArray(n, false);
+    used[0] = true;
+    var tail = ends[0][1];
+    for (var step = 1; step < n; step += 1)
+    {
+        var next = -1;
+        var nextForward = true;
+        for (var k = 0; k < n && next < 0; k += 1)
+        {
+            if (used[k])
+                continue;
+            if (norm(ends[k][0] - tail) < joinTolerance)
+            {
+                next = k;
+                nextForward = true;
+            }
+            else if (norm(ends[k][1] - tail) < joinTolerance)
+            {
+                next = k;
+                nextForward = false;
+            }
+        }
+        if (next < 0)
+            return undefined;          // a second loop (a hole) or an open outline
+        used[next] = true;
+        order = append(order, next);
+        forward = append(forward, nextForward);
+        tail = nextForward ? ends[next][1] : ends[next][0];
+    }
+    if (norm(tail - ends[0][0]) > joinTolerance)
+        return undefined;
+
+    var curveSpecs = [];
+    var previousEnd = undefined;
+    for (var k = 0; k < n; k += 1)
+    {
+        const edge = edges[order[k]];
+        const length = evLength(context, { "entities" : edge });
+        // An edge shorter than the vertex merge is not rebuilt in 3D either (its ends are one vertex), and as a 2D curve it is
+        // degenerate (all its samples coincide: "No approximation found", then BSPLINESURFACE_BOUNDARY_NOT_SINGLE_CLOSED_LOOP).
+        // Leave it out: the next curve starts where the previous one ended, and the loop is closed below.
+        if (length < VERTEX_MERGE_TOLERANCE && n > 3)
+            continue;
+        const count = clamp(ceil(length / OUTLINE_SAMPLE_SPACING) + 1, 6, OUTLINE_MAX_SAMPLES);
+        // taus: positions along the traversal of the edge (0 at the start of the walk); the edge's own parameter runs the other way on a reversed edge
+        const taus = range(0, 1, count);
+        var uv = [];
+        for (var point in outlinePoints(context, edge, forward[k], taus))
+            uv = append(uv, evDistance(context, { "side0" : point, "side1" : face }).sides[1].parameter);
+        if (previousEnd != undefined)
+            uv[0] = previousEnd;
+        for (var j = 1; j < size(uv); j += 1)
+            if (norm(uv[j] - uv[j - 1]) > 0.5)
+                return undefined;      // the outline runs around the surface: not a single closed loop in this parameter box
+        // The curve through the samples, fitted in a fake length unit (1 = 1 meter) and turned into a 2D curve.
+        var positions = [];
+        for (var q in uv)
+            positions = append(positions, vector(q[0], q[1], 0) * meter);
+        const fitted = approximateSpline(context, { "targets" : [approximationTarget({ "positions" : positions })], "tolerance" : 1e-8,
+                                                    "maxControlPoints" : 300, "degree" : 3, "isPeriodic" : false, "parameters" : taus })[0];
+        var controlPoints = mapArray(fitted.controlPoints, function(c) { return vector(c[0] / meter, c[1] / meter); });
+        controlPoints[0] = uv[0];
+        controlPoints[size(controlPoints) - 1] = uv[size(uv) - 1];
+        previousEnd = uv[size(uv) - 1];
+        curveSpecs = append(curveSpecs, { "degree" : fitted.degree, "controlPoints" : controlPoints, "knots" : fitted.knots });
+    }
+    if (size(curveSpecs) == 0)
+        return undefined;
+    // Close the loop exactly: the first curve starts where the last one ends (they differ only by the left-out edges).
+    curveSpecs[0].controlPoints[0] = previousEnd;
+    var curves = [];
+    for (var spec in curveSpecs)
+        curves = append(curves, bSplineCurve({ "degree" : spec.degree, "isPeriodic" : false, "controlPoints" : spec.controlPoints, "knots" : spec.knots }));
+    return curves;
+}
+
+/** The non-zero basis functions of a clamped B-spline at u: { "first" : index of the first, "values" : degree + 1 values }. */
+function basisNonzero(knots is array, degree is number, n is number, u is number) returns map
+{
+    var span = degree;
+    while (span < n - 1 && u >= knots[span + 1])
+        span += 1;
+    var left = makeArray(degree + 1, 0);
+    var right = makeArray(degree + 1, 0);
+    var basis = makeArray(degree + 1, 0);
+    basis[0] = 1;
+    for (var j = 1; j <= degree; j += 1)
+    {
+        left[j] = u - knots[span + 1 - j];
+        right[j] = knots[span + j] - u;
+        var saved = 0;
+        for (var r = 0; r < j; r += 1)
+        {
+            const denominator = right[r + 1] + left[j - r];
+            const ratio = denominator == 0 ? 0 : basis[r] / denominator;
+            basis[r] = saved + right[r + 1] * ratio;
+            saved = left[j - r] * ratio;
+        }
+        basis[j] = saved;
+    }
+    return { "first" : span - degree, "values" : basis };
+}
+
+/** The sample parameters of one direction: n evenly spaced over 0..1. (Extra samples clustered at the ends made the server fail: not used.) */
+function uniformParameters(n is number) returns array
+{
+    var parameters = [];
+    for (var i = 0; i < n; i += 1)
+        parameters = append(parameters, i / (n - 1));
+    return parameters;
+}
+
+/** The parameters with a new one halfway between every two neighbours (the old ones keep the even indices). */
+function refinedParameters(parameters is array) returns array
+{
+    var refined = [];
+    for (var i = 0; i < size(parameters) - 1; i += 1)
+    {
+        refined = append(refined, parameters[i]);
+        refined = append(refined, (parameters[i] + parameters[i + 1]) / 2);
+    }
+    return append(refined, parameters[size(parameters) - 1]);
+}
+
+/**
+ * The exact images of the face sampled on an nU x nV grid of its parameter box. With `previous` (the samples of the grid this one
+ * refines: { "nU", "nV", "mapped", "doU", "doV" }, where a direction that was refined has twice the intervals, so the old samples are
+ * at the even indices) only the new samples are mapped: refining costs the new points, not the whole grid.
+ * @returns {map} { "mapped" : nU x nV array of positions, "points" : how many were mapped }
+ */
+function mapGridSamples(context is Context, face is Query, us is array, vs is array, previous, fromFrenetPath is map, toFrenetPath is map,
+    fromRefArc, toRefArc, flipToNormal is boolean) returns map
+{
+    const nU = size(us);
+    const nV = size(vs);
+    var mapped = makeArray(nU);
+    var known = makeArray(nU);
+    for (var i = 0; i < nU; i += 1)
+    {
+        mapped[i] = makeArray(nV);
+        known[i] = makeArray(nV, false);
+    }
+    if (previous != undefined)
+    {
+        for (var i = 0; i < previous.nU; i += 1)
+            for (var j = 0; j < previous.nV; j += 1)
+            {
+                const i2 = previous.doU ? 2 * i : i;
+                const j2 = previous.doV ? 2 * j : j;
+                mapped[i2][j2] = previous.mapped[i][j];
+                known[i2][j2] = true;
+            }
+    }
+    var parameters = [];
+    var slots = [];
+    for (var j = 0; j < nV; j += 1)
+        for (var i = 0; i < nU; i += 1)
+            if (!known[i][j])
+            {
+                parameters = append(parameters, vector(us[i], vs[j]));
+                slots = append(slots, [i, j]);
+            }
+    if (size(slots) == 0)
+        return { "mapped" : mapped, "points" : 0 };
+    const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : parameters });
+    // one chain per v (the slots are grouped by v, u increasing)
+    var from = 0;
+    while (from < size(slots))
+    {
+        var to = from;
+        while (to + 1 < size(slots) && slots[to + 1][1] == slots[from][1])
+            to += 1;
+        var chain = [];
+        for (var k = from; k <= to; k += 1)
+            chain = append(chain, planes[k].origin);
+        const images = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, chain);
+        for (var k = from; k <= to; k += 1)
+            mapped[slots[k][0]][slots[k][1]] = images[k - from];
+        from = to + 1;
+    }
+    return { "mapped" : mapped, "points" : size(slots) };
+}
+
+/**
+ * The interpolating tensor B-spline through the mapped samples (the images of a uniform grid of the face's parameter box).
+ * @returns {map} { "us", "vs", "knotsU", "knotsV", "degreeU", "degreeV", "coordinates" (three matrices, meters), "surface" }
+ */
+function interpolateGrid(mapped is array, us is array, vs is array) returns map
+{
+    const nU = size(us);
+    const nV = size(vs);
+
+    // Interpolate: P = A^-1 Q B^-T, once per coordinate.
+    const degreeU = min(3, nU - 1);
+    const degreeV = min(3, nV - 1);
+    const knotsU = interpolationKnots(us, degreeU);
+    const knotsV = interpolationKnots(vs, degreeV);
+    const inverseU = inverse(collocationMatrix(us, knotsU, degreeU));
+    const inverseVT = transpose(inverse(collocationMatrix(vs, knotsV, degreeV)));
+    var coordinates = [];
+    for (var c = 0; c < 3; c += 1)
+    {
+        var rows = [];
+        for (var i = 0; i < nU; i += 1)
+        {
+            var row = [];
+            for (var j = 0; j < nV; j += 1)
+                row = append(row, mapped[i][j][c] / meter);
+            rows = append(rows, row);
+        }
+        coordinates = append(coordinates, inverseU * matrix(rows) * inverseVT);
+    }
+    var grid = [];
+    for (var i = 0; i < nU; i += 1)
+    {
+        var row = [];
+        for (var j = 0; j < nV; j += 1)
+            row = append(row, vector(coordinates[0][i][j], coordinates[1][i][j], coordinates[2][i][j]) * meter);
+        grid = append(grid, row);
+    }
+    const surface = bSplineSurface({ "uDegree" : degreeU, "vDegree" : degreeV, "isUPeriodic" : false, "isVPeriodic" : false,
+                                     "controlPoints" : controlPointMatrix(grid), "uKnots" : knotArray(knotsU), "vKnots" : knotArray(knotsV) });
+    return { "us" : us, "vs" : vs, "knotsU" : knotsU, "knotsV" : knotsV, "degreeU" : degreeU, "degreeV" : degreeV, "coordinates" : coordinates, "surface" : surface };
+}
+
+/** The point of a mappedGrid surface at (u, v), from its non-zero basis functions only. */
+function mappedGridPoint(grid is map, u is number, v is number) returns Vector
+{
+    const bu = basisNonzero(grid.knotsU, grid.degreeU, size(grid.us), u);
+    const bv = basisNonzero(grid.knotsV, grid.degreeV, size(grid.vs), v);
+    var sum = [0, 0, 0];
+    for (var a = 0; a <= grid.degreeU; a += 1)
+        for (var b = 0; b <= grid.degreeV; b += 1)
+        {
+            const w = bu.values[a] * bv.values[b];
+            for (var c = 0; c < 3; c += 1)
+                sum[c] += w * grid.coordinates[c][bu.first + a][bv.first + b];
+        }
+    return vector(sum[0], sum[1], sum[2]) * meter;
+}
+
+/**
+ * How far the interpolated surface is from the exactly mapped face BETWEEN its samples, where a cubic interpolation is least
+ * accurate: probes at interval midpoints along u (on a few v sample lines), along v (on a few u sample lines) and at cell
+ * centres. Returns { "u", "v", "centre" } (worst distances) and "points" (the mappings spent).
+ */
+function mappedGridError(context is Context, face is Query, grid is map, fromFrenetPath is map, toFrenetPath is map,
+    fromRefArc, toRefArc, flipToNormal is boolean) returns map
+{
+    const nU = size(grid.us);
+    const nV = size(grid.vs);
+    var uIntervals = [];
+    const uProbeCount = nU > 40 ? 8 : 4;
+    var uProbeIndices = [];
+    for (var q = 0; q < uProbeCount; q += 1)
+        uProbeIndices = append(uProbeIndices, floor(q * (nU - 2) / (uProbeCount - 1)));
+    for (var k in uProbeIndices)
+        if (k >= 0 && k <= nU - 2 && indexOf(uIntervals, k) < 0)
+            uIntervals = append(uIntervals, k);
+    var vIntervals = [];
+    for (var k in [0, nV - 2])
+        if (k >= 0 && k <= nV - 2 && indexOf(vIntervals, k) < 0)
+            vIntervals = append(vIntervals, k);
+    var vLines = [];
+    for (var k in [0, floor((nV - 1) / 2), nV - 1])
+        if (indexOf(vLines, k) < 0)
+            vLines = append(vLines, k);
+
+    // each chain: one v, increasing u
+    var chains = [];
+    for (var kv in vLines)
+    {
+        var chain = [];
+        for (var ku in uIntervals)
+            chain = append(chain, { "u" : (grid.us[ku] + grid.us[ku + 1]) / 2, "v" : grid.vs[kv], "kind" : "u" });
+        chains = append(chains, chain);
+    }
+    for (var kv in vIntervals)
+    {
+        var onSamples = [];
+        var atCentres = [];
+        for (var ku in uIntervals)
+        {
+            onSamples = append(onSamples, { "u" : grid.us[ku], "v" : (grid.vs[kv] + grid.vs[kv + 1]) / 2, "kind" : "v" });
+            atCentres = append(atCentres, { "u" : (grid.us[ku] + grid.us[ku + 1]) / 2, "v" : (grid.vs[kv] + grid.vs[kv + 1]) / 2, "kind" : "centre" });
+        }
+        chains = append(chains, onSamples);
+        chains = append(chains, atCentres);
+    }
+    var worst = { "u" : 0 * meter, "v" : 0 * meter, "centre" : 0 * meter };
+    var points = 0;
+    for (var chain in chains)
+    {
+        const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : mapArray(chain, function(q) { return vector(q.u, q.v); }) });
+        const images = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal,
+            mapArray(planes, function(pl) { return pl.origin; }));
+        points += size(chain);
+        for (var k = 0; k < size(chain); k += 1)
+            worst[chain[k].kind] = max(worst[chain[k].kind], norm(images[k] - mappedGridPoint(grid, chain[k].u, chain[k].v)));
+    }
+    return { "u" : worst.u, "v" : worst.v, "centre" : worst.centre, "points" : points };
+}
+
+/** Boundary probes per face (each costs one mapped point). */
+const BOUNDARY_PROBES_PER_FACE = 48;
+
+/**
+ * Probes on the face's own edges, which is what neighbouring faces must meet: for a few points on every edge, the parameter
+ * position on the face and the exactly mapped image. The interpolation probes sit between samples on a few lines of the grid and can
+ * miss the boundary of a face whose outline is a curve in parameter space.
+ * @returns {array} [{ "u", "v", "image" }, ...]
+ */
+function boundaryProbes(context is Context, face is Query, fromFrenetPath is map, toFrenetPath is map, fromRefArc, toRefArc, flipToNormal is boolean, total is number) returns array
+{
+    var probes = [];
+    const edges = evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE));
+    // about `total` probes in all (BOUNDARY_PROBES_PER_FACE, fewer for a small face), spread evenly along every edge (a face with many edges gets fewer on each)
+    const perEdge = clamp(floor(total / max(1, size(edges))), 1, 9);
+    var parameters = [];
+    for (var k = 0; k < perEdge; k += 1)
+        parameters = append(parameters, (k + 0.5) / perEdge);
+    for (var edge in edges)
+    {
+        try silent
+        {
+            const onEdge = mapArray(evEdgeTangentLines(context, { "edge" : edge, "parameters" : parameters }), function(l) { return l.origin; });
+            const images = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, onEdge);
+            for (var k = 0; k < size(onEdge); k += 1)
+            {
+                const uv = evDistance(context, { "side0" : onEdge[k], "side1" : face }).sides[1].parameter;
+                probes = append(probes, { "u" : uv[0], "v" : uv[1], "image" : images[k] });
+            }
+        }
+    }
+    return probes;
+}
+
+/** The worst distance from the exactly mapped boundary probes to the interpolated surface. */
+function boundaryError(grid is map, probes is array) returns ValueWithUnits
+{
+    var worst = 0 * meter;
+    for (var probe in probes)
+        worst = max(worst, norm(probe.image - mappedGridPoint(grid, clamp(probe.u, 0, 1), clamp(probe.v, 0, 1))));
+    return worst;
+}
+
+/**
+ * Whether the face maps onto a plane: the sample points of its wrapped boundary edges are coplanar within FLAT_FACE_TOLERANCE, and so are
+ * nine interior points mapped exactly. The boundary test comes first and needs no mapping, so a curved face is rejected cheaply.
+ *
+ * @param boundaryEdges {Query} : the wrapped (already mapped) boundary edges of the face
+ * @returns {boolean}
+ */
+function mapsToPlane(context is Context, face is Query, boundaryEdges is Query, fromFrenetPath is map, toFrenetPath is map,
+    fromRefArc, toRefArc, flipToNormal is boolean) returns boolean
+{
+    try silent
+    {
+        var points = [];
+        for (var edge in evaluateQuery(context, boundaryEdges))
+            for (var line in evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 0.25, 0.5, 0.75, 1] }))
+                points = append(points, line.origin);
+        if (size(points) < 3)
+            return false;
+        var centre = vector(0, 0, 0) * meter;
+        for (var p in points)
+            centre += p;
+        centre = centre / size(points);
+        // plane through the centre, the farthest point and the point that spans the largest area with it
+        var far = points[0];
+        for (var p in points)
+            if (norm(p - centre) > norm(far - centre))
+                far = p;
+        var normal = undefined;
+        var bestArea = 0 * meter ^ 2;
+        for (var p in points)
+        {
+            const spanned = cross(far - centre, p - centre);
+            if (norm(spanned) > bestArea)
+            {
+                bestArea = norm(spanned);
+                normal = spanned;
+            }
+        }
+        if (normal == undefined || bestArea < 1e-12 * meter ^ 2)
+            return false;
+        normal = normalize(normal);
+        for (var p in points)
+            if (abs(dot(p - centre, normal)) > FLAT_FACE_TOLERANCE)
+                return false;
+        // Interior: a 5 x 5 grid of the face's parameter box, keeping only the points that are ON the face (a trimmed or L-shaped face has box
+        // points outside it, on the extension of its surface, which need not be flat), mapped exactly.
+        var boxParameters = [];
+        for (var a in [0.1, 0.3, 0.5, 0.7, 0.9])
+            for (var b in [0.1, 0.3, 0.5, 0.7, 0.9])
+                boxParameters = append(boxParameters, vector(a, b));
+        var onFace = [];
+        for (var pl in evFaceTangentPlanes(context, { "face" : face, "parameters" : boxParameters }))
+            if (evDistance(context, { "side0" : pl.origin, "side1" : face }).distance < 1e-6 * meter)
+                onFace = append(onFace, pl.origin);
+        if (size(onFace) < 4)
+            return false;
+        for (var image in mapWorldPointChain(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, onFace))
+            if (abs(dot(image - centre, normal)) > FLAT_FACE_TOLERANCE)
+                return false;
+        return true;
+    }
+    return false;
+}
+
+/**
+ * THE canonical curve of a source edge: its exact image under the map, fitted once. The edge is sampled densely (about every millimetre),
+ * every sample is mapped exactly, the two end points are the MERGED vertex positions (`vertexMap`), and the curve is fitted through the rest
+ * with the end points interpolated exactly (approximateSpline interpolateIndices) at a tight tolerance. Its parameter is the source edge's own
+ * fraction (0 at the start, 1 at the end), so any face can ask for the point at the fraction it samples.
+ * Every face that has the edge is fitted to this one curve, so the faces agree on it by construction, whatever order they are built in.
+ * @returns {BSplineCurve} or undefined (closed or degenerate edge, failed fit)
+ */
+function canonicalEdgeCurve(context is Context, edge is Query, fromFrenetPath is map, toFrenetPath is map, fromRefArc, toRefArc, flipToNormal is boolean, vertexMap is map)
+{
+    try silent
+    {
+        const length = evLength(context, { "entities" : edge });
+        if (length < 5e-5 * meter)
+            return undefined;
+        const count = clamp(ceil(length / (1e-3 * meter)) + 1, 8, 400);
+        const fractions = range(0, 1, count);
+        const onEdge = mapArray(evEdgeTangentLines(context, { "edge" : edge, "parameters" : fractions }), function(l) { return l.origin; });
+        if (norm(onEdge[0] - onEdge[count - 1]) < 1e-7 * meter)
+            return undefined;       // a closed edge: not handled here
+        var images = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, onEdge);
+        for (var vertex in evaluateQuery(context, qAdjacent(edge, AdjacencyType.VERTEX, EntityType.VERTEX)))
+        {
+            const merged = vertexMap[toString(vertex)];
+            if (merged == undefined)
+                continue;
+            const at = evVertexPoint(context, { "vertex" : vertex });
+            if (norm(at - onEdge[0]) < 1e-7 * meter)
+                images[0] = merged;
+            if (norm(at - onEdge[count - 1]) < 1e-7 * meter)
+                images[count - 1] = merged;
+        }
+        return approximateSpline(context, { "targets" : [approximationTarget({ "positions" : images })], "tolerance" : 2.5e-7, "maxControlPoints" : 400,
+                                            "degree" : 3, "isPeriodic" : false, "parameters" : fractions, "interpolateIndices" : [0, count - 1] })[0];
+    }
+    return undefined;
+}
+
+/** The largest move of a control point (meters) that a pin solution may make; beyond it the pins are rejected. */
+const PIN_MAX_MOVE = 1e-4;
+
+/**
+ * The grid surface moved so that it passes through every pin: the smallest change of the control points (minimum norm, K x K system) that
+ * makes the surface at (u, v) of each pin equal its image. The change is a few microns at most, so the shape between the pins is the map's.
+ * @param pins {array} : [{ "u", "v", "image" }, ...]
+ * @returns {map} the grid, with new control points and surface
+ */
+function pinGrid(grid is map, pins is array) returns map
+{
+    const K = size(pins);
+    if (K == 0)
+        return grid;
+    const nU = size(grid.us);
+    const nV = size(grid.vs);
+    const N = nU * nV;
+    var rows = [];
+    var residuals = [[], [], []];
+    for (var pin in pins)
+    {
+        const bu = basisNonzero(grid.knotsU, grid.degreeU, nU, pin.u);
+        const bv = basisNonzero(grid.knotsV, grid.degreeV, nV, pin.v);
+        var row = makeArray(N, 0);
+        for (var a = 0; a <= grid.degreeU; a += 1)
+            for (var b = 0; b <= grid.degreeV; b += 1)
+                row[(bu.first + a) * nV + (bv.first + b)] += bu.values[a] * bv.values[b];
+        rows = append(rows, row);
+        const there = mappedGridPoint(grid, pin.u, pin.v);
+        for (var c = 0; c < 3; c += 1)
+            residuals[c] = append(residuals[c], [(pin.image[c] - there[c]) / meter]);
+    }
+    const A = matrix(rows);
+    const At = transpose(A);
+    const solver = inverse(A * At + 1e-7 * identityMatrix(K));
+    var coordinates = [];
+    var maxDelta = 0;
+    for (var c = 0; c < 3; c += 1)
+    {
+        const delta = At * (solver * matrix(residuals[c]));      // N x 1
+        for (var q = 0; q < N; q += 1)
+            maxDelta = max(maxDelta, abs(delta[q][0]));
+        var plane = [];
+        for (var i = 0; i < nU; i += 1)
+        {
+            var line = [];
+            for (var j = 0; j < nV; j += 1)
+                line = append(line, grid.coordinates[c][i][j] + delta[i * nV + j][0]);
+            plane = append(plane, line);
+        }
+        coordinates = append(coordinates, matrix(plane));
+    }
+    var controlGrid = [];
+    for (var i = 0; i < nU; i += 1)
+    {
+        var line = [];
+        for (var j = 0; j < nV; j += 1)
+            line = append(line, vector(coordinates[0][i][j], coordinates[1][i][j], coordinates[2][i][j]) * meter);
+        controlGrid = append(controlGrid, line);
+    }
+    const surface = bSplineSurface({ "uDegree" : grid.degreeU, "vDegree" : grid.degreeV, "isUPeriodic" : false, "isVPeriodic" : false,
+                                     "controlPoints" : controlPointMatrix(controlGrid), "uKnots" : knotArray(grid.knotsU), "vKnots" : knotArray(grid.knotsV) });
+    return mergeMaps(grid, { "coordinates" : coordinates, "surface" : surface, "maxDelta" : maxDelta });
+}
+
+/**
+ * Fits a mapped face to the canonical curves of ALL its edges (collapsed edges, shorter than the vertex merge, are not edges any more): each
+ * edge is sampled at a number of fractions that grows with its length (kept below 0.8 of the face's control points so the solve can reach
+ * them), the canonical curve gives the point to hit at each fraction, and pinGrid moves the net the least it can to hit them. Works for any
+ * face, rectangular or trimmed. Faces that share an edge are pinned to the same curve, so their boundaries agree on it.
+ *
+ * @param canonical {map} : toString(edge) -> its canonical curve (curves made here are returned in "canonical" for the caller to keep)
+ * @returns {map} { "grid", "canonical", "pinned" : how many pins }
+ */
+function pinFaceToCanonicalEdges(context is Context, face is Query, grid is map, canonical is map, fromFrenetPath is map, toFrenetPath is map,
+    fromRefArc, toRefArc, flipToNormal is boolean, vertexMap is map) returns map
+{
+    var added = {};
+    var edges = [];
+    var lengths = [];
+    for (var candidate in evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE)))
+    {
+        const length = evLength(context, { "entities" : candidate });
+        if (length >= VERTEX_MERGE_TOLERANCE)
+        {
+            edges = append(edges, candidate);
+            lengths = append(lengths, length);
+        }
+    }
+    const cells = size(grid.us) * size(grid.vs);
+    // an edge cannot be given more pins than its row of the net has control points (a 260 mm edge got ~170 pins on a net with 91 columns: the solve then swung the net by millimetres)
+    const pinCap = clamp(floor(0.6 * max(size(grid.us), size(grid.vs))), 4, 60);
+    var counts = [];
+    var total = 0;
+    for (var length in lengths)
+    {
+        counts = append(counts, clamp(ceil(length / (1.5e-3 * meter)) + 1, 4, pinCap));
+        total += counts[size(counts) - 1];
+    }
+    if (total > 0.8 * cells)
+        for (var q = 0; q < size(counts); q += 1)
+            counts[q] = max(3, floor(counts[q] * 0.8 * cells / total));
+    var pins = [];
+    var endUvs = [];
+    for (var e = 0; e < size(edges); e += 1)
+    {
+        var curve = canonical[toString(edges[e])];
+        if (curve == undefined)
+        {
+            curve = canonicalEdgeCurve(context, edges[e], fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, vertexMap);
+            if (curve == undefined)
+                continue;
+            added[toString(edges[e])] = curve;
+        }
+        const fractions = range(0, 1, counts[e]);
+        const onEdge = mapArray(evEdgeTangentLines(context, { "edge" : edges[e], "parameters" : fractions }), function(l) { return l.origin; });
+        const targets = evaluateSpline({ "spline" : curve, "parameters" : fractions })[0];
+        for (var k = 0; k < size(onEdge); k += 1)
+        {
+            const uv = evDistance(context, { "side0" : onEdge[k], "side1" : face }).sides[1].parameter;
+            // The ends of the edges that meet at a vertex (and at a collapsed edge) lie at the same place on the face: two pins there that ask for targets even a
+            // micron apart make the system nearly singular and swing the net by millimetres. An end pin that is close in UV to an earlier end pin is dropped.
+            if (k == 0 || k == size(onEdge) - 1)
+            {
+                var repeated = false;
+                for (var other in endUvs)
+                    if (norm(vector(uv[0] - other[0], uv[1] - other[1])) < 1e-3)
+                        repeated = true;
+                if (repeated)
+                    continue;
+                endUvs = append(endUvs, [uv[0], uv[1]]);
+            }
+            pins = append(pins, { "u" : clamp(uv[0], 0, 1), "v" : clamp(uv[1], 0, 1), "image" : targets[k] });
+        }
+    }
+    if (size(pins) == 0)
+        return { "grid" : grid, "canonical" : added, "pinned" : 0 };
+    const pinnedGrid = pinGrid(grid, pins);
+    // A solution that moves a control point by more than PIN_MAX_MOVE is the sign of nearly dependent pins (two at almost the same place that ask for
+    // different points): it would bend the face absurdly, so the unpinned net is kept.
+    if (pinnedGrid.maxDelta > PIN_MAX_MOVE)
+        return { "grid" : grid, "canonical" : added, "pinned" : size(pins), "maxDelta" : pinnedGrid.maxDelta, "rejected" : true };
+    return { "grid" : pinnedGrid, "canonical" : added, "pinned" : size(pins), "maxDelta" : pinnedGrid.maxDelta, "rejected" : false };
+}
+
+/** A face smaller than this is a sliver: it is not built, and the two faces across it meet on the midline between its long edges (0.05 mm2). */
+const SLIVER_AREA = 5e-8 * meter ^ 2;
+
+/**
+ * The canonical curve of a long edge of a consumed sliver: the MIDLINE between it and the sliver's other long edge. Each point of the edge is
+ * mapped exactly, so is the nearest point of the other edge, and the curve is fitted through the averages (end points interpolated exactly).
+ * Both long edges get the same midline (each parametrized by its own fraction), so the faces on the two sides pin to one curve and meet exactly;
+ * each moves by at most half the sliver's width.
+ */
+function sliverMidCurve(context is Context, edge is Query, other is Query, fromFrenetPath is map, toFrenetPath is map, fromRefArc, toRefArc, flipToNormal is boolean)
+{
+    try silent
+    {
+        const length = evLength(context, { "entities" : edge });
+        const count = clamp(ceil(length / (1e-3 * meter)) + 1, 8, 120);
+        const fractions = range(0, 1, count);
+        const onEdge = mapArray(evEdgeTangentLines(context, { "edge" : edge, "parameters" : fractions }), function(l) { return l.origin; });
+        const across = mapArray(onEdge, function(p) { return evDistance(context, { "side0" : p, "side1" : other }).sides[1].point; });
+        const imagesA = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, onEdge);
+        const imagesB = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, across);
+        var mids = [];
+        for (var k = 0; k < count; k += 1)
+            mids = append(mids, (imagesA[k] + imagesB[k]) / 2);
+        return approximateSpline(context, { "targets" : [approximationTarget({ "positions" : mids })], "tolerance" : 2.5e-7, "maxControlPoints" : 300,
+                                            "degree" : 3, "isPeriodic" : false, "parameters" : fractions, "interpolateIndices" : [0, count - 1] })[0];
+    }
+    return undefined;
+}
+
+/**
+ * Build the deformed face by mapping the SURFACE of the source face: the face is sampled on a grid of its own parameter box, every
+ * sample is mapped exactly, the mapped samples are interpolated by a cubic tensor B-spline surface, and the surface is trimmed with
+ * the face's own outline. Interior shape and tangency are carried through the deform (the surface is mapped, not rebuilt from its
+ * boundary).
+ *
+ * The grid is not fixed: it starts at twice the control net of the source face's own approximation, the surface is compared with
+ * exactly mapped probe points between its samples (mappedGridError), and the directions that miss `accuracy` get twice the
+ * intervals, up to MAPPED_REFINE_PASSES times, the sample caps and the point budget. A face the map barely bends stays coarse (few
+ * control points); a face near a strongly bending part of the path gets the density it needs, so neighbouring faces' edges meet.
+ *
+ * @returns {number} the number of points mapped when the sheet was made under `id`; 0, having left nothing, when the face does not qualify
+ */
+function mappedSurfaceFace(context is Context, id is Id, face is Query, fromFrenetPath is map, toFrenetPath is map,
+    fromRefArc, toRefArc, flipToNormal is boolean, accuracy is ValueWithUnits, pointBudget is number, verbose is boolean, approximations is map, canonical is map, vertexMap is map) returns map
+{
+    var addedCanonical = {};
+    try
+    {
+        // `approximations` holds the approximations the caller already made for its budget shares (toString(face) -> result)
+        const cached = approximations[toString(face)];
+        const approximation = cached != undefined ? cached : evApproximateBSplineSurface(context, { "face" : face, "tolerance" : 1e-6 });
+        const net = approximation.bSplineSurface.controlPoints;
+        // physical length of the face along u and v: sets the smallest grid, and where the boundary misses, the direction with the
+        // longer sample spacing is refined
+        const extent = evFaceTangentPlanes(context, { "face" : face, "parameters" : [vector(0, 0.5), vector(1, 0.5), vector(0.5, 0), vector(0.5, 1)] });
+        const lengthU = norm(extent[1].origin - extent[0].origin);
+        const lengthV = norm(extent[3].origin - extent[2].origin);
+        // A small face needs a small grid (a 3 mm face does not need 12 x 8 samples; 193 faces at the full minimum cost more
+        // than the whole feature's budget): a sample about every MAPPED_MIN_SPACING, at least 5. The probes refine it where it is
+        // not accurate enough.
+        const minU = clamp(ceil(lengthU / MAPPED_MIN_SPACING) + 1, 5, MAPPED_SAMPLES_MIN_U);
+        const minV = clamp(ceil(lengthV / MAPPED_MIN_SPACING) + 1, 5, MAPPED_SAMPLES_MIN_V);
+        var nU = clamp(size(net), minU, MAPPED_SAMPLES_MAX_U);
+        var nV = clamp(size(net[0]), minV, MAPPED_SAMPLES_MAX_V);
+        // A face that does not fit the budget at its natural size is sampled more coarsely rather than not at all (a fill cannot
+        // rebuild a long thin face); the probes then say how far from the exact map it is.
+        if (nU * nV > pointBudget)
+            nU = max(minU, floor(pointBudget / nV));
+        if (nU * nV > pointBudget)
+            { if (verbose) println("MAPPED 0 points: budget (grid larger than the allowance)"); return { "points" : 0 }; }
+        var us = uniformParameters(nU);
+        var vs = uniformParameters(nV);
+        nU = size(us);
+        nV = size(vs);
+        if (nU * nV > pointBudget)
+            { if (verbose) println("MAPPED 0 points: budget (after the grid was made)"); return { "points" : 0 }; }
+        var samples = mapGridSamples(context, face, us, vs, undefined, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
+        var spent = samples.points;
+        var grid = interpolateGrid(samples.mapped, us, vs);
+        const probeTotal = (lengthU < MAPPED_SMALL_FACE && lengthV < MAPPED_SMALL_FACE) ? MAPPED_SMALL_FACE_PROBES : BOUNDARY_PROBES_PER_FACE;
+        const probes = boundaryProbes(context, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, probeTotal);
+        spent += size(probes);
+        var lastError = undefined;      // the interior probes of the last pass (for the debug line of the long faces)
+        var passesRun = 0;
+        for (var pass = 0; pass < MAPPED_REFINE_PASSES; pass += 1)
+        {
+            const error = mappedGridError(context, face, grid, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
+            lastError = error;
+            passesRun += 1;
+            spent += error.points;
+            const edgeMiss = boundaryError(grid, probes) > accuracy;
+            const uLonger = lengthU / (nU - 1) >= lengthV / (nV - 1);
+            // One direction per pass (a refined direction doubles the points): the one whose probes miss most; when only the
+            // cell centres or the boundary miss, the one with the longer physical sample spacing.
+            var wantU = error.u > accuracy;
+            var wantV = error.v > accuracy;
+            if (wantU && wantV)
+            {
+                if (error.u / accuracy >= error.v / accuracy)
+                    wantV = false;
+                else
+                    wantU = false;
+            }
+            else if (!wantU && !wantV && (error.centre > accuracy || edgeMiss))
+            {
+                wantU = uLonger;
+                wantV = !uLonger;
+            }
+            const refineU = wantU && 2 * nU - 1 <= MAPPED_SAMPLES_MAX_U + 6;
+            const refineV = wantV && 2 * nV - 1 <= MAPPED_SAMPLES_MAX_V + 6;
+            if (!refineU && !refineV)
+                break;
+            const nextU = refineU ? 2 * nU - 1 : nU;
+            const nextV = refineV ? 2 * nV - 1 : nV;
+            // only the new samples are mapped: the grid's points are all but the old ones
+            if (spent + nextU * nextV - nU * nV > pointBudget)
+                break;
+            const nextUs = refineU ? refinedParameters(us) : us;
+            const nextVs = refineV ? refinedParameters(vs) : vs;
+            samples = mapGridSamples(context, face, nextUs, nextVs, { "nU" : nU, "nV" : nV, "mapped" : samples.mapped, "doU" : refineU, "doV" : refineV },
+                fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal);
+            spent += samples.points;
+            us = nextUs;
+            vs = nextVs;
+            nU = nextU;
+            nV = nextV;
+            grid = interpolateGrid(samples.mapped, us, vs);
+        }
+
+        // Debug line for the VERY long faces only (over 100 mm: a handful). A line for every face cost enough interpreter steps to push a 193-face
+        // body over the step limit.
+        if (verbose && (lengthU > 0.1 * meter || lengthV > 0.1 * meter))
+        {
+            // what the face got and how close the grid is to the exact map (um): the boundary figure is for the FINAL grid, the interior ones
+            // (u, v, cell centres) are from the last pass measured, before its refinement
+            try silent
+            {
+                println("MAPPED long face: extent " ~ roundToPrecision(lengthU / millimeter, 1) ~ " x " ~ roundToPrecision(lengthV / millimeter, 1) ~ " mm, grid " ~ nU ~ " x " ~ nV
+                    ~ ", spent " ~ spent ~ " of " ~ pointBudget ~ ", passes " ~ passesRun ~ ", boundary miss " ~ roundToPrecision(boundaryError(grid, probes) / meter * 1e6, 1)
+                    ~ " um, interior u/v/centre " ~ roundToPrecision(lastError.u / meter * 1e6, 1) ~ "/" ~ roundToPrecision(lastError.v / meter * 1e6, 1) ~ "/"
+                    ~ roundToPrecision(lastError.centre / meter * 1e6, 1) ~ " um (target " ~ roundToPrecision(accuracy / meter * 1e6, 1) ~ ")");
+            }
+        }
+        const outline = faceUvOutline(context, face);
+        if (outline == undefined)
+            { if (verbose) println("MAPPED 0 points: no UV outline (faceUvOutline undefined: open loop, hole or wrap)"); return { "points" : 0 }; }
+        // A mapped face: its boundary is pinned to the canonical edges (shared with the neighbours), see pinFaceToCanonicalEdges.
+        try
+        {
+            const fit = pinFaceToCanonicalEdges(context, face, grid, canonical, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, vertexMap);
+            grid = fit.grid;
+            addedCanonical = fit.canonical;
+            if (verbose && fit.pinned > 0)
+                println("CANONICAL face: " ~ fit.pinned ~ " pins on the shared edges, largest control point move " ~ roundToPrecision(fit.maxDelta * 1e6, 2) ~ " um" ~ (fit.rejected ? " REJECTED (pins nearly dependent), face left unpinned" : ""));
+        }
+        catch (canonErr)
+        {
+            if (verbose)
+                println("CANONICAL fit failed: " ~ toString(canonErr));
+        }
+        opCreateBSplineSurface(context, id + "mapped", { "bSplineSurface" : grid.surface, "boundaryBSplineCurves" : outline });
+        if (verbose && spent > 1500)
+        {
+            println("MAPPED grid " ~ nU ~ " x " ~ nV ~ ", " ~ spent ~ " points mapped (budget left " ~ (pointBudget - spent) ~ ")");
+        }
+        return { "points" : spent, "canonical" : addedCanonical };
+    }
+    catch (mappedErr)
+    {
+        var faceNote = "";
+        try silent
+        {
+            const surfaceKind = evSurfaceDefinition(context, { "face" : face }).surfaceType;
+            const outlineEdges = evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE));
+            var closedEdges = 0;
+            var vertexless = 0;
+            for (var oe in outlineEdges)
+            {
+                const ov = size(evaluateQuery(context, qAdjacent(oe, AdjacencyType.VERTEX, EntityType.VERTEX)));
+                if (ov < 2)
+                    closedEdges += 1;
+                if (ov == 0)
+                    vertexless += 1;
+            }
+            faceNote = " | " ~ toString(surfaceKind) ~ ", " ~ size(outlineEdges) ~ " edges (" ~ closedEdges ~ " closed, " ~ vertexless ~ " without a vertex), area "
+                ~ roundToPrecision(evArea(context, { "entities" : face }) / (millimeter ^ 2), 1) ~ " mm2";
+        }
+        if (verbose)
+        {
+            println("mapped surface refused: " ~ toString(mappedErr) ~ faceNote);
+        }
+        try silent
+        {
+            opDeleteBodies(context, id + "dropMapped", { "entities" : qCreatedBy(id, EntityType.BODY) });
+        }
+        { if (verbose) println("MAPPED 0 points: exception"); return { "points" : 0 }; }
+    }
+}
+
+/** The edge of `edges` nearest to a point, and how far it is. */
+function nearestEdgeTo(context is Context, point is Vector, edges is Query) returns map
+{
+    // A sheet with no edges (or one that is gone) has nothing to match: report "infinitely far" so the caller skips the pair
+    // instead of letting evDistance throw CANNOT_RESOLVE_ENTITIES, which used to abort the whole join.
+    const none = { "edge" : undefined, "distance" : 1e3 * meter };
+    const candidates = evaluateQuery(context, edges);
+    if (size(candidates) == 0)
+        return none;
+    try silent
+    {
+        const nearest = evDistance(context, { "side0" : point, "side1" : edges });
+        return { "edge" : candidates[nearest.sides[1].index], "distance" : nearest.distance };
+    }
+    return none;
+}
+
+/** The matches without repeats (an edge can be linked through more than one pair of faces). */
+function uniqueMatches(matches is array) returns array
+{
+    var seen = {};
+    var result = [];
+    for (var m in matches)
+    {
+        const key = toString(m.topology1) ~ "|" ~ toString(m.topology2);
+        if (seen[key] != undefined)
+            continue;
+        seen[key] = true;
+        result = append(result, m);
+    }
+    return result;
+}
+
+/**
+ * The edge matches for the union of the rebuilt faces. Every source edge between two faces became one wrapped edge, and each
+ * of the two rebuilt faces has an edge that follows it; those two edges are meant to coincide but, being the boundaries of
+ * two separately built surfaces, can be a fraction of a micron apart, which the kernel will not weld on its own. Telling it
+ * which edges belong together (the way the standard Fill feature joins its surface) lets it weld them.
+ */
+function weldMatches(context is Context, edgeMapping is array, fillBodies is map) returns array
+{
+    var matches = [];
+    for (var m in edgeMapping)
+    {
+        const adjacent = evaluateQuery(context, qAdjacent(m.sourceEdge, AdjacencyType.EDGE, EntityType.FACE));
+        if (size(adjacent) != 2)
+            continue;
+        const bodyA = fillBodies[toString(adjacent[0])];
+        const bodyB = fillBodies[toString(adjacent[1])];
+        if (bodyA == undefined || bodyB == undefined)
+            continue;
+        const middle = evEdgeTangentLine(context, { "edge" : m.wrappedEdge, "parameter" : 0.5 }).origin;
+        const a = nearestEdgeTo(context, middle, qOwnedByBody(bodyA, EntityType.EDGE));
+        const b = nearestEdgeTo(context, middle, qOwnedByBody(bodyB, EntityType.EDGE));
+        if (a.edge != undefined && b.edge != undefined && a.distance < 5e-5 * meter && b.distance < 5e-5 * meter)
+        {
+            matches = append(matches, { "topology1" : a.edge, "topology2" : b.edge, "matchType" : TopologyMatchType.COINCIDENT });
+        }
+    }
+    return uniqueMatches(matches);
+}
+
+/** The adjacency of the rebuilt faces for incrementalJoin: for every source edge between two faces, a point on its wrapped edge and the two faces. */
+function joinLinks(context is Context, edgeMapping is array, fillBodies is map) returns array
+{
+    var links = [];
+    for (var m in edgeMapping)
+    {
+        const adjacent = evaluateQuery(context, qAdjacent(m.sourceEdge, AdjacencyType.EDGE, EntityType.FACE));
+        if (size(adjacent) != 2)
+            continue;
+        const ka = toString(adjacent[0]);
+        const kb = toString(adjacent[1]);
+        if (fillBodies[ka] == undefined || fillBodies[kb] == undefined || ka == kb)
+            continue;
+        links = append(links, { "middle" : evEdgeTangentLine(context, { "edge" : m.wrappedEdge, "parameter" : 0.5 }).origin, "a" : ka, "b" : kb });
+    }
+    return links;
+}
+
+/**
+ * The faces joined one at a time, breadth first from the largest, each join in a try of its own, with the edge matches found
+ * against the bodies as they are at that step (`links` from joinLinks). A face the kernel refuses stays a separate sheet and
+ * the others go on, so what can be joined is joined and the refusals are named.
+ *
+ * @returns {map} { "joined" : faces in the main body, "left" : faces left as separate sheets }
+ */
+function incrementalJoin(context is Context, id is Id, links is array, fillBodies is map, makeSolid is boolean, verbose is boolean) returns map
+{
+    var current = fillBodies;
+    var seed = undefined;
+    var seedArea = 0 * meter ^ 2;
+    for (var entry in fillBodies)
+    {
+        const area = evArea(context, { "entities" : entry.value });
+        if (seed == undefined || area > seedArea)
+        {
+            seed = entry.key;
+            seedArea = area;
+        }
+    }
+    if (seed == undefined)
+        return { "joined" : 0, "left" : 0 };
+    var done = { (seed) : true };
+    var refused = {};
+    var refusedWhy = {};
+    var retries = 0;
+    var doneAtLastPass = 1;
+    var step = 0;
+    var progress = true;
+    // The interpreter's step limit is the feature's real constraint, and this function used to scan ALL links for every unjoined face on
+    // every pass (193 faces x ~460 links) and to rewrite the map entry of every joined face after every join (190 x 190). Links are indexed
+    // by face once, and the main body is ONE query (every joined face is part of it).
+    var linksOf = {};
+    for (var indexed in links)
+    {
+        linksOf[indexed.a] = append(linksOf[indexed.a] == undefined ? [] : linksOf[indexed.a], indexed);
+        linksOf[indexed.b] = append(linksOf[indexed.b] == undefined ? [] : linksOf[indexed.b], indexed);
+    }
+    var mainQuery = current[seed];
+    while (progress)
+    {
+        progress = false;
+        for (var entry in fillBodies)
+        {
+            const key = entry.key;
+            if (done[key] != undefined || refused[key] != undefined)
+                continue;
+            var matches = [];
+            var touching = false;
+            for (var link in (linksOf[key] == undefined ? [] : linksOf[key]))
+            {
+                var other = undefined;
+                if (link.a == key && done[link.b] != undefined)
+                    other = link.b;
+                else if (link.b == key && done[link.a] != undefined)
+                    other = link.a;
+                if (other == undefined)
+                    continue;
+                touching = true;
+                const a = nearestEdgeTo(context, link.middle, qOwnedByBody(mainQuery, EntityType.EDGE));
+                const b = nearestEdgeTo(context, link.middle, qOwnedByBody(current[key], EntityType.EDGE));
+                if (a.edge != undefined && b.edge != undefined && a.distance < JOIN_MATCH_GATE && b.distance < JOIN_MATCH_GATE)
+                {
+                    matches = append(matches, { "topology1" : a.edge, "topology2" : b.edge, "matchType" : TopologyMatchType.COINCIDENT });
+                }
+                else if (verbose && step < 40)
+                {
+                    println("  no match for face " ~ key ~ " against " ~ other ~ ": nearest edge gap " ~ roundToPrecision(min(a.distance, 1 * meter) / millimeter, 5) ~ " / "
+                        ~ roundToPrecision(min(b.distance, 1 * meter) / millimeter, 5) ~ " mm");
+                }
+            }
+            if (!touching)
+                continue;
+            step += 1;
+            const joinId = id + ("join" ~ step);
+            if (verbose)
+            {
+                println("JOIN step " ~ step ~ ": face " ~ key ~ ", " ~ size(matches) ~ " edge matches");
+            }
+            // First with the edge matches; when the kernel refuses that, as a plain union (the nearest edges found for the matches
+            // can be the wrong ones, and the kernel sews edges that are close enough on its own).
+            var joinedNow = false;
+            var joinErr = undefined;
+            var joinIds = [];
+            for (var variant = 0; variant < 2 && !joinedNow; variant += 1)
+            {
+                if (variant == 1 && size(matches) == 0)
+                    break;
+                const variantId = joinId + ("v" ~ variant);
+                var joinOptions = { "tools" : qUnion([mainQuery, current[key]]), "operationType" : BooleanOperationType.UNION,
+                                    "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true };
+                if (variant == 0)
+                    joinOptions = mergeMaps(joinOptions, { "matches" : uniqueMatches(matches), "recomputeMatches" : true });
+                try
+                {
+                    opBoolean(context, variantId, joinOptions);
+                    joinedNow = true;
+                    joinIds = append(joinIds, qCreatedBy(variantId, EntityType.BODY));
+                }
+                catch (variantErr)
+                {
+                    joinErr = variantErr;
+                }
+            }
+            if (joinedNow)
+            {
+                // The union's result is the first tool's body, modified: qCreatedBy(joinId) alone is EMPTY (a join then handed the next
+                // step one tool, BOOLEAN_BAD_INPUT, and no face after the second ever joined). The tools' own queries still resolve
+                // to the survivor (the consumed body resolves to nothing), so the merged body is whichever of them exists.
+                mainQuery = qBodyType(qUnion(concatenateArrays([joinIds, [mainQuery, current[key]]])), BodyType.SHEET);
+                done[key] = true;
+                progress = true;
+            }
+            else
+            {
+                refused[key] = true;
+                refusedWhy[key] = toString(joinErr) ~ " (" ~ size(matches) ~ " edge matches)";
+                if (verbose)
+                {
+                    println("join refused a face: " ~ refusedWhy[key]);
+                }
+            }
+        }
+        // A face the kernel refused may be accepted once more of its neighbours are in the main body (a contact along two edges
+        // needs both sides present): try the refused ones again as long as the main body keeps growing.
+        if (!progress && size(refused) > 0 && retries < 4 && size(done) > doneAtLastPass)
+        {
+            doneAtLastPass = size(done);
+            retries += 1;
+            refused = {};
+            progress = true;
+        }
+    }
+    var left = 0;
+    var leftBodies = [];
+    for (var entry in fillBodies)
+        if (done[entry.key] == undefined)
+        {
+            left += 1;
+            leftBodies = append(leftBodies, current[entry.key]);
+            if (verbose)
+            {
+                var placeNote = "";
+                try silent
+                {
+                    const leftBox = evBox3d(context, { "topology" : current[entry.key] });
+                    const centre = (leftBox.minCorner + leftBox.maxCorner) / 2;
+                    placeNote = " at (" ~ roundToPrecision(centre[0] / millimeter, 1) ~ ", " ~ roundToPrecision(centre[1] / millimeter, 1) ~ ", " ~ roundToPrecision(centre[2] / millimeter, 1)
+                        ~ ") mm, area " ~ roundToPrecision(evArea(context, { "entities" : current[entry.key] }) / (millimeter ^ 2), 2) ~ " mm2";
+                }
+                var touchingMain = 0;
+                for (var link in links)
+                    if ((link.a == entry.key && done[link.b] != undefined) || (link.b == entry.key && done[link.a] != undefined))
+                        touchingMain += 1;
+                println("LEFT sheet " ~ entry.key ~ placeNote ~ ": " ~ touchingMain ~ " contact edge(s) with the main body, "
+                    ~ (refusedWhy[entry.key] == undefined ? "never touched the main body" : refusedWhy[entry.key]));
+            }
+        }
+    return { "joined" : size(done), "left" : left, "main" : mainQuery, "leftBodies" : leftBodies };
+}
+
+/** The distance from a patch's edge midpoints to the old sheet's edges within which a naked edge of the main body is part of the hole. */
+const PATCH_EDGE_GATE = 5e-5 * meter;
+
+/** A left-over sheet smaller than this (0.05 mm2) is a sliver left by collapsed edges: it is dropped, not joined. */
+const PATCH_DEGENERATE_AREA = 5e-8 * meter ^ 2;
+
+/** Interior sample positions (u and v) of the old sheet that guide the patch's fill, so it follows the mapped shape and not the flattest surface through its boundary. */
+const PATCH_GUIDE_PARAMETERS = [0.15, 0.325, 0.5, 0.675, 0.85];
+
+/** Two naked edges whose end points are this close (in either order) are duplicates: the boundary of a micro-edge cluster has several. */
+const PATCH_DUPLICATE_GATE = 5e-5 * meter;
+
+/** A gap between consecutive boundary edges below this is left to the kernel's tolerance (a shorter bridge edge would be refused). */
+const PATCH_BRIDGE_MIN = 1e-5 * meter;
+
+/** A gap above this is not a loop that can be bridged. */
+const PATCH_BRIDGE_MAX = 5e-4 * meter;
+
+/**
+ * A closed boundary from the naked edges around a hole when they do not quite meet: duplicates (edges with the same two end
+ * points) are dropped, the rest are chained by nearest end point, and each gap of PATCH_BRIDGE_MIN or more is closed with a short
+ * straight edge. The bridges are the only new geometry; the patch meets the neighbours along their own edges.
+ *
+ * @returns {map} { "edges" : Query (the chain and the bridges), "bodies" : Query array (the bridges' bodies, to delete afterwards) }
+ *          or `undefined` when the edges do not form a loop (a gap over PATCH_BRIDGE_MAX, fewer than two edges)
+ */
+function bridgedBoundary(context is Context, id is Id, edges is array, variant is number, bridge is boolean)
+{
+    var items = [];
+    for (var e in edges)
+    {
+        const lp = evEdgeTangentLines(context, { "edge" : e, "parameters" : [0, 1] });
+        items = append(items, { "edge" : e, "p0" : lp[0].origin, "p1" : lp[1].origin, "len" : evLength(context, { "entities" : e }) });
+    }
+    // longest first, grouped into duplicates (edges with the same two end points): the boundary uses ONE edge of each group, and which one
+    // matters (at a micro-edge cluster the group is the strip's own end edge, the sliver beside it and the edge beyond the sliver;
+    // the hand-made fill that works takes the last). `variant` picks the member (modulo the group's size).
+    var groups = [];
+    var pending = items;
+    while (size(pending) > 0)
+    {
+        var best = 0;
+        for (var k = 1; k < size(pending); k += 1)
+            if (pending[k].len > pending[best].len)
+                best = k;
+        const item = pending[best];
+        pending = concatenateArrays([subArray(pending, 0, best), subArray(pending, best + 1)]);
+        var placed = false;
+        for (var g = 0; g < size(groups) && !placed; g += 1)
+        {
+            const c = groups[g][0];
+            if ((norm(item.p0 - c.p0) < PATCH_DUPLICATE_GATE && norm(item.p1 - c.p1) < PATCH_DUPLICATE_GATE)
+                || (norm(item.p0 - c.p1) < PATCH_DUPLICATE_GATE && norm(item.p1 - c.p0) < PATCH_DUPLICATE_GATE))
+            {
+                groups[g] = append(groups[g], item);
+                placed = true;
+            }
+        }
+        if (!placed)
+            groups = append(groups, [item]);
+    }
+    var chosen = [];
+    for (var group in groups)
+        chosen = append(chosen, group[variant % size(group)]);
+    if (size(chosen) < 2)
+        return undefined;
+
+    var used = makeArray(size(chosen), false);
+    used[0] = true;
+    var pieces = [chosen[0].edge];
+    var bridgeEdges = [];
+    var bridgeBodies = [];
+    const start = chosen[0].p0;
+    var cursor = chosen[0].p1;
+    var bridgeCount = 0;
+    var gapNote = "";
+    for (var step = 1; step <= size(chosen); step += 1)
+    {
+        // the next edge (nearest end point to the cursor), or on the last step the way back to the start
+        var target = start;
+        var nextIndex = -1;
+        var nextForward = true;
+        if (step < size(chosen))
+        {
+            var nextGap = 1 * meter;
+            for (var k = 0; k < size(chosen); k += 1)
+            {
+                if (used[k])
+                    continue;
+                if (norm(chosen[k].p0 - cursor) < nextGap)
+                {
+                    nextGap = norm(chosen[k].p0 - cursor);
+                    nextIndex = k;
+                    nextForward = true;
+                }
+                if (norm(chosen[k].p1 - cursor) < nextGap)
+                {
+                    nextGap = norm(chosen[k].p1 - cursor);
+                    nextIndex = k;
+                    nextForward = false;
+                }
+            }
+            if (nextIndex < 0)
+                return undefined;
+            target = nextForward ? chosen[nextIndex].p0 : chosen[nextIndex].p1;
+        }
+        const gap = norm(target - cursor);
+        gapNote = gapNote ~ (gapNote == "" ? "" : "/") ~ roundToPrecision(gap / meter * 1e6, 1);
+        if (gap > PATCH_BRIDGE_MAX)
+            return undefined;
+        if (bridge && gap >= PATCH_BRIDGE_MIN)
+        {
+            const bridgeId = id + ("bridge" ~ bridgeCount);
+            opPolyline(context, bridgeId, { "points" : [cursor, target] });
+            bridgeEdges = append(bridgeEdges, qCreatedBy(bridgeId, EntityType.EDGE));
+            bridgeBodies = append(bridgeBodies, qCreatedBy(bridgeId, EntityType.BODY));
+            bridgeCount += 1;
+        }
+        if (nextIndex >= 0)
+        {
+            used[nextIndex] = true;
+            pieces = append(pieces, chosen[nextIndex].edge);
+            cursor = nextForward ? chosen[nextIndex].p1 : chosen[nextIndex].p0;
+        }
+    }
+    return { "edges" : qUnion(concatenateArrays([pieces, bridgeEdges])), "bodies" : bridgeBodies,
+             "summary" : size(chosen) ~ " edges after dropping " ~ (size(items) - size(chosen)) ~ " duplicate(s), " ~ bridgeCount ~ " bridge(s), gaps " ~ gapNote ~ " um" };
+}
+
+/** A separate one-face sheet whose sample points are all this close to the main sheet lies ON it: it adds nothing and is dropped. */
+const COVERED_SHEET_GATE = 5e-6 * meter;
+
+/** ... but only a small one (a real face that is merely unjoined must stay). */
+const COVERED_SHEET_MAX_AREA = 1e-6 * meter ^ 2;
+
+/** A face that could not be rebuilt leaves no hole when an interior point of it, mapped, is this close to the faces that were built. */
+const FAILED_FACE_COVERED_GATE = 2e-5 * meter;
+
+/**
+ * Drops the separate sheets of a result that the main sheet already covers (measured: the 0.028 mm2 sliver sheet of the lid lay 0.5-0.9 um
+ * from the main sheet at every sample point, because the strip's patch spans the sliver's place). The main sheet is the one with the
+ * most faces. A sheet is dropped only when it has one face, under COVERED_SHEET_MAX_AREA, and every one of 5 points across it is within
+ * COVERED_SHEET_GATE of the main sheet's faces.
+ *
+ * @returns {number} how many sheets were dropped
+ */
+function dropCoveredSheets(context is Context, id is Id, sheets is Query, verbose is boolean) returns number
+{
+    const bodies = evaluateQuery(context, sheets);
+    if (size(bodies) < 2)
+        return 0;
+    var mainIndex = 0;
+    var mostFaces = -1;
+    for (var i = 0; i < size(bodies); i += 1)
+    {
+        const count = size(evaluateQuery(context, qOwnedByBody(bodies[i], EntityType.FACE)));
+        if (count > mostFaces)
+        {
+            mostFaces = count;
+            mainIndex = i;
+        }
+    }
+    const mainFaces = qOwnedByBody(bodies[mainIndex], EntityType.FACE);
+    var dropped = 0;
+    for (var i = 0; i < size(bodies); i += 1)
+    {
+        if (i == mainIndex)
+            continue;
+        var covered = false;
+        var farthest = 0 * meter;
+        try silent
+        {
+            const faceQuery = qOwnedByBody(bodies[i], EntityType.FACE);
+            if (size(evaluateQuery(context, faceQuery)) == 1 && evArea(context, { "entities" : faceQuery }) < COVERED_SHEET_MAX_AREA)
+            {
+                const planes = evFaceTangentPlanes(context, { "face" : faceQuery,
+                    "parameters" : [vector(0.5, 0.5), vector(0.2, 0.5), vector(0.8, 0.5), vector(0.5, 0.2), vector(0.5, 0.8)] });
+                covered = true;
+                for (var plane in planes)
+                {
+                    const gap = evDistance(context, { "side0" : plane.origin, "side1" : mainFaces }).distance;
+                    farthest = max(farthest, gap);
+                    if (gap >= COVERED_SHEET_GATE)
+                        covered = false;
+                }
+            }
+        }
+        if (covered)
+        {
+            opDeleteBodies(context, id + ("dropCovered" ~ i), { "entities" : bodies[i] });
+            dropped += 1;
+        }
+        if (verbose)
+        {
+            println("COVERED sheet check " ~ i ~ ": " ~ (covered ? "dropped, lies on the main sheet (farthest sample " ~ roundToPrecision(farthest / meter * 1e6, 2) ~ " um)" : "kept"));
+        }
+    }
+    return dropped;
+}
+
+/**
+ * Whether the place of a source face that could not be rebuilt is covered by the faces that were: an interior point of the face
+ * (the nearest point of the face to the mean of its vertices), mapped like the rest, is within FAILED_FACE_COVERED_GATE of `resultFaces`.
+ * A tiny face between two others (the lid's 0.0067 mm2 triangle at the sliver cluster) leaves no hole; a real missing face does.
+ */
+function isFailedFaceCovered(context is Context, face is Query, fromFrenetPath is map, toFrenetPath is map, fromRefArc, toRefArc, flipToNormal is boolean,
+    resultFaces is Query) returns boolean
+{
+    try silent
+    {
+        const vertices = evaluateQuery(context, qAdjacent(face, AdjacencyType.VERTEX, EntityType.VERTEX));
+        if (size(vertices) == 0)
+            return false;
+        var sum = vector(0, 0, 0) * meter;
+        for (var vertex in vertices)
+            sum += evVertexPoint(context, { "vertex" : vertex });
+        const onFace = evDistance(context, { "side0" : sum / size(vertices), "side1" : face }).sides[1].point;
+        const mapped = mapWorldPoints(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, flipToNormal, [onFace])[0];
+        return evDistance(context, { "side0" : mapped, "side1" : resultFaces }).distance < FAILED_FACE_COVERED_GATE;
+    }
+    return false;
+}
+
+/** How many edges of a face (or faces) belong to no other face: its naked edges. */
+function nakedEdgeCount(context is Context, faces is Query) returns number
+{
+    var count = 0;
+    for (var faceEdge in evaluateQuery(context, qAdjacent(faces, AdjacencyType.EDGE, EntityType.EDGE)))
+        if (size(evaluateQuery(context, qAdjacent(faceEdge, AdjacencyType.EDGE, EntityType.FACE))) < 2)
+            count += 1;
+    return count;
+}
+
+/** Two naked edges whose middles are this close (and whose lengths agree) are the two sides of an unsewn seam. */
+const SEAM_PAIR_GATE = 5e-5 * meter;
+
+/** Seams shorter than this are not worth lifting a face for. */
+const SEAM_MIN_LENGTH = 3e-4 * meter;
+
+/** At most this many seams are repaired in one feature (each costs a few operations). */
+const SEAM_MAX_REPAIRS = 16;
+
+/**
+ * Sews the seams left inside a joined sheet: pairs of naked edges that lie side by side (the lid had 9, 83.6 mm in all, each between the
+ * huge top face and a small neighbour, the two edges 0.1-0.9 um apart but not merged: a face that joins along several edges can have one
+ * of them left unsewn and the kernel raises no error). For each pair the SMALLER of the two faces is lifted out and put back: copied
+ * (opExtractSurface), removed from the sheet (opDeleteFace, leaveOpen), and the copy unioned back with an explicit COINCIDENT match for
+ * every one of its edges, the way the standard Fill adds its surface. It counts as sewn when the face has fewer naked edges than before.
+ * The copy is the original face, so it also goes back unchanged when the sewing fails (the structure follows clean_surfaces' sew).
+ *
+ * @returns {map} { "pairs" : seams found, "sewn" : repaired }
+ */
+function sewSeams(context is Context, id is Id, main is Query, verbose is boolean) returns map
+{
+    var sewn = 0;
+    var pairsAtStart = 0;
+    var remaining = 0;
+    var failedAt = [];      // middles of the seams that could not be sewn: they are skipped from then on
+    // Every round finds the seams afresh (a union renames the edges of the sheet, so a list made once went stale after the first repair: three of
+    // the seven later lifts failed with EXTRACT_SURFACE_NO_FACES) and repairs the first one that has not failed.
+    for (var k = 0; k < SEAM_MAX_REPAIRS; k += 1)
+    {
+        const nakedEdges = evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(main, EntityType.EDGE), EdgeTopology.ONE_SIDED));
+        var middles = [];
+        var lengths = [];
+        for (var edge in nakedEdges)
+        {
+            middles = append(middles, evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 }).origin);
+            lengths = append(lengths, evLength(context, { "entities" : edge }));
+        }
+        var seamCount = 0;
+        var seamEdges = undefined;
+        var seamMiddle = undefined;
+        for (var i = 0; i < size(nakedEdges); i += 1)
+            for (var j = i + 1; j < size(nakedEdges); j += 1)
+                if (lengths[i] > SEAM_MIN_LENGTH && norm(middles[i] - middles[j]) < SEAM_PAIR_GATE
+                    && abs(lengths[i] - lengths[j]) < 0.1 * max(lengths[i], lengths[j]))
+                {
+                    seamCount += 1;
+                    var skipped = false;
+                    for (var failedMiddle in failedAt)
+                        if (norm(middles[i] - failedMiddle) < 2e-4 * meter)
+                            skipped = true;
+                    if (!skipped && seamEdges == undefined)
+                    {
+                        seamEdges = [nakedEdges[i], nakedEdges[j]];
+                        seamMiddle = middles[i];
+                    }
+                }
+        if (k == 0)
+            pairsAtStart = seamCount;
+        remaining = seamCount;
+        if (seamEdges == undefined)
+            break;
+        var note = "";
+        var done = false;
+        try
+        {
+            // the smaller of the two faces is the one lifted
+            const faceA = qAdjacent(seamEdges[0], AdjacencyType.EDGE, EntityType.FACE);
+            const faceB = qAdjacent(seamEdges[1], AdjacencyType.EDGE, EntityType.FACE);
+            const areaA = evArea(context, { "entities" : faceA });
+            const areaB = evArea(context, { "entities" : faceB });
+            const lifted = areaA <= areaB ? faceA : faceB;
+            const nakedBefore = nakedEdgeCount(context, lifted);
+            const copyId = id + ("copy" ~ k);
+            opExtractSurface(context, copyId, { "faces" : lifted, "tangentPropagation" : false });
+            const copy = qCreatedBy(copyId, EntityType.BODY);
+            opDeleteFace(context, id + ("lift" ~ k), { "deleteFaces" : lifted, "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
+            // a match for every edge of the copy: the nearest naked edge of the sheet (now including the hole's edges)
+            const nowNaked = qEdgeTopologyFilter(qOwnedByBody(main, EntityType.EDGE), EdgeTopology.ONE_SIDED);
+            var seamMatches = [];
+            for (var copyEdge in evaluateQuery(context, qOwnedByBody(copy, EntityType.EDGE)))
+            {
+                const copyMiddle = evEdgeTangentLine(context, { "edge" : copyEdge, "parameter" : 0.5 }).origin;
+                const partner = nearestEdgeTo(context, copyMiddle, nowNaked);
+                if (partner.edge != undefined && partner.distance < PATCH_MATCH_GATE)
+                    seamMatches = append(seamMatches, { "topology1" : partner.edge, "topology2" : copyEdge, "matchType" : TopologyMatchType.COINCIDENT });
+            }
+            var rejoined = false;
+            try
+            {
+                opBoolean(context, id + ("sew" ~ k), { "tools" : qUnion([main, copy]), "operationType" : BooleanOperationType.UNION, "makeSolid" : false,
+                                                       "allowSheets" : true, "eraseImprintedEdges" : true, "matches" : uniqueMatches(seamMatches), "recomputeMatches" : true });
+                rejoined = true;
+            }
+            catch (matchedErr)
+            {
+                note = "with matches: " ~ toString(matchedErr) ~ "; ";
+            }
+            if (!rejoined)
+            {
+                opBoolean(context, id + ("sewPlain" ~ k), { "tools" : qUnion([main, copy]), "operationType" : BooleanOperationType.UNION, "makeSolid" : false,
+                                                            "allowSheets" : true });
+            }
+            // The copy's BODY is gone after the union (it is part of the sheet), its FACE is not: ask the face (an empty answer = unknown, not sewn).
+            const copyFace = qCreatedBy(copyId, EntityType.FACE);
+            const nakedAfter = isQueryEmpty(context, copyFace) ? nakedBefore : nakedEdgeCount(context, copyFace);
+            done = nakedAfter < nakedBefore;
+            note = note ~ "lifted a face of " ~ roundToPrecision(min(areaA, areaB) / (millimeter ^ 2), 2) ~ " mm2; its naked edges " ~ nakedBefore ~ " -> " ~ nakedAfter ~ " (" ~ size(seamMatches) ~ " edge matches)";
+        }
+        catch (seamErr)
+        {
+            note = note ~ "failed: " ~ toString(seamErr);
+        }
+        if (done)
+            sewn += 1;
+        else
+            failedAt = append(failedAt, seamMiddle);
+        if (verbose)
+        {
+            println("SEAM round " ~ k ~ " (" ~ seamCount ~ " seams found): " ~ (done ? "sewn" : "NOT sewn") ~ ", " ~ note);
+        }
+    }
+    return { "pairs" : pairsAtStart, "sewn" : sewn, "remaining" : remaining };
+}
+
+/** A patch edge is matched to a naked edge of the main body when its middle is within this distance of it. */
+const PATCH_MATCH_GATE = 1e-4 * meter;
+
+/** An edge's end points as text, in mm (debug output). */
+function edgeEndsText(context is Context, edge is Query) returns string
+{
+    const lp = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [0, 1] });
+    return "(" ~ roundToPrecision(lp[0].origin[0] / millimeter, 3) ~ "," ~ roundToPrecision(lp[0].origin[1] / millimeter, 3) ~ "," ~ roundToPrecision(lp[0].origin[2] / millimeter, 3)
+        ~ ")->(" ~ roundToPrecision(lp[1].origin[0] / millimeter, 3) ~ "," ~ roundToPrecision(lp[1].origin[1] / millimeter, 3) ~ "," ~ roundToPrecision(lp[1].origin[2] / millimeter, 3) ~ ")";
+}
+
+/**
+ * The sheets the kernel would not sew into the main body, replaced by patches built from the hole they leave: the naked edges of
+ * the main body that lie along the sheet's edges form the hole's boundary (they ARE the neighbours' edges, so a surface bounded
+ * by them meets the neighbours exactly, which the sheet's own edges, a few microns off, do not). The patch is joined first; only
+ * then is the old sheet deleted, so a sheet that cannot be replaced stays. A collapsed sheet (no area) is just dropped.
+ *
+ * @returns {number} how many sheets were replaced or dropped
+ */
+function patchLeftSheets(context is Context, id is Id, main is Query, leftBodies is array, verbose is boolean) returns number
+{
+    var patched = 0;
+    var handled = makeArray(size(leftBodies), false);
+    // Two passes: first every sheet gets only the clean attempts (a boundary of naked edges that closes by itself), then the ones left get
+    // the chained attempts. The hard one goes in last because its patch overlaps a sliver and leaves the main body in a state later
+    // unions refuse (sheet 4 patched fine until the 413 mm2 strip was patched before it).
+    for (var pass = 0; pass < 2; pass += 1)
+    for (var i = 0; i < size(leftBodies); i += 1)
+    {
+        const sheet = leftBodies[i];
+        if (handled[i] || isQueryEmpty(context, sheet))
+            continue;
+        const tag = i ~ "p" ~ pass;     // ids must be new in each pass
+        const patchId = id + ("patch" ~ tag);
+        var done = false;
+        var note = "";
+        var loopSize = 0;
+        var guideBodies = [];
+        var patchFill = undefined;      // the fill that was made for the sheet (a query), once there is one
+        var patchFaces = qNothing();    // its face(s): they survive a union that merged the patch's body into another (the body query then resolves to nothing)
+        try
+        {
+            const area = evArea(context, { "entities" : sheet });
+            if (area < PATCH_DEGENERATE_AREA)
+            {
+                opDeleteBodies(context, id + ("drop" ~ tag), { "entities" : sheet });
+                done = true;
+                note = "dropped (collapsed, area " ~ roundToPrecision(area / (millimeter ^ 2), 6) ~ " mm2)";
+            }
+            else
+            {
+                // all naked edges of the main body (a few dozen: the source's own boundary and the holes), tested against the sheet's edges
+                const nakedNear = qEdgeTopologyFilter(qOwnedByBody(main, EntityType.EDGE), EdgeTopology.ONE_SIDED);
+                const sheetEdges = qOwnedByBody(sheet, EntityType.EDGE);
+                var nakedGaps = [];       // [{ "edge", "gap" }]: each naked edge of the main body and how far its middle is from the sheet's edges
+                for (var e in evaluateQuery(context, nakedNear))
+                {
+                    const middle = evEdgeTangentLine(context, { "edge" : e, "parameter" : 0.5 }).origin;
+                    nakedGaps = append(nakedGaps, { "edge" : e, "gap" : evDistance(context, { "side0" : middle, "side1" : sheetEdges }).distance });
+                }
+                // The sheet's own edges that touch no naked edge of the main body: its free boundary, where there is no neighbour to take
+                // an edge from. A face on the part's outer boundary needs them in its loop.
+                var sheetGaps = [];       // [{ "edge", "gap" }]
+                for (var se in evaluateQuery(context, sheetEdges))
+                {
+                    var sheetGap = 1 * meter;
+                    try silent
+                    {
+                        const sheetMiddle = evEdgeTangentLine(context, { "edge" : se, "parameter" : 0.5 }).origin;
+                        sheetGap = evDistance(context, { "side0" : sheetMiddle, "side1" : nakedNear }).distance;
+                    }
+                    sheetGaps = append(sheetGaps, { "edge" : se, "gap" : sheetGap });
+                }
+                {
+                    // Points ON the old sheet (its interior, where the fill has nothing to follow) as guide vertices.
+                    const oldFace = qOwnedByBody(sheet, EntityType.FACE);
+                    try silent
+                    {
+                        var guideParameters = [];
+                        for (var gu in PATCH_GUIDE_PARAMETERS)
+                            for (var gv in PATCH_GUIDE_PARAMETERS)
+                                guideParameters = append(guideParameters, vector(gu, gv));
+                        const guidePlanes = evFaceTangentPlanes(context, { "face" : oldFace, "parameters" : guideParameters });
+                        for (var g = 0; g < size(guidePlanes); g += 1)
+                        {
+                            // the parameter box is bigger than the trimmed face: keep the samples that lie on the face
+                            if (evDistance(context, { "side0" : guidePlanes[g].origin, "side1" : oldFace }).distance < 5e-6 * meter)
+                            {
+                                const guideId = id + ("guide" ~ tag ~ "_" ~ g);
+                                opPoint(context, guideId, { "point" : guidePlanes[g].origin });
+                                guideBodies = append(guideBodies, qCreatedBy(guideId, EntityType.BODY));
+                            }
+                        }
+                    }
+                    // Attempts: the boundary found with the tight gate, with and without guide points, then the same with a gate ten times
+                    // wider (a contact edge that is off by more than the tight gate leaves the loop open).
+                    var failure = "";
+                    var usedLoop = 0;
+                    var usedGuides = false;
+                    var chainSummary = "";
+                    for (var attempt = (pass == 0 ? 0 : 2); attempt < (pass == 0 ? 2 : 8) && patchFill == undefined; attempt += 1)
+                    {
+                        // 0-1: the naked edges along the sheet (tight gate), guided / unguided: what works for a face with a clean boundary.
+                        // 2-7: the naked edges within a wide gate with duplicates reduced to one edge per group and NO bridges (a gap of ~10-20 um
+                        // is left to the kernel, as in a hand-made Fill, and a bridge that short is what broke the earlier attempts); the member
+                        // of each duplicate group is tried in turn (2-4 unguided, 5-7 guided). A hand-made fill of the 413 mm2 strip (edges: the
+                        // two long ones, the 2.58 mm one and the LAST of three 3.5 mm end edges, unguided) is what this follows.
+                        const gate = attempt < 2 ? PATCH_EDGE_GATE : 10 * PATCH_EDGE_GATE;
+                        const withGuides = (attempt < 2 ? attempt == 0 : attempt >= 5) && size(guideBodies) > 0;
+                        const bridged = attempt >= 2;
+                        var loop = [];
+                        for (var candidate in nakedGaps)
+                            if (candidate.gap < gate)
+                                loop = append(loop, candidate.edge);
+                        loopSize = size(loop);
+                        if (size(loop) < 2)
+                        {
+                            failure = "only " ~ size(loop) ~ " naked edge(s) of the main body along it";
+                        }
+                        else
+                        {
+                            const attemptId = patchId + ("a" ~ attempt);
+                            var scaffold = [];        // the bridges' bodies of this attempt
+                            try
+                            {
+                                var boundary = qUnion(loop);
+                                if (bridged)
+                                {
+                                    const chain = bridgedBoundary(context, patchId + ("b" ~ attempt), loop, (attempt - 2) % 3, false);
+                                    if (chain == undefined)
+                                        throw "the naked edges around the sheet do not form a loop that can be bridged";
+                                    scaffold = chain.bodies;
+                                    chainSummary = chain.summary;
+                                    boundary = chain.edges;
+                                }
+                                opFillSurface(context, attemptId, { "edgesG0" : boundary, "edgesG1" : qNothing(), "edgesG2" : qNothing(),
+                                                                    "guideVertices" : withGuides ? qUnion(guideBodies) : qNothing() });
+                                patchFill = qBodyType(qCreatedBy(attemptId, EntityType.BODY), BodyType.SHEET);
+                                patchFaces = qCreatedBy(attemptId, EntityType.FACE);
+                                usedLoop = size(loop);
+                                usedGuides = withGuides;
+                                if (size(scaffold) > 0)
+                                {
+                                    try silent
+                                    {
+                                        opDeleteBodies(context, patchId + ("dropWire" ~ attempt), { "entities" : qUnion(scaffold) });
+                                    }
+                                }
+                            }
+                            catch (fillErr)
+                            {
+                                // how many ends of the boundary meet no other end: an open boundary cannot be filled
+                                var openEnds = 0;
+                                try silent
+                                {
+                                    var ends = [];
+                                    for (var le in loop)
+                                    {
+                                        const lp = evEdgeTangentLines(context, { "edge" : le, "parameters" : [0, 1] });
+                                        ends = append(ends, lp[0].origin);
+                                        ends = append(ends, lp[1].origin);
+                                    }
+                                    for (var ei = 0; ei < size(ends); ei += 1)
+                                    {
+                                        var met = 0;
+                                        for (var ej = 0; ej < size(ends); ej += 1)
+                                            if (ei != ej && norm(ends[ei] - ends[ej]) < 1e-5 * meter)
+                                                met += 1;
+                                        if (met == 0)
+                                            openEnds += 1;
+                                    }
+                                }
+                                failure = toString(fillErr) ~ " (attempt " ~ attempt ~ ", gate " ~ roundToPrecision(gate / meter * 1e6, 0) ~ " um, " ~ size(loop) ~ " edges"
+                                    ~ (bridged ? " bridged" ~ (chainSummary == "" ? "" : " [" ~ chainSummary ~ "]") : "") ~ ", " ~ openEnds ~ " open ends, " ~ (withGuides ? "guided" : "unguided") ~ ")";
+                                // bridges made for an attempt that failed are scaffolding
+                                if (size(scaffold) > 0)
+                                {
+                                    try silent
+                                    {
+                                        opDeleteBodies(context, patchId + ("dropFailedWire" ~ attempt), { "entities" : qUnion(scaffold) });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (patchFill == undefined)
+                    {
+                        note = "not patched: " ~ failure;
+                        if (verbose && pass == 1)
+                        {
+                            // the geometry of the boundary, to see why no loop closes: the sheet's own edges, and the main body's naked edges within 2 mm of them
+                            for (var dumpGap in sheetGaps)
+                            {
+                                try silent
+                                {
+                                    println("  SHEET " ~ i ~ " edge: len " ~ roundToPrecision(evLength(context, { "entities" : dumpGap.edge }) / millimeter, 3) ~ " mm, gap to a main naked edge "
+                                        ~ roundToPrecision(dumpGap.gap / millimeter, 4) ~ " mm, " ~ edgeEndsText(context, dumpGap.edge));
+                                }
+                            }
+                            for (var dumpNaked in nakedGaps)
+                            {
+                                if (dumpNaked.gap < 2 * millimeter)
+                                {
+                                    try silent
+                                    {
+                                        println("  MAIN naked edge: len " ~ roundToPrecision(evLength(context, { "entities" : dumpNaked.edge }) / millimeter, 3) ~ " mm, gap to the sheet "
+                                            ~ roundToPrecision(dumpNaked.gap / millimeter, 4) ~ " mm, " ~ edgeEndsText(context, dumpNaked.edge));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        var deviation = undefined;
+                        try silent
+                        {
+                            const probes = evFaceTangentPlanes(context, { "face" : qOwnedByBody(sheet, EntityType.FACE),
+                                "parameters" : [vector(0.5, 0.5), vector(0.25, 0.25), vector(0.75, 0.25), vector(0.25, 0.75), vector(0.75, 0.75)] });
+                            deviation = 0 * meter;
+                            for (var pl in probes)
+                                deviation = max(deviation, evDistance(context, { "side0" : pl.origin, "side1" : patchFill }).distance);
+                        }
+                        // Explicit matches, as the standard Fill feature makes when it adds its surface to a body: each edge of the patch with the
+                        // nearest naked edge of the main body. The fill refits its boundary, so a long edge (the 137 mm strip) is a few microns
+                        // off the edge it was built on and a plain union leaves the sheets unsewn WITHOUT an error.
+                        var patchMatches = [];
+                        for (var patchEdge in evaluateQuery(context, qOwnedByBody(patchFill, EntityType.EDGE)))
+                        {
+                            const patchMiddle = evEdgeTangentLine(context, { "edge" : patchEdge, "parameter" : 0.5 }).origin;
+                            const mainEdge = nearestEdgeTo(context, patchMiddle, nakedNear);
+                            if (mainEdge.edge != undefined && mainEdge.distance < PATCH_MATCH_GATE)
+                                patchMatches = append(patchMatches, { "topology1" : mainEdge.edge, "topology2" : patchEdge, "matchType" : TopologyMatchType.COINCIDENT });
+                        }
+                        var patchJoinOptions = { "tools" : qUnion([main, patchFill]), "operationType" : BooleanOperationType.UNION,
+                                                 "makeSolid" : false, "allowSheets" : true, "eraseImprintedEdges" : true };
+                        if (size(patchMatches) > 0)
+                            patchJoinOptions = mergeMaps(patchJoinOptions, { "matches" : uniqueMatches(patchMatches), "recomputeMatches" : true });
+                        opBoolean(context, id + ("patchJoin" ~ tag), patchJoinOptions);
+                        // A union of sheets that do not touch raises no error and leaves them apart, so whether the patch is now part of the
+                        // main body has to be asked (the first version of this reported "0 still separate" for a patch that was not sewn).
+                        // Asked of the patch's own edges: after the union the body queries do not say reliably (patchFill resolves to the
+                        // consumed body, and the check reported "not sewn" for a patch that was sewn on all four sides). A patch that is
+                        // sewn has no naked edge.
+                        var patchNaked = 0;
+                        for (var checkEdge in evaluateQuery(context, qAdjacent(patchFaces, AdjacencyType.EDGE, EntityType.EDGE)))
+                            if (size(evaluateQuery(context, qAdjacent(checkEdge, AdjacencyType.EDGE, EntityType.FACE))) < 2)
+                                patchNaked += 1;
+                        const sewn = patchNaked == 0;
+                        // The patch stands in for the old sheet either way (keeping both would leave a stray copy of the face in the result).
+                        opDeleteBodies(context, id + ("dropSheet" ~ tag), { "entities" : sheet });
+                        note = (sewn ? "replaced by a patch of " : "replaced by a patch of ") ~ usedLoop ~ " boundary edges" ~ (usedGuides ? " and " ~ size(guideBodies) ~ " guide points" : " (unguided)")
+                            ~ (deviation == undefined ? "" : ", mid-face deviation from the mapped sheet " ~ roundToPrecision(deviation / millimeter, 5) ~ " mm")
+                            ~ (sewn ? "" : "; NOT SEWN to the main body (" ~ patchNaked ~ " naked edge(s) left, " ~ size(patchMatches) ~ " edge matches): it stays a separate sheet");
+                        done = sewn;
+                    }
+                }
+            }
+        }
+        catch (patchErr)
+        {
+            note = "patch failed: " ~ toString(patchErr) ~ " (" ~ loopSize ~ " boundary edges, " ~ size(guideBodies) ~ " guide points)";
+            if (patchFill != undefined)
+            {
+                // An error before or inside the union: the patch body is intact, delete it. (Deleting the patch's faces instead, as an
+                // attempt to avoid taking a sheet the patch had merged with, removed the old strip and the sliver as well: the result lost
+                // them. A patch that was merged but not sewn is NOT handled here: it is kept, see the join above.)
+                try silent
+                {
+                    if (!isQueryEmpty(context, patchFill))
+                        opDeleteBodies(context, id + ("dropPatch" ~ tag), { "entities" : patchFill });
+                }
+            }
+        }
+        // the guide points are scaffolding, whatever happened
+        if (size(guideBodies) > 0)
+        {
+            try silent
+            {
+                opDeleteBodies(context, id + ("dropGuides" ~ tag), { "entities" : qUnion(guideBodies) });
+            }
+        }
+        if (done)
+        {
+            patched += 1;
+            handled[i] = true;
+        }
+        // the first pass only reports what it did; the second reports every sheet that is still left
+        if (verbose && (done || pass == 1))
+        {
+            println("PATCH sheet " ~ i ~ " (pass " ~ pass ~ "): " ~ note);
+        }
+    }
+    return patched;
+}
+
+/** Whether (diagonal of the face's box)^2 / its area is above `aspect`. */
+function isAspectAbove(context is Context, face is Query, aspect is number) returns boolean
+{
+    const faceBox = evBox3d(context, { "topology" : face });
+    const diagonal = norm(faceBox.maxCorner - faceBox.minCorner);
+    return diagonal * diagonal > aspect * evArea(context, { "entities" : face });
+}
+
+/** Whether a face is long and thin enough that a fill of its outline may flatten it (see THIN_FACE_ASPECT). */
+function isThinAndLong(context is Context, face is Query) returns boolean
+{
+    const faceBox = evBox3d(context, { "topology" : face });
+    const diagonal = norm(faceBox.maxCorner - faceBox.minCorner);
+    return diagonal * diagonal > THIN_FACE_ASPECT * evArea(context, { "entities" : face });
+}
+
+/** The largest distance from the exactly mapped interior points of a source face to the rebuilt face. */
+function faceMaxDeviation(context is Context, id is Id, face is Query, filled is Query,
+    fromFrenetPath is map, toFrenetPath is map, settings is map) returns ValueWithUnits
+{
+    var worst = 0 * meter;
+    for (var p in transformFacepoints(context, id, face, 2, 2, fromFrenetPath, toFrenetPath, settings))
+        worst = max(worst, evDistance(context, { "side0" : p, "side1" : filled }).distance);
+    return worst;
+}
+
+/**
+ * Debug: how far a rebuilt face lies from where the wrap says it should be. Interior points of the source face are
+ * mapped exactly (as the guide points are), and the distance from each to the rebuilt face is printed.
+ */
+function debugReportFaceAccuracy(context is Context, id is Id, face is Query, filled is Query, label is string,
+    fromFrenetPath is map, toFrenetPath is map, settings is map)
+{
+    try
+    {
+        const points = transformFacepoints(context, id, face, 3, 3, fromFrenetPath, toFrenetPath, settings);
+        var worst = 0 * meter;
+        var sum = 0 * meter;
+        for (var p in points)
+        {
+            const d = evDistance(context, { "side0" : p, "side1" : filled }).distance;
+            worst = max(worst, d);
+            sum += d;
+        }
+        // The boundary: exactly mapped points of every source edge against the rebuilt face's own edges (what a neighbour has to meet).
+        var boundaryWorst = 0 * meter;
+        var boundaryNote = "";
+        const rebuiltEdges = qAdjacent(filled, AdjacencyType.EDGE, EntityType.EDGE);
+        for (var sourceEdge in evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE)))
+        {
+            try silent
+            {
+                const reportParameters = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95];
+                const onEdge = mapArray(evEdgeTangentLines(context, { "edge" : sourceEdge, "parameters" : reportParameters }), function(x) { return x.origin; });
+                const images = mapWorldPointChain(context, fromFrenetPath, toFrenetPath, settings.fromRefArc, settings.toRefArc, settings.flipToNormal, onEdge);
+                var edgeWorst = 0 * meter;
+                var worstAt = 0;
+                for (var k = 0; k < size(images); k += 1)
+                {
+                    const gap = evDistance(context, { "side0" : images[k], "side1" : rebuiltEdges }).distance;
+                    if (gap > edgeWorst)
+                    {
+                        edgeWorst = gap;
+                        worstAt = reportParameters[k];
+                    }
+                }
+                if (edgeWorst > boundaryWorst)
+                {
+                    boundaryWorst = edgeWorst;
+                    const at = onEdge[round(worstAt * 10 - 0.5)] / millimeter;
+                    boundaryNote = " (source edge " ~ roundToPrecision(evLength(context, { "entities" : sourceEdge }) / millimeter, 1) ~ " mm, worst at " ~ worstAt ~ " of it, source (" ~ roundToPrecision(at[0], 0) ~ "," ~ roundToPrecision(at[1], 0) ~ "," ~ roundToPrecision(at[2], 0) ~ "))";
+                }
+            }
+        }
+        const surfaceKind = evSurfaceDefinition(context, { "face" : face }).surfaceType;
+        println("ACCURACY " ~ label ~ " " ~ toString(surfaceKind) ~ ": boundary max " ~ roundToPrecision(boundaryWorst / meter * 1e6, 1) ~ " um" ~ boundaryNote ~ "; " ~ size(points) ~ " pts, max " ~ roundToPrecision(worst / meter * 1e6, 1) ~ " um, mean "
+            ~ roundToPrecision(size(points) == 0 ? 0 : sum / size(points) / meter * 1e6, 1) ~ " um, area "
+            ~ roundToPrecision(evArea(context, { "entities" : face }) / (meter ^ 2) * 1e6, 1) ~ " mm2");
+    }
+    catch (accuracyErr)
+    {
+        println("ACCURACY " ~ label ~ ": could not be measured (" ~ toString(accuracyErr) ~ ")");
+    }
+}
+
+annotation { "Feature Type Name" : "Deform (weld prototype)", "Editing Logic Function" : "deformWeldEditLogic","Feature Type Description" : "Takes a solid or surface body, from edges and to edges as input. Wraps the body from the from edges to the to edges" }
+export const deformWeld = defineFeature(function(context is Context, id is Id, definition is map)
+    precondition
+    {
+        annotation { "Name" : "Mode", "UIHint" : UIHint.HORIZONTAL_ENUM }
+        definition.deformMode is DeformMode;
+
+        if (definition.deformMode != DeformMode.FACES)
+        {
+            annotation { "Name" : "Source bodies", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET), "Description" : "Bodies to deform. Each body is deformed separately and produces its own result." }
+            definition.sourceBody is Query;
+        }
+        else
+        {
+            annotation { "Name" : "Source faces", "Filter" : EntityType.FACE, "Description" : "Faces to deform. Adjacent selected faces will be recombined into sheet bodies." }
+            definition.sourceFaces is Query;
+        }
+
+        annotation { "Name" : "Mate connectors to deform", "Filter" : BodyType.MATE_CONNECTOR, "Description" : "Mate connectors carried through the same deform: each lands where it would end up if it were part of the source body, with its orientation rotated to match. A connector lying on a deformed source body (within 0.01 mm) is attached to that body's result; any other stays stand-alone." }
+        definition.mateConnectors is Query;
+
+        annotation { "Group Name" : "From data", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "From edge(s)",
+                "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
+                "MaxNumberOfPicks" : 10,
+                "Description" : "Reference edge(s) to map from (source reference). Accepts edges, wire bodies, or composite parts containing wire bodies." }
+            definition.fromEdges is Query;
+
+            annotation { "Name" : "From reference", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1, "Description" : "reference point on from curve" }
+            definition.fromRef is Query;
+        }
+
+        annotation { "Group Name" : "To data", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "To edge(s)",
+                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || (EntityType.BODY && BodyType.COMPOSITE),
+                    "MaxNumberOfPicks" : 10,
+                    "Description" : "Reference edge(s) to map to (target reference). Accepts edges, wire bodies, or composite parts containing wire bodies." }
+            definition.toEdges is Query;
+
+            annotation { "Name" : "Flip", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false }
+            definition.flipTo is boolean;
+
+            annotation { "Name" : "To reference", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR || GeometryType.PLANE, "MaxNumberOfPicks" : 1, "Description" : "reference point on to curve" }
+            definition.toRef is Query;
+
+            annotation { "Name" : "Flip normal", "Default" : false, "Description" : "When true, flips the frenet frame normal vector on the to chain" }
+            definition.flipToNormal is boolean;
+        }
+
+        annotation { "Group Name" : "Frame orientation", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Normal mode", "Default" : FrameNormalMode.FRENET, "UIHint" : UIHint.HORIZONTAL_ENUM, "Description" : "Frenet transports one normal along the whole reference; flip-free, and works on any G1 chain. Binormal builds an in-plane normal from a supplied plane normal; requires planar, coplanar references." }
+            definition.frameNormalMode is FrameNormalMode;
+
+            if (definition.frameNormalMode == FrameNormalMode.BINORMAL)
+            {
+                annotation { "Name" : "Binormal from", "Default" : BinormalSource.QUERY, "UIHint" : UIHint.HORIZONTAL_ENUM }
+                definition.binormalSource is BinormalSource;
+
+                if (definition.binormalSource == BinormalSource.QUERY)
+                {
+                    annotation { "Name" : "Binormal reference", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "Planar face (uses its normal) or mate connector (uses its Z axis) defining the reference-path plane normal." }
+                    definition.binormalQuery is Query;
+                }
+                else
+                {
+                    annotation { "Name" : "X", "Icon" : Icon.ALONG_X }
+                    isReal(definition.binormalX, binormalCompBounds);
+
+                    annotation { "Name" : "Y", "Icon" : Icon.ALONG_Y }
+                    isReal(definition.binormalY, binormalCompBoundsY);
+
+                    annotation { "Name" : "Z", "Icon" : Icon.ALONG_Z }
+                    isReal(definition.binormalZ, binormalCompBounds);
+                }
+            }
+        }
+
+        annotation { "Group Name" : "Setup", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Source sampling mode", "Default" : SamplingMode.CP_BASED, "UIHint" : UIHint.SHOW_LABEL, "Description" : "Specifies if source edges should be sampled based on length between sampling points, or as an integer multiple of the edge control points" }
+            definition.sourceSamplingMode is SamplingMode;
+
+            if (definition.sourceSamplingMode == SamplingMode.CP_BASED)
+            {
+                annotation { "Name" : "Source CP multiplier", "Description" : "Samples per source edge control point" }
+                isInteger(definition.sourceCPMultiplier, cpMultiplierBounds);
+            }
+            else
+            {
+                annotation { "Name" : "Sampling density", "Description" : "Distance between sample points along source edges" }
+                isLength(definition.samplingDensity, samplingDensityBounds);
+            }
+
+            annotation { "Name" : "Target degree", "Column Name" : "Approximation target degree" }
+            isInteger(definition.approximationDegree, DEGREE_BOUND);
+
+            annotation { "Name" : "Keep source degree", "Default" : false, "Description" : "When true, uses the maximum of the source edge degree and the target degree" }
+            definition.keepDegree is boolean;
+
+            annotation { "Name" : "Maximum control points" }
+            isInteger(definition.approximationMaxCPs, { (unitless) : [4, 15, MAX_CONTROL_POINTS] } as IntegerBoundSpec);
+
+            annotation { "Name" : "Tolerance" }
+            isLength(definition.approximationTolerance, TOLERANCE_BOUND);
+
+            annotation { "Name" : "Face accuracy", "Description" : "A long thin face whose rebuilt surface lies farther than this from the exactly mapped shape of the source face (a fill flattens such faces) is cut into shorter pieces and rebuilt. 0 turns the check off." }
+            isLength(definition.faceAccuracy, FACE_ACCURACY_BOUND);
+
+            annotation { "Name" : "Edge accuracy", "Description" : "Each wrapped edge is checked against the exact image of its source edge and refitted with more samples and control points until it follows it this closely. The maximum control points is where the fitting starts. 0 turns the check off (a single fit)." }
+            isLength(definition.edgeAccuracy, EDGE_ACCURACY_BOUND);
+
+            annotation { "Name" : "Face builder", "Default" : FaceBuilder.MAP_ALL, "Description" : "How faces are rebuilt after their outline is wrapped. Fill builds a face from its outline alone; mapping a face's surface carries the source face's own shape and tangency through the deform (every mapped point costs interpreter steps; the sampling grid is refined only where the map needs it)." }
+            definition.faceBuilder is FaceBuilder;
+
+            annotation { "Name" : "Mapped surface accuracy", "Description" : "When a face's surface is mapped, the sampling grid is refined until the surface lies this close to the exactly mapped face between its samples (each sample costs interpreter steps; neighbouring faces' edges meet to about twice this)." }
+            isLength(definition.mappedAccuracy, MAPPED_ACCURACY_BOUND);
+
+            annotation { "Name" : "Mapped sample spacing (unused)", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            isLength(definition.mappedSpacing, MAPPED_SPACING_BOUND);
+
+            // Guide points only help opFillSurface (they pull a filled face's interior toward the mapped shape). With "Map all faces"
+            // nearly every face is built from its mapped surface and the points would only cost steps, so the option is not offered.
+            if (definition.faceBuilder != FaceBuilder.MAP_ALL)
+            {
+                annotation { "Name" : "Use face guide points", "Default" : false, "Description" : "Sample interior points from each face and map them as guide vertices for opFillSurface. Improves shape accuracy on faces that are filled, at the cost of extra computation. Not used when every face is mapped." }
+                definition.useFacePoints is boolean;
+
+                if (definition.useFacePoints)
+                {
+                    annotation { "Name" : "uSampling multiplier", "Description" : "Number of u iso curves = N * u control-point count", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "useFacePoints" }
+                    isInteger(definition.faceUsamplingMultiplier, FaceControlMultiplierBounds);
+
+                    annotation { "Name" : "vSampling multiplier", "Description" : "Number of v iso curves = N * v control-point count", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Driving Parameter" : "useFacePoints" }
+                    isInteger(definition.faceVsamplingMultiplier, FaceControlMultiplierBounds);
+                }
+            }
+
+            annotation { "Name" : "Keep wires", "Default" : false, "Description" : "Retain wrapped edge bodies after reconstruction. Merged into one wire body if possible, otherwise a composite part." }
+            definition.keepWires is boolean;
+        }
+
+        annotation { "Group Name" : "Naming", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Name suffix", "Default" : " (deformed)", "Description" : "Appended to each source body's name to name its deformed result. Blank leaves results unnamed." }
+            definition.nameSuffix is string;
+
+            // Filled by deformWeldEditLogic: source body names, in selection order, joined by NAME_SEPARATOR.
+            annotation { "Name" : "Source names", "UIHint" : UIHint.ALWAYS_HIDDEN }
+            definition.sourceNames is string;
+        }
+
+        annotation { "Name" : "Debug", "Default" : false }
+        definition.debug is boolean;
+        
+        if (definition.debug)
+        {
+            annotation { "Group Name" : "Debug", "Collapsed By Default" : false, "Driving Parameter" : "debug" }
+            {
+                annotation { "Name" : "Create wires", "Default" : false }
+                definition.createWires is boolean;
+    
+                annotation { "Name" : "Create faces", "Default" : false }
+                definition.createFaces is boolean;
+    
+                annotation { "Name" : "Create bodies", "Default" : false }
+                definition.createBodies is boolean;
+    
+                annotation { "Name" : "Boundary surface faces (test)", "Description" : "Build four-sided faces with a boundary surface from their four wrapped sides instead of a fill (keeps the cross-section of long thin faces)", "Default" : false }
+                definition.useBoundarySurface is boolean;
+
+                annotation { "Name" : "Report face accuracy", "Description" : "Print, for every rebuilt face, how far it lies from the mapped interior points of its source face (notices console)", "Default" : false }
+                definition.reportAccuracy is boolean;
+
+                annotation { "Name" : "Show from frames", "Description" : "Draw Frenet frame axes along the from reference path", "Default" : false }
+                definition.debugShowFromFrames is boolean;
+    
+                annotation { "Name" : "Show to frames", "Description" : "Draw Frenet frame axes along the to reference path", "Default" : false }
+                definition.debugShowToFrames is boolean;
+            }
+        }
+
+    }
+    {
+        // --- Frame orientation ---
+        // BINORMAL builds a flip-free in-plane normal from a supplied plane normal (shared by
+        // both paths); FRENET is the legacy curvature normal.
+        var frameOpts = defaultFrameNormalOptions();
+        if (definition.frameNormalMode == FrameNormalMode.BINORMAL)
+        {
+            var planeRef;
+            if (definition.binormalSource == BinormalSource.VECTOR)
+            {
+                planeRef = resolveBinormalRefFromVector(definition.binormalX, definition.binormalY, definition.binormalZ);
+            }
+            else
+            {
+                planeRef = resolveBinormalRefFromQuery(context, definition.binormalQuery);
+            }
+            frameOpts = planeNormalOptions(planeRef);
+        }
+
+        // --- Setup (always runs) ---
+        var toFrenetPath   = buildFrenetPath(context, id, expandEdgeQuery(definition.toEdges),   definition.flipTo, frameOpts);
+        var fromFrenetPath = buildFrenetPath(context, id, expandEdgeQuery(definition.fromEdges), false,             frameOpts);
+
+        var fromRefArc = projectOntoFrenetPath(fromFrenetPath, getRefPoint(context, definition.fromRef), undefined).arcLength;
+        var toRefArc   = projectOntoFrenetPath(toFrenetPath,   getRefPoint(context, definition.toRef),   undefined).arcLength;
+
+        // Bilaterally align isolated line frames so from/to xAxes match regardless
+        // of which path the line lives on (e.g. flattening: line is on the to-path).
+        var aligned = alignLineFramesBilateral(context, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, 0.001);
+        fromFrenetPath = aligned.fromFrenetPath;
+        toFrenetPath   = aligned.toFrenetPath;
+
+        if (definition.debugShowFromFrames)
+            debugDrawFrames(context, fromFrenetPath, 10);
+        if (definition.debugShowToFrames)
+            debugDrawFrames(context, toFrenetPath, 10);
+
+        var isFacesMode = definition.deformMode == DeformMode.FACES;
+
+        if ((isFacesMode ? isQueryEmpty(context, definition.sourceFaces) : isQueryEmpty(context, definition.sourceBody))
+            && isQueryEmpty(context, definition.mateConnectors))
+        {
+            throw regenError(isFacesMode ? "Select faces or mate connectors to deform." : "Select bodies or mate connectors to deform.",
+                [isFacesMode ? "sourceFaces" : "sourceBody", "mateConnectors"]);
+        }
+
+        // One deform per source body (FACES mode is a single unit). Each unit works under its
+        // own id so the ops, qCreatedBy lookups and the union in step 3 never mix bodies.
+        var unitBodies = [];
+        if (isFacesMode)
+        {
+            if (!isQueryEmpty(context, definition.sourceFaces))
+                unitBodies = [undefined];
+        }
+        else
+        {
+            unitBodies = evaluateQuery(context, definition.sourceBody);
+        }
+
+        // toString(source body) -> query for its deformed result body; lets mate connectors
+        // find the body they now belong to.
+        var unitResults = {};
+
+        // Mapped points cost interpreter steps and the step limit is the FEATURE's, so the budget is shared by all its bodies (a
+        // second body used to get a whole budget of its own, and the feature then ran out of steps). Each body's share follows
+        // its estimated demand: the starting sampling grid of each of its faces (the control net of the face's own approximation).
+        var unitWeights = [];
+        var weightLeft = 0;
+        for (var weightBody in unitBodies)
+        {
+            var weight = 0;
+            if (!isFacesMode && size(unitBodies) > 1)
+            {
+                for (var weightFace in evaluateQuery(context, qOwnedByBody(weightBody, EntityType.FACE)))
+                {
+                    var cells = MAPPED_SAMPLES_MIN_U * MAPPED_SAMPLES_MIN_V;
+                    try silent
+                    {
+                        const weightNet = evApproximateBSplineSurface(context, { "face" : weightFace, "tolerance" : 1e-6 }).bSplineSurface.controlPoints;
+                        cells = clamp(size(weightNet), MAPPED_SAMPLES_MIN_U, MAPPED_SAMPLES_MAX_U) * clamp(size(weightNet[0]), MAPPED_SAMPLES_MIN_V, MAPPED_SAMPLES_MAX_V);
+                    }
+                    weight += cells;
+                }
+            }
+            unitWeights = append(unitWeights, weight);
+            weightLeft += weight;
+        }
+        var featurePointsUsed = 0;
+
+        for (var unitIdx = 0; unitIdx < size(unitBodies); unitIdx += 1)
+        {
+            var unitBody = unitBodies[unitIdx];
+            var uid      = id + ("unit" ~ unitIdx);
+            // The body whose faces are rebuilt: the source itself, or on the second attempt a copy in which the
+            // faces that failed to fill are cut into pieces. The faces that failed are listed in failedFaces.
+            var geomBody    = unitBody;
+            var joinId      = uid;       // ids of the final join (step 3); differs from uid when work ops had to run in between
+            var failedFaces = [];
+            var skippedFaces = [];       // faces with no wrapped boundary edge (a sphere, a closed face with no edges): nothing to rebuild them from
+            var poorFaces   = [];        // thin faces whose fill is too far from the mapped shape (rebuilt in pieces)
+            var measuredFaces = 0;
+            var mappedFaces   = 0;
+            var flatBuilt     = 0;      // faces the map lays flat that were built as a plane
+            var flatFailed    = 0;      // ... and those whose plane fill failed (built normally)
+            var mappedPointCount = 0;
+            // Steps, not points, are the limit (a feature gets about 20-30k mapped points in all, edges and the rest included): a unit with more faces gets a smaller share.
+            const unitFaceCount = isFacesMode ? 40 : size(evaluateQuery(context, qOwnedByBody(unitBody, EntityType.FACE)));
+            const sizeScaled = clamp(MAPPED_POINT_BUDGET * 40 / max(1, unitFaceCount), 4000, MAPPED_POINT_BUDGET);
+            // this body's share of what the feature has left (all of it for a single body), never less than a coarse grid per face
+            const share = (weightLeft > 0 && size(unitBodies) > 1) ? floor((MAPPED_POINT_BUDGET - featurePointsUsed) * unitWeights[unitIdx] / weightLeft) : MAPPED_POINT_BUDGET;
+            const pointBudget = max(110 * unitFaceCount, min(share, sizeScaled));
+            const workId    = id + ("work" ~ unitIdx);
+            const workId2   = id + ("work" ~ unitIdx ~ "b");
+            var unionFailed  = false;    // the final union of this attempt was refused
+            var refinedUsed  = false;    // this attempt's pieces include grid cuts (a plain recut is the fallback)
+            var firstCutFaces = [];      // the faces the first attempt cut, for the plain recut
+
+            for (var attempt = 0; attempt < 3; attempt += 1)
+            {
+                failedFaces = [];
+                skippedFaces = [];
+                poorFaces   = [];
+                measuredFaces = 0;
+                mappedFaces   = 0;
+                mappedPointCount = 0;
+                unionFailed = false;
+                if (attempt >= 1)
+                    uid = id + ("unit" ~ unitIdx ~ "retry" ~ (attempt > 1 ? toString(attempt) : ""));
+                joinId = uid;
+
+
+                // Pre-transform all body vertices in one batch so every edge uses the same
+                // canonical mapped position for each shared vertex.  This eliminates the
+                // floating-point gap that arises when two adjacent edges sample the same
+                // source vertex independently and get slightly different float values.
+                var allVerts = evaluateQuery(context, isFacesMode
+                    ? qAdjacent(definition.sourceFaces, AdjacencyType.VERTEX, EntityType.VERTEX)
+                    : qOwnedByBody(geomBody, EntityType.VERTEX));
+                var vertSrcPositions = mapArray(allVerts, function(v) {
+                    return evVertexPoint(context, { "vertex": v });
+                });
+                var vertMappedPositions = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
+                    fromRefArc, toRefArc, definition.flipToNormal, vertSrcPositions);
+                vertMappedPositions = mergeCloseVertices(vertMappedPositions);
+                var vertexMap = {};
+                for (var vIdx = 0; vIdx < size(allVerts); vIdx += 1)
+                {
+                    vertexMap[toString(allVerts[vIdx])] = vertMappedPositions[vIdx];
+                }
+
+                var settings = {
+                    "fromRefArc"             : fromRefArc,
+                    "toRefArc"               : toRefArc,
+                    "flipToNormal"           : definition.flipToNormal,
+                    "samplingMode"           : definition.sourceSamplingMode,
+                    "samplingDensity"        : definition.samplingDensity,
+                    "sourceCPMultiplier"     : definition.sourceCPMultiplier,
+                    "keepDegree"             : definition.keepDegree,
+                    "approximationDegree"    : definition.approximationDegree,
+                    "approximationMaxCPs"    : definition.approximationMaxCPs,
+                    "approximationTolerance" : definition.approximationTolerance,
+                    "edgeAccuracy"           : definition.edgeAccuracy,
+                    "vertexMergeTolerance"   : VERTEX_MERGE_TOLERANCE,
+                    "verbose"                : definition.debug == true,
+                    "vertexMap"              : vertexMap
+                };
+
+                // Accumulators declared before conditional blocks so all steps share scope
+                var edgeMapping = [];
+                var fillBodies = {};         // toString(source face) -> the sheet that was built for it
+
+                // Cumulative debug conditions: each step implies all prior steps ran
+                var runWires  = !definition.debug || definition.createWires  || definition.createFaces || definition.createBodies;
+                var runFaces  = !definition.debug || definition.createFaces  || definition.createBodies;
+                var runBodies = !definition.debug || definition.createBodies;
+
+                // --- Step 1: Transform edges ---
+                if (runWires)
+                {
+                    var allEdges = evaluateQuery(context, isFacesMode
+                        ? qAdjacent(definition.sourceFaces, AdjacencyType.EDGE, EntityType.EDGE)
+                        : qOwnedByBody(geomBody, EntityType.EDGE));
+                    edgeMapping  = transformEdges(context, uid + "wires", allEdges, fromFrenetPath, toFrenetPath, settings);
+                if (definition.debug && definition.reportAccuracy)
+                    debugReportEdgeFit(edgeMapping);
+                }
+
+                // --- Step 2: Reconstruct faces ---
+                if (runFaces)
+                {
+                    var allFaces = evaluateQuery(context, isFacesMode
+                        ? definition.sourceFaces
+                        : qOwnedByBody(geomBody, EntityType.FACE));
+
+                    // Build O(1) lookup: toString(sourceEdge) -> wrappedEdge.
+                    // toString on a transient query gives a stable unique string per entity,
+                    // which is more reliable than == comparison across different evaluateQuery call sites.
+                    var edgeLookupMap = {};
+                    for (var m in edgeMapping)
+                    {
+                        edgeLookupMap[toString(m.sourceEdge)] = m.wrappedEdge;
+                    }
+
+                    // Pre-evaluate boundary edges for every face once - avoids repeated qAdjacent
+                    // kernel calls inside the loop.
+                    var faceBoundaryEdgeSets = [];
+                    for (var fIdx = 0; fIdx < size(allFaces); fIdx += 1)
+                    {
+                        faceBoundaryEdgeSets = append(faceBoundaryEdgeSets,
+                            evaluateQuery(context, qAdjacent(allFaces[fIdx], AdjacencyType.EDGE, EntityType.EDGE)));
+                    }
+
+                    // Starting grid (cells) of every face, from its own approximation (kept for mappedSurfaceFace), and the sum over
+                    // the faces from each index on: the weights of the point budget's fair shares.
+                    var approximations = {};
+                    var faceCells = makeArray(size(allFaces), 0);
+                    var faceCellsFrom = makeArray(size(allFaces) + 1, 0);
+                    var canonicalEdges = {};     // toString(source edge) -> its canonical curve (made by the first face built that has the edge)
+                    // Slivers (faces under SLIVER_AREA with four edges) are consumed: the canonical curve of each long edge is the midline between the two.
+                    var sliverFaces = {};
+                    if (!isFacesMode && definition.faceBuilder == FaceBuilder.MAP_ALL)
+                    {
+                        for (var sIdx2 = 0; sIdx2 < size(allFaces); sIdx2 += 1)
+                        {
+                            try
+                            {
+                                if (evArea(context, { "entities" : allFaces[sIdx2] }) >= SLIVER_AREA)
+                                    continue;
+                                const sEdges = faceBoundaryEdgeSets[sIdx2];
+                                if (size(sEdges) != 4)
+                                    continue;
+                                const edgeLengths = mapArray(sEdges, function(e) { return evLength(context, { "entities" : e }) / meter; });
+                                const order = sort([0, 1, 2, 3], function(a, b) { return edgeLengths[b] - edgeLengths[a]; });
+                                const long1 = sEdges[order[0]];
+                                const long2 = sEdges[order[1]];
+                                const mid1 = sliverMidCurve(context, long1, long2, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal);
+                                const mid2 = sliverMidCurve(context, long2, long1, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal);
+                                if (mid1 != undefined && mid2 != undefined)
+                                {
+                                    canonicalEdges[toString(long1)] = mid1;
+                                    canonicalEdges[toString(long2)] = mid2;
+                                    sliverFaces[toString(allFaces[sIdx2])] = true;
+                                    if (definition.debug)
+                                        println("SLIVER face " ~ sIdx2 ~ ": midlines built (" ~ size(sEdges) ~ " edges)");
+                                }
+                                else if (definition.debug)
+                                    println("SLIVER face " ~ sIdx2 ~ ": midline fit failed (" ~ (mid1 == undefined ? "first" : "second") ~ ")");
+                            }
+                            catch (sliverErr)
+                            {
+                                if (definition.debug)
+                                    println("SLIVER setup error for face " ~ sIdx2 ~ ": " ~ toString(sliverErr));
+                            }
+                        }
+                    }
+                    if (!isFacesMode && definition.faceBuilder == FaceBuilder.MAP_ALL)
+                    {
+                        for (var cIdx = 0; cIdx < size(allFaces); cIdx += 1)
+                        {
+                            faceCells[cIdx] = 25 + MAPPED_FACE_OVERHEAD;
+                            try silent
+                            {
+                                const approx = evApproximateBSplineSurface(context, { "face" : allFaces[cIdx], "tolerance" : 1e-6 });
+                                approximations[toString(allFaces[cIdx])] = approx;
+                                const approxNet = approx.bSplineSurface.controlPoints;
+                                faceCells[cIdx] = max(25, min(size(approxNet), MAPPED_SAMPLES_MAX_U) * min(size(approxNet[0]), MAPPED_SAMPLES_MAX_V))
+                                    + MAPPED_FACE_OVERHEAD;
+                            }
+                        }
+                        for (var sIdx = size(allFaces) - 1; sIdx >= 0; sIdx -= 1)
+                            faceCellsFrom[sIdx] = faceCellsFrom[sIdx + 1] + faceCells[sIdx];
+                    }
+
+                    for (var fIdx = 0; fIdx < size(allFaces); fIdx += 1)
+                    {
+                        var face      = allFaces[fIdx];
+                        if (sliverFaces[toString(face)] == true)
+                        {
+                            // consumed: not built; its neighbours meet on the midline of its long edges
+                            if (definition.debug)
+                                println("FACE " ~ fIdx ~ " of " ~ size(allFaces) ~ ": sliver consumed");
+                            continue;
+                        }
+                        var faceEdges = faceBoundaryEdgeSets[fIdx];
+
+                        // Gather wrapped counterparts via O(1) map lookup.
+                        // Deduplicate by toString(wrappedEdge) to guard against opExtractWires
+                        // OVERLAPPING_EDGES when the same wrapped edge resolves for two source keys.
+                        var wrappedBoundaryEdgeQueries = [];
+                        var seenWrappedKeys = {};
+                        for (var eIdx = 0; eIdx < size(faceEdges); eIdx += 1)
+                        {
+                            var wrappedEdge = edgeLookupMap[toString(faceEdges[eIdx])];
+                            if (wrappedEdge != undefined)
+                            {
+                                var wk = toString(wrappedEdge);
+                                if (seenWrappedKeys[wk] == undefined)
+                                {
+                                    seenWrappedKeys[wk] = true;
+                                    wrappedBoundaryEdgeQueries = append(wrappedBoundaryEdgeQueries, wrappedEdge);
+                                }
+                                // else: duplicate wrapped edge - skip to avoid OVERLAPPING_EDGES
+                            }
+                            else
+                            {
+                                if (definition.debug)
+                                {
+                                    println("WARNING: face " ~ fIdx ~ " boundary edge " ~ eIdx ~
+                                            " has no wrapped counterpart - it likely failed in transformEdges");
+                                }
+                            }
+                        }
+
+                        // Each wrapped edge lives in its own wire body - topologically disconnected
+                        // from its neighbours even when endpoints are geometrically coincident.
+                        // opFillSurface needs a closed, topologically-connected boundary, so we
+                        // stitch the edges into a proper wire first with opExtractWires.
+                        if (size(wrappedBoundaryEdgeQueries) == 0)
+                        {
+                            if (definition.debug)
+                            {
+                                println("WARNING: face " ~ fIdx ~ " has no wrapped boundary edges - skipping fill");
+                            }
+                            skippedFaces = append(skippedFaces, face);
+                            continue;
+                        }
+
+                        var extractId = uid + ("bdry" ~ fIdx);
+                        try
+                        {
+                            opExtractWires(context, extractId, { "edges": qUnion(wrappedBoundaryEdgeQueries) });
+                        }
+                        catch (extractErr)
+                        {
+                            if (definition.debug)
+                            {
+                                println("ERROR stitching boundary for face " ~ fIdx ~ ": " ~ toString(extractErr));
+                            }
+                            failedFaces = append(failedFaces, face);
+
+                            // Cyan = undeformed source boundary edges
+                            for (var seq in faceEdges)
+                                addDebugEntities(context, seq, DebugColor.CYAN);
+                            // Red = wrapped edges that failed to stitch
+                            for (var beq in wrappedBoundaryEdgeQueries)
+                                addDebugEntities(context, beq, DebugColor.RED);
+
+                            // Diagnostics (notices console): only when the user switched Debug on.
+                            if (definition.debug)
+                            {
+                            // -- Source edges with expected mapped positions ----------------------
+                            println("  face " ~ fIdx ~ ": " ~ size(faceEdges) ~ " src edges / " ~
+                                    size(wrappedBoundaryEdgeQueries) ~ " wrapped:");
+                            for (var dIdx = 0; dIdx < size(faceEdges); dIdx += 1)
+                            {
+                                var srcPts = evEdgeTangentLines(context, {
+                                    "edge": faceEdges[dIdx], "parameters": [0, 1]
+                                });
+                                var expPts = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
+                                    settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
+                                    [srcPts[0].origin, srcPts[1].origin]);
+                                println("  src " ~ dIdx ~ ": " ~ toString(srcPts[0].origin) ~
+                                        " -> " ~ toString(srcPts[1].origin));
+                                println("  exp " ~ dIdx ~ ": " ~ toString(expPts[0]) ~
+                                        " -> " ~ toString(expPts[1]));
+                            }
+
+                            // -- Actual wrapped edge endpoints ------------------------------------
+                            var wrappedPtPairs = [];
+                            for (var wIdx = 0; wIdx < size(wrappedBoundaryEdgeQueries); wIdx += 1)
+                            {
+                                var wPts = evEdgeTangentLines(context, {
+                                    "edge": wrappedBoundaryEdgeQueries[wIdx], "parameters": [0, 1]
+                                });
+                                wrappedPtPairs = append(wrappedPtPairs, wPts);
+                                // If counts match, also print the lookup error vs expected
+                                if (size(faceEdges) == size(wrappedBoundaryEdgeQueries))
+                                {
+                                    var srcP = evEdgeTangentLines(context, {
+                                        "edge": faceEdges[wIdx], "parameters": [0, 1]
+                                    });
+                                    var expP = mapWorldPoints(context, fromFrenetPath, toFrenetPath,
+                                        settings.fromRefArc, settings.toRefArc, settings.flipToNormal,
+                                        [srcP[0].origin, srcP[1].origin]);
+                                    var errS = norm(expP[0] - wPts[0].origin);
+                                    var errE = norm(expP[1] - wPts[1].origin);
+                                    println("  wrapped " ~ wIdx ~ ": " ~ toString(wPts[0].origin) ~
+                                            " -> " ~ toString(wPts[1].origin) ~
+                                            "  lookupErr start=" ~ toString(errS) ~
+                                            " end=" ~ toString(errE));
+                                }
+                                else
+                                {
+                                    println("  wrapped " ~ wIdx ~ ": " ~ toString(wPts[0].origin) ~
+                                            " -> " ~ toString(wPts[1].origin));
+                                }
+                            }
+
+                            // -- Open endpoint analysis -------------------------------------------
+                            // Report any wrapped endpoint that has no matching endpoint within 1e-5 m.
+                            var ETOL = 1e-5 * meter;
+                            for (var wIdx = 0; wIdx < size(wrappedPtPairs); wIdx += 1)
+                            {
+                                for (var ep = 0; ep < 2; ep += 1)
+                                {
+                                    var pos = wrappedPtPairs[wIdx][ep].origin;
+                                    var bestGap = 1e10 * meter;
+                                    var bestJ   = -1;
+                                    for (var jIdx = 0; jIdx < size(wrappedPtPairs); jIdx += 1)
+                                    {
+                                        if (jIdx == wIdx) { continue; }
+                                        for (var jp = 0; jp < 2; jp += 1)
+                                        {
+                                            var d = norm(pos - wrappedPtPairs[jIdx][jp].origin);
+                                            if (d < bestGap) { bestGap = d; bestJ = jIdx; }
+                                        }
+                                    }
+                                    if (bestGap > ETOL)
+                                    {
+                                        println("  OPEN END: wrapped[" ~ wIdx ~ "]" ~
+                                                (ep == 0 ? ".start" : ".end") ~
+                                                " nearest=wrapped[" ~ bestJ ~ "] gap=" ~ toString(bestGap));
+                                    }
+                                }
+                            }
+
+                            }
+
+                            continue;
+                        }
+
+                        var bdryEdges =qCreatedBy(extractId, EntityType.EDGE);
+                        var bdryBody  = qCreatedBy(extractId, EntityType.BODY);
+
+                        // Generate mapped interior guide points for this face.
+                        // Wrapped boundary edges only constrain the perimeter; guide vertices
+                        // pull the fill surface interior toward the correct deformed shape.
+                        // Gated by definition.useFacePoints - skipped by default because
+                        // opCreateCurvesOnFace adds significant computation per face.
+                        var guideVerticesQuery = qNothing();
+                        var guideVtxDeleteId   = undefined;
+                        // Declared outside the try so a failure part-way through the loop can remove the
+                        // points already made (they used to be left behind as stray point bodies).
+                        var faceGuideVtxQueries = [];
+                        // Guide points for the user's option, or for the long thin pieces of a cut face (when the face accuracy is on).
+                        const guided = (definition.useFacePoints && definition.faceBuilder != FaceBuilder.MAP_ALL) ||
+                            (attempt >= 1 && definition.faceAccuracy > 0 * meter && !isFacesMode && evArea(context, { "entities" : face }) > GUIDED_FACE_MIN_AREA &&
+                             isAspectAbove(context, face, GUIDED_FACE_ASPECT));
+                        if (guided) try
+                        {
+                            var guidePoints = transformFacepoints(
+                                context, uid + ("faceGuides" ~ fIdx), face,
+                                definition.faceUsamplingMultiplier, definition.faceVsamplingMultiplier,
+                                fromFrenetPath, toFrenetPath, settings);
+
+                            for (var gIdx = 0; gIdx < size(guidePoints); gIdx += 1)
+                            {
+                                var vtxId = uid + ("guideVtx" ~ fIdx ~ "_" ~ gIdx);
+                                opPoint(context, vtxId, { "point": guidePoints[gIdx] });
+                                faceGuideVtxQueries = append(faceGuideVtxQueries,
+                                    qCreatedBy(vtxId, EntityType.BODY));
+                            }
+                            if (size(faceGuideVtxQueries) > 0)
+                            {
+                                guideVerticesQuery = qUnion(faceGuideVtxQueries);
+                                guideVtxDeleteId   = uid + ("deleteGuideVtx" ~ fIdx);
+                            }
+                        }
+                        catch (guideErr)
+                        {
+                            if (definition.debug)
+                            {
+                                println("WARNING: guide point generation failed for face " ~ fIdx ~
+                                        ": " ~ toString(guideErr));
+                            }
+                            if (size(faceGuideVtxQueries) > 0)
+                            {
+                                opDeleteBodies(context, uid + ("discardGuideVtx" ~ fIdx), { "entities": qUnion(faceGuideVtxQueries) });
+                            }
+                        }
+
+                        var fillId = uid + ("fill" ~ fIdx);
+                        var builder = "fill";
+                        try
+                        {
+                            const mapThis = !isFacesMode && (definition.faceBuilder == FaceBuilder.MAP_ALL ||
+                                (definition.faceBuilder == FaceBuilder.MAP_THIN && mappedFaces < MAX_MAPPED_FACES && isThinAndLong(context, face)));
+                            var pointsMapped = 0;
+                            // A face the map lays flat (the top of a ski bent onto a plane) is built as a PLANE: a fill from its wrapped boundary gives
+                            // one, with none of the grid, probes or outline a mapped surface costs.
+                            var builtFlat = false;
+                            if (!isFacesMode && mapsToPlane(context, face, bdryEdges, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal))
+                            {
+                                try silent
+                                {
+                                    // its own id: a failed op under fillId would leave that id unusable for the normal build below
+                                    const flatId = uid + ("flat" ~ fIdx);
+                                    opFillSurface(context, flatId, { "edgesG0" : bdryEdges, "edgesG1" : qNothing(), "edgesG2" : qNothing(), "guideVertices" : qNothing() });
+                                    fillId = flatId;
+                                    builtFlat = true;
+                                }
+                                if (builtFlat)
+                                    flatBuilt += 1;
+                                else
+                                    flatFailed += 1;
+                                if (definition.debug)
+                                    println("FACE " ~ fIdx ~ " of " ~ size(allFaces) ~ ": maps to a plane" ~ (builtFlat ? ", built as a plane fill" : ", plane fill failed; built normally"));
+                            }
+                            if (mapThis && !builtFlat)
+                            {
+                                // This face's allowance: up to twice its share of what is left, the share following the starting grid of
+                                // each face still to be built. Faces are built in index order, so without a share the first big faces
+                                // took the whole budget and the rest (here the last ~170 of 193) were left a minimal grid.
+                                const baseLeft = max(0, pointBudget - mappedPointCount);
+                                var allowance = baseLeft;
+                                if (faceCellsFrom[fIdx] > 0)
+                                    allowance = min(baseLeft, floor(2 * baseLeft * faceCells[fIdx] / faceCellsFrom[fIdx]));
+                                allowance = max(allowance, MAPPED_FACE_FLOOR);
+                                const mappedResult = mappedSurfaceFace(context, fillId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal,
+                                    definition.mappedAccuracy, allowance, definition.debug, approximations, canonicalEdges, settings.vertexMap);
+                                pointsMapped = mappedResult.points;
+                                if (mappedResult.canonical != undefined)
+                                    canonicalEdges = mergeMaps(canonicalEdges, mappedResult.canonical);
+                                if (definition.debug)
+                                {
+                                    println("FACE " ~ fIdx ~ " of " ~ size(allFaces) ~ ": allowance " ~ allowance ~ ", mapped " ~ pointsMapped ~ " points, running total " ~ (mappedPointCount + pointsMapped) ~ " of " ~ pointBudget);
+                                }
+                            }
+                            if (builtFlat)
+                            {
+                                builder = "plane";
+                            }
+                            else if (pointsMapped > 0)
+                            {
+                                builder = "mapped";
+                                mappedFaces += 1;
+                                mappedPointCount += pointsMapped;
+                            }
+                            else if (definition.useBoundarySurface && boundarySurfaceFace(context, fillId, bdryEdges, definition.debug))
+                            {
+                                builder = "bsurf";
+                            }
+                            else
+                            {
+                                opFillSurface(context, fillId, {
+                                    "edgesG0"      : bdryEdges,
+                                    "edgesG1"      : qNothing(),
+                                    "edgesG2"      : qNothing(),
+                                    "guideVertices": guideVerticesQuery
+                                });
+                            }
+                            fillBodies[toString(face)] = qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET);
+                            if (definition.debug && definition.reportAccuracy)
+                            {
+                                debugReportFaceAccuracy(context, uid + ("accuracy" ~ fIdx), face, qOwnedByBody(qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET), EntityType.FACE),
+                                    "face " ~ fIdx ~ (attempt == 1 ? " (piece)" : "") ~ " [" ~ builder ~ "]", fromFrenetPath, toFrenetPath, settings);
+                            }
+                            if (attempt == 0 && !isFacesMode && definition.faceAccuracy > 0 * meter && measuredFaces < MAX_MEASURED_FACES && isThinAndLong(context, face))
+                            {
+                                measuredFaces += 1;
+                                const deviation = faceMaxDeviation(context, uid + ("poor" ~ fIdx), face,
+                                    qOwnedByBody(qBodyType(qCreatedBy(fillId, EntityType.BODY), BodyType.SHEET), EntityType.FACE), fromFrenetPath, toFrenetPath, settings);
+                                if (deviation > definition.faceAccuracy)
+                                {
+                                    poorFaces = append(poorFaces, face);
+                                    if (definition.debug)
+                                    {
+                                        println("Deform: face " ~ fIdx ~ " is " ~ roundToPrecision(deviation / meter * 1e6, 0) ~ " um from the mapped shape; it will be rebuilt in shorter pieces");
+                                    }
+                                }
+                            }
+                            // Fill succeeded - cleanup intermediates
+                            opDeleteBodies(context, uid + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
+                            if (guideVtxDeleteId != undefined)
+                                opDeleteBodies(context, guideVtxDeleteId, { "entities": guideVerticesQuery });
+                        }
+                        catch (fillErr)
+                        {
+                            if (definition.debug)
+                            {
+                                println("ERROR fill face " ~ fIdx ~ ": " ~ toString(fillErr));
+                            }
+                            // Last resort: the mapped surface of the face (some faces a fill cannot rebuild, the map can).
+                            var recovered = false;
+                            if (!isFacesMode && builder != "mapped" && pointBudget - mappedPointCount >= MAPPED_SAMPLES_MIN_U * MAPPED_SAMPLES_MIN_V)
+                            {
+                                const recoverId = uid + ("recover" ~ fIdx);
+                                const recoveredResult = mappedSurfaceFace(context, recoverId, face, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc,
+                                    definition.flipToNormal, definition.mappedAccuracy, pointBudget - mappedPointCount, definition.debug, approximations, canonicalEdges, settings.vertexMap);
+                                const recoveredPoints = recoveredResult.points;
+                                if (recoveredPoints > 0)
+                                {
+                                    recovered = true;
+                                    mappedFaces += 1;
+                                    mappedPointCount += recoveredPoints;
+                                    fillBodies[toString(face)] = qBodyType(qCreatedBy(recoverId, EntityType.BODY), BodyType.SHEET);
+                                    if (definition.debug)
+                                    {
+                                        println("Deform: face " ~ fIdx ~ " could not be filled; its mapped surface was used instead");
+                                    }
+                                }
+                            }
+                            if (!recovered)
+                            {
+                            failedFaces = append(failedFaces, face);
+                            // Cyan = undeformed source boundary, Red = stitched wrapped boundary
+                            for (var seq in faceEdges)
+                                addDebugEntities(context, seq, DebugColor.CYAN);
+                            addDebugEntities(context, bdryEdges, DebugColor.RED);
+
+                            // Diagnostics (notices console): only when the user switched Debug on.
+                            if (definition.debug)
+                            {
+                            // -- Stitched edge endpoints + open endpoint analysis -----------------
+                            var stitchedList = evaluateQuery(context, bdryEdges);
+                            println("  stitched boundary: " ~ size(stitchedList) ~ " edges");
+                            var stPtPairs = [];
+                            for (var sIdx = 0; sIdx < size(stitchedList); sIdx += 1)
+                            {
+                                var sPts = evEdgeTangentLines(context, {
+                                    "edge": stitchedList[sIdx], "parameters": [0, 1]
+                                });
+                                stPtPairs = append(stPtPairs, sPts);
+                                println("  stitched[" ~ sIdx ~ "]: " ~ toString(sPts[0].origin) ~
+                                        " -> " ~ toString(sPts[1].origin));
+                            }
+                            var ETOL = 1e-5 * meter;
+                            for (var sIdx = 0; sIdx < size(stPtPairs); sIdx += 1)
+                            {
+                                for (var ep = 0; ep < 2; ep += 1)
+                                {
+                                    var pos = stPtPairs[sIdx][ep].origin;
+                                    var bestGap = 1e10 * meter;
+                                    var bestJ   = -1;
+                                    for (var jIdx = 0; jIdx < size(stPtPairs); jIdx += 1)
+                                    {
+                                        if (jIdx == sIdx) { continue; }
+                                        for (var jp = 0; jp < 2; jp += 1)
+                                        {
+                                            var d = norm(pos - stPtPairs[jIdx][jp].origin);
+                                            if (d < bestGap) { bestGap = d; bestJ = jIdx; }
+                                        }
+                                    }
+                                    if (bestGap > ETOL)
+                                    {
+                                        println("  OPEN END: stitched[" ~ sIdx ~ "]" ~
+                                                (ep == 0 ? ".start" : ".end") ~
+                                                " nearest=stitched[" ~ bestJ ~ "] gap=" ~ toString(bestGap));
+                                    }
+                                }
+                            }
+                            }
+                            }
+
+                            opDeleteBodies(context, uid + ("deleteBdry" ~ fIdx), { "entities": bdryBody });
+                            if (guideVtxDeleteId != undefined)
+                                opDeleteBodies(context, guideVtxDeleteId, { "entities": guideVerticesQuery });
+                        }
+                    }
+                }
+
+                // Faces that would not fill: rebuild them from pieces, but only when there is something to cut
+                // (otherwise keep what this attempt built).
+                if (attempt == 0 && (size(failedFaces) > 0 || size(poorFaces) > 0) && !isFacesMode)
+                {
+                    var refine = [];
+                    // A failed face that is long and thin is cut across on the grid as well: its fill would be flat across the width.
+                    for (var failed in failedFaces)
+                        refine = append(refine, definition.faceAccuracy > 0 * meter && isThinAndLong(context, failed));
+                    for (var poor in poorFaces)
+                        refine = append(refine, true);
+                    const cut = splitFacesBetweenVertices(context, workId, fromFrenetPath, unitBody, concatenateArrays([failedFaces, poorFaces]), refine, definition.debug);
+                    const cutBody = cut.body;
+                    if (cutBody == undefined && cut.ranOps)
+                    {
+                        // The failed cut left operations of its own in the history: the ids of this attempt cannot be
+                        // used again (an id prefix must stay contiguous), so the join takes a prefix of its own.
+                        joinId = id + ("join" ~ unitIdx);
+                    }
+                    if (cutBody != undefined)
+                    {
+                        firstCutFaces = concatenateArrays([failedFaces, poorFaces]);
+                        for (var flag in refine)
+                            if (flag)
+                                refinedUsed = true;
+                        try
+                        {
+                            opDeleteBodies(context, id + ("discard" ~ unitIdx), { "entities" : qCreatedBy(uid, EntityType.BODY) });
+                        }
+                        catch (discardErr)
+                        {
+                            if (definition.debug)
+                            {
+                                println("WARNING: could not discard the first attempt: " ~ toString(discardErr));
+                            }
+                        }
+                        geomBody = cutBody;
+                        continue;
+                    }
+                }
+
+                // --- Step 3: Combine into one body, clean up intermediates ---
+                if (runBodies)
+                {
+                    // The edges that must weld, found while the wrapped edges still exist.
+                    var matches = [];
+                    var links = [];
+                    try
+                    {
+                        matches = weldMatches(context, edgeMapping, fillBodies);
+                        links = joinLinks(context, edgeMapping, fillBodies);
+                    }
+                    catch (matchesErr)
+                    {
+                        if (definition.debug)
+                        {
+                            println("WARNING: the edge matches for the union could not be found: " ~ toString(matchesErr));
+                        }
+                    }
+                    // Wire cleanup first - so qCreatedBy(uid) only sees face surface bodies
+                    // by the time we boolean.
+                    if (size(edgeMapping) > 0)
+                    {
+                        var allWrappedEdgeQueries = mapArray(edgeMapping, function(m) { return m.wrappedEdge; });
+                        var allWrappedBodyQueries = mapArray(edgeMapping, function(m) { return m.wrappedBody; });
+
+                        if (definition.keepWires)
+                        {
+                            // Try to stitch all wrapped edges into clean wire bodies.
+                            // This will fail with NON_MANIFOLD whenever 3+ faces share a vertex
+                            // (which is normal for any solid) - fall back to a composite part
+                            // of the raw per-edge wire bodies in that case.
+                            try
+                            {
+                                opExtractWires(context, joinId + "keepWires", { "edges": qUnion(allWrappedEdgeQueries) });
+                                opDeleteBodies(context, joinId + "deleteWireIntermediates", { "entities": qUnion(allWrappedBodyQueries) });
+                                opCreateCompositePart(context, joinId + "compositePart", {
+                                    "bodies" : qCreatedBy(joinId + "keepWires", EntityType.BODY),
+                                    "closed" : true
+                                });
+                            }
+                            catch
+                            {
+                                opCreateCompositePart(context, joinId + "compositePart", {
+                                    "bodies" : qUnion(allWrappedBodyQueries),
+                                    "closed" : true
+                                });
+                            }
+                        }
+                        else
+                        {
+                            opDeleteBodies(context, joinId + "deleteWires", { "entities": qUnion(allWrappedBodyQueries) });
+                        }
+                    }
+
+                    // Boolean all reconstructed face surface bodies.
+                    // Use qCreatedBy(uid) filtered to SHEET - this is equivalent to what
+                    // the user confirmed works in manual Onshape testing.  Wire bodies
+                    // have already been deleted above, so only fill surfaces remain.
+                    // In FACES mode the result is always one or more sheet bodies - no makeSolid.
+                    var inputIsSolid = !isFacesMode &&
+                        !isQueryEmpty(context, qBodyType(unitBody, BodyType.SOLID));
+                    var surfaceBodies     = qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET);
+                    var surfaceBodiesList = evaluateQuery(context, surfaceBodies);
+                    if (size(surfaceBodiesList) > 1)
+                    {
+                        var joined = false;
+                        if (size(matches) > 0)
+                        {
+                            try
+                            {
+                                opBoolean(context, joinId + "unionMatched", {
+                                    "tools"               : surfaceBodies,
+                                    "operationType"       : BooleanOperationType.UNION,
+                                    "makeSolid"           : inputIsSolid,
+                                    "allowSheets"         : true,
+                                    "eraseImprintedEdges" : true,
+                                    "matches"             : matches,
+                                    "recomputeMatches"    : true
+                                });
+                                joined = true;
+                            }
+                            catch (matchedErr)
+                            {
+                                if (definition.debug)
+                                {
+                                    println("WARNING: the union with edge matches was refused (" ~ toString(matchedErr) ~ "); trying a plain union");
+                                }
+                            }
+                        }
+                        try
+                        {
+                            if (!joined)
+                            {
+                                opBoolean(context, joinId + "unionFaces", {
+                                    "tools"        : surfaceBodies,
+                                    "operationType": BooleanOperationType.UNION,
+                                    "makeSolid"    : inputIsSolid,
+                                });
+                            }
+                        }
+                        catch (unionErr)
+                        {
+                            // Every face was rebuilt; the kernel would not join them (the edges of neighbouring faces
+                            // do not agree closely enough, which a higher control-point limit usually cures).
+                            // Keep the faces as separate sheets rather than losing the whole result.
+                            if (definition.debug)
+                            {
+                                println("WARNING: the " ~ size(surfaceBodiesList) ~ " rebuilt faces could not be joined at once: " ~ toString(unionErr) ~ "; joining them one at a time");
+                            }
+                            unionFailed = true;
+                            if (size(links) > 0)
+                            {
+                                try
+                                {
+                                    const stepwise = incrementalJoin(context, joinId + "one", links, fillBodies, inputIsSolid, definition.debug);
+                                    if (definition.debug)
+                                    {
+                                        println("Deform: " ~ stepwise.joined ~ " faces joined into one body, " ~ stepwise.left ~ " left as separate sheets");
+                                    }
+                                    var stillLeft = stepwise.left;
+                                    if (stepwise.left > 0)
+                                    {
+                                        const patched = patchLeftSheets(context, joinId + "patches", stepwise.main, stepwise.leftBodies, definition.debug);
+                                        stillLeft = stepwise.left - patched;
+                                        if (definition.debug)
+                                        {
+                                            println("Deform: " ~ patched ~ " of " ~ stepwise.left ~ " left-over sheets replaced by patches or dropped, " ~ stillLeft ~ " still separate");
+                                        }
+                                    }
+                                    // A separate sheet that lies on the main sheet (the sliver whose place the strip's patch spans) adds nothing: drop it.
+                                    dropCoveredSheets(context, joinId + "covered", qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET), definition.debug);
+                                    // Sew the seams inside the joined sheet (pairs of naked edges left side by side).
+                                    const seamResult = sewSeams(context, joinId + "seams", stepwise.main, definition.debug);
+                                    if (definition.debug)
+                                    {
+                                        println("Deform: " ~ seamResult.sewn ~ " of " ~ seamResult.pairs ~ " seams sewn, " ~ seamResult.remaining ~ " left");
+                                    }
+                                    // What is actually in the result, not what the bookkeeping says: the sheets made under this unit that are still bodies.
+                                    const remainingSheets = size(evaluateQuery(context, qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET)));
+                                    if (remainingSheets > 1)
+                                    {
+                                        reportFeatureWarning(context, id, "The result has " ~ remainingSheets ~ " separate sheets: the joined surface and " ~ (remainingSheets - 1)
+                                            ~ " small piece(s) the kernel would not sew to it.");
+                                    }
+                                    if (definition.debug)
+                                    {
+                                        println("Deform: " ~ remainingSheets ~ " sheet body(ies) in the result");
+                                    }
+                                    unionFailed = stillLeft > 0;
+                                }
+                                catch (stepwiseErr)
+                                {
+                                    if (definition.debug)
+                                    {
+                                        println("WARNING: joining one at a time failed: " ~ toString(stepwiseErr));
+                                    }
+                                }
+                            }
+                        }
+                        // The one-shot union can succeed and still leave seams: pairs of naked edges side by side, which no error reports. (The SWCNT ski
+                        // came out with a 1.57 mm and a 0.42 mm seam near x = -596 and -626 mm that stopped an Enclose.) Sew them as the stepwise path does.
+                        if (!unionFailed && !inputIsSolid)
+                        {
+                            const seamResult = sewSeams(context, joinId + "seams", qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET), definition.debug);
+                            if (definition.debug)
+                                println("Deform: " ~ seamResult.sewn ~ " of " ~ seamResult.pairs ~ " seams sewn, " ~ seamResult.remaining ~ " left");
+                            if (seamResult.remaining > 0)
+                                reportFeatureWarning(context, id, seamResult.remaining ~ " seam(s) of the result are not sewn (two edges side by side that the kernel would not join); an Enclose or Thicken of this surface may fail there.");
+                        }
+                    }
+                    else if (size(surfaceBodiesList) == 1 && inputIsSolid)
+                    {
+                        // Single surface body (all fills already merged) - attempt to close into solid.
+                        try
+                        {
+                            opBoolean(context, joinId + "closeSolid", {
+                                "tools"        : surfaceBodies,
+                                "operationType": BooleanOperationType.UNION,
+                                "makeSolid"    : true,
+                            });
+                        }
+                        catch (solidErr)
+                        {
+                            if (definition.debug)
+                            {
+                                println("WARNING: could not close surface into solid: " ~ toString(solidErr));
+                            }
+                        }
+                    }
+                }
+                // The pieces with grid cuts would not join: redo the cuts without the grid (the variant that joined), keeping
+                // these pieces until the new copy exists.
+                if (attempt == 1 && unionFailed && refinedUsed)
+                {
+                    var plain = [];
+                    for (var cutFace in firstCutFaces)
+                        plain = append(plain, false);
+                    const second = splitFacesBetweenVertices(context, workId2, fromFrenetPath, unitBody, firstCutFaces, plain, definition.debug);
+                    if (second.body != undefined)
+                    {
+                        if (definition.debug)
+                        {
+                            println("Deform: the refined pieces could not be joined; recutting without the grid");
+                        }
+                        try silent
+                        {
+                            opDeleteBodies(context, id + ("dropRefined" ~ unitIdx), { "entities" : qCreatedBy(uid, EntityType.BODY) });
+                        }
+                        try silent
+                        {
+                            opDeleteBodies(context, id + ("dropFirstWork" ~ unitIdx), { "entities" : geomBody });
+                        }
+                        geomBody = second.body;
+                        refinedUsed = false;
+                        continue;
+                    }
+                }
+                break;
+            }
+            featurePointsUsed += mappedPointCount;
+            weightLeft -= unitWeights[unitIdx];
+            if (unionFailed)
+            {
+                reportFeatureWarning(context, id, "The rebuilt faces of a body could not be joined into one body and are left as separate sheets. Raising the maximum control points usually fixes this.");
+            }
+            if (geomBody != unitBody)
+            {
+                try silent
+                {
+                    opDeleteBodies(context, id + ("dropWork" ~ unitIdx), { "entities" : geomBody });
+                }
+            }
+            // A face that failed to rebuild is only MISSING if the faces that were built do not cover its place: a tiny face between its
+            // neighbours (the lid's 0.0067 mm2 triangle) leaves no hole, and reporting it as missing turned the whole feature red.
+            var missingFaces = [];
+            var coveredFaces = 0;
+            if (size(failedFaces) > 0)
+            {
+                const builtFaces = qOwnedByBody(qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET), EntityType.FACE);
+                for (var failedFace in failedFaces)
+                {
+                    if (!isFailedFaceCovered(context, failedFace, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal, builtFaces))
+                        missingFaces = append(missingFaces, failedFace);
+                    else
+                        coveredFaces += 1;
+                }
+            }
+            if (size(missingFaces) + size(skippedFaces) > 0)
+            {
+                reportFeatureWarning(context, id, (size(missingFaces) + size(skippedFaces)) ~ " face(s) of a source body could not be rebuilt and are missing from the result"
+                    ~ (size(skippedFaces) > 0 ? " (" ~ size(skippedFaces) ~ " with no edges to rebuild from, e.g. a full sphere)" : "") ~ "; they are highlighted (see the notices).");
+                try silent
+                {
+                    setErrorEntities(context, id, { "entities" : qUnion(concatenateArrays([missingFaces, skippedFaces])) });
+                }
+            }
+            else
+            {
+                // one info message per feature: the covered tiny faces and the faces laid flat by the map
+                var infoText = "";
+                if (coveredFaces > 0)
+                    infoText = coveredFaces ~ " tiny face(s) of the source could not be rebuilt; their place is covered by the neighbouring faces, so the result has no hole there. ";
+                if (flatBuilt + flatFailed > 0)
+                    infoText = infoText ~ flatBuilt ~ " face(s) map onto a plane and were built as planes" ~ (flatFailed > 0 ? "; " ~ flatFailed ~ " more map onto a plane but the plane fill failed, so they were built as B-spline surfaces." : ".");
+                if (infoText != "")
+                    reportFeatureInfo(context, id, infoText);
+            }
+
+            // Record this unit's deformed body and name it. Source names cannot be read here
+            // (getProperty is unavailable on the current context), so the name comes from the dialog.
+            if (!isFacesMode)
+            {
+                var unitResult = qUnion([qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SOLID),
+                                         qBodyType(qCreatedBy(uid, EntityType.BODY), BodyType.SHEET),
+                                         qBodyType(qCreatedBy(joinId, EntityType.BODY), BodyType.SOLID),
+                                         qBodyType(qCreatedBy(joinId, EntityType.BODY), BodyType.SHEET)]);
+                unitResults[toString(unitBody)] = unitResult;
+                if (definition.debug && definition.reportAccuracy && !isQueryEmpty(context, unitResult))
+                    debugReportContinuity(context, unitBody, unitResult, fromFrenetPath, toFrenetPath, fromRefArc, toRefArc, definition.flipToNormal);
+
+                // Names come from deformWeldEditLogic (getProperty is not allowed in a feature body);
+                // only trust them when the count still matches the selection.
+                var sourceNameList = splitNames(definition.sourceNames);
+                if (definition.nameSuffix != "" && size(sourceNameList) == size(unitBodies) && !isQueryEmpty(context, unitResult))
+                {
+                    try silent
+                    {
+                        setProperty(context, {
+                            "entities"     : unitResult,
+                            "propertyType" : PropertyType.NAME,
+                            "value"        : sourceNameList[unitIdx] ~ definition.nameSuffix
+                        });
+                    }
+                }
+            }
+        }
+
+        // --- Mate connectors: where do they end up under the same deform? ---
+        if (!isQueryEmpty(context, definition.mateConnectors))
+        {
+            var mcQueries = evaluateQuery(context, definition.mateConnectors);
+            var mcSystems = mapArray(mcQueries, function(mc) {
+                return evMateConnector(context, { "mateConnector" : mc });
+            });
+            var mcMapped = mapCoordSystems(context, fromFrenetPath, toFrenetPath,
+                fromRefArc, toRefArc, definition.flipToNormal, mcSystems);
+
+            for (var mcIdx = 0; mcIdx < size(mcQueries); mcIdx += 1)
+            {
+                var mcId  = id + ("mateConnector" ~ mcIdx);
+                var mcDef = { "coordSystem" : mcMapped[mcIdx] };
+
+                // A connector on a deformed body goes onto that body's result; anything else stays stand-alone.
+                // FeatureScript cannot read which body owns a mate connector (qOwnerBody returns the
+                // connector itself), so a connector counts as belonging to the source body it lies on.
+                for (var srcBody in unitBodies)
+                {
+                    var ownerResult = unitResults[toString(srcBody)];
+                    if (ownerResult != undefined && size(evaluateQuery(context, ownerResult)) == 1 &&
+                        evDistance(context, { "side0" : mcSystems[mcIdx].origin, "side1" : srcBody }).distance < MC_ON_BODY_TOLERANCE)
+                    {
+                        mcDef.owner = ownerResult;
+                        break;
+                    }
+                }
+
+                opMateConnector(context, mcId, mcDef);
+            }
+        }
+
+    }, {
+        // Saved features predate these parameters: keep their behaviour (no connectors, no naming).
+        "mateConnectors" : qNothing(),
+        "reportAccuracy" : false,
+        "faceBuilder" : FaceBuilder.MAP_ALL,
+        "mappedSpacing" : 6e-3 * meter,
+        "mappedAccuracy" : 2e-6 * meter,
+        "edgeAccuracy" : 0 * meter,
+        "faceAccuracy" : 0 * meter,
+        "useBoundarySurface" : false,
+        "nameSuffix"     : "",
+        "sourceNames"    : ""
+    });
+// regen marker: 1

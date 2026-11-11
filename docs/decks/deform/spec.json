@@ -1,39 +1,96 @@
 {
   "slug": "deform",
   "title": "Deform",
-  "tagline": "Bend a whole body, or selected faces, onto the profile with the same map -- a flat-modelled insert, core feature or tip protector.",
+  "tagline": "Put a part modelled flat onto a curved profile the way a real layer bends. Every vertex, edge and face goes through one map; small gaps between faces are repaired, up to a limit you set.",
   "document": "curveMapping_public",
   "icon": "docs/decks/_icons/deform_icon.svg",
-  "status": "Draft 2026-09-26",
+  "status": "Engine V33, 2026-11",
   "slides": [
     {
       "type": "why",
       "title": "What it does",
-      "problem": "Parts modelled flat must sit on the curved ski. Native Bend only flexes around an axis. Deform maps every vertex, edge and face through the bending map, so the part follows the profile exactly as a layer would.",
+      "problem": "Parts modelled flat must sit on the curved ski, and native Bend flexes only around an axis. Deform carries every point of a part from a From chain to a To chain, so it follows rocker and camber like a real layer. Small gaps between faces are repaired so the result can usually be enclosed, offset or thickened.",
       "useWhen": [
-        "An insert or protector modelled flat",
-        "Features that must follow rocker / camber",
-        "Faces rather than a whole body"
+        "An insert, core or protector modelled flat",
+        "Features that must follow rocker and camber",
+        "A whole body, or only some faces"
       ],
-      "image": "docs/explainers/curve_mapping/img/fig04_deform.png",
-      "caption": "A 100 x 5 block bent onto the tip: bottom 100, top 99.2 (concave side)."
+      "image": "docs/explainers/deform/img/fig01_bending_map.png",
+      "caption": "A 100 x 5 block bent onto an R600 bend: the side on the chain stays 100 long; the side 5 toward the centre is 99.2."
     },
     {
       "type": "concept",
-      "title": "The bending map",
-      "image": "docs/explainers/curve_mapping/img/fig01_bending_map.png",
+      "title": "Four rules to predict the result",
+      "image": "docs/explainers/deform/img/fig07_layers.png",
       "points": [
         {
-          "head": "Arc length kept",
-          "body": "A point s along the From reference lands s along the To reference (a shift, no scaling)."
+          "head": "1. Distance along is kept",
+          "body": "A point s along the From reference lands s along the To reference."
         },
         {
-          "head": "Height and width kept",
-          "body": "The point's offsets in the frame carry over: ribs stay perpendicular."
+          "head": "2. Height and width are kept",
+          "body": "5 mm above the From chain lands 5 mm above the To chain."
         },
         {
-          "head": "Layers bend",
-          "body": "At height h around radius R they stretch or shrink by (R - h) / R, as a real layer does."
+          "head": "3. Layers shrink inside, stretch outside",
+          "body": "Inside = the circle's centre side. At height h: (R - h)/R inside, (R + h)/R outside."
+        },
+        {
+          "head": "4. Square faces stay flat",
+          "body": "Faces square to the chain stay planes; faces parallel to it curve with it."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Using it: get the side right",
+      "image": "docs/explainers/deform/img/fig08_flip.png",
+      "points": [
+        {
+          "head": "Inside is the centre side",
+          "body": "Layers on the inside of a bend shrink, on the outside they stretch."
+        },
+        {
+          "head": "Flip normal",
+          "body": "Result on the wrong side of the profile (upside-down)? Tick it."
+        },
+        {
+          "head": "Flip",
+          "body": "Running the wrong way along the profile? Tick the arrow beside To edge(s)."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Frame orientation: one rule",
+      "image": "docs/explainers/deform/img/fig02_frames.png",
+      "points": [
+        {
+          "head": "Both chains in one plane? Binormal",
+          "body": "You pick a direction square to that plane (a face, mate connector or axis); 'up' stays fixed in the plane. Not for chains that wander in 3D."
+        },
+        {
+          "head": "Otherwise Frenet (default)",
+          "body": "'Up' comes from the chain's own bend and is carried along smoothly. After an inflection (the bend changes direction) it points away from the new centre; Flip normal puts the part right."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "What changes in your geometry",
+      "image": "docs/explainers/deform/img/fig03_point_map.png",
+      "points": [
+        {
+          "head": "Kept and changed",
+          "body": "Kept: distance along, height, width. Changed: lengths at other heights, angles, areas. On planar chains end and side faces stay planes; faces parallel to the chain become freeform."
+        },
+        {
+          "head": "How accurate",
+          "body": "Edges aim for 0.5 um, faces for 2 um (micrometres; a hair is about 70 um). Repaired faces move up to the Seam repair limit (default 50 um)."
+        },
+        {
+          "head": "Face count",
+          "body": "It can drop: tiny faces are absorbed. Ski top 78 -> 75 faces; a lid 193 -> 185."
         }
       ]
     },
@@ -41,56 +98,62 @@
       "type": "dialogshot",
       "title": "The dialog",
       "screenshot": "docs/decks/deform/shots/dialog.png",
+      "positions": { "Flip": [0.87, 0.324, "right"] },
       "params": [
-        [
-          "Mode",
-          "Bodies (one or more, each its own result) / Faces."
-        ],
-        [
-          "Mate connectors to deform",
-          "Carried through the same deform; one on a source body goes onto its result."
-        ],
-        [
-          "From data",
-          "From edge(s) (G1 chain) and From reference (vertex, mate connector, plane)."
-        ],
-        [
-          "To data",
-          "To edge(s), Flip (reverse To), To reference, Flip normal."
-        ],
-        [
-          "Frame orientation",
-          "Frenet (default) / Binormal (face, mate connector or world axis)."
-        ],
-        [
-          "Setup",
-          "Sampling, degree, max control points, tolerance; Face / Edge accuracy (0 = off); Face builder (default: map every face); Mapped surface accuracy; Use face guide points (not with map-every-face); Keep wires."
-        ],
-        [
-          "Naming",
-          "Name suffix appended to each source name (default \" (deformed)\")."
-        ],
-        [
-          "Debug",
-          "Create wires / faces / bodies stages; show frames."
-        ]
+        ["Source bodies", "Bodies to deform (Faces tab: faces; every face is filled). Each body becomes its own result."],
+        ["Mate connectors to deform", "Moved through the same map; one on a source body goes onto its result."],
+        ["From edge(s)", "The chain the part is drawn against: connected edges."],
+        ["From reference", "A point on it: vertex, mate connector or plane origin."],
+        ["To edge(s)", "The profile the part goes on."],
+        ["Flip", "Arrow beside To edge(s): reverses the To chain."],
+        ["To reference", "The matching point on the To chain."],
+        ["Flip normal", "Puts the part on the other side of the profile."],
+        ["Frame orientation", "Binormal for chains in one plane, otherwise Frenet (default)."],
+        ["Source sampling mode", "How densely each source edge is sampled: per control point, or per length."],
+        ["Source CP multiplier", "Samples per control point (default 3)."],
+        ["Target degree", "Degree of the fitted curves (default 3)."],
+        ["Keep source degree", "Use the larger of the source and target degree."],
+        ["Maximum control points", "Size of the fitted curves (default 15). Raise it if the result is left as separate sheets."],
+        ["Tolerance", "Accuracy each curve fit stops at (0.01 mm). Leave it."],
+        ["Face accuracy", "Checks long thin filled faces. 0 = off (default)."],
+        ["Edge accuracy", "How closely each mapped edge follows the exact map (default 0.5 um)."],
+        ["Face builder", "Map every face's surface (default), long thin faces only, or Fill."],
+        ["Mapped surface accuracy", "How closely a mapped face follows the exact map (default 2 um)."],
+        ["Seam repair limit", "Largest gap repaired and largest shift of a refilled face (default 0.05 mm = 50 um; 0 = repair off)."],
+        ["Keep wires", "Keep the mapped edges as wire bodies (default off)."]
+      ],
+      "note": "Edge accuracy shows 0.001 mm: the field rounds 0.5 um."
+    },
+    {
+      "type": "examples",
+      "title": "Result: flat boxes and their deformed copies",
+      "cards": [
+        {
+          "image": "docs/explainers/deform/img/shot_before_after_annotated.png",
+          "head": "Flat below, deformed above",
+          "body": "The test studio: boxes bent onto an R300 quarter arc. The sources stay; each result is a new body named with the suffix."
+        },
+        {
+          "head": "Real models",
+          "body": "Ski top surface: 78 faces, 30 free edges (edges with a face on one side only: the outer boundary) -> 75 faces, 30 free edges. A 193-face lid: 54 free edges -> 54, 185 faces. Same free edges = no new openings."
+        }
       ]
     },
     {
       "type": "outputs",
       "keysTitle": "Outputs",
+      "messageHead": ["Action", "Message / what to do"],
       "keys": [
-        [
-          "(body)",
-          "A new body per source body (the source stays); solids closed into solids."
-        ]
+        ["(new body)", "One per source body, named with the suffix (the test boxes: 'Box A (D1)', 'Box B (D1)'). The source stays. A solid is closed back into a solid where possible."]
       ],
       "messages": [
-        [
-          "Console",
-          "per-face WARNING / ERROR, OPEN END reports; accuracy report (debug)",
-          "Faces that cannot be rebuilt are also a feature warning, highlighted. Check for a missing face or a sheet instead of a solid."
-        ]
+        ["Nothing to do", "N face(s) map onto a plane and were built as planes", "Flat faces stayed planar (e.g. 11 faces)."],
+        ["Check", "N tiny face(s) ... their place is covered by the neighbouring faces", "A face could not be rebuilt but neighbours cover it. Check the result."],
+        ["Check", "Seam repair: n of m unsewn seams were closed (largest shift X um)", "Check the shift is fine for that face."],
+        ["Raise the limit", "N seam(s) up to X um wide are wider than the Seam repair limit", "Set the limit to at least the value quoted if the faces that move are not sealing or mating faces."],
+        ["May fail later", "N seam(s) of the result are not sewn", "An Enclose or Thicken may fail there."],
+        ["Raise control points", "... left as separate sheets / The result has N separate sheets", "Raise Maximum control points (usually fixes it)."],
+        ["Split the face", "faces ... could not be rebuilt and are missing", "A face with no edges (a whole sphere): split it, e.g. into hemispheres."]
       ]
     },
     {
@@ -98,44 +161,77 @@
       "items": [
         {
           "kind": "limit",
-          "head": "Fill loses plane / cylinder",
-          "body": "With Face builder = Fill, planes and cylinders are not kept as such. The default maps every face's own surface (labelled test); inner loops may fail."
-        },
-        {
-          "kind": "tip",
-          "head": "Guide points",
-          "body": "With Fill, turn on Use face guide points when fills do not follow the face."
+          "head": "New face identities",
+          "body": "A refilled face is a new face. A saved selection (Move face, Mutual trim, Enclose) may say '1 missing selection': pick it again."
         },
         {
           "kind": "limit",
-          "head": "Heavy",
-          "body": "The slowest of the family: many edges, many projections."
+          "head": "Thick parts on tight bends",
+          "body": "A layer higher than the radius folds inside-out and Deform does not warn you. Keep every height below the tightest inside radius."
+        },
+        {
+          "kind": "limit",
+          "head": "Big bodies",
+          "body": "A feature shares about 24,000 mapped points between its bodies (at least 110 per face). Very large bodies can stop with 'Too many steps': deform fewer bodies per feature or raise Mapped surface accuracy."
+        },
+        {
+          "kind": "tip",
+          "head": "Seam repair limit",
+          "body": "Leave it at 50 um. Raise it only when the feature names the value and the shift is acceptable. Up to 40 repair attempts per body."
+        },
+        {
+          "kind": "tip",
+          "head": "3D chains",
+          "body": "Frenet fixes 'up' once per chain, at its first edge that is not straight. If the part is on the wrong side, try Flip normal."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Under the hood: how a face is rebuilt",
+      "image": "docs/explainers/deform/img/fig04_face_pipeline.png",
+      "points": [
+        {
+          "head": "Sample, map, fit",
+          "body": "The face is sampled on a grid, every point goes through the map, and a smooth surface (a B-spline: a smooth curved surface made from a net of control points) is fitted through the moved points."
+        },
+        {
+          "head": "Refine, trim",
+          "body": "Where it misses the exact map by more than Mapped surface accuracy (2 um) the grid gets denser; then it is cut to the mapped outline."
+        },
+        {
+          "head": "Planes stay planes",
+          "body": "A face that maps flat (within 2 um) is built as a true plane. Faces with holes or wrapping outlines are filled from their outline instead."
+        }
+      ]
+    },
+    {
+      "type": "concept",
+      "title": "Under the hood: seams and the repair",
+      "image": "docs/explainers/deform/img/fig05_seam_repair.png",
+      "points": [
+        {
+          "head": "Why a gap remains",
+          "body": "Faces are fitted one by one and miss by a few um; the kernel (Onshape's geometry engine) joins only about 1 um. Faces that meet but are not joined: an unsewn seam."
+        },
+        {
+          "head": "The repair",
+          "body": "The smaller face is refilled from its neighbours' exact edges and joined, and kept only if it stays within the Seam repair limit and really joins."
+        },
+        {
+          "head": "The limit",
+          "body": "Default 50 um, maximum 200 um. Raise it only if the faces that move are not sealing, mating or datum faces."
         }
       ]
     },
     {
       "type": "reference",
+      "head": ["Item", "Where"],
       "rows": [
-        [
-          "Document",
-          "curveMapping_public (d12583277c42b00c63a9b7b7)"
-        ],
-        [
-          "Tab",
-          "deform (+ engine curveMappingCore)"
-        ],
-        [
-          "Tests",
-          "none"
-        ],
-        [
-          "Explainer",
-          "docs/explainers/curve_mapping/curve_mapping_explained.md, section 2.3"
-        ],
-        [
-          "Related",
-          "Wrap Curve, Wrap and Loft, Deform, Measure curve distance, Offset edges"
-        ]
+        ["Document", "curveMapping_public"],
+        ["Feature", "Deform (tab deform; custom features toolbar)"],
+        ["Explainer", "deform_explained.pdf, uploaded to the document"],
+        ["Related", "Wrap Curve, Wrap and Loft, Measure curve distance, Offset edges"]
       ]
     }
   ]

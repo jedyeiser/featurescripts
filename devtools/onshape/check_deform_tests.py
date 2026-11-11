@@ -117,8 +117,10 @@ EXPECT = {"D1": (2, {"MC_A": True, "MC_B": False}), "D2": (0, {"MC_A": False, "M
           "D3": (1, {}), "D4": (2, {})}
 fails = 0
 for case, (nsol, want_mc) in EXPECT.items():
-    notes, ok = [], status[[n for n in status if n.startswith(case + " ")][0]] == "OK"
-    notes.append("status %s" % ("OK" if ok else "NOT OK"))
+    # INFO is not a failure (Deform reports e.g. how many faces were built as planes); WARNING and ERROR are
+    case_status = status[[n for n in status if n.startswith(case + " ")][0]]
+    notes, ok = [], case_status in ("OK", "INFO")
+    notes.append("status %s" % case_status)
     got_s = solids.get(case, [])
     ok = ok and len(got_s) == nsol
     notes.append("solids %s" % [(round(v, 1), nm) for v, nm in got_s])

@@ -277,7 +277,7 @@ async function build(specPath, force) {
         s.addText("Messages", { x: rx, y: 0.98, w: rw, h: 0.3, fontFace: FONT, fontSize: 12, bold: true, color: C.blue, margin: 0, isTextBox: true });
         const colour = (r) => (r[0] === "Error" ? C.err : r[0] === "Warning" ? C.warn : C.keep);
         table(s, sl.messages.map((m) => [m[0], m[1] + (m[2] ? "\n" + m[2] : "")]), rx, 1.3, rw, [rw * (both ? 0.2 : 0.12), rw * (both ? 0.8 : 0.88)],
-          { head: ["", "Message / what to do"], fontSize: both ? 9.5 : 11, firstColor: colour });
+          { head: sl.messageHead || ["", "Message / what to do"], fontSize: both ? 9.5 : 11, firstColor: colour });
       }
     } else if (sl.type === "tips") {
       const s = pres.addSlide();
@@ -296,7 +296,7 @@ async function build(specPath, force) {
     } else if (sl.type === "reference") {
       const s = pres.addSlide();
       header(s, spec, iconS, sl.title || "Where it lives");
-      table(s, sl.rows, M, 1.05, W - 2 * M, [2.2, W - 2 * M - 2.2], { head: ["", ""], fontSize: 11 });
+      table(s, sl.rows, M, 1.05, W - 2 * M, [2.2, W - 2 * M - 2.2], { head: sl.head || ["", ""], fontSize: 11 });
     } else {
       throw new Error("unknown slide type " + sl.type);
     }
