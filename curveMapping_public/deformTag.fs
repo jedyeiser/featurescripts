@@ -352,10 +352,10 @@ function uniqueNames(names is array) returns array
     return result;
 }
 
-/** "3 picks (Wire A, Wire B)" -- the number of picked entities and the bodies they belong to. */
+/** The bodies the picks belong to ("Wire A, Wire B"); the number of picks only when no names were captured. */
 function chainLabel(count is number, names is array) returns string
 {
-    return count ~ (count == 1 ? " pick" : " picks") ~ (size(names) > 0 ? " (" ~ join(names, ", ") ~ ")" : "");
+    return size(names) > 0 ? join(names, ", ") : count ~ (count == 1 ? " pick" : " picks");
 }
 
 /** Writes one tag; returns 1 when it replaced an existing Deform tag on the entity, else 0. */

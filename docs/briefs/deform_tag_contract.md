@@ -47,7 +47,7 @@ Semantics of the options (from `backend/deform/services/preflight.py`, **verifie
 ## Known limits and open items
 
 1. **Unverified, and no live read-back is planned**: attributes on mate connector bodies (the feature does not fail if refused; it warns and carries the origin on the chain tags), on sketch edges, and survival across split / boolean / replace face / pattern. Mitigation: place tags at the bottom of the feature tree (section above).
-   The feature's info message in the tree lists the deform name, the From / To picks with body names, the source bodies with their connector counts, and the reference points. Names are captured by the editing logic (empty if inserted by API).
+   The feature's info message in the tree lists the deform name and the body names of the From chain, the To chain and the sources, with a mate connector count after a source that brings some. Names are captured by the editing logic (empty if inserted by API; the message then falls back to a pick count).
 2. Duplicate deform names are warned only against EARLIER tags in the feature tree.
 3. The group-name scan (`qEverything` x4) runs on every regen of the feature; cost on a heavy studio is unmeasured.
 4. Names are captured by the editing logic only; API-inserted features carry empty names. Pick order is assumed stable between editing and regen.
