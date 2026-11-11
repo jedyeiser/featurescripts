@@ -162,7 +162,9 @@ copy the tabs into a scratch document (same-document imports work by microversio
 
 ## Documentation
 
-- `.claude/agents/featurescript-expert.md` - Full FeatureScript expertise (auto-invoked on .fs files)
+- `.claude/skills/featurescript/` - skill: critical rules + style + workflow, loaded when writing `.fs`. `.claude/hooks/fscheck_hook.ps1` (PostToolUse hook in `.claude/settings.json`) runs fscheck on the edited file's folder after every Edit/Write and reports findings back; if it does not fire, open `/hooks` once or restart.
+- `.claude/agents/` - `onshape-live-runner` (runs one build_/check_ test pair under a hard `ONSHAPE_CALL_CAP`, returns a pass/fail table + calls used; use it for ALL live test runs), `featurescript-reviewer` (review .fs against the corrections log), `onshape-api-researcher` (find native op*/ev* before custom code). Shared agents live in `~/.claude/agents/` (`context-condenser`: shrinks bloated memory/docs, archives originals). The old `featurescript-expert` and `nurbs-geometry-expert` were archived to `archive/agents_2026-11/` (never registered as agents; no frontmatter). For NURBS/B-rep design review use eocProductData's `cad-geometry-reviewer`.
+- Related repo: `C:\Users\jed.yeiser\Projects\eocProductData` (EOC Data Tools Onshape app; replicates/extends curveMapping deformation in Python/React). Export tag and eocDataTools notes are shared; see memory `eocdatatools.md`.
 - `.claude/featurescript-corrections.md` - Living log of known issues and fixes
 - `.claude/onshape-featurescript-basics.md` - Onshape/FeatureScript basics (regen and recovery, step/time limits, performance, debugging, imports/pins/derive); claims tagged by source, gaps listed at the end
 - `docs/STATUS.md` - which features have explainers / briefs / decks and their state (generated from docs/status.json)

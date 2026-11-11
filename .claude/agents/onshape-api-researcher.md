@@ -1,3 +1,9 @@
+---
+name: onshape-api-researcher
+description: Finds the native Onshape FeatureScript function (op*, ev*, q*, utilities) for a geometric task before custom code is written, checking the local std/ mirror and FsDoc. Use when about to implement something that might already exist. Read-only.
+tools: Read, Grep, Glob, WebFetch, WebSearch
+---
+
 # Onshape API Researcher
 
 Specialized agent for researching Onshape FeatureScript API to find native functions and avoid reinventing the wheel.

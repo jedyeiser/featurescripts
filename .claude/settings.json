@@ -1,42 +1,23 @@
 {
   "description": "Claude Code settings for Onshape FeatureScript development",
-  "agents": {
-    "featurescript-expert": {
-      "autoInvoke": {
-        "patterns": ["**/*.fs"],
-        "description": "Automatically invoke FeatureScript expert agent when working with .fs files"
-      }
-    },
-    "featurescript-reviewer": {
-      "autoInvoke": {
-        "patterns": [],
-        "description": "Manual invocation only - use when reviewing code for quality and correctness"
-      }
-    },
-    "onshape-api-researcher": {
-      "autoInvoke": {
-        "patterns": [],
-        "description": "Invoke when researching native Onshape API functions before implementing custom code"
-      }
-    },
-    "nurbs-geometry-expert": {
-      "autoInvoke": {
-        "patterns": [],
-        "description": "Invoke for NURBS algorithms and analytic geometry based on Piegl & Tiller"
-      }
-    }
-  },
   "project": {
     "name": "FeatureScript Development",
-    "type": "onshape-featurescript",
-    "standardVersion": "FeatureScript 2878"
+    "type": "onshape-featurescript"
   },
-  "notes": [
-    "The featurescript-expert agent is automatically invoked when working with .fs files",
-    "The featurescript-reviewer agent is manual-only - invoke with explicit review requests",
-    "The onshape-api-researcher helps find native Onshape functions before custom implementation",
-    "The nurbs-geometry-expert provides deep NURBS and analytic geometry expertise (Piegl & Tiller)",
-    "Reference .claude/featurescript-corrections.md for known issues and corrections",
-    "See CLAUDE.md for workflow and project structure overview (old PROJECT.md is in archive/docs_pre_2026-09)"
-  ]
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "powershell",
+            "command": "powershell -NoProfile -File \"$env:CLAUDE_PROJECT_DIR\\.claude\\hooks\\fscheck_hook.ps1\"",
+            "timeout": 60,
+            "statusMessage": "fscheck..."
+          }
+        ]
+      }
+    ]
+  }
 }
