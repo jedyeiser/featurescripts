@@ -320,7 +320,7 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
         }
 
         const summary = "Tagged deform '" ~ definition.groupName ~ "': " ~ counts.from ~ " From, " ~ counts.to ~ " To, "
-            ~ counts.source ~ " source" ~ (counts.mateConnectors == undefined ? "" : " (" ~ counts.mateConnectors ~ " mate connectors)") ~ (counts.refFrom == 1 ? ", From reference" : "") ~ (counts.refTo == 1 ? ", To reference" : "") ~ ".";
+            ~ counts.source ~ " source" ~ (connectorCount == 0 ? "" : " (" ~ connectorCount ~ " mate connectors)") ~ (counts.refFrom == 1 ? ", From reference" : "") ~ (counts.refTo == 1 ? ", To reference" : "") ~ ".";
         if (size(warnings) > 0)
         {
             reportFeatureWarning(context, id, join(warnings, " ") ~ " " ~ summary);
