@@ -99,12 +99,12 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
             definition.sourceItems is array;
             for (var item in definition.sourceItems)
             {
-                annotation { "Name" : "Bodies", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE),
-                            "Description" : "Solid, surface or wire bodies to deform." }
+                annotation { "Name" : "Body", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE), "MaxNumberOfPicks" : 1,
+                            "Description" : "The solid, surface or wire body to deform. One body per item." }
                 item.body is Query;
 
                 annotation { "Name" : "Mate connectors", "Filter" : BodyType.MATE_CONNECTOR,
-                            "Description" : "Connectors the deformed geometry owns; the app re-creates and names them. None = it owns none. Needs exactly one body in this item." }
+                            "Description" : "Connectors the deformed geometry owns; the app re-creates and names them. None = it owns none." }
                 item.connectors is Query;
             }
         }
@@ -231,9 +231,9 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
         for (var item in definition.sourceItems)
         {
             const itemEntities = evaluateQuery(context, item.body);
-            if (size(itemEntities) == 0)
+            if (size(itemEntities) != 1)
             {
-                throw regenError("Pick the bodies to deform in each Source item.", ["sourceItems"]);
+                throw regenError("Pick one body in each Source item.", ["sourceItems"]);
             }
             var list = [];
             for (var mc in evaluateQuery(context, qBodyType(qOwnerBody(item.connectors), BodyType.MATE_CONNECTOR)))
@@ -242,10 +242,6 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
                 list = append(list, { "id" : transientQueriesToStrings([mc])[0],
                         "originMm" : [cs.origin[0] / millimeter, cs.origin[1] / millimeter, cs.origin[2] / millimeter],
                         "xAxis" : [cs.xAxis[0], cs.xAxis[1], cs.xAxis[2]], "zAxis" : [cs.zAxis[0], cs.zAxis[1], cs.zAxis[2]] });
-            }
-            if (size(list) > 0 && size(itemEntities) != 1)
-            {
-                throw regenError("Mate connectors need exactly one body in their Source item.", ["sourceItems"]);
             }
             connectorCount += size(list);
             for (var entity in itemEntities)
