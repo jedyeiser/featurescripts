@@ -14,7 +14,9 @@ IconNamespace::import(path : "416d971d75cdf57db8f459e6", version : "1d0a4cbca37e
  *   schema, group, role ("from" | "to" | "source" | "refFrom" | "refTo"), index (pick order within the role),
  *   name (the owner body's name when the dialog was last edited), feature (this feature's id), extra (hidden text),
  *   and on from / to / refFrom / refTo entities the options: prevailing, extension, flipFrom, flipTo, maxKinkDeg,
- *   smoothMaxDeviationMm, accuracy, outputName. Reference points also carry originMm.
+ *   smoothMaxDeviationMm, accuracy, outputName. Reference points also carry originMm. A source body picked in
+ *   "Bodies with mate connectors" also carries mateConnectors: [{ id (REST id), originMm, xAxis, zAxis }]; the app
+ *   reads each connector's name through the API and re-creates it on the deformed body.
  *
  * The dialog's parameter list is frozen once published (correction 64): new options go into `extraOptions`, which is
  * copied into the attribute as text.
@@ -99,6 +101,18 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
             annotation { "Name" : "Source", "Filter" : (EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE)) || EntityType.FACE,
                         "Description" : "Bodies, faces or wire bodies to deform." }
             definition.source is Query;
+
+            annotation { "Name" : "Bodies with mate connectors", "Item name" : "body", "Item label template" : "Body with connectors",
+                        "Description" : "Each item: a body to deform (it joins the Source; picked in both, it is deformed once) and the mate connectors to bring with it. The app re-creates and names them on the deformed body." }
+            definition.mcItems is array;
+            for (var item in definition.mcItems)
+            {
+                annotation { "Name" : "Body", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE), "MaxNumberOfPicks" : 1 }
+                item.body is Query;
+
+                annotation { "Name" : "Mate connectors", "Filter" : BodyType.MATE_CONNECTOR }
+                item.connectors is Query;
+            }
         }
 
         annotation { "Group Name" : "Options", "Collapsed By Default" : true }
@@ -139,6 +153,9 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Name" : "Source names", "Default" : "", "MaxLength" : 8192, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
         definition.sourceNames is string;
+
+        annotation { "Name" : "Connector body names", "Default" : "", "MaxLength" : 8192, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
+        definition.mcNames is string;
     }
     {
         definition.groupName = replace(definition.groupName, "^\\s+|\\s+$", "");
@@ -154,7 +171,7 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
         {
             throw regenError("Select the To chain.", ["toChain"]);
         }
-        if (isQueryEmpty(context, definition.source))
+        if (isQueryEmpty(context, definition.source) && size(definition.mcItems) == 0)
         {
             throw regenError("Select the geometry to deform.", ["source"]);
         }
@@ -203,6 +220,40 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
             chainOptions[spec.role ~ "OriginMm"] = [origin[0] / millimeter, origin[1] / millimeter, origin[2] / millimeter];
         }
 
+        // Bodies that bring mate connectors: they are tagged role "source" (with the connector frames), so a body picked in
+        // Source as well is tagged once and deformed once. Connector frames are in mm; ids are the REST ids, so the app
+        // can read the connector's name through the API and re-create it on the deformed body.
+        var mcBodies = {};
+        var mcOrder = [];
+        const mcBodyNames = splitNames(definition.mcNames, size(definition.mcItems));
+        for (var k = 0; k < size(definition.mcItems); k += 1)
+        {
+            const item = definition.mcItems[k];
+            const itemBodies = evaluateQuery(context, item.body);
+            if (size(itemBodies) != 1)
+            {
+                throw regenError("Pick one body for each 'Bodies with mate connectors' item.", ["mcItems"]);
+            }
+            const bodyKey = transientQueriesToStrings([itemBodies[0]])[0];
+            var list = [];
+            for (var mc in evaluateQuery(context, qBodyType(qOwnerBody(item.connectors), BodyType.MATE_CONNECTOR)))
+            {
+                const cs = evMateConnector(context, { "mateConnector" : mc });
+                list = append(list, { "id" : transientQueriesToStrings([mc])[0],
+                        "originMm" : [cs.origin[0] / millimeter, cs.origin[1] / millimeter, cs.origin[2] / millimeter],
+                        "xAxis" : [cs.xAxis[0], cs.xAxis[1], cs.xAxis[2]], "zAxis" : [cs.zAxis[0], cs.zAxis[1], cs.zAxis[2]] });
+            }
+            if (mcBodies[bodyKey] == undefined)
+            {
+                mcBodies[bodyKey] = { "entity" : itemBodies[0], "name" : mcBodyNames[k], "connectors" : list };
+                mcOrder = append(mcOrder, bodyKey);
+            }
+            else
+            {
+                mcBodies[bodyKey].connectors = concatenateArrays([mcBodies[bodyKey].connectors, list]);
+            }
+        }
+
         var replaced = 0;
         var counts = { "refFrom" : 0, "refTo" : 0 };
         const roles = [
@@ -216,10 +267,24 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
             const names = splitNames(spec.names, size(entities));
             for (var i = 0; i < size(entities); i += 1)
             {
+                // A Source body that also brings connectors is tagged below, once, with its connectors.
+                if (spec.role == "source" && mcBodies[transientQueriesToStrings([entities[i]])[0]] != undefined)
+                {
+                    continue;
+                }
                 replaced += tagEntity(context, id, definition, entities[i], spec.role, i, names[i], spec.options, {});
             }
             counts[spec.role] = size(entities);
         }
+        var sourceIndex = counts.source;
+        for (var key in mcOrder)
+        {
+            const owner = mcBodies[key];
+            replaced += tagEntity(context, id, definition, owner.entity, "source", sourceIndex, owner.name, {}, { "mateConnectors" : owner.connectors });
+            sourceIndex += 1;
+            counts.mateConnectors = (counts.mateConnectors == undefined ? 0 : counts.mateConnectors) + size(owner.connectors);
+        }
+        counts.source = sourceIndex;
 
         for (var role in keys(refTargets))
         {
@@ -253,7 +318,7 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
         }
 
         const summary = "Tagged group '" ~ definition.groupName ~ "': " ~ counts.from ~ " From, " ~ counts.to ~ " To, "
-            ~ counts.source ~ " source" ~ (counts.refFrom == 1 ? ", From reference" : "") ~ (counts.refTo == 1 ? ", To reference" : "") ~ ".";
+            ~ counts.source ~ " source" ~ (counts.mateConnectors == undefined ? "" : " (" ~ counts.mateConnectors ~ " mate connectors)") ~ (counts.refFrom == 1 ? ", From reference" : "") ~ (counts.refTo == 1 ? ", To reference" : "") ~ ".";
         if (size(warnings) > 0)
         {
             reportFeatureWarning(context, id, join(warnings, " ") ~ " " ~ summary);
@@ -264,7 +329,7 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
         }
     }, { "groupName" : "", "outputName" : "", "prevailing" : DeformTagPrevailing.NONE, "extension" : DeformTagExtension.TANGENT,
          "flipFrom" : false, "flipTo" : false, "maxKink" : 0 * degree, "smoothMaxDeviation" : 0 * millimeter,
-         "accuracy" : DeformTagAccuracy.STANDARD, "extraOptions" : "", "fromNames" : "", "toNames" : "", "sourceNames" : "",
+         "accuracy" : DeformTagAccuracy.STANDARD, "extraOptions" : "", "fromNames" : "", "toNames" : "", "sourceNames" : "", "mcNames" : "",
          "refFrom" : qNothing(), "refTo" : qNothing() });
 
 /** Writes one tag; returns 1 when it replaced an existing Deform tag on the entity, else 0. */
@@ -408,5 +473,11 @@ export function deformTagEditLogic(context is Context, id is Id, oldDefinition i
     definition.fromNames = ownerNames(context, definition.fromChain);
     definition.toNames = ownerNames(context, definition.toChain);
     definition.sourceNames = ownerNames(context, definition.source);
+    var itemNames = [];
+    for (var item in definition.mcItems)
+    {
+        itemNames = append(itemNames, ownerNames(context, item.body));
+    }
+    definition.mcNames = join(itemNames, "\n");
     return definition;
 }
