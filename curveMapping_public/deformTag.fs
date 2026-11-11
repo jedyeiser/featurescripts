@@ -14,8 +14,8 @@ IconNamespace::import(path : "416d971d75cdf57db8f459e6", version : "1d0a4cbca37e
  *   schema, group, role ("from" | "to" | "source" | "refFrom" | "refTo"), index (pick order within the role),
  *   name (the owner body's name when the dialog was last edited), feature (this feature's id), extra (hidden text),
  *   and on from / to / refFrom / refTo entities the options: prevailing, extension, flipFrom, flipTo, maxKinkDeg,
- *   smoothMaxDeviationMm, accuracy. `group` is the deform name: the record key AND the name of the result. Reference points also carry originMm. A source body picked in
- *   "Bodies with mate connectors" also carries mateConnectors: [{ id (REST id), originMm, xAxis, zAxis }]; the app
+ *   smoothMaxDeviationMm, accuracy. `group` is the deform name: the record key AND the name of the result. Reference points also carry originMm. A source entity whose
+ *   Source item has mate connectors also carries mateConnectors: [{ id (REST id), originMm, xAxis, zAxis }]; the app
  *   reads each connector's name through the API and re-creates it on the deformed body.
  *
  * The dialog's parameter list is frozen once published (correction 64): new options go into `extraOptions`, which is
@@ -94,19 +94,17 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
                         "Description" : "Optional vertex or mate connector on the To chain." }
             definition.refTo is Query;
 
-            annotation { "Name" : "Source", "Filter" : (EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE)) || EntityType.FACE,
-                        "Description" : "Bodies, faces or wire bodies to deform." }
-            definition.source is Query;
-
-            annotation { "Name" : "Bodies with mate connectors", "Item name" : "body", "Item label template" : "Body with connectors",
-                        "Description" : "Each item: a body to deform (it joins the Source; picked in both, it is deformed once) and the mate connectors to bring with it. The app re-creates and names them on the deformed body." }
-            definition.mcItems is array;
-            for (var item in definition.mcItems)
+            annotation { "Name" : "Source", "Item name" : "source", "Item label template" : "Source",
+                        "Description" : "What to deform. Each item: the geometry, and the mate connectors that stay with it." }
+            definition.sourceItems is array;
+            for (var item in definition.sourceItems)
             {
-                annotation { "Name" : "Body", "Filter" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE), "MaxNumberOfPicks" : 1 }
+                annotation { "Name" : "Geometry", "Filter" : (EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE)) || EntityType.FACE,
+                            "Description" : "Bodies, faces or wire bodies to deform." }
                 item.body is Query;
 
-                annotation { "Name" : "Mate connectors", "Filter" : BodyType.MATE_CONNECTOR }
+                annotation { "Name" : "Mate connectors", "Filter" : BodyType.MATE_CONNECTOR,
+                            "Description" : "Connectors the deformed geometry owns; the app re-creates and names them. None = it owns none. Needs exactly one body in this item." }
                 item.connectors is Query;
             }
         }
@@ -154,9 +152,6 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Name" : "Source names", "Default" : "", "MaxLength" : 8192, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
         definition.sourceNames is string;
-
-        annotation { "Name" : "Connector body names", "Default" : "", "MaxLength" : 8192, "UIHint" : [UIHint.ALWAYS_HIDDEN] }
-        definition.mcNames is string;
     }
     {
         definition.groupName = replace(definition.groupName, "^\\s+|\\s+$", "");
@@ -172,9 +167,9 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
         {
             throw regenError("Select the To chain.", ["toChain"]);
         }
-        if (isQueryEmpty(context, definition.source) && size(definition.mcItems) == 0)
+        if (size(definition.sourceItems) == 0)
         {
-            throw regenError("Select the geometry to deform.", ["source"]);
+            throw regenError("Add a Source item with the geometry to deform.", ["sourceItems"]);
         }
 
         var warnings = [];
@@ -227,21 +222,19 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
             chainOptions[spec.role ~ "OriginMm"] = [origin[0] / millimeter, origin[1] / millimeter, origin[2] / millimeter];
         }
 
-        // Bodies that bring mate connectors: they are tagged role "source" (with the connector frames), so a body picked in
-        // Source as well is tagged once and deformed once. Connector frames are in mm; ids are the REST ids, so the app
-        // can read the connector's name through the API and re-create it on the deformed body.
-        var mcBodies = {};
-        var mcOrder = [];
-        const mcBodyNames = splitNames(definition.mcNames, size(definition.mcItems));
-        for (var k = 0; k < size(definition.mcItems); k += 1)
+        // Source items. Each item is entities to deform plus the mate connectors that belong to its (single) body. Connector
+        // frames are in mm; ids are the REST ids, so the app reads each connector's name through the API and re-creates it on
+        // the deformed body. An entity picked in two items is tagged once (its connectors merge), so it is deformed once.
+        var entries = {};
+        var entryOrder = [];
+        var connectorCount = 0;
+        for (var item in definition.sourceItems)
         {
-            const item = definition.mcItems[k];
-            const itemBodies = evaluateQuery(context, item.body);
-            if (size(itemBodies) != 1)
+            const itemEntities = evaluateQuery(context, item.body);
+            if (size(itemEntities) == 0)
             {
-                throw regenError("Pick one body for each 'Bodies with mate connectors' item.", ["mcItems"]);
+                throw regenError("Pick the geometry to deform in each Source item.", ["sourceItems"]);
             }
-            const bodyKey = transientQueriesToStrings([itemBodies[0]])[0];
             var list = [];
             for (var mc in evaluateQuery(context, qBodyType(qOwnerBody(item.connectors), BodyType.MATE_CONNECTOR)))
             {
@@ -250,23 +243,32 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
                         "originMm" : [cs.origin[0] / millimeter, cs.origin[1] / millimeter, cs.origin[2] / millimeter],
                         "xAxis" : [cs.xAxis[0], cs.xAxis[1], cs.xAxis[2]], "zAxis" : [cs.zAxis[0], cs.zAxis[1], cs.zAxis[2]] });
             }
-            if (mcBodies[bodyKey] == undefined)
+            if (size(list) > 0 && (size(itemEntities) != 1 || isQueryEmpty(context, qEntityFilter(item.body, EntityType.BODY))))
             {
-                mcBodies[bodyKey] = { "entity" : itemBodies[0], "name" : mcBodyNames[k], "connectors" : list };
-                mcOrder = append(mcOrder, bodyKey);
+                throw regenError("Mate connectors need exactly one body in their Source item (not faces, not several bodies).", ["sourceItems"]);
             }
-            else
+            connectorCount += size(list);
+            for (var entity in itemEntities)
             {
-                mcBodies[bodyKey].connectors = concatenateArrays([mcBodies[bodyKey].connectors, list]);
+                const entityKey = transientQueriesToStrings([entity])[0];
+                if (entries[entityKey] == undefined)
+                {
+                    entries[entityKey] = { "entity" : entity, "connectors" : list };
+                    entryOrder = append(entryOrder, entityKey);
+                }
+                else
+                {
+                    entries[entityKey].connectors = concatenateArrays([entries[entityKey].connectors, list]);
+                }
             }
         }
+        const sourceNameList = splitNames(definition.sourceNames, size(entryOrder));
 
         var replaced = 0;
         var counts = { "refFrom" : 0, "refTo" : 0 };
         const roles = [
                 { "role" : "from", "query" : definition.fromChain, "names" : definition.fromNames, "options" : chainOptions },
-                { "role" : "to", "query" : definition.toChain, "names" : definition.toNames, "options" : chainOptions },
-                { "role" : "source", "query" : definition.source, "names" : definition.sourceNames, "options" : {} }
+                { "role" : "to", "query" : definition.toChain, "names" : definition.toNames, "options" : chainOptions }
             ];
         for (var spec in roles)
         {
@@ -274,24 +276,17 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
             const names = splitNames(spec.names, size(entities));
             for (var i = 0; i < size(entities); i += 1)
             {
-                // A Source body that also brings connectors is tagged below, once, with its connectors.
-                if (spec.role == "source" && mcBodies[transientQueriesToStrings([entities[i]])[0]] != undefined)
-                {
-                    continue;
-                }
                 replaced += tagEntity(context, id, definition, entities[i], spec.role, i, names[i], spec.options, {});
             }
             counts[spec.role] = size(entities);
         }
-        var sourceIndex = counts.source;
-        for (var key in mcOrder)
+        for (var s = 0; s < size(entryOrder); s += 1)
         {
-            const owner = mcBodies[key];
-            replaced += tagEntity(context, id, definition, owner.entity, "source", sourceIndex, owner.name, {}, { "mateConnectors" : owner.connectors });
-            sourceIndex += 1;
-            counts.mateConnectors = (counts.mateConnectors == undefined ? 0 : counts.mateConnectors) + size(owner.connectors);
+            const entry = entries[entryOrder[s]];
+            replaced += tagEntity(context, id, definition, entry.entity, "source", s, sourceNameList[s], {},
+                size(entry.connectors) > 0 ? { "mateConnectors" : entry.connectors } : {});
         }
-        counts.source = sourceIndex;
+        counts.source = size(entryOrder);
 
         for (var role in keys(refTargets))
         {
@@ -336,7 +331,7 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
         }
     }, { "groupName" : "", "prevailing" : DeformTagPrevailing.PLUS_X, "extension" : DeformTagExtension.TANGENT,
          "flipFrom" : false, "flipTo" : false, "maxKink" : 0 * degree, "smoothMaxDeviation" : 0 * millimeter,
-         "accuracy" : DeformTagAccuracy.STANDARD, "extraOptions" : "", "fromNames" : "", "toNames" : "", "sourceNames" : "", "mcNames" : "",
+         "accuracy" : DeformTagAccuracy.STANDARD, "extraOptions" : "", "fromNames" : "", "toNames" : "", "sourceNames" : "",
          "refFrom" : qNothing(), "refTo" : qNothing() });
 
 /** Writes one tag; returns 1 when it replaced an existing Deform tag on the entity, else 0. */
@@ -479,12 +474,21 @@ export function deformTagEditLogic(context is Context, id is Id, oldDefinition i
 {
     definition.fromNames = ownerNames(context, definition.fromChain);
     definition.toNames = ownerNames(context, definition.toChain);
-    definition.sourceNames = ownerNames(context, definition.source);
-    var itemNames = [];
-    for (var item in definition.mcItems)
+    // One line per distinct source entity, in item order (the same order the feature body tags them in).
+    var seen = {};
+    var lines = [];
+    for (var item in definition.sourceItems)
     {
-        itemNames = append(itemNames, ownerNames(context, item.body));
+        for (var entity in evaluateQuery(context, item.body))
+        {
+            const key = transientQueriesToStrings([entity])[0];
+            if (seen[key] == undefined)
+            {
+                seen[key] = true;
+                lines = append(lines, ownerNames(context, entity));
+            }
+        }
     }
-    definition.mcNames = join(itemNames, "\n");
+    definition.sourceNames = join(lines, "\n");
     return definition;
 }
