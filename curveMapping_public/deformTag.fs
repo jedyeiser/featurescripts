@@ -117,25 +117,30 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Group Name" : "Options", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Prevailing direction", "Default" : DeformTagPrevailing.NONE, "UIHint" : UIHint.SHOW_LABEL }
+            annotation { "Name" : "Prevailing direction", "Default" : DeformTagPrevailing.PLUS_X, "UIHint" : UIHint.SHOW_LABEL,
+                        "Description" : "A wire has no direction in Onshape. The From chain is turned so its start-to-end line points this way; the To chain is then matched to From. None keeps Onshape's order." }
             definition.prevailing is DeformTagPrevailing;
 
-            annotation { "Name" : "End extension", "Default" : DeformTagExtension.TANGENT, "UIHint" : UIHint.SHOW_LABEL }
+            annotation { "Name" : "End extension", "Default" : DeformTagExtension.TANGENT, "UIHint" : UIHint.SHOW_LABEL,
+                        "Description" : "How the map continues past a chain end. Tangent: straight on. Osculating: along the circle of the end curvature." }
             definition.extension is DeformTagExtension;
 
-            annotation { "Name" : "Flip From direction", "Default" : false }
+            annotation { "Name" : "Flip From direction", "Default" : false,
+                        "Description" : "Reverses the From chain AFTER the prevailing direction is applied (with None: reverses Onshape's order)." }
             definition.flipFrom is boolean;
 
-            annotation { "Name" : "Flip To direction", "Default" : false }
+            annotation { "Name" : "Flip To direction", "Default" : false,
+                        "Description" : "Reverses the To chain AFTER it is matched to From. To has no prevailing direction of its own." }
             definition.flipTo is boolean;
 
-            annotation { "Name" : "Max kink angle", "Description" : "0 = the app's default." }
-            isAngle(definition.maxKink, { (degree) : [0, 0, 180] } as AngleBoundSpec);
+            annotation { "Name" : "Max kink angle", "Description" : "Largest tangent break between joined edges a chain accepts (0 to 30 deg). 0 = the app's default." }
+            isAngle(definition.maxKink, { (degree) : [0, 0, 30] } as AngleBoundSpec);
 
-            annotation { "Name" : "Smooth max deviation", "Description" : "0 = the app's default." }
+            annotation { "Name" : "Smooth max deviation", "Description" : "Smooths tangent breaks within this distance. 0 = off." }
             isLength(definition.smoothMaxDeviation, { (millimeter) : [0, 0, 1000] } as LengthBoundSpec);
 
-            annotation { "Name" : "Accuracy", "Default" : DeformTagAccuracy.STANDARD, "UIHint" : UIHint.SHOW_LABEL }
+            annotation { "Name" : "Accuracy", "Default" : DeformTagAccuracy.STANDARD, "UIHint" : UIHint.SHOW_LABEL,
+                        "Description" : "Fit accuracy of the deformed edges and faces. Fine is slower." }
             definition.accuracy is DeformTagAccuracy;
 
             // Room for options added after the first version (correction 64); copied into the attribute as text.
@@ -184,16 +189,23 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
             warnings = append(warnings, "Another Deform tag already uses the group name '" ~ definition.groupName ~ "'.");
         }
 
-        const options = {
+        var options = {
                 "prevailing" : prevailingText(definition.prevailing),
                 "extension" : definition.extension == DeformTagExtension.OSCULATING ? "osculating" : "tangent",
                 "flipFrom" : definition.flipFrom,
                 "flipTo" : definition.flipTo,
-                "maxKinkDeg" : definition.maxKink / degree,
-                "smoothMaxDeviationMm" : definition.smoothMaxDeviation / millimeter,
                 "accuracy" : definition.accuracy == DeformTagAccuracy.FINE ? "fine" : "standard",
                 "outputName" : definition.outputName
             };
+        // 0 means "the app's default": leave the key out, so the engine does not read 0 as a zero tolerance.
+        if (definition.maxKink > 0 * degree)
+        {
+            options.maxKinkDeg = definition.maxKink / degree;
+        }
+        if (definition.smoothMaxDeviation > 0 * millimeter)
+        {
+            options.smoothMaxDeviationMm = definition.smoothMaxDeviation / millimeter;
+        }
 
         // Reference points first: their origins (mm) ride on every From / To tag as refFromOriginMm / refToOriginMm,
         // so the app has them even when a mate connector cannot carry a tag (unverified).
@@ -327,7 +339,7 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
         {
             reportFeatureInfo(context, id, summary);
         }
-    }, { "groupName" : "", "outputName" : "", "prevailing" : DeformTagPrevailing.NONE, "extension" : DeformTagExtension.TANGENT,
+    }, { "groupName" : "", "outputName" : "", "prevailing" : DeformTagPrevailing.PLUS_X, "extension" : DeformTagExtension.TANGENT,
          "flipFrom" : false, "flipTo" : false, "maxKink" : 0 * degree, "smoothMaxDeviation" : 0 * millimeter,
          "accuracy" : DeformTagAccuracy.STANDARD, "extraOptions" : "", "fromNames" : "", "toNames" : "", "sourceNames" : "", "mcNames" : "",
          "refFrom" : qNothing(), "refTo" : qNothing() });
