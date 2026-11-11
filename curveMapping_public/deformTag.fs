@@ -227,7 +227,6 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
         // the deformed body. An entity picked in two items is tagged once (its connectors merge), so it is deformed once.
         var entries = {};
         var entryOrder = [];
-        var connectorCount = 0;
         for (var item in definition.sourceItems)
         {
             const itemEntities = evaluateQuery(context, item.body);
@@ -243,7 +242,6 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
                         "originMm" : [cs.origin[0] / millimeter, cs.origin[1] / millimeter, cs.origin[2] / millimeter],
                         "xAxis" : [cs.xAxis[0], cs.xAxis[1], cs.xAxis[2]], "zAxis" : [cs.zAxis[0], cs.zAxis[1], cs.zAxis[2]] });
             }
-            connectorCount += size(list);
             for (var entity in itemEntities)
             {
                 const entityKey = transientQueriesToStrings([entity])[0];
