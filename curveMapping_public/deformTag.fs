@@ -64,7 +64,7 @@ export enum DeformTagAccuracy
 }
 
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Deform tag",
-            "Feature Type Description" : "Tags the From and To chains, reference points and source geometry of one deform group, and records the deform options, for the API deform. Changes no geometry.",
+            "Feature Type Description" : "Tags the From and To chains, reference points and source geometry of one deform group, and records the deform options, for the API deform. Changes no geometry. Place it at the bottom of the feature tree.",
             "Editing Logic Function" : "deformTagEditLogic" }
 export const deformTag = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -262,6 +262,7 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
 
         var replaced = 0;
         var counts = { "refFrom" : 0, "refTo" : 0 };
+        var chainNames = {};
         const roles = [
                 { "role" : "from", "query" : definition.fromChain, "names" : definition.fromNames, "options" : chainOptions },
                 { "role" : "to", "query" : definition.toChain, "names" : definition.toNames, "options" : chainOptions }
@@ -275,12 +276,16 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
                 replaced += tagEntity(context, id, definition, entities[i], spec.role, i, names[i], spec.options, {});
             }
             counts[spec.role] = size(entities);
+            chainNames[spec.role] = uniqueNames(names);
         }
+        var sourceLabels = [];
         for (var s = 0; s < size(entryOrder); s += 1)
         {
             const entry = entries[entryOrder[s]];
             replaced += tagEntity(context, id, definition, entry.entity, "source", s, sourceNameList[s], {},
                 size(entry.connectors) > 0 ? { "mateConnectors" : entry.connectors } : {});
+            sourceLabels = append(sourceLabels, (sourceNameList[s] == "" ? "body " ~ (s + 1) : sourceNameList[s])
+                ~ (size(entry.connectors) > 0 ? " (" ~ size(entry.connectors) ~ " mate connector" ~ (size(entry.connectors) == 1 ? "" : "s") ~ ")" : ""));
         }
         counts.source = size(entryOrder);
 
@@ -315,8 +320,13 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
                 ~ " of an earlier Deform tag with this group and role were replaced.");
         }
 
-        const summary = "Tagged deform '" ~ definition.groupName ~ "': " ~ counts.from ~ " From, " ~ counts.to ~ " To, "
-            ~ counts.source ~ " source" ~ (connectorCount == 0 ? "" : " (" ~ connectorCount ~ " mate connectors)") ~ (counts.refFrom == 1 ? ", From reference" : "") ~ (counts.refTo == 1 ? ", To reference" : "") ~ ".";
+        // What the user needs to see in the feature tree: the deform name, what is in each role (with body names), and the
+        // reference points. Names are the ones captured by the editing logic (empty when the feature was inserted by API).
+        const summary = "Deform '" ~ definition.groupName ~ "'. From: " ~ chainLabel(counts.from, chainNames.from)
+            ~ ". To: " ~ chainLabel(counts.to, chainNames.to)
+            ~ ". Source: " ~ join(sourceLabels, ", ")
+            ~ (counts.refFrom == 1 || counts.refTo == 1 ? ". Reference points:" ~ (counts.refFrom == 1 ? " From" : "") ~ (counts.refTo == 1 ? " To" : "") : "")
+            ~ ".";
         if (size(warnings) > 0)
         {
             reportFeatureWarning(context, id, join(warnings, " ") ~ " " ~ summary);
@@ -329,6 +339,28 @@ export const deformTag = defineFeature(function(context is Context, id is Id, de
          "flipFrom" : false, "flipTo" : false, "maxKink" : 0 * degree, "smoothMaxDeviation" : 0 * millimeter,
          "accuracy" : DeformTagAccuracy.STANDARD, "extraOptions" : "", "fromNames" : "", "toNames" : "", "sourceNames" : "",
          "refFrom" : qNothing(), "refTo" : qNothing() });
+
+/** The non-empty names of `names`, each once, in order. */
+function uniqueNames(names is array) returns array
+{
+    var seen = {};
+    var result = [];
+    for (var name in names)
+    {
+        if (name != "" && seen[name] == undefined)
+        {
+            seen[name] = true;
+            result = append(result, name);
+        }
+    }
+    return result;
+}
+
+/** "3 picks (Wire A, Wire B)" -- the number of picked entities and the bodies they belong to. */
+function chainLabel(count is number, names is array) returns string
+{
+    return count ~ (count == 1 ? " pick" : " picks") ~ (size(names) > 0 ? " (" ~ join(names, ", ") ~ ")" : "");
+}
 
 /** Writes one tag; returns 1 when it replaced an existing Deform tag on the entity, else 0. */
 function tagEntity(context is Context, id is Id, definition is map, entity is Query, role is string, index is number,
