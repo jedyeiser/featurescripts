@@ -64,6 +64,9 @@ const SIGNED_THICKNESS_BOUNDS = { (millimeter) : [-500000, 1, 500000] } as Lengt
 /** A face lies on a boundary within this distance. */
 const ON_BOUNDARY_TOL = 1e-5 * meter;
 
+/** A piece of the mirror cut smaller than this fraction of the largest piece is a sliver, not part of the part. */
+const SLIVER_VOLUME_RATIO = 1e-4;
+
 /** A point on the mirror plane is moved this far off it to test which solid holds it. */
 const MIRROR_NUDGE = 1e-5 * meter;
 
@@ -494,12 +497,37 @@ function mirrorAndUnite(context is Context, id is Id, solids is Query, mirror is
         debugStep(context, "mirror: after the cut, pieces " ~ size(evaluateQuery(context, solids)));
         debugBodiesAgainstPlane(context, "pieces", solids, mirror);
     }
+    // The cut can leave slivers thinner than a micron in the plane (a thicken's end wall leans off it by about 0.06 um,
+    // and profile edges that cross the plane by a fraction of a micron make wedges beyond it). A sliver's centroid is
+    // meaningless, so the side test alone keeps one of them, and the union then fails with BOOLEAN_INVALID (measured
+    // 2026-11-12, top sheet: 3 pieces, 2 slivers of about 1e-14 m^3 against 4e-5 m^3). Pieces are told apart by VOLUME first.
+    const pieces = evaluateQuery(context, solids);
+    var volumes = [];
+    var biggest = 0 * meter * meter * meter;
+    for (var piece in pieces)
+    {
+        const volume = try silent(evVolume(context, { "entities" : piece, "accuracy" : VolumeAccuracy.HIGH }));
+        volumes = append(volumes, volume);
+        if (volume != undefined && volume > biggest)
+        {
+            biggest = volume;
+        }
+    }
     var kept = [];
     var dropped = [];
-    for (var piece in evaluateQuery(context, solids))
+    for (var i = 0; i < size(pieces); i += 1)
     {
-        // The cut can leave slivers thinner than a micron beyond the plane (a thicken's end wall leans off it by about
-        // 0.06 um), and one of zero volume has no centroid. It is dropped with the other half.
+        const piece = pieces[i];
+        if (debugPrint)
+        {
+            debugStep(context, "piece " ~ i ~ " volume " ~ (volumes[i] == undefined ? "unreadable" : roundTo(volumes[i] / (meter * meter * meter) * 1e9, 6) ~ " mm^3")
+                ~ (volumes[i] != undefined && volumes[i] < SLIVER_VOLUME_RATIO * biggest ? " (sliver: dropped)" : ""));
+        }
+        if (volumes[i] == undefined || volumes[i] < SLIVER_VOLUME_RATIO * biggest)
+        {
+            dropped = append(dropped, piece);
+            continue;
+        }
         const centroid = try silent(evApproximateCentroid(context, { "entities" : piece }));
         if (centroid == undefined)
         {

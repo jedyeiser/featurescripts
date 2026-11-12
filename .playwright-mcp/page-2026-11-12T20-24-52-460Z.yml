@@ -1,0 +1,211 @@
+- generic [ref=f11e5]:
+  - navigation [ref=f11e6]:
+    - generic [ref=f11e7]:
+      - link [ref=f11e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f11e11]
+      - generic [ref=f11e13] [cursor=pointer]
+    - generic [ref=f11e16]:
+      - generic [ref=f11e18]:
+        - generic [ref=f11e19]: Reference_Side_Features
+        - generic [ref=f11e20]: Main
+      - generic [ref=f11e22] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f11e26] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f11e30]:
+      - generic [ref=f11e38] [cursor=pointer]
+      - generic [ref=f11e44] [cursor=pointer]
+      - button "Notifications" [ref=f11e49] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f11e57]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f11e60] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f11e65] [cursor=pointer]
+      - button "Share" [ref=f11e69] [cursor=pointer]
+      - generic "Help menu" [ref=f11e71] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f11e75] [cursor=pointer]
+  - generic [ref=f11e85]:
+    - generic [ref=f11e87]:
+      - generic [ref=f11e88]:
+        - generic [ref=f11e89]:
+          - generic [ref=f11e90] [cursor=pointer]
+          - generic [ref=f11e93] [cursor=pointer]
+          - generic [ref=f11e96] [cursor=pointer]
+          - generic [ref=f11e99] [cursor=pointer]
+          - generic [ref=f11e102] [cursor=pointer]
+          - generic [ref=f11e105] [cursor=pointer]
+          - generic [ref=f11e108] [cursor=pointer]
+          - generic [ref=f11e111] [cursor=pointer]
+        - generic [ref=f11e115] [cursor=pointer]
+      - generic [ref=f11e119] [cursor=pointer]
+    - generic [ref=f11e126]:
+      - generic [ref=f11e129]:
+        - generic [ref=f11e133]:
+          - generic [ref=f11e145]:
+            - generic [ref=f11e146]: New feature
+            - generic [ref=f11e159]:
+              - generic [ref=f11e160] [cursor=pointer]: Length parameter
+              - generic [ref=f11e162] [cursor=pointer]
+            - generic [ref=f11e169]:
+              - generic [ref=f11e170] [cursor=pointer]
+              - generic [ref=f11e174] [cursor=pointer]
+            - generic [ref=f11e177]: Commit
+          - button "Search tools… alt/⌥ c" [ref=f11e188] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f11e189]:
+              - generic [ref=f11e190]: alt/⌥
+              - generic [ref=f11e191]: c
+          - generic [ref=f11e192]:
+            - switch "Co-complete" [disabled] [ref=f11e194] [cursor=pointer]
+            - generic [ref=f11e195]: Co-complete
+        - generic [ref=f11e200]:
+          - generic [ref=f11e201]: Monitor Part Studio 1
+          - generic [ref=f11e213]: Module outline
+          - generic [ref=f11e248]: Line 1 , Column 1
+      - generic [ref=f11e255]:
+        - textbox "Cursor at row 1" [active] [ref=f11e256]: FeatureScript 3083;
+        - generic [ref=f11e258]:
+          - generic [aria-hidden] [ref=f11e259]: "1"
+          - generic [aria-hidden] [ref=f11e260]: "2"
+          - generic [aria-hidden] [ref=f11e261]: "3"
+          - generic [aria-hidden] [ref=f11e262]: "4"
+          - generic [aria-hidden] [ref=f11e263]: "5"
+          - generic [aria-hidden] [ref=f11e264]: "6"
+          - generic [aria-hidden] [ref=f11e265]: "7"
+          - generic [aria-hidden] [ref=f11e266]: "8"
+          - generic [aria-hidden] [ref=f11e267]: "9"
+          - generic [aria-hidden] [ref=f11e268]: "10"
+          - generic [aria-hidden] [ref=f11e269]: "11"
+          - generic [aria-hidden] [ref=f11e270]: "12"
+          - generic [aria-hidden] [ref=f11e271]: "13"
+          - generic [aria-hidden] [ref=f11e272]: "14"
+          - generic [aria-hidden] [ref=f11e273]: "15"
+          - generic [aria-hidden] [ref=f11e274]: "16"
+          - generic [ref=f11e275]:
+            - text: "17"
+            - button [expanded] [ref=f11e276] [cursor=pointer]
+          - generic [aria-hidden] [ref=f11e277]: "18"
+          - generic [aria-hidden] [ref=f11e278]: "19"
+          - generic [aria-hidden] [ref=f11e279]: "20"
+          - generic [aria-hidden] [ref=f11e280]: "21"
+          - generic [aria-hidden] [ref=f11e281]: "22"
+          - generic [aria-hidden] [ref=f11e282]: "23"
+          - generic [aria-hidden] [ref=f11e283]: "24"
+          - generic [aria-hidden] [ref=f11e284]: "25"
+          - generic [aria-hidden] [ref=f11e285]: "26"
+          - generic [aria-hidden] [ref=f11e286]: "27"
+          - generic [aria-hidden] [ref=f11e287]: "28"
+          - generic [aria-hidden] [ref=f11e288]: "29"
+          - generic [aria-hidden] [ref=f11e289]: "30"
+          - generic [aria-hidden] [ref=f11e290]: "31"
+          - generic [aria-hidden] [ref=f11e291]: "32"
+          - generic [aria-hidden] [ref=f11e292]: "33"
+          - generic [aria-hidden] [ref=f11e293]: "34"
+          - generic [aria-hidden] [ref=f11e294]: "35"
+          - generic [aria-hidden] [ref=f11e295]: "36"
+          - generic [aria-hidden] [ref=f11e296]: "37"
+          - generic [aria-hidden] [ref=f11e297]: "38"
+          - generic [ref=f11e298]:
+            - text: "39"
+            - button [expanded] [ref=f11e299] [cursor=pointer]
+          - generic [aria-hidden] [ref=f11e300]: "40"
+          - generic [aria-hidden] [ref=f11e301]: "41"
+          - generic [aria-hidden] [ref=f11e302]: "42"
+          - generic [aria-hidden] [ref=f11e303]: "43"
+          - generic [aria-hidden] [ref=f11e304]: "44"
+          - generic [ref=f11e305]:
+            - text: "45"
+            - button [expanded] [ref=f11e306] [cursor=pointer]
+          - generic [ref=f11e307]:
+            - text: "46"
+            - button [expanded] [ref=f11e308] [cursor=pointer]
+          - generic [aria-hidden] [ref=f11e309]: "47"
+          - generic [aria-hidden] [ref=f11e310]: "48"
+          - generic [aria-hidden] [ref=f11e311]: "49"
+          - generic [aria-hidden] [ref=f11e312]: "50"
+          - generic [aria-hidden] [ref=f11e313]: "51"
+          - generic [aria-hidden] [ref=f11e314]: "52"
+          - generic [aria-hidden] [ref=f11e315]: "53"
+          - generic [ref=f11e316]:
+            - text: "54"
+            - button [expanded] [ref=f11e317] [cursor=pointer]
+        - generic [ref=f11e319]:
+          - generic:
+            - generic: FeatureScript 3083;
+            - generic: "import(path : \"onshape/std/common.fs\", version : \"3083.0\");"
+            - generic: "// IMPORT: reference_side_utils.fs"
+            - generic: "import(path : \"9aebe5ead538258b285aec19\", version : \"51d2aab9634029141009803d\");"
+            - generic: "// IMPORT: offset_plus.fs (Offset+, every surface offset)"
+            - generic: "import(path : \"742e5b3f04cc9115de8b6d8a\", version : \"a70e95e0c3507503d79c7fe9\");"
+            - generic: "// IMPORT: split_plus.fs (Split+, periphery and cap cuts)"
+            - generic: "import(path : \"637854639ad04840dc6f998d\", version : \"f803257d22d5a7ba34163ec7\");"
+            - generic: "// IMPORT: thicken_plus.fs (Thicken+, the Thickened mode)"
+            - generic: "import(path : \"0c55868c5058e59d958b7223\", version : \"67f2adc834b29839d2ba5e44\");"
+            - generic: "// IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)"
+            - generic: "import(path : \"a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3\", version : \"cffacd73d80aa6dc1a2c4273\");"
+            - generic: "// IMPORT: referenced_part_icon.svg (feature icon)"
+            - generic: "IconNamespace::import(path : \"385dde1d1db1fd331e975189\", version : \"c6ae68c4419cca3f9189e4a0\");"
+            - generic: /**
+            - generic: "* Referenced part (2026-09-28): a part from reference surfaces, every offset and side read from ONE"
+            - generic: "* reference point -- the chains done by hand before as Offset+ x N, Mutual Trim+, Enclose+ / Thicken+,"
+            - generic: "* Split+ and a mirror."
+            - generic: "*"
+            - generic: "* The REFERENCE POINT sets every direction: each offset and the thickness are signed, positive"
+            - generic: "* toward the point and negative away from it (0 = the surface as it is). It must not lie on a"
+            - generic: "* surface it measures."
+            - generic: "*"
+            - generic: "* THICKENED (base, mats, glass, top sheet): the profile is offset, thickened, then cut by the"
+            - generic: "* offset periphery (the part keeps the point's side of it) and by the caps. Thickening"
+            - generic: "* BEFORE the periphery cut keeps the side walls on the periphery instead of tilted"
+            - generic: "* along the profile's normals. The point lies inside the periphery and on the side the"
+            - generic: "* profile is thickened toward (a negative thickness goes the other way)."
+            - generic: "* CONSTRAINED (cores): top, bottom and periphery are offset and enclosed together with the caps"
+            - generic: "* (and the mirror plane); the solid holding the point is kept and cut by the caps, so the"
+            - generic: "* caps always trim -- std Enclose drops the walls between touching pockets, so caps that"
+            - generic: "* only divide a closed volume would otherwise do nothing. The point lies inside the part."
+            - generic: "*"
+            - generic: "* Caps (optional, both modes): surfaces or faces (offset with Offset+), or construction planes and"
+            - generic: "* mate connectors (infinite planes, moved by the offset). The part keeps the point's side of each."
+            - generic: "*"
+            - generic: "* Mirror plane (optional): the surfaces are one half. The half is cut at the plane (the side the"
+            - generic: "* surfaces are on is kept -- a point ON the plane is fine), mirrored and united. With a profile offset the"
+            - generic: "* thickened layer is built from the unoffset profile (see thickenLayer) so its faces meet the plane exactly."
+            - generic: "*"
+            - generic: "* The inputs are never changed: every offset is a new surface (0 = a copy), deleted at the end."
+            - generic: "*"
+            - generic: "* Publishes (Extract variables), every key always present (empty when not applicable): output (the"
+            - generic: "* part), profileFaces, oppositeFaces (Thickened: on the offset profile, and the thickness away from"
+            - generic: "* it), topFaces, bottomFaces (Constrained), sideFaces (on the offset periphery), cap1Faces, cap2Faces."
+            - generic: "* Faces are sorted by where they lie (mirrored faces by their mirror image), so they survive the"
+            - generic: "* splits and the union."
+            - generic: "*/"
+            - generic: /** How the part is made. */
+            - generic: export enum ReferencedPartType
+            - generic: "{"
+          - generic [ref=f11e320]:
+            - generic [ref=f11e321]: reference_side_utils
+            - generic [ref=f11e323]: offset_plus
+            - generic [ref=f11e325]: split_plus
+            - generic [ref=f11e327]: thicken_plus
+            - generic [ref=f11e329]: referenced_part_icon.svg
+            - generic [ref=f11e338]:
+              - generic [ref=f11e339] [cursor=pointer]
+              - text: Variable_Tools / V6 / extract_outputs
+      - generic [ref=f11e346]:
+        - img [ref=f11e349] [cursor=pointer]
+        - generic [ref=f11e351]:
+          - generic [ref=f11e352] [cursor=pointer]
+          - generic [ref=f11e356]: featurescripts
+        - generic [ref=f11e363]:
+          - generic [ref=f11e364] [cursor=pointer]: orient_to_reference
+          - generic [ref=f11e370] [cursor=pointer]: thicken_plus
+          - generic [ref=f11e376] [cursor=pointer]: split_plus
+          - generic [ref=f11e382] [cursor=pointer]: offset_plus
+          - generic [ref=f11e388] [cursor=pointer]: mutual_trim_plus
+          - generic [ref=f11e394] [cursor=pointer]: reference_side_utils
+          - generic [ref=f11e400] [cursor=pointer]: icons
+          - generic [ref=f11e406] [cursor=pointer]: move_face_plus
+          - generic [ref=f11e412] [cursor=pointer]: enclose_plus
+          - generic [ref=f11e418] [cursor=pointer]: join_profile_surfaces
+          - generic [ref=f11e424]: referenced_part
+        - generic [ref=f11e430]:
+          - listitem [ref=f11e431]
+          - listitem [ref=f11e435]
