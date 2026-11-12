@@ -1,0 +1,212 @@
+- generic [ref=f20e3]:
+  - navigation [ref=f20e4]:
+    - generic [ref=f20e5]:
+      - link [ref=f20e8] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f20e9]
+      - generic [ref=f20e11] [cursor=pointer]
+    - generic [ref=f20e14]:
+      - generic [ref=f20e16]:
+        - generic [ref=f20e17]: Curve_Wrapping_Public
+        - generic [ref=f20e18]: B1
+      - generic [ref=f20e78] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f20e82] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f20e19]:
+      - generic [ref=f20e87] [cursor=pointer]
+      - generic [ref=f20e93] [cursor=pointer]
+      - button "Notifications" [ref=f20e21] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f20e29]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f20e32] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f20e37] [cursor=pointer]
+      - button "Share" [ref=f20e99] [cursor=pointer]
+      - generic "Help menu" [ref=f20e41] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f20e45] [cursor=pointer]
+  - generic [ref=f20e55]:
+    - generic [ref=f20e57]:
+      - generic [ref=f20e58]:
+        - generic [ref=f20e100]:
+          - generic [ref=f20e101] [cursor=pointer]
+          - generic [ref=f20e104] [cursor=pointer]
+          - generic [ref=f20e107] [cursor=pointer]
+          - generic [ref=f20e110] [cursor=pointer]
+          - generic [ref=f20e113] [cursor=pointer]
+          - generic [ref=f20e116] [cursor=pointer]
+          - generic [ref=f20e119] [cursor=pointer]
+          - generic [ref=f20e122] [cursor=pointer]
+        - generic [ref=f20e125] [cursor=pointer]
+      - generic [ref=f20e129] [cursor=pointer]
+    - generic [ref=f20e64]:
+      - generic [ref=f20e134]:
+        - generic [ref=f20e138]:
+          - generic [ref=f20e150]:
+            - generic [ref=f20e151]: New feature
+            - generic [ref=f20e164]:
+              - generic [ref=f20e165] [cursor=pointer]: Length parameter
+              - generic [ref=f20e167] [cursor=pointer]
+            - generic [ref=f20e174]:
+              - generic [ref=f20e175] [cursor=pointer]
+              - generic [ref=f20e179] [cursor=pointer]
+            - generic [ref=f20e182]: Commit
+          - button "Search tools… alt/⌥ c" [ref=f20e193] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f20e194]:
+              - generic [ref=f20e195]: alt/⌥
+              - generic [ref=f20e196]: c
+          - generic [ref=f20e197]:
+            - switch "Co-complete" [disabled] [ref=f20e199] [cursor=pointer]
+            - generic [ref=f20e200]: Co-complete
+        - generic [ref=f20e205]:
+          - generic [ref=f20e206]: Monitor CNT_Testing
+          - generic [ref=f20e218]: Module outline
+          - generic [ref=f20e253]: Line 1 , Column 1
+      - generic [ref=f20e255]:
+        - textbox "Cursor at row 1" [active] [ref=f20e256]: FeatureScript 3083;
+        - generic [ref=f20e258]:
+          - generic [aria-hidden] [ref=f20e259]: "1"
+          - generic [aria-hidden] [ref=f20e260]: "2"
+          - generic [aria-hidden] [ref=f20e261]: "3"
+          - generic [aria-hidden] [ref=f20e262]: "4"
+          - generic [aria-hidden] [ref=f20e263]: "5"
+          - generic [ref=f20e264]:
+            - text: "6"
+            - button [expanded] [ref=f20e265] [cursor=pointer]
+          - generic [aria-hidden] [ref=f20e266]: "7"
+          - generic [aria-hidden] [ref=f20e267]: "8"
+          - generic [aria-hidden] [ref=f20e268]: "9"
+          - generic [aria-hidden] [ref=f20e269]: "10"
+          - generic [ref=f20e270]:
+            - text: "11"
+            - button [expanded] [ref=f20e271] [cursor=pointer]
+          - generic [aria-hidden] [ref=f20e272]: "12"
+          - generic [aria-hidden] [ref=f20e273]: "13"
+          - generic [aria-hidden] [ref=f20e274]: "14"
+          - generic [ref=f20e275]:
+            - text: "15"
+            - button [expanded] [ref=f20e276] [cursor=pointer]
+          - generic [aria-hidden] [ref=f20e277]: "16"
+          - generic [aria-hidden] [ref=f20e278]: "17"
+          - generic [aria-hidden] [ref=f20e279]: "18"
+          - generic [aria-hidden] [ref=f20e280]: "19"
+          - generic [aria-hidden] [ref=f20e281]: "20"
+          - generic [aria-hidden] [ref=f20e282]: "21"
+          - generic [aria-hidden] [ref=f20e283]: "22"
+          - generic [aria-hidden] [ref=f20e284]: "23"
+          - generic [aria-hidden] [ref=f20e285]: "24"
+          - generic [aria-hidden] [ref=f20e286]: "25"
+          - generic [aria-hidden] [ref=f20e287]: "26"
+          - generic [aria-hidden] [ref=f20e288]: "27"
+          - generic [aria-hidden] [ref=f20e289]: "28"
+          - generic [ref=f20e290]:
+            - text: "29"
+            - button [expanded] [ref=f20e291] [cursor=pointer]
+          - generic [aria-hidden] [ref=f20e292]: "30"
+          - generic [aria-hidden] [ref=f20e293]: "31"
+          - generic [aria-hidden] [ref=f20e294]: "32"
+          - generic [aria-hidden] [ref=f20e295]: "33"
+          - generic [ref=f20e296]:
+            - text: "34"
+            - button [expanded] [ref=f20e297] [cursor=pointer]
+          - generic [ref=f20e298]:
+            - text: "35"
+            - button [expanded] [ref=f20e299] [cursor=pointer]
+          - generic [aria-hidden] [ref=f20e300]: "36"
+          - generic [aria-hidden] [ref=f20e301]: "37"
+          - generic [aria-hidden] [ref=f20e302]: "38"
+          - generic [ref=f20e303]:
+            - text: "39"
+            - button [expanded] [ref=f20e304] [cursor=pointer]
+          - generic [aria-hidden] [ref=f20e305]: "40"
+          - generic [aria-hidden] [ref=f20e306]: "41"
+          - generic [aria-hidden] [ref=f20e307]: "42"
+          - generic [aria-hidden] [ref=f20e308]: "43"
+          - generic [ref=f20e309]:
+            - text: "44"
+            - button [expanded] [ref=f20e310] [cursor=pointer]
+          - generic [aria-hidden] [ref=f20e311]: "45"
+          - generic [aria-hidden] [ref=f20e312]: "46"
+          - generic [aria-hidden] [ref=f20e313]: "47"
+          - generic [aria-hidden] [ref=f20e314]: "48"
+          - generic [aria-hidden] [ref=f20e315]: "49"
+          - generic [aria-hidden] [ref=f20e316]: "50"
+          - generic [aria-hidden] [ref=f20e317]: "51"
+          - generic [aria-hidden] [ref=f20e318]: "52"
+          - generic [aria-hidden] [ref=f20e319]: "53"
+          - generic [ref=f20e320]:
+            - text: "54"
+            - button [expanded] [ref=f20e321] [cursor=pointer]
+        - generic [ref=f20e323]:
+          - generic:
+            - generic: FeatureScript 3083;
+            - generic: "import(path : \"onshape/std/common.fs\", version : \"3083.0\");"
+            - generic: "// IMPORT: body_identity_icon.svg (feature icon)"
+            - generic: "IconNamespace::import(path : \"eca6701c4f4c36eb73d9da99\", version : \"014c5808edfc70e2e2632275\");"
+            - generic: /**
+            - generic: "* Body identity: gives bodies a stable identity (opNameEntity), so features, mates, sketch planes, derives and released"
+            - generic: "* part numbers that refer to a body by qNamed(identity) keep resolving when the body is replaced -- the import update of a"
+            - generic: "* body the deform backend swaps in, whose id changes. It changes no geometry. Brief: docs/briefs/body_identity_feature.md."
+            - generic: "*"
+            - generic: "* HOW THE BODIES ARE FOUND (differs from the brief): a feature cannot read a body's NAME while it regenerates (getProperty"
+            - generic: "* throws \"Cannot get properties during feature regeneration\", correction 36), so the feature cannot search by name. Each item"
+            - generic: "* therefore holds a SELECTION (the body, set through REST as a deterministic id) and the IDENTITY string. The backend, which"
+            - generic: "* can read names through REST, re-points the selection after an import update; the identity string never changes, so"
+            - generic: "* everything downstream keeps resolving. In the dialog the identity defaults to the picked body's name (the editing logic can"
+            - generic: "* read it)."
+            - generic: "*"
+            - generic: "* The per-item operation id comes from the IDENTITY (sanitised plus a checksum), never from list order or the feature id, so"
+            - generic: "* a list that gains or loses items, or a feature re-created by REST, names the same bodies the same way."
+            - generic: "*"
+            - generic: "* A body that is missing or listed twice, or an identity that is empty or already used, is a feature WARNING that names it;"
+            - generic: "* the other items are still named. The parameter list is frozen once published (correction 64): anything new goes into"
+            - generic: "* extraOptions (hidden text)."
+            - generic: "*/"
+            - generic: /** Characters used to checksum an identity (anything else counts as 0). */
+            - generic: "const CHECKSUM_ALPHABET = \" !#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~\";"
+            - generic: "annotation { \"Icon\" : IconNamespace::BLOB_DATA, \"Feature Type Name\" : \"Body identity\","
+            - generic: "\"Feature Type Description\" : \"Names bodies so downstream features, mates and part numbers keep resolving when the bodies are replaced. Changes no geometry.\","
+            - generic: "\"Editing Logic Function\" : \"bodyIdentityEditLogic\" }"
+            - generic: export const bodyIdentity = defineFeature(function(context is Context, id is Id, definition is map)
+            - generic: precondition
+            - generic: "{"
+            - generic: "annotation { \"Name\" : \"Bodies\", \"Item name\" : \"body\", \"Item label template\" : \"#identity\","
+            - generic: "\"Description\" : \"Each item: a body and the identity it carries. Add items through the API or by picking.\" }"
+            - generic: definition.bodies is array;
+            - generic: for (var item in definition.bodies)
+            - generic: "{"
+            - generic: "annotation { \"Name\" : \"Body\", \"Filter\" : EntityType.BODY && (BodyType.SOLID || BodyType.SHEET || BodyType.WIRE), \"MaxNumberOfPicks\" : 1,"
+            - generic: "\"Description\" : \"The body to name. Re-point it after the body is replaced; the identity stays.\" }"
+            - generic: item.body is Query;
+            - generic: "annotation { \"Name\" : \"Identity\", \"Default\" : \"\", \"MaxLength\" : 256,"
+            - generic: "\"Description\" : \"The stable name (qNamed). Empty: the picked body's name. Unique in the Part Studio. Do not change it once downstream features use it.\" }"
+            - generic: item.identity is string;
+            - generic: "}"
+            - generic: "// Room for options added after the first version: the parameter list cannot be extended safely once published"
+            - generic: // (correction 64).
+            - generic: "annotation { \"Name\" : \"Extra options\", \"Default\" : \"\", \"MaxLength\" : 4096, \"UIHint\" : [UIHint.ALWAYS_HIDDEN] }"
+            - generic: definition.extraOptions is string;
+            - generic: "}"
+            - generic: "{"
+          - generic [ref=f20e324]: body_identity_icon.svg
+      - generic [ref=f20e345]:
+        - img [ref=f20e348] [cursor=pointer]
+        - generic [ref=f20e351]:
+          - generic [ref=f20e352] [cursor=pointer]: Test
+          - generic [ref=f20e358] [cursor=pointer]: SKH_Testing
+          - generic [ref=f20e366] [cursor=pointer]: ONE Testing
+          - generic [ref=f20e374] [cursor=pointer]: CNT_Testing
+          - generic [ref=f20e382] [cursor=pointer]: deform.pdf
+          - generic [ref=f20e388] [cursor=pointer]: Test_Real
+          - generic [ref=f20e396] [cursor=pointer]: measureBetweenCurves
+          - generic [ref=f20e402] [cursor=pointer]: Curve Wrapping Info.pdf
+          - generic [ref=f20e408] [cursor=pointer]: resources
+          - generic [ref=f20e414] [cursor=pointer]: wrapAndLoft
+          - generic [ref=f20e420] [cursor=pointer]: wrapCurve
+          - generic [ref=f20e426] [cursor=pointer]: deform
+          - generic [ref=f20e432] [cursor=pointer]: Deform tests
+          - generic [ref=f20e438] [cursor=pointer]: deform_tag_icon.svg
+          - generic [ref=f20e444] [cursor=pointer]: deformTag
+          - generic [ref=f20e450] [cursor=pointer]: body_identity_icon.svg
+          - generic [ref=f20e456]: bodyIdentity
+        - generic [ref=f20e462]:
+          - listitem [ref=f20e463]
+          - listitem [ref=f20e467]

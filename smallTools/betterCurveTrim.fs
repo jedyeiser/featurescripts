@@ -134,10 +134,10 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
             annotation { "Name" : "From point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             definition.fromPoint is Query;
 
-            annotation { "Name" : "Distance", "Description" : "Arc length from the reference point. Positive runs the way the blue arrow points; negative runs the other way." }
+            annotation { "Name" : "Distance", "Description" : "Arc length from the reference point. Positive runs the way the blue arrow points; negative runs the other way. From an END of the curve it always runs into the curve." }
             isLength(definition.distance, LENGTH_BOUNDS);
 
-            annotation { "Name" : "Opposite direction", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false, "Description" : "Reverse the positive direction (blue arrow)." }
+            annotation { "Name" : "Opposite direction", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false, "Description" : "Reverse the positive direction (blue arrow). No effect when the reference point is an end of the curve: the distance then always runs into the curve." }
             definition.distanceFlip is boolean;
 
             if (definition.operation == OPERATION.TRIM)
@@ -266,6 +266,7 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
         }
 
         embedTrimOutputs(context, id, definition, results);
+        reportRoute(context, id, results);
     },
     {
         "inflectionIndices" : [],
@@ -275,6 +276,50 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
         "extraDistances" : [],
         "splitAtReference" : false
     });
+
+/**
+ * Tell the user which route a trim took, since it decides whether references to the wire survive. In place
+ * (opMoveCurveBoundary): the wire body is kept. Replaced (extract and delete): new wire bodies, the original is gone, so
+ * a query variable made BEFORE this feature no longer resolves -- a WARNING. Also states the endpoint distance rule.
+ * Other operations (split, inflection) report nothing new.
+ */
+function reportRoute(context is Context, id is Id, results is array)
+{
+    var inPlace = 0;
+    var replaced = 0;
+    var notes = [];
+    for (var r in results)
+    {
+        if (r.route == "inPlace")
+        {
+            inPlace += 1;
+        }
+        else if (r.route == "replaced")
+        {
+            replaced += 1;
+        }
+        if (r.endNote != undefined && r.endNote != "" && indexOf(notes, r.endNote) < 0)
+        {
+            notes = append(notes, r.endNote);
+        }
+    }
+    var messages = notes;
+    if (inPlace > 0)
+    {
+        messages = append(messages, "Trimmed in place (opMoveCurveBoundary): the wire body is kept, so references to it survive.");
+    }
+    if (replaced > 0)
+    {
+        messages = append(messages, "The wire was REPLACED: an in-place trim was not possible (the cutting plane crosses the curve "
+            ~ "more than once, or the side to keep was ambiguous), so the cut made new wire bodies and deleted the original. "
+            ~ "References to the old wire, such as a query variable made before this feature, no longer resolve.");
+        reportFeatureWarning(context, id, join(messages, " "));
+    }
+    else if (size(messages) > 0)
+    {
+        reportFeatureInfo(context, id, join(messages, " "));
+    }
+}
 
 // ============================================================================
 // PER-CURVE WORK
@@ -288,7 +333,15 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
 {
     var wp = wirePath(context, wire);
 
-    var fractions = cleanFractions(cutFractionsFor(context, definition, wp));
+    // Distance mode: a reference point that is an END of the curve fixes the direction (into the curve), whichever way
+    // the path happens to run (see pathEndOfPoint).
+    var endOfPath = undefined;
+    if (definition.cutBy == CUT_BY.ARC_LENGTH_FROM_POINT && !isQueryEmpty(context, definition.fromPoint))
+    {
+        endOfPath = pathEndOfPoint(context, wp, fractionOfPoint(context, wp, resolvePoint(context, definition.fromPoint)));
+    }
+
+    var fractions = cleanFractions(cutFractionsFor(context, definition, wp, endOfPath));
     if (size(fractions) == 0)
     {
         throw regenError("No valid cut location found on the curve", ["curves"]);
@@ -312,7 +365,58 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
         definition.flipHeuristics = !keepEnd;
     }
 
-    return applyCut(context, id, definition, wire, wp, fractions);
+    var result = applyCut(context, id, definition, wire, wp, fractions);
+    result.endNote = endOfPath == undefined ? "" : "The reference point is at the " ~ (endOfPath == 0 ? "start" : "end")
+        ~ " of the curve, so the distance runs into the curve (Opposite direction and the sign of the distance are ignored).";
+    return result;
+}
+
+/**
+ * Which end of the wire's path a reference point sits on: 0 (the path start), 1 (the path end), or undefined when it is
+ * an interior point -- or when "end" is ambiguous: a closed wire (both ends coincide), or a wire that passes through the
+ * same spot elsewhere (sampled along the path like the in-place trim's crossing test, so a touch is found to about
+ * 2 sample spacings). The path direction comes from wirePath and is not tied to the point, so the same geometry can run
+ * either way: this is what the distance rule keys on instead.
+ */
+function pathEndOfPoint(context is Context, wp is map, f0 is number)
+{
+    const tol = max(CTC_FRACTION_EPS, CTC_ON_CURVE_TOL / wp.total);
+    var which = undefined;
+    if (f0 <= tol)
+    {
+        which = 0;
+    }
+    else if (f0 >= 1 - tol)
+    {
+        which = 1;
+    }
+    if (which == undefined)
+    {
+        return undefined;
+    }
+    const here = pathPointAtFraction(context, wp, which);
+    if (norm(pathPointAtFraction(context, wp, 0) - pathPointAtFraction(context, wp, 1)) < CTC_ON_CURVE_TOL)
+    {
+        return undefined;
+    }
+    const n = CTC_TRIM_CROSSING_SAMPLES;
+    var samples = [];
+    for (var i = 0; i <= n; i += 1)
+    {
+        samples = append(samples, i / n);
+    }
+    const touchTol = 2 * wp.total / n;
+    const endZone = 6 / n;
+    var index = 0;
+    for (var tl in evPathTangentLines(context, wp.path, samples).tangentLines)
+    {
+        if (abs(index / n - which) > endZone && norm(tl.origin - here) < touchTol)
+        {
+            return undefined;
+        }
+        index += 1;
+    }
+    return which;
 }
 
 /**
@@ -359,7 +463,7 @@ function applyCut(context is Context, id is Id, definition is map, wire is Query
         var inPlace = trimWireInPlace(context, id, wire, wp, fractions[0], !definition.flipHeuristics);
         if (inPlace.done)
         {
-            return { "output" : inPlace.wire, "cutPoints" : points, "pieces" : [inPlace.wire] };
+            return { "output" : inPlace.wire, "cutPoints" : points, "pieces" : [inPlace.wire], "route" : "inPlace" };
         }
     }
 
@@ -375,7 +479,9 @@ function applyCut(context is Context, id is Id, definition is map, wire is Query
         // the flip keeps the start (back) side.
         var keepIndex = definition.flipHeuristics ? 0 : (size(pieces) - 1);
         keepOnePiece(context, id, pieces, keepIndex);
-        return { "output" : pieces[keepIndex], "cutPoints" : points, "pieces" : [pieces[keepIndex]] };
+        // "replaced": the single-cut trim could not run in place, so the wire was extracted and the original deleted.
+        return { "output" : pieces[keepIndex], "cutPoints" : points, "pieces" : [pieces[keepIndex]],
+                 "route" : size(fractions) == 1 ? "replaced" : "" };
     }
     return { "output" : qUnion(pieces), "cutPoints" : points, "pieces" : pieces };
 }
@@ -512,7 +618,7 @@ function endpointClosestFractions(fractions is array) returns array
  * Path cut fractions (0..1 along the wire) for the selected cut mode. Each mode
  * validates its own required inputs.
  */
-function cutFractionsFor(context is Context, definition is map, wp is map) returns array
+function cutFractionsFor(context is Context, definition is map, wp is map, endOfPath) returns array
 {
     if (definition.cutBy == CUT_BY.UP_TO_ENTITY)
     {
@@ -529,7 +635,10 @@ function cutFractionsFor(context is Context, definition is map, wp is map) retur
             throw regenError("Select a point to measure from", ["fromPoint"]);
         }
         var f0 = fractionOfPoint(context, wp, resolveAndMark(context, wp, definition.fromPoint));
-        var dir = definition.distanceFlip ? -1 : 1;
+        // From an END of the curve the distance runs into the curve whatever the path direction (the flip and the sign are
+        // ignored); from an interior point the flip chooses the direction along the path as before.
+        var atEnd = endOfPath != undefined;
+        var dir = atEnd ? (endOfPath == 0 ? 1 : -1) : (definition.distanceFlip ? -1 : 1);
         markPositiveDirection(context, wp, f0, dir);
 
         var distances = [definition.distance];
@@ -544,7 +653,7 @@ function cutFractionsFor(context is Context, definition is map, wp is map) retur
         var fractions = [];
         for (var i = 0; i < size(distances); i += 1)
         {
-            var f = fractionAtSignedDistance(wp, f0, distances[i], dir);
+            var f = fractionAtSignedDistance(wp, f0, atEnd ? abs(distances[i]) : distances[i], dir);
             if (f <= 0 || f >= 1)
             {
                 var which = (i == 0) ? "The distance" : ("Additional distance " ~ i);

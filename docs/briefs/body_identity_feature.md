@@ -76,3 +76,39 @@ Record the answers in this file under "Known limits" (not in a new file).
 
 The deform maths, the STEP, the import update, the Deform tag feature. The user versions curveMapping_public; do not create
 versions or scratch documents without asking.
+
+## Implementation (2026-11-12): Body identity, curveMapping_public/bodyIdentity.fs (pushed, compiles, NOT versioned, NOT tested live)
+
+**Premise correction.** The brief assumed the feature can find a body by NAME during regeneration. It cannot: `getProperty` throws
+"Cannot get properties during feature regeneration in current context" inside a feature body (corrections log 36; it works only in the
+editing logic and the eval API). So the feature does not search by name. The BACKEND does the search (it reads part names over REST)
+and writes the result into the feature; the feature only names what it is pointed at.
+
+**Shape.**
+- Parameter `bodies` (array). Each item: `body` (Query, one SOLID / SHEET / WIRE body, set as a deterministic id) and `identity`
+  (string, <= 256, the stable name). Plus hidden `extraOptions` (text, reserved; the list is frozen once published, correction 64).
+- Per item: `opNameEntity(id + <component from the identity>, {entity, entityName : identity})`. The component is sanitised
+  letters/digits plus a length and checksum of the identity, so it never depends on list order or on the feature's own id, and a
+  feature re-created by REST names the same bodies the same way. The identity string is used exactly as given (trimmed): the backend
+  chooses it (the body name, or a fixed prefix + name) and must never change it once downstream features use it.
+- An empty `body` (stale selection), an empty or duplicate `identity`, a body listed twice, a selection of several bodies, or an
+  identity that already names something earlier in the tree is a feature WARNING naming the item; the other items are still named.
+  An empty list is not an error ("No bodies named.").
+- Dialog: picking a body with an empty identity fills the identity with the body's name (editing logic).
+- Changes no geometry. Place it right after the Import feature.
+
+**What the backend does after an import update.** (1) GET the parts of the import studio; map each tracked name -> its new part id.
+(2) `updateFeatures` on the Body identity feature: for each item set `body` to the new deterministic id, leave `identity` alone;
+add items for new names, remove items for names removed from the Deform tag. Items must carry BOTH item parameters (correction 38;
+copy the array-item pattern from `fsapi.py` / Extract variables). (3) Read the feature's status: a WARNING lists any name that did
+not resolve. Between the import regenerating and step (2), qNamed references are transiently unresolved: that is expected.
+
+**Known limits / unverified (nothing below has been run in Onshape).**
+1. Whether `opNameEntity` on a body from `opImportForeign` survives an Import update and keeps downstream features, mates,
+   part ids and released part numbers resolving: this is the experiment in the section above, still to do (needs a scratch document).
+2. `qNamed(unknown name)`: assumed to resolve to nothing; the duplicate check wraps it in `try silent` because that is unverified.
+3. `opNameEntity` is internal and undocumented; a std change could break it (Assign Identity depends on it too).
+4. A re-pointed selection must be written by the backend after EVERY update; if it is missed, the body keeps its old (dead) selection
+   and the item shows a warning.
+5. Order-based or geometry-based matching (the STEP body order, boxes) was not built: the update changes geometry, and the order is
+   untested. Revisit only if a REST re-point after each update proves too slow.

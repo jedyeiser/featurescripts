@@ -1,0 +1,57 @@
+Found 6 matches for /bodyIdentity|body_identity|opNameEntity|Variable .* set but not used.*[0-9]+:[0-9]+/:
+
+- generic [active] [ref=f20e1]:
+  - generic [ref=f20e3]:
+    - generic [ref=f20e55]:
+      - generic [ref=f20e62]:
+        - generic [ref=f20e64]:
+          - generic [ref=f20e255]:
+            - generic [ref=f20e323]:
+              - generic:
+                - generic: FeatureScript 3083;
+                - generic: "import(path : \"onshape/std/common.fs\", version : \"3083.0\");"
+                - generic: "// IMPORT: body_identity_icon.svg (feature icon)"
+                - generic: "IconNamespace::import(path : \"eca6701c4f4c36eb73d9da99\", version : \"014c5808edfc70e2e2632275\");"
+                - generic: /**
+                - generic: "* Body identity: gives bodies a stable identity (opNameEntity), so features, mates, sketch planes, derives and released"
+                - generic: "* part numbers that refer to a body by qNamed(identity) keep resolving when the body is replaced -- the import update of a"
+                - generic: "* body the deform backend swaps in, whose id changes. It changes no geometry. Brief: docs/briefs/body_identity_feature.md."
+                - generic: "*"
+                - generic: "* HOW THE BODIES ARE FOUND (differs from the brief): a feature cannot read a body's NAME while it regenerates (getProperty"
+                - generic: "* throws \"Cannot get properties during feature regeneration\", correction 36), so the feature cannot search by name. Each item"
+
+----
+
+- generic [active] [ref=f20e1]:
+  - generic [ref=f20e3]:
+    - generic [ref=f20e55]:
+      - generic [ref=f20e62]:
+        - generic [ref=f20e64]:
+          - generic [ref=f20e255]:
+            - generic [ref=f20e323]:
+              - generic:
+                - generic: "* the other items are still named. The parameter list is frozen once published (correction 64): anything new goes into"
+                - generic: "* extraOptions (hidden text)."
+                - generic: "*/"
+              - generic [ref=f20e324]: body_identity_icon.svg
+          - generic [ref=f20e345]:
+            - img [ref=f20e348] [cursor=pointer]
+            - generic [ref=f20e351]:
+
+----
+
+- generic [active] [ref=f20e1]:
+  - generic [ref=f20e3]:
+    - generic [ref=f20e55]:
+      - generic [ref=f20e62]:
+        - generic [ref=f20e64]:
+          - generic [ref=f20e345]:
+            - generic [ref=f20e351]:
+              - generic [ref=f20e432] [cursor=pointer]: Deform tests
+              - generic [ref=f20e438] [cursor=pointer]: deform_tag_icon.svg
+              - generic [ref=f20e444] [cursor=pointer]: deformTag
+              - generic [ref=f20e450] [cursor=pointer]: body_identity_icon.svg
+              - generic [ref=f20e456]: bodyIdentity
+            - generic [ref=f20e462]:
+              - listitem [ref=f20e463]
+              - listitem [ref=f20e467]
