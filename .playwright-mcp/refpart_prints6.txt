@@ -1,0 +1,37 @@
+Found 2 matches for /@op|BOOLEAN|referenced_part \(|\[referencedPart\]|INVALID|did not join/:
+
+- generic [ref=f18e5]:
+  - generic [ref=f18e88]:
+    - generic [ref=f18e127]:
+      - generic [ref=f18e751]:
+        - generic [ref=f18e795]:
+          - generic [ref=f18e810]:
+            - table [ref=f18e854]:
+              - rowgroup [ref=f18e855]:
+                - row [ref=f18e856] [cursor=pointer]:
+                  - cell [ref=f18e857]
+                  - cell [ref=f18e861]
+                  - 'cell "@opBoolean: BOOLEAN_INVALID" [ref=f18e863]'
+                - row [ref=f18e865] [cursor=pointer]:
+                  - cell [ref=f18e866]
+                  - cell [ref=f18e867]
+
+----
+
+- generic [ref=f18e5]:
+  - generic [ref=f18e88]:
+    - generic [ref=f18e127]:
+      - generic [ref=f18e751]:
+        - generic [ref=f18e795]:
+          - generic [ref=f18e810]:
+            - table [ref=f18e854]:
+              - rowgroup [ref=f18e855]:
+                - row [ref=f18e906] [cursor=pointer]:
+                  ...
+                  - cell [ref=f18e908]
+                  - cell [ref=f18e909]
+                  - cell "referenced part tests" [ref=f18e910]
+            - generic [ref=f18e912]: "NOTE: profile break at -740.000 mm taken as the source vertex 0.072 mm away. NOTE: profile break at 740.000 mm taken as the source vertex 0.063 mm away. WARNING: a run of 87 points starting at 305.1 0.0 6.0 mm reached the cap of 15 control points 0.0777 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. NOTE: a 0.2352 mm fragment at 1624.8, 64.3, 5.6 mm was absorbed: the edges either side of it line up. WARNING: a run of 35 points starting at 22.5 41.0 23.4 mm reached the cap of 20 control points 0.0979 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 35 points starting at 30.0 41.0 27.3 mm reached the cap of 20 control points 0.0695 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 151 points starting at 141.3 60.6 4.1 mm reached the cap of 20 control points 0.4989 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 151 points starting at 141.2 54.6 10.1 mm reached the cap of 20 control points 0.4881 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. [referencedPart] cap1: surface on one side only [referencedPart] cap1: joined with its mirror image, naked edges left lying in the mirror plane 0 [referencedPart] start: thickened, mirror true, caps 1, periphery false [referencedPart] profile edges 462, near the mirror plane (<1 mm) 60, crossing it 13, worst distance 72500 um edge 1: -72500 .. 0 um edge 2: -72500 .. 0 um edge 3: -72500 .. 0 um edge 4: 0 .. 0 um edge 5: -64701.884 .. 0 um edge 6: 0 .. 0 um edge 7: -60432.04 .. 0 um edge 8: 0 .. 0 um [referencedPart] sheet mirror: profile copy and mirror image made; joining [referencedPart] sheet mirror: joined, naked edges left lying in the mirror plane 0 [referencedPart] sheet mirror: thickened, solids 1 [referencedPart] before cap split [referencedPart] thickened part: box spans -72501.4 .. 72501.4 um across the plane Result: Regeneration complete"
+        - generic [ref=f18e913]:
+          - generic [ref=f18e914]: Monitor
+          - generic [ref=f18e924] [cursor=pointer]: topsheet_surf

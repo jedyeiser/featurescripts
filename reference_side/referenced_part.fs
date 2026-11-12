@@ -354,6 +354,16 @@ export const referencedPart = defineFeature(function(context is Context, id is I
         {
             setProperty(context, { "entities" : result, "propertyType" : PropertyType.NAME, "value" : definition.outputName });
         }
+        if (definition.debugPrint)
+        {
+            const resultVolume = try silent(evVolume(context, { "entities" : result, "accuracy" : VolumeAccuracy.HIGH }));
+            debugStep(context, "result: " ~ size(evaluateQuery(context, result)) ~ " part(s), volume "
+                ~ (resultVolume == undefined ? "unreadable" : roundTo(resultVolume / (meter * meter * meter) * 1e9, 3) ~ " mm^3"));
+            if (mirror != undefined)
+            {
+                debugBodiesAgainstPlane(context, "result", result, mirror);
+            }
+        }
 
         var queries = {};
         for (var key in [["profileFaces", "Thickened: the faces on the offset profile.", DebugColor.GREEN],
