@@ -134,6 +134,10 @@ export const referencedPart = defineFeature(function(context is Context, id is I
 
         annotation { "Name" : "Output name", "Description" : "Optional. Names the part; leave empty for the default name." }
         definition.outputName is string;
+
+        annotation { "Name" : "Print diagnostics", "Default" : false,
+                    "Description" : "Prints step markers and measurements to the notices console: the profile's edges and the part against the mirror plane. For tracking down a failed boolean." }
+        definition.debugPrint is boolean;
     }
     {
         const thickened = definition.partType == ReferencedPartType.THICKENED;
@@ -197,6 +201,15 @@ export const referencedPart = defineFeature(function(context is Context, id is I
         // The part so far, as a HISTORY query: a split's pieces are attributed to the feature that made the
         // original body, and an evaluated query of a split body resolves to nothing afterwards (2026-09-28).
         const solids = qBodyType(qCreatedBy(id, EntityType.BODY), BodyType.SOLID);
+        if (definition.debugPrint)
+        {
+            debugStep(context, "start: " ~ (thickened ? "thickened" : "constrained") ~ ", mirror " ~ (mirror != undefined)
+                ~ ", caps " ~ size(caps) ~ ", periphery " ~ hasPeriphery);
+            if (thickened && mirror != undefined)
+            {
+                debugProfileEdges(context, definition.profile, mirror);
+            }
+        }
         if (thickened)
         {
             // Offset 0 is the profile itself: no copy (about 0.7 s on a 76-face profile). It is only measured against and
@@ -235,13 +248,18 @@ export const referencedPart = defineFeature(function(context is Context, id is I
         // The caps always cut: keep the reference point's side of each.
         if (size(caps) > 0)
         {
+            if (definition.debugPrint)
+            {
+                debugStep(context, "before cap split");
+                debugBodiesAgainstPlane(context, "thickened part", solids, mirror);
+            }
             keepInside(context, id + "capSplit", solids, caps[0], size(caps) > 1 ? caps[1] : qNothing(), definition.referencePoint);
         }
 
         var result = qUnion(evaluateQuery(context, solids));
         if (mirror != undefined)
         {
-            result = mirrorAndUnite(context, id, solids, mirror);
+            result = mirrorAndUnite(context, id, solids, mirror, definition.debugPrint);
         }
 
         // Faces by the boundary they lie on, read while the boundary surfaces still exist.
@@ -294,7 +312,8 @@ export const referencedPart = defineFeature(function(context is Context, id is I
         "cap2" : qNothing(),
         "cap2Offset" : 0 * meter,
         "mirrorPlane" : qNothing(),
-        "outputName" : ""
+        "outputName" : "",
+        "debugPrint" : false
     });
 
 /** Thicken+ of a surface into a new solid: `toward` on the reference point's side, `away` on the other. */
@@ -451,8 +470,13 @@ function keepInside(context is Context, id is Id, solids is Query, startTool is 
  * The half (solids: a history query, so it holds the split's pieces) is cut at the mirror plane (its side is
  * where its centroid is, so a point on the plane does not matter), mirrored and united with the mirror copy.
  */
-function mirrorAndUnite(context is Context, id is Id, solids is Query, mirror is Plane) returns Query
+function mirrorAndUnite(context is Context, id is Id, solids is Query, mirror is Plane, debugPrint is boolean) returns Query
 {
+    if (debugPrint)
+    {
+        debugStep(context, "mirror: before the cut at the plane");
+        debugBodiesAgainstPlane(context, "half", solids, mirror);
+    }
     const s = dot(evApproximateCentroid(context, { "entities" : solids }) - mirror.origin, mirror.normal);
     if (abs(s) < ON_BOUNDARY_TOL)
     {
@@ -465,6 +489,11 @@ function mirrorAndUnite(context is Context, id is Id, solids is Query, mirror is
                 "keepTools" : true,
                 "keepType" : SplitOperationKeepType.KEEP_ALL
             });
+    if (debugPrint)
+    {
+        debugStep(context, "mirror: after the cut, pieces " ~ size(evaluateQuery(context, solids)));
+        debugBodiesAgainstPlane(context, "pieces", solids, mirror);
+    }
     var kept = [];
     var dropped = [];
     for (var piece in evaluateQuery(context, solids))
@@ -497,6 +526,11 @@ function mirrorAndUnite(context is Context, id is Id, solids is Query, mirror is
                 "instanceNames" : ["mirror"]
             });
     const both = qUnion([qUnion(kept), qCreatedBy(id + "mirror", EntityType.BODY)]);
+    if (debugPrint)
+    {
+        debugStep(context, "mirror: kept " ~ size(kept) ~ ", dropped " ~ size(dropped) ~ "; before the union");
+        debugBodiesAgainstPlane(context, "union inputs (half and mirror)", both, mirror);
+    }
     opBoolean(context, id + "unite", { "tools" : both, "operationType" : BooleanOperationType.UNION });
     return qUnion(evaluateQuery(context, both));
 }
@@ -567,6 +601,120 @@ function planeOf(context is Context, q is Query)
         return plane(frame);
     }
     return try silent(evPlane(context, { "face" : q }));
+}
+
+/** Debug (Print diagnostics): one step marker. The last marker before an error names the step that failed. */
+function debugStep(context is Context, label is string)
+{
+    // fscheck: allow-println every caller is gated by Print diagnostics (definition.debugPrint)
+    println("[referencedPart] " ~ label);
+}
+
+/** Signed distance of a point from a plane, in micrometres (plain number). */
+function microns(point is Vector, mirror is Plane) returns number
+{
+    return dot(point - mirror.origin, mirror.normal) / meter * 1e6;
+}
+
+/**
+ * Debug (Print diagnostics): how the profile's edges sit against the mirror plane. Edges within 1 mm of the plane are
+ * sampled at five parameters; prints how many are near, the worst deviation (micrometres) and how many cross the plane.
+ */
+function debugProfileEdges(context is Context, profile is Query, mirror is Plane)
+{
+    const edges = evaluateQuery(context, qUnion([qOwnedByBody(qEntityFilter(profile, EntityType.BODY), EntityType.EDGE),
+                    qAdjacent(qEntityFilter(profile, EntityType.FACE), AdjacencyType.EDGE, EntityType.EDGE)]));
+    var near = 0;
+    var crossing = 0;
+    var worst = 0;
+    var lines = [];
+    for (var edge in edges)
+    {
+        var samples = [];
+        for (var t in [0, 0.25, 0.5, 0.75, 1])
+        {
+            samples = append(samples, microns(evEdgeTangentLine(context, { "edge" : edge, "parameter" : t }).origin, mirror));
+        }
+        const lo = min(samples);
+        const hi = max(samples);
+        if (min(abs(lo), abs(hi)) < 1000 || lo * hi < 0)
+        {
+            near += 1;
+            const dev = max(abs(lo), abs(hi));
+            if (lo * hi < 0)
+            {
+                crossing += 1;
+            }
+            if (dev > worst)
+            {
+                worst = dev;
+            }
+            if (size(lines) < 8)
+            {
+                lines = append(lines, "  edge " ~ near ~ ": " ~ roundTo(lo, 3) ~ " .. " ~ roundTo(hi, 3) ~ " um");
+            }
+        }
+    }
+    // fscheck: allow-println every caller is gated by Print diagnostics (definition.debugPrint)
+    println("[referencedPart] profile edges " ~ size(edges) ~ ", near the mirror plane (<1 mm) " ~ near ~ ", crossing it " ~ crossing
+        ~ ", worst distance " ~ roundTo(worst, 3) ~ " um");
+    for (var line in lines)
+    {
+        // fscheck: allow-println gated by the callers (Print diagnostics)
+        println(line);
+    }
+}
+
+/**
+ * Debug (Print diagnostics): each body's extent across the mirror plane (box corners, micrometres) and its planar faces
+ * that lie within 1 mm of the plane: their offset from it and tilt against it.
+ */
+function debugBodiesAgainstPlane(context is Context, label is string, bodies is Query, mirror is Plane)
+{
+    for (var body in evaluateQuery(context, bodies))
+    {
+        const bx = evBox3d(context, { "topology" : body });
+        var lo = undefined;
+        var hi = undefined;
+        for (var cx in [bx.minCorner[0], bx.maxCorner[0]])
+        {
+            for (var cy in [bx.minCorner[1], bx.maxCorner[1]])
+            {
+                for (var cz in [bx.minCorner[2], bx.maxCorner[2]])
+                {
+                    const d = microns(vector(cx, cy, cz), mirror);
+                    lo = lo == undefined ? d : min(lo, d);
+                    hi = hi == undefined ? d : max(hi, d);
+                }
+            }
+        }
+        // fscheck: allow-println every caller is gated by Print diagnostics (definition.debugPrint)
+        println("[referencedPart] " ~ label ~ ": box spans " ~ roundTo(lo, 1) ~ " .. " ~ roundTo(hi, 1) ~ " um across the plane");
+        var shown = 0;
+        for (var face in evaluateQuery(context, qOwnedByBody(body, EntityType.FACE)))
+        {
+            const pl = try silent(evPlane(context, { "face" : face }));
+            if (pl == undefined)
+            {
+                continue;
+            }
+            const tilt = acos(min(1, abs(dot(pl.normal, mirror.normal)))) / radian * 1e6;
+            const off = microns(pl.origin, mirror);
+            if (tilt < 1000 && abs(off) < 1000 && shown < 6)
+            {
+                shown += 1;
+                // fscheck: allow-println gated by the callers (Print diagnostics)
+                println("  planar face near the plane: offset " ~ roundTo(off, 3) ~ " um, tilt " ~ roundTo(tilt, 3) ~ " urad");
+            }
+        }
+    }
+}
+
+/** Rounds to a number of decimals, for printing. */
+function roundTo(value is number, decimals is number) returns number
+{
+    const scale = 10 ^ decimals;
+    return round(value * scale) / scale;
 }
 
 /** A point reflected across a plane. */
