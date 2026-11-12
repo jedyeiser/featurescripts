@@ -1,0 +1,45 @@
+Found 3 matches for /@op|BOOLEAN|referenced_part \(|\[referencedPart\] (piece|mirror|union)|planar face near/:
+
+- generic [active] [ref=f14e1]:
+  - generic [ref=f14e5]:
+    - generic [ref=f14e85]:
+      - generic [ref=f14e124]:
+        - generic [ref=f14e667]:
+          - generic [ref=f14e711]:
+            - generic [ref=f14e726]:
+              - table [ref=f14e770]:
+                - rowgroup [ref=f14e771]:
+                  - row [ref=f14e781] [cursor=pointer]:
+                    - cell [ref=f14e782]
+                    - cell [ref=f14e783]
+                    - cell "589:9" [ref=f14e784]
+                    - cell "referenced_part (mirrorAndUnite)" [ref=f14e786]
+                  - row [ref=f14e788] [cursor=pointer]:
+                    - cell [ref=f14e789]
+                    - cell [ref=f14e790]
+                    - cell "265:22" [ref=f14e791]
+                    - cell "referenced_part (const referencedPart)" [ref=f14e793]
+                  - row [ref=f14e795] [cursor=pointer]:
+                    - cell [ref=f14e796]
+                    - cell [ref=f14e797]
+
+----
+
+- generic [active] [ref=f14e1]:
+  - generic [ref=f14e5]:
+    - generic [ref=f14e85]:
+      - generic [ref=f14e124]:
+        - generic [ref=f14e667]:
+          - generic [ref=f14e711]:
+            - generic [ref=f14e726]:
+              - table [ref=f14e770]:
+                - rowgroup [ref=f14e771]:
+                  - row [ref=f14e808] [cursor=pointer]:
+                    ...
+                    - cell [ref=f14e810]
+                    - cell [ref=f14e811]
+                    - cell "referenced part tests" [ref=f14e812]
+              - generic [ref=f14e814]: "NOTE: profile break at -740.000 mm taken as the source vertex 0.072 mm away. NOTE: profile break at 740.000 mm taken as the source vertex 0.063 mm away. WARNING: a run of 87 points starting at 305.1 0.0 6.0 mm reached the cap of 15 control points 0.0777 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. NOTE: a 0.2352 mm fragment at 1624.8, 64.3, 5.6 mm was absorbed: the edges either side of it line up. WARNING: a run of 35 points starting at 22.5 41.0 23.4 mm reached the cap of 20 control points 0.0979 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 35 points starting at 30.0 41.0 27.3 mm reached the cap of 20 control points 0.0695 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 151 points starting at 141.3 60.6 4.1 mm reached the cap of 20 control points 0.4989 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 151 points starting at 141.2 54.6 10.1 mm reached the cap of 20 control points 0.4881 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. [referencedPart] start: thickened, mirror true, caps 1, periphery false [referencedPart] profile edges 462, near the mirror plane (<1 mm) 60, crossing it 13, worst distance 72500 um edge 1: -72500 .. 0 um edge 2: -72500 .. 0 um edge 3: -72500 .. 0 um edge 4: 0 .. 0 um edge 5: -64701.884 .. 0 um edge 6: 0 .. 0 um edge 7: -60432.04 .. 0 um edge 8: 0 .. 0 um [referencedPart] before cap split [referencedPart] thickened part: box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad, area 8.086 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 18.894 mm^2, edges 6 planar face near the plane: offset -0.001 um, tilt 6.218 urad, area 0.144 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 60.156 mm^2, edges 12 planar face near the plane: offset 0 um, tilt 0 urad, area 619.205 mm^2, edges 22 planar face near the plane: offset 0 um, tilt 0 urad, area 13.288 mm^2, edges 6 [referencedPart] mirror: before the cut at the plane [referencedPart] half: box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad, area 8.086 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 18.894 mm^2, edges 6 planar face near the plane: offset -0.001 um, tilt 6.218 urad, area 0.144 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 619.205 mm^2, edges 22 planar face near the plane: offset 0 um, tilt 0 urad, area 49.969 mm^2, edges 10 [referencedPart] mirror: after the cut, pieces 3 [referencedPart] pieces: box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad, area 629.042 mm^2, edges 28 planar face near the plane: offset 0 um, tilt 0 urad, area 69.006 mm^2, edges 16 [referencedPart] pieces: box spans 0 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad, area 1.338 mm^2, edges 4 [referencedPart] pieces: box spans 0 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad, area 0.413 mm^2, edges 4 [referencedPart] piece 0 volume 51413.90356 mm^3 [referencedPart] piece 1 volume 3.4e-5 mm^3 (sliver: dropped) [referencedPart] piece 2 volume 3e-6 mm^3 (sliver: dropped) [referencedPart] mirror: kept 1, dropped 2; before the union [referencedPart] union inputs (half and mirror): box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad, area 629.042 mm^2, edges 28 planar face near the plane: offset 0 um, tilt 0 urad, area 69.006 mm^2, edges 16 [referencedPart] union inputs (half and mirror): box spans -0.1 .. 72501.4 um across the plane planar face near the plane: offset 0 um, tilt 0 urad, area 629.04 mm^2, edges 28 planar face near the plane: offset 0 um, tilt 0 urad, area 69.006 mm^2, edges 16 [referencedPart] union with both as tools failed; trying the half as target and the mirror as tool Result: Regeneration complete"
+          - generic [ref=f14e815]:
+            - generic [ref=f14e816]: Monitor
+            - generic [ref=f14e826] [cursor=pointer]: topsheet_surf

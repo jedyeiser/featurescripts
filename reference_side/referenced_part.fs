@@ -64,6 +64,9 @@ const SIGNED_THICKNESS_BOUNDS = { (millimeter) : [-500000, 1, 500000] } as Lengt
 /** A face lies on a boundary within this distance. */
 const ON_BOUNDARY_TOL = 1e-5 * meter;
 
+/** A half that reaches less than this past the mirror plane (box padding included) is not cut at the plane. */
+const MIRROR_CUT_REACH = 1e-6 * meter;
+
 /** A piece of the mirror cut smaller than this fraction of the largest piece is a sliver, not part of the part. */
 const SLIVER_VOLUME_RATIO = 1e-4;
 
@@ -485,13 +488,41 @@ function mirrorAndUnite(context is Context, id is Id, solids is Query, mirror is
     {
         throw regenError("The part is centred on the mirror plane: give one half of the surfaces, or remove the mirror plane.", ["mirrorPlane"]);
     }
-    opPlane(context, id + "mirrorCut", { "plane" : mirror });
-    opSplitPart(context, id + "mirrorSplit", {
-                "targets" : solids,
-                "tool" : qCreatedBy(id + "mirrorCut", EntityType.FACE),
-                "keepTools" : true,
-                "keepType" : SplitOperationKeepType.KEEP_ALL
-            });
+    // The cut is only for a half that really reaches across the plane. A half that already lies on one side (its box, which
+    // the kernel pads by about 0.1 um, reaches less than MIRROR_CUT_REACH past the plane) is mirrored as it is: cutting it
+    // leaves slivers and plane faces with micron-scale outlines that the union then refuses (BOOLEAN_INVALID, top sheet,
+    // 2026-11-12: 13 profile edges cross the plane by a fraction of a micron).
+    const sideSign = s > 0 * meter ? 1 : -1;
+    var reach = -1 * meter;
+    for (var body in evaluateQuery(context, solids))
+    {
+        const bx = evBox3d(context, { "topology" : body });
+        for (var cx in [bx.minCorner[0], bx.maxCorner[0]])
+        {
+            for (var cy in [bx.minCorner[1], bx.maxCorner[1]])
+            {
+                for (var cz in [bx.minCorner[2], bx.maxCorner[2]])
+                {
+                    reach = max(reach, -sideSign * dot(vector(cx, cy, cz) - mirror.origin, mirror.normal));
+                }
+            }
+        }
+    }
+    const cutNeeded = reach > MIRROR_CUT_REACH;
+    if (debugPrint)
+    {
+        debugStep(context, "mirror: the half reaches " ~ roundTo(reach / meter * 1e6, 3) ~ " um past the plane; " ~ (cutNeeded ? "cutting it" : "no cut needed"));
+    }
+    if (cutNeeded)
+    {
+        opPlane(context, id + "mirrorCut", { "plane" : mirror });
+        opSplitPart(context, id + "mirrorSplit", {
+                    "targets" : solids,
+                    "tool" : qCreatedBy(id + "mirrorCut", EntityType.FACE),
+                    "keepTools" : true,
+                    "keepType" : SplitOperationKeepType.KEEP_ALL
+                });
+    }
     if (debugPrint)
     {
         debugStep(context, "mirror: after the cut, pieces " ~ size(evaluateQuery(context, solids)));
