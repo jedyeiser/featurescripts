@@ -559,7 +559,39 @@ function mirrorAndUnite(context is Context, id is Id, solids is Query, mirror is
         debugStep(context, "mirror: kept " ~ size(kept) ~ ", dropped " ~ size(dropped) ~ "; before the union");
         debugBodiesAgainstPlane(context, "union inputs (half and mirror)", both, mirror);
     }
-    opBoolean(context, id + "unite", { "tools" : both, "operationType" : BooleanOperationType.UNION });
+    // Two bodies that meet in a face: the kernel can refuse the plain union of both as tools (BOOLEAN_INVALID, seen on the
+    // top sheet, 2026-11-12, with the slivers already gone). A boolean with the half as target and the mirror image as
+    // tool takes another route, so it is the second try.
+    var united = false;
+    try silent
+    {
+        opBoolean(context, id + "unite", { "tools" : both, "operationType" : BooleanOperationType.UNION });
+        united = true;
+    }
+    if (!united)
+    {
+        if (debugPrint)
+        {
+            debugStep(context, "union with both as tools failed; trying the half as target and the mirror as tool");
+        }
+        try silent
+        {
+            opBoolean(context, id + "uniteTargeted", {
+                        "targets" : qUnion(kept),
+                        "tools" : qCreatedBy(id + "mirror", EntityType.BODY),
+                        "operationType" : BooleanOperationType.UNION
+                    });
+            united = true;
+        }
+    }
+    if (!united)
+    {
+        throw regenError("The half and its mirror image could not be united at the mirror plane. Switch on Print diagnostics to see the pieces.", ["mirrorPlane"]);
+    }
+    if (debugPrint)
+    {
+        debugStep(context, "mirror: united");
+    }
     return qUnion(evaluateQuery(context, both));
 }
 
@@ -732,7 +764,10 @@ function debugBodiesAgainstPlane(context is Context, label is string, bodies is 
             {
                 shown += 1;
                 // fscheck: allow-println gated by the callers (Print diagnostics)
-                println("  planar face near the plane: offset " ~ roundTo(off, 3) ~ " um, tilt " ~ roundTo(tilt, 3) ~ " urad");
+                const area = evArea(context, { "entities" : face }) / (meter * meter) * 1e6;
+                const edgeCount = size(evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE)));
+                println("  planar face near the plane: offset " ~ roundTo(off, 3) ~ " um, tilt " ~ roundTo(tilt, 3) ~ " urad, area "
+                    ~ roundTo(area, 3) ~ " mm^2, edges " ~ edgeCount);
             }
         }
     }

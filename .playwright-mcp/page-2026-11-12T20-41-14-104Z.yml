@@ -1,0 +1,254 @@
+- generic [active] [ref=f13e1]:
+  - generic [ref=f13e5]:
+    - navigation [ref=f13e6]:
+      - generic [ref=f13e7]:
+        - link [ref=f13e10] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f13e11]
+        - generic [ref=f13e13] [cursor=pointer]
+      - generic [ref=f13e16]:
+        - generic [ref=f13e18]:
+          - generic [ref=f13e19]: Reference_Side_Features
+          - generic [ref=f13e20]: Main
+        - generic [ref=f13e22] [cursor=pointer]
+        - link "EOC Featurescripts" [ref=f13e26] [cursor=pointer]:
+          - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+      - generic [ref=f13e30]:
+        - generic [ref=f13e38] [cursor=pointer]
+        - generic [ref=f13e44] [cursor=pointer]
+        - button "Notifications" [ref=f13e49] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f13e57]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f13e60] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f13e65] [cursor=pointer]
+        - button "Share" [ref=f13e69] [cursor=pointer]
+        - generic "Help menu" [ref=f13e71] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f13e75] [cursor=pointer]
+    - generic [ref=f13e85]:
+      - generic [ref=f13e87]:
+        - generic [ref=f13e88]:
+          - generic [ref=f13e89]:
+            - generic [ref=f13e90] [cursor=pointer]
+            - generic [ref=f13e93] [cursor=pointer]
+            - generic [ref=f13e96] [cursor=pointer]
+            - generic [ref=f13e99] [cursor=pointer]
+            - generic [ref=f13e102] [cursor=pointer]
+            - generic [ref=f13e105] [cursor=pointer]
+            - generic [ref=f13e108] [cursor=pointer]
+            - generic [ref=f13e111] [cursor=pointer]
+          - generic [ref=f13e115] [cursor=pointer]
+        - generic [ref=f13e119] [cursor=pointer]
+      - generic [ref=f13e124]:
+        - generic [ref=f13e126]:
+          - generic [ref=f13e133]:
+            - generic [ref=f13e145]:
+              - generic [ref=f13e146]: Sketch
+              - generic [ref=f13e158]:
+                - generic [ref=f13e159] [cursor=pointer]
+                - generic [ref=f13e163] [cursor=pointer]
+                - generic [ref=f13e167] [cursor=pointer]
+                - generic [ref=f13e171] [cursor=pointer]
+                - generic [ref=f13e176]:
+                  - generic [ref=f13e177] [cursor=pointer]
+                  - generic [ref=f13e181] [cursor=pointer]
+              - generic [ref=f13e187]:
+                - generic [ref=f13e189]:
+                  - generic [ref=f13e190] [cursor=pointer]
+                  - generic [ref=f13e194] [cursor=pointer]
+                - generic [ref=f13e197] [cursor=pointer]
+                - generic [ref=f13e202]:
+                  - generic [ref=f13e203] [cursor=pointer]
+                  - generic [ref=f13e207] [cursor=pointer]
+                - generic [ref=f13e210] [cursor=pointer]
+                - generic [ref=f13e214] [cursor=pointer]
+                - generic [ref=f13e218] [cursor=pointer]
+                - generic [ref=f13e222] [cursor=pointer]
+              - generic [ref=f13e229]:
+                - generic [ref=f13e231]:
+                  - generic [ref=f13e232] [cursor=pointer]
+                  - generic [ref=f13e236] [cursor=pointer]
+                - generic [ref=f13e239] [cursor=pointer]
+              - generic [ref=f13e246]:
+                - generic [ref=f13e247] [cursor=pointer]
+                - generic [ref=f13e251] [cursor=pointer]
+                - generic [ref=f13e256]:
+                  - generic [ref=f13e257] [cursor=pointer]
+                  - generic [ref=f13e261] [cursor=pointer]
+                - generic [ref=f13e264] [cursor=pointer]
+              - generic [ref=f13e271]:
+                - generic [ref=f13e272] [cursor=pointer]
+                - generic [ref=f13e276] [cursor=pointer]
+                - generic [ref=f13e280] [cursor=pointer]
+                - generic [ref=f13e284] [cursor=pointer]
+              - generic [ref=f13e654]:
+                - generic [ref=f13e655] [cursor=pointer]
+                - generic [ref=f13e659] [cursor=pointer]
+              - generic [ref=f13e304]:
+                - generic [ref=f13e305] [cursor=pointer]: SA
+                - generic [ref=f13e308] [cursor=pointer]
+              - generic [ref=f13e315] [cursor=pointer]
+            - button "Search tools… alt/⌥ c" [ref=f13e322] [cursor=pointer]:
+              - text: Search tools…
+              - generic [ref=f13e323]:
+                - generic [ref=f13e324]: alt/⌥
+                - generic [ref=f13e325]: c
+          - generic [ref=f13e329]:
+            - generic [ref=f13e332]:
+              - generic [ref=f13e334]:
+                - generic [ref=f13e335]:
+                  - generic [ref=f13e337]:
+                    - button [ref=f13e339] [cursor=pointer]
+                    - textbox "Filter by name or type" [ref=f13e344]
+                  - generic [ref=f13e345]:
+                    - button [ref=f13e346] [cursor=pointer]
+                    - generic [ref=f13e349]: Features (6)
+                    - button [ref=f13e350] [cursor=pointer]
+                    - button [ref=f13e353] [cursor=pointer]
+                    - button [ref=f13e356] [cursor=pointer]
+                - generic [ref=f13e360]:
+                  - generic [ref=f13e361]:
+                    - generic [ref=f13e363]:
+                      - generic [ref=f13e364] [cursor=pointer]
+                      - generic [ref=f13e367]: Default geometry
+                    - generic [ref=f13e369]: Origin
+                    - generic [ref=f13e379]: Top
+                    - generic [ref=f13e389]: Front
+                    - generic [ref=f13e399]: Right
+                    - generic [ref=f13e410]:
+                      - generic [ref=f13e412] [cursor=pointer]
+                      - generic [ref=f13e415]: Derived 1
+                    - generic [ref=f13e425]: Referenced part 1
+                  - list
+              - generic [ref=f13e440]:
+                - generic [ref=f13e442]:
+                  - generic [ref=f13e444] [cursor=pointer]
+                  - generic [ref=f13e447]: Parts (5)
+                - generic [ref=f13e451]: Part 1
+                - generic [ref=f13e463]: 20B
+                - generic [ref=f13e475]: 20B_SUBTRACT
+                - generic [ref=f13e487]: 15A
+                - generic [ref=f13e499]: 15A_SUBTRACT
+                - generic [ref=f13e512]:
+                  - generic [ref=f13e514] [cursor=pointer]
+                  - generic [ref=f13e517]: Composite parts (1)
+                - generic [ref=f13e522]:
+                  - generic [ref=f13e524] [cursor=pointer]
+                  - generic [ref=f13e527]: Surfaces (18)
+                - generic [ref=f13e532]:
+                  - generic [ref=f13e534] [cursor=pointer]
+                  - generic [ref=f13e537]: Curves (8)
+            - generic [ref=f13e542]:
+              - generic [ref=f13e544] [cursor=pointer]
+              - generic [ref=f13e548]:
+                - generic [ref=f13e550]:
+                  - button [ref=f13e551] [cursor=pointer]
+                  - button [ref=f13e555] [cursor=pointer]
+                  - button [ref=f13e559] [cursor=pointer]
+                - generic [ref=f13e563] [cursor=pointer]
+              - generic [ref=f13e568]:
+                - generic [ref=f13e569] [cursor=pointer]
+                - generic [ref=f13e573] [cursor=pointer]
+                - generic [ref=f13e577] [cursor=pointer]
+                - generic [ref=f13e581] [cursor=pointer]
+                - generic [ref=f13e585] [cursor=pointer]
+                - generic [ref=f13e589] [cursor=pointer]
+                - generic [ref=f13e593] [cursor=pointer]
+                - generic [ref=f13e596] [cursor=pointer]
+          - generic [ref=f13e600]:
+            - img [ref=f13e603] [cursor=pointer]
+            - generic [ref=f13e606]:
+              - generic [ref=f13e607] [cursor=pointer]: topsheet_surf
+              - generic [ref=f13e615] [cursor=pointer]: Thicken_tests
+              - generic [ref=f13e623] [cursor=pointer]: Reference side tests
+              - generic [ref=f13e629]: referenced part tests
+              - generic [ref=f13e640] [cursor=pointer]: featurescripts
+              - generic [ref=f13e646] [cursor=pointer]: jps_test_fixture
+        - generic [ref=f13e667]:
+          - generic [ref=f13e668]:
+            - generic [ref=f13e669]:
+              - heading "FeatureScript notices" [level=4] [ref=f13e670]
+              - generic [ref=f13e672]:
+                - button [ref=f13e674] [cursor=pointer]
+                - textbox "Filter notices" [ref=f13e679]
+            - button [ref=f13e680] [cursor=pointer]
+          - generic [ref=f13e681]:
+            - generic [ref=f13e682]: Monitor
+            - generic [ref=f13e692] [cursor=pointer]: Reference side tests
+          - generic [ref=f13e696]:
+            - generic [ref=f13e697]: Monitor
+            - generic [ref=f13e707] [cursor=pointer]: Thicken_tests
+          - generic [ref=f13e711]:
+            - generic [ref=f13e712]: Monitor
+            - generic [ref=f13e722] [cursor=pointer]: referenced part tests
+            - generic [ref=f13e726]:
+              - table [ref=f13e727]:
+                - rowgroup [ref=f13e728]:
+                  - row [ref=f13e729] [cursor=pointer]:
+                    - cell [ref=f13e730]
+                    - cell [ref=f13e734]
+                    - cell "1 warning, 1 info in referenced module" [ref=f13e736]
+                  - row [ref=f13e738] [cursor=pointer]:
+                    - cell [ref=f13e739]
+                    - cell [ref=f13e740]
+                    - cell [ref=f13e741]
+                    - cell "9be5d7797683fc5e192f9ef1/d2d549cb9ed8f1d5f2ddc6b9/1168b8f975c2b76bab4160ec" [ref=f13e742]
+                  - row [ref=f13e744] [cursor=pointer]:
+                    - cell [ref=f13e745]
+                    - cell [ref=f13e746]
+                    - cell "133:37" [ref=f13e747]
+                    - cell "onshape/std/importDerived.fs (const importDerived)" [ref=f13e749]
+                  - row [ref=f13e751] [cursor=pointer]:
+                    - cell [ref=f13e752]
+                    - cell [ref=f13e753]
+                    - cell "61:17" [ref=f13e754]
+                    - cell "onshape/std/feature.fs (defineFeature)" [ref=f13e756]
+                  - row [ref=f13e758] [cursor=pointer]:
+                    - cell [ref=f13e759]
+                    - cell [ref=f13e760]
+                    - cell [ref=f13e761]
+                    - cell "referenced part tests (Derived 1)" [ref=f13e762]
+                  - row [ref=f13e764] [cursor=pointer]:
+                    - cell [ref=f13e765]
+                    - cell [ref=f13e766]
+                    - cell [ref=f13e767]
+                    - cell "referenced part tests" [ref=f13e768]
+              - table [ref=f13e770]:
+                - rowgroup [ref=f13e771]:
+                  - row [ref=f13e772] [cursor=pointer]:
+                    - cell [ref=f13e773]
+                    - cell [ref=f13e777]
+                    - 'cell "@opBoolean: BOOLEAN_INVALID" [ref=f13e779]'
+                  - row [ref=f13e781] [cursor=pointer]:
+                    - cell [ref=f13e782]
+                    - cell [ref=f13e783]
+                    - cell "154:12" [ref=f13e784]
+                    - cell "onshape/std/geomOperations.fs (const opBoolean)" [ref=f13e786]
+                  - row [ref=f13e788] [cursor=pointer]:
+                    - cell [ref=f13e789]
+                    - cell [ref=f13e790]
+                    - cell "562:5" [ref=f13e791]
+                    - cell "referenced_part (mirrorAndUnite)" [ref=f13e793]
+                  - row [ref=f13e795] [cursor=pointer]:
+                    - cell [ref=f13e796]
+                    - cell [ref=f13e797]
+                    - cell "265:22" [ref=f13e798]
+                    - cell "referenced_part (const referencedPart)" [ref=f13e800]
+                  - row [ref=f13e802] [cursor=pointer]:
+                    - cell [ref=f13e803]
+                    - cell [ref=f13e804]
+                    - cell "61:17" [ref=f13e805]
+                    - cell "onshape/std/feature.fs (defineFeature)" [ref=f13e807]
+                  - row [ref=f13e809] [cursor=pointer]:
+                    - cell [ref=f13e810]
+                    - cell [ref=f13e811]
+                    - cell [ref=f13e812]
+                    - cell "referenced part tests (Referenced part 1)" [ref=f13e813]
+                  - row [ref=f13e815] [cursor=pointer]:
+                    - cell [ref=f13e816]
+                    - cell [ref=f13e817]
+                    - cell [ref=f13e818]
+                    - cell "referenced part tests" [ref=f13e819]
+              - generic [ref=f13e821]: "NOTE: profile break at -740.000 mm taken as the source vertex 0.072 mm away. NOTE: profile break at 740.000 mm taken as the source vertex 0.063 mm away. WARNING: a run of 87 points starting at 305.1 0.0 6.0 mm reached the cap of 15 control points 0.0777 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. NOTE: a 0.2352 mm fragment at 1624.8, 64.3, 5.6 mm was absorbed: the edges either side of it line up. WARNING: a run of 35 points starting at 22.5 41.0 23.4 mm reached the cap of 20 control points 0.0979 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 35 points starting at 30.0 41.0 27.3 mm reached the cap of 20 control points 0.0695 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 151 points starting at 141.3 60.6 4.1 mm reached the cap of 20 control points 0.4989 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 151 points starting at 141.2 54.6 10.1 mm reached the cap of 20 control points 0.4881 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. [referencedPart] start: thickened, mirror true, caps 1, periphery false [referencedPart] profile edges 462, near the mirror plane (<1 mm) 60, crossing it 13, worst distance 72500 um edge 1: -72500 .. 0 um edge 2: -72500 .. 0 um edge 3: -72500 .. 0 um edge 4: 0 .. 0 um edge 5: -64701.884 .. 0 um edge 6: 0 .. 0 um edge 7: -60432.04 .. 0 um edge 8: 0 .. 0 um [referencedPart] before cap split [referencedPart] thickened part: box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset -0.001 um, tilt 6.218 urad planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad [referencedPart] mirror: before the cut at the plane [referencedPart] half: box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset -0.001 um, tilt 6.218 urad planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad [referencedPart] mirror: after the cut, pieces 3 [referencedPart] pieces: box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad [referencedPart] pieces: box spans 0 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad [referencedPart] pieces: box spans 0 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad [referencedPart] piece 0 volume 51413.903558 mm^3 [referencedPart] piece 1 volume 3.4e-5 mm^3 (sliver: dropped) [referencedPart] piece 2 volume 3e-6 mm^3 (sliver: dropped) [referencedPart] mirror: kept 1, dropped 2; before the union [referencedPart] union inputs (half and mirror): box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad [referencedPart] union inputs (half and mirror): box spans -0.1 .. 72501.4 um across the plane planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad Result: Regeneration complete"
+          - generic [ref=f13e822]:
+            - generic [ref=f13e823]: Monitor
+            - generic [ref=f13e833] [cursor=pointer]: topsheet_surf
+  - tooltip "FeatureScript notices"

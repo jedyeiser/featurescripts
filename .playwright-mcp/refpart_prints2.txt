@@ -1,0 +1,64 @@
+Found 4 matches for /@op|BOOLEAN|referenced_part \(|\[referencedPart\] (piece|mirror)/:
+
+- generic [active] [ref=f13e1]:
+  - generic [ref=f13e5]:
+    - generic [ref=f13e85]:
+      - generic [ref=f13e124]:
+        - generic [ref=f13e667]:
+          - generic [ref=f13e711]:
+            - generic [ref=f13e726]:
+              - table [ref=f13e770]:
+                - rowgroup [ref=f13e771]:
+                  - row [ref=f13e772] [cursor=pointer]:
+                    - cell [ref=f13e773]
+                    - cell [ref=f13e777]
+                    - 'cell "@opBoolean: BOOLEAN_INVALID" [ref=f13e779]'
+                  - row [ref=f13e781] [cursor=pointer]:
+                    - cell [ref=f13e782]
+                    - cell [ref=f13e783]
+
+----
+
+- generic [active] [ref=f13e1]:
+  - generic [ref=f13e5]:
+    - generic [ref=f13e85]:
+      - generic [ref=f13e124]:
+        - generic [ref=f13e667]:
+          - generic [ref=f13e711]:
+            - generic [ref=f13e726]:
+              - table [ref=f13e770]:
+                - rowgroup [ref=f13e771]:
+                  - row [ref=f13e788] [cursor=pointer]:
+                    - cell [ref=f13e789]
+                    - cell [ref=f13e790]
+                    - cell "562:5" [ref=f13e791]
+                    - cell "referenced_part (mirrorAndUnite)" [ref=f13e793]
+                  - row [ref=f13e795] [cursor=pointer]:
+                    - cell [ref=f13e796]
+                    - cell [ref=f13e797]
+                    - cell "265:22" [ref=f13e798]
+                    - cell "referenced_part (const referencedPart)" [ref=f13e800]
+                  - row [ref=f13e802] [cursor=pointer]:
+                    - cell [ref=f13e803]
+                    - cell [ref=f13e804]
+
+----
+
+- generic [active] [ref=f13e1]:
+  - generic [ref=f13e5]:
+    - generic [ref=f13e85]:
+      - generic [ref=f13e124]:
+        - generic [ref=f13e667]:
+          - generic [ref=f13e711]:
+            - generic [ref=f13e726]:
+              - table [ref=f13e770]:
+                - rowgroup [ref=f13e771]:
+                  - row [ref=f13e815] [cursor=pointer]:
+                    ...
+                    - cell [ref=f13e817]
+                    - cell [ref=f13e818]
+                    - cell "referenced part tests" [ref=f13e819]
+              - generic [ref=f13e821]: "NOTE: profile break at -740.000 mm taken as the source vertex 0.072 mm away. NOTE: profile break at 740.000 mm taken as the source vertex 0.063 mm away. WARNING: a run of 87 points starting at 305.1 0.0 6.0 mm reached the cap of 15 control points 0.0777 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. NOTE: a 0.2352 mm fragment at 1624.8, 64.3, 5.6 mm was absorbed: the edges either side of it line up. WARNING: a run of 35 points starting at 22.5 41.0 23.4 mm reached the cap of 20 control points 0.0979 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 35 points starting at 30.0 41.0 27.3 mm reached the cap of 20 control points 0.0695 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 151 points starting at 141.3 60.6 4.1 mm reached the cap of 20 control points 0.4989 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 151 points starting at 141.2 54.6 10.1 mm reached the cap of 20 control points 0.4881 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. [referencedPart] start: thickened, mirror true, caps 1, periphery false [referencedPart] profile edges 462, near the mirror plane (<1 mm) 60, crossing it 13, worst distance 72500 um edge 1: -72500 .. 0 um edge 2: -72500 .. 0 um edge 3: -72500 .. 0 um edge 4: 0 .. 0 um edge 5: -64701.884 .. 0 um edge 6: 0 .. 0 um edge 7: -60432.04 .. 0 um edge 8: 0 .. 0 um [referencedPart] before cap split [referencedPart] thickened part: box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset -0.001 um, tilt 6.218 urad planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad [referencedPart] mirror: before the cut at the plane [referencedPart] half: box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset -0.001 um, tilt 6.218 urad planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad [referencedPart] mirror: after the cut, pieces 3 [referencedPart] pieces: box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad [referencedPart] pieces: box spans 0 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad [referencedPart] pieces: box spans 0 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad [referencedPart] piece 0 volume 51413.903558 mm^3 [referencedPart] piece 1 volume 3.4e-5 mm^3 (sliver: dropped) [referencedPart] piece 2 volume 3e-6 mm^3 (sliver: dropped) [referencedPart] mirror: kept 1, dropped 2; before the union [referencedPart] union inputs (half and mirror): box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad [referencedPart] union inputs (half and mirror): box spans -0.1 .. 72501.4 um across the plane planar face near the plane: offset 0 um, tilt 0 urad planar face near the plane: offset 0 um, tilt 0 urad Result: Regeneration complete"
+          - generic [ref=f13e822]:
+            - generic [ref=f13e823]: Monitor
+            - generic [ref=f13e833] [cursor=pointer]: topsheet_surf
