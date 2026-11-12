@@ -1,0 +1,265 @@
+- generic [active] [ref=f19e1]:
+  - generic [ref=f19e3]:
+    - navigation [ref=f19e29]:
+      - generic [ref=f19e30]:
+        - link [ref=f19e33] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f19e34]
+        - generic [ref=f19e36] [cursor=pointer]
+      - generic [ref=f19e39]:
+        - generic [ref=f19e41]:
+          - generic [ref=f19e42]: Reference_Side_Features
+          - generic [ref=f19e43]: Main
+        - generic [ref=f19e45] [cursor=pointer]
+        - link "EOC Featurescripts" [ref=f19e49] [cursor=pointer]:
+          - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+      - generic [ref=f19e53]:
+        - generic [ref=f19e61] [cursor=pointer]
+        - generic [ref=f19e67] [cursor=pointer]
+        - button "Notifications" [ref=f19e72] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f19e80]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f19e83] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f19e88] [cursor=pointer]
+        - button "Share" [ref=f19e92] [cursor=pointer]
+        - generic "Help menu" [ref=f19e94] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f19e98] [cursor=pointer]
+    - generic [ref=f19e7]:
+      - generic [ref=f19e9]:
+        - generic [ref=f19e10]:
+          - generic [ref=f19e105]:
+            - generic [ref=f19e106] [cursor=pointer]
+            - generic [ref=f19e109] [cursor=pointer]
+            - generic [ref=f19e112] [cursor=pointer]
+            - generic [ref=f19e115] [cursor=pointer]
+            - generic [ref=f19e118] [cursor=pointer]
+            - generic [ref=f19e121] [cursor=pointer]
+            - generic [ref=f19e124] [cursor=pointer]
+            - generic [ref=f19e127] [cursor=pointer]
+          - generic [ref=f19e130] [cursor=pointer]
+        - generic [ref=f19e134] [cursor=pointer]
+      - generic [ref=f19e14]:
+        - generic [ref=f19e16]:
+          - generic [ref=f19e143]:
+            - generic [ref=f19e155]:
+              - generic [ref=f19e156]: Sketch
+              - generic [ref=f19e168]:
+                - generic [ref=f19e169] [cursor=pointer]
+                - generic [ref=f19e173] [cursor=pointer]
+                - generic [ref=f19e177] [cursor=pointer]
+                - generic [ref=f19e181] [cursor=pointer]
+                - generic [ref=f19e186]:
+                  - generic [ref=f19e187] [cursor=pointer]
+                  - generic [ref=f19e191] [cursor=pointer]
+              - generic [ref=f19e197]:
+                - generic [ref=f19e199]:
+                  - generic [ref=f19e200] [cursor=pointer]
+                  - generic [ref=f19e204] [cursor=pointer]
+                - generic [ref=f19e207] [cursor=pointer]
+                - generic [ref=f19e212]:
+                  - generic [ref=f19e213] [cursor=pointer]
+                  - generic [ref=f19e217] [cursor=pointer]
+                - generic [ref=f19e220] [cursor=pointer]
+                - generic [ref=f19e224] [cursor=pointer]
+                - generic [ref=f19e228] [cursor=pointer]
+                - generic [ref=f19e232] [cursor=pointer]
+              - generic [ref=f19e239]:
+                - generic [ref=f19e241]:
+                  - generic [ref=f19e242] [cursor=pointer]
+                  - generic [ref=f19e246] [cursor=pointer]
+                - generic [ref=f19e249] [cursor=pointer]
+              - generic [ref=f19e256]:
+                - generic [ref=f19e257] [cursor=pointer]
+                - generic [ref=f19e261] [cursor=pointer]
+                - generic [ref=f19e266]:
+                  - generic [ref=f19e267] [cursor=pointer]
+                  - generic [ref=f19e271] [cursor=pointer]
+                - generic [ref=f19e274] [cursor=pointer]
+              - generic [ref=f19e281]:
+                - generic [ref=f19e282] [cursor=pointer]
+                - generic [ref=f19e286] [cursor=pointer]
+                - generic [ref=f19e290] [cursor=pointer]
+                - generic [ref=f19e294] [cursor=pointer]
+              - generic [ref=f19e717]:
+                - generic [ref=f19e718] [cursor=pointer]
+                - generic [ref=f19e722] [cursor=pointer]
+              - generic [ref=f19e314]:
+                - generic [ref=f19e315] [cursor=pointer]: SA
+                - generic [ref=f19e318] [cursor=pointer]
+              - generic [ref=f19e325] [cursor=pointer]
+            - button "Search tools… alt/⌥ c" [ref=f19e332] [cursor=pointer]:
+              - text: Search tools…
+              - generic [ref=f19e333]:
+                - generic [ref=f19e334]: alt/⌥
+                - generic [ref=f19e335]: c
+          - generic [ref=f19e24]:
+            - generic [ref=f19e339]:
+              - generic [ref=f19e341]:
+                - generic [ref=f19e342]:
+                  - generic [ref=f19e344]:
+                    - button [ref=f19e346] [cursor=pointer]
+                    - textbox "Filter by name or type" [ref=f19e351]
+                  - generic [ref=f19e352]:
+                    - button [ref=f19e353] [cursor=pointer]
+                    - generic [ref=f19e356]: Features (9)
+                    - button [ref=f19e357] [cursor=pointer]
+                    - button [ref=f19e360] [cursor=pointer]
+                    - button [ref=f19e363] [cursor=pointer]
+                - generic [ref=f19e367]:
+                  - generic [ref=f19e368]:
+                    - generic [ref=f19e370]:
+                      - generic [ref=f19e371] [cursor=pointer]
+                      - generic [ref=f19e374]: Default geometry
+                    - generic [ref=f19e376]: Origin
+                    - generic [ref=f19e386]: Top
+                    - generic [ref=f19e396]: Front
+                    - generic [ref=f19e406]: Right
+                    - generic [ref=f19e417]:
+                      - generic [ref=f19e419] [cursor=pointer]
+                      - generic [ref=f19e422]: Derived 1
+                    - generic [ref=f19e432]: Referenced part 1
+                    - generic [ref=f19e439]: Referenced part 2
+                    - generic [ref=f19e446]: Mirror 1
+                    - generic [ref=f19e454]: Boolean 1
+                  - list
+              - generic [ref=f19e470]:
+                - generic [ref=f19e472]:
+                  - generic [ref=f19e474] [cursor=pointer]
+                  - generic [ref=f19e477]: Parts (8)
+                - generic [ref=f19e481]: Part 1
+                - generic [ref=f19e493]: 20B
+                - generic [ref=f19e505]: 20B_SUBTRACT
+                - generic [ref=f19e517]: 15A
+                - generic [ref=f19e529]: 15A_SUBTRACT
+                - generic [ref=f19e541]: Part 6
+                - generic [ref=f19e553]: Part 7
+                - generic [ref=f19e565]: Part 8
+                - generic [ref=f19e578]:
+                  - generic [ref=f19e580] [cursor=pointer]
+                  - generic [ref=f19e583]: Composite parts (1)
+                - generic [ref=f19e588]:
+                  - generic [ref=f19e590] [cursor=pointer]
+                  - generic [ref=f19e593]: Surfaces (18)
+                - generic [ref=f19e598]:
+                  - generic [ref=f19e600] [cursor=pointer]
+                  - generic [ref=f19e603]: Curves (8)
+            - generic [ref=f19e25]:
+              - generic [ref=f19e609] [cursor=pointer]
+              - generic [ref=f19e26]:
+                - generic [ref=f19e614]:
+                  - button [ref=f19e615] [cursor=pointer]
+                  - button [ref=f19e619] [cursor=pointer]
+                  - button [ref=f19e623] [cursor=pointer]
+                - generic [ref=f19e627] [cursor=pointer]
+              - generic [ref=f19e632]:
+                - generic [ref=f19e633] [cursor=pointer]
+                - generic [ref=f19e637] [cursor=pointer]
+                - generic [ref=f19e641] [cursor=pointer]
+                - generic [ref=f19e645] [cursor=pointer]
+                - generic [ref=f19e649] [cursor=pointer]
+                - generic [ref=f19e653] [cursor=pointer]
+                - generic [ref=f19e657] [cursor=pointer]
+                - generic [ref=f19e660] [cursor=pointer]
+          - generic [ref=f19e664]:
+            - img [ref=f19e667] [cursor=pointer]
+            - generic [ref=f19e670]:
+              - generic [ref=f19e671] [cursor=pointer]: topsheet_surf
+              - generic [ref=f19e679] [cursor=pointer]: Thicken_tests
+              - generic [ref=f19e687] [cursor=pointer]: Reference side tests
+              - generic [ref=f19e693]: referenced part tests
+              - generic [ref=f19e704] [cursor=pointer]: featurescripts
+              - generic [ref=f19e710] [cursor=pointer]: jps_test_fixture
+        - generic [ref=f19e730]:
+          - generic [ref=f19e731]:
+            - generic [ref=f19e732]:
+              - heading "FeatureScript notices" [level=4] [ref=f19e733]
+              - generic [ref=f19e735]:
+                - button [ref=f19e737] [cursor=pointer]
+                - textbox "Filter notices" [ref=f19e742]
+            - button [ref=f19e743] [cursor=pointer]
+          - generic [ref=f19e744]:
+            - generic [ref=f19e745]: Monitor
+            - generic [ref=f19e755] [cursor=pointer]: Reference side tests
+          - generic [ref=f19e759]:
+            - generic [ref=f19e760]: Monitor
+            - generic [ref=f19e770] [cursor=pointer]: Thicken_tests
+          - generic [ref=f19e774]:
+            - generic [ref=f19e775]: Monitor
+            - generic [ref=f19e785] [cursor=pointer]: referenced part tests
+            - generic [ref=f19e789]:
+              - table [ref=f19e790]:
+                - rowgroup [ref=f19e791]:
+                  - row [ref=f19e792] [cursor=pointer]:
+                    - cell [ref=f19e793]
+                    - cell [ref=f19e797]
+                    - cell "1 warning, 1 info in referenced module" [ref=f19e799]
+                  - row [ref=f19e801] [cursor=pointer]:
+                    - cell [ref=f19e802]
+                    - cell [ref=f19e803]
+                    - cell [ref=f19e804]
+                    - cell "9be5d7797683fc5e192f9ef1/d2d549cb9ed8f1d5f2ddc6b9/1168b8f975c2b76bab4160ec" [ref=f19e805]
+                  - row [ref=f19e807] [cursor=pointer]:
+                    - cell [ref=f19e808]
+                    - cell [ref=f19e809]
+                    - cell "133:37" [ref=f19e810]
+                    - cell "onshape/std/importDerived.fs (const importDerived)" [ref=f19e812]
+                  - row [ref=f19e814] [cursor=pointer]:
+                    - cell [ref=f19e815]
+                    - cell [ref=f19e816]
+                    - cell "61:17" [ref=f19e817]
+                    - cell "onshape/std/feature.fs (defineFeature)" [ref=f19e819]
+                  - row [ref=f19e821] [cursor=pointer]:
+                    - cell [ref=f19e822]
+                    - cell [ref=f19e823]
+                    - cell [ref=f19e824]
+                    - cell "referenced part tests (Derived 1)" [ref=f19e825]
+                  - row [ref=f19e827] [cursor=pointer]:
+                    - cell [ref=f19e828]
+                    - cell [ref=f19e829]
+                    - cell [ref=f19e830]
+                    - cell "referenced part tests" [ref=f19e831]
+              - table [ref=f19e833]:
+                - rowgroup [ref=f19e834]:
+                  - row [ref=f19e835] [cursor=pointer]:
+                    - cell [ref=f19e836]
+                    - cell [ref=f19e840]
+                    - 'cell "@opBoolean: BOOLEAN_INVALID" [ref=f19e842]'
+                  - row [ref=f19e844] [cursor=pointer]:
+                    - cell [ref=f19e845]
+                    - cell [ref=f19e846]
+                    - cell "154:12" [ref=f19e847]
+                    - cell "onshape/std/geomOperations.fs (const opBoolean)" [ref=f19e849]
+                  - row [ref=f19e851] [cursor=pointer]:
+                    - cell [ref=f19e852]
+                    - cell [ref=f19e853]
+                    - cell "991:9" [ref=f19e854]
+                    - cell "onshape/std/boolean.fs (performRegularBoolean)" [ref=f19e856]
+                  - row [ref=f19e858] [cursor=pointer]:
+                    - cell [ref=f19e859]
+                    - cell [ref=f19e860]
+                    - cell "1010:9" [ref=f19e861]
+                    - cell "onshape/std/boolean.fs (sheetMetalAwareBoolean)" [ref=f19e863]
+                  - row [ref=f19e865] [cursor=pointer]:
+                    - cell [ref=f19e866]
+                    - cell [ref=f19e867]
+                    - cell "210:17" [ref=f19e868]
+                    - cell "onshape/std/boolean.fs (const booleanBodies)" [ref=f19e870]
+                  - row [ref=f19e872] [cursor=pointer]:
+                    - cell [ref=f19e873]
+                    - cell [ref=f19e874]
+                    - cell "61:17" [ref=f19e875]
+                    - cell "onshape/std/feature.fs (defineFeature)" [ref=f19e877]
+                  - row [ref=f19e879] [cursor=pointer]:
+                    - cell [ref=f19e880]
+                    - cell [ref=f19e881]
+                    - cell [ref=f19e882]
+                    - cell "referenced part tests (Boolean 1)" [ref=f19e883]
+                  - row [ref=f19e885] [cursor=pointer]:
+                    - cell [ref=f19e886]
+                    - cell [ref=f19e887]
+                    - cell [ref=f19e888]
+                    - cell "referenced part tests" [ref=f19e889]
+              - generic [ref=f19e891]: "NOTE: profile break at -740.000 mm taken as the source vertex 0.072 mm away. NOTE: profile break at 740.000 mm taken as the source vertex 0.063 mm away. WARNING: a run of 87 points starting at 305.1 0.0 6.0 mm reached the cap of 15 control points 0.0777 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. NOTE: a 0.2352 mm fragment at 1624.8, 64.3, 5.6 mm was absorbed: the edges either side of it line up. WARNING: a run of 35 points starting at 22.5 41.0 23.4 mm reached the cap of 20 control points 0.0979 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 35 points starting at 30.0 41.0 27.3 mm reached the cap of 20 control points 0.0695 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 151 points starting at 141.3 60.6 4.1 mm reached the cap of 20 control points 0.4989 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 151 points starting at 141.2 54.6 10.1 mm reached the cap of 20 control points 0.4881 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. [referencedPart] cap1: surface on one side only [referencedPart] cap1: joined with its mirror image, naked edges left lying in the mirror plane 0 [referencedPart] start: thickened, mirror true, caps 1, periphery false [referencedPart] profile edges 462, near the mirror plane (<1 mm) 60, crossing it 13, worst distance 72500 um edge 1: -72500 .. 0 um edge 2: -72500 .. 0 um edge 3: -72500 .. 0 um edge 4: 0 .. 0 um edge 5: -64701.884 .. 0 um edge 6: 0 .. 0 um edge 7: -60432.04 .. 0 um edge 8: 0 .. 0 um [referencedPart] sheet mirror: profile copy and mirror image made; joining [referencedPart] sheet mirror: joined, naked edges left lying in the mirror plane 0 [referencedPart] sheet mirror: thickened, solids 1 [referencedPart] before cap split [referencedPart] thickened part: box spans -72501.4 .. 72501.4 um across the plane [referencedPart] result: 1 part(s), volume 102828.108 mm^3 [referencedPart] result: box spans -72501.4 .. 72501.4 um across the plane Result: Regeneration complete"
+          - generic [ref=f19e892]:
+            - generic [ref=f19e893]: Monitor
+            - generic [ref=f19e903] [cursor=pointer]: topsheet_surf
+  - tooltip "FeatureScript notices"

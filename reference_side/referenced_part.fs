@@ -36,9 +36,15 @@ IconNamespace::import(path : "385dde1d1db1fd331e975189", version : "c6ae68c4419c
  * Caps (optional, both modes): surfaces or faces (offset with Offset+), or construction planes and
  * mate connectors (infinite planes, moved by the offset). The part keeps the point's side of each.
  *
- * Mirror plane (optional): the surfaces are one half. The half is cut at the plane (the side the
- * surfaces are on is kept -- a point ON the plane is fine), mirrored and united. With a profile offset the
- * thickened layer is built from the unoffset profile (see thickenLayer) so its faces meet the plane exactly.
+ * Mirror plane (optional): the surfaces are one half.
+ *   THICKENED, caps that are planes not tilting across the mirror plane or surfaces (2026-11-12): the profile and every
+ *   one-sided cap / periphery surface are mirrored and joined as SHEETS (see mirroredProfile, mirrorAndJoin), then the
+ *   part is thickened and cut ONCE. Uniting two thickened solids that meet in a face fails with BOOLEAN_INVALID on real
+ *   surfaces (plane faces with micron-scale outlines), sheets sew. With a profile offset the layer is built from the
+ *   unoffset profile (see thickenLayer) so its faces meet the plane exactly.
+ *   Otherwise (CONSTRAINED, or a cap plane tilted across the plane): the half is cut at the plane (the side the
+ *   surfaces are on is kept -- a point ON the plane is fine), mirrored and united (mirrorAndUnite; slivers dropped by
+ *   volume, no cut when the half does not cross the plane, a second union route before it gives up).
  *
  * The inputs are never changed: every offset is a new surface (0 = a copy), deleted at the end.
  *
