@@ -52,4 +52,5 @@ TARGETS = [
     ("publish_tools", "layout/auto_layout", "auto_layout"),  # 2026-10-28, packed boxes + blue origin dot
     ("publish_tools", "export/export_tag", "export_tag"),  # 2026-10-28, tag outline + blue hole and line
     ("curveMapping_public", "deformTag", "deform_tag"),  # 2026-11-11, grey From line, blue To curve, dashed links
+    ("curveMapping_public", "bodyIdentity", "body_identity"),  # 2026-11-12, grey box with a blue anchor dot
 ]
