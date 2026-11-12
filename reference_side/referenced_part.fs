@@ -766,6 +766,7 @@ function debugBodiesAgainstPlane(context is Context, label is string, bodies is 
                 // fscheck: allow-println gated by the callers (Print diagnostics)
                 const area = evArea(context, { "entities" : face }) / (meter * meter) * 1e6;
                 const edgeCount = size(evaluateQuery(context, qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE)));
+                // fscheck: allow-println gated by the callers (Print diagnostics)
                 println("  planar face near the plane: offset " ~ roundTo(off, 3) ~ " um, tilt " ~ roundTo(tilt, 3) ~ " urad, area "
                     ~ roundTo(area, 3) ~ " mm^2, edges " ~ edgeCount);
             }
