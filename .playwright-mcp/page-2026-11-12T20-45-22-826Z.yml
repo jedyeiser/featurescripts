@@ -1,0 +1,249 @@
+- generic [active] [ref=f15e1]:
+  - generic [ref=f15e5]:
+    - navigation [ref=f15e6]:
+      - generic [ref=f15e7]:
+        - link [ref=f15e10] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f15e11]
+        - generic [ref=f15e13] [cursor=pointer]
+      - generic [ref=f15e16]:
+        - generic [ref=f15e18]:
+          - generic [ref=f15e19]: Reference_Side_Features
+          - generic [ref=f15e20]: Main
+        - generic [ref=f15e22] [cursor=pointer]
+        - link "EOC Featurescripts" [ref=f15e26] [cursor=pointer]:
+          - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+      - generic [ref=f15e30]:
+        - generic [ref=f15e38] [cursor=pointer]
+        - generic [ref=f15e44] [cursor=pointer]
+        - button "Notifications" [ref=f15e49] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f15e57]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f15e60] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f15e65] [cursor=pointer]
+        - button "Share" [ref=f15e69] [cursor=pointer]
+        - generic "Help menu" [ref=f15e71] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f15e75] [cursor=pointer]
+    - generic [ref=f15e85]:
+      - generic [ref=f15e87]:
+        - generic [ref=f15e88]:
+          - generic [ref=f15e89]:
+            - generic [ref=f15e90] [cursor=pointer]
+            - generic [ref=f15e93] [cursor=pointer]
+            - generic [ref=f15e96] [cursor=pointer]
+            - generic [ref=f15e99] [cursor=pointer]
+            - generic [ref=f15e102] [cursor=pointer]
+            - generic [ref=f15e105] [cursor=pointer]
+            - generic [ref=f15e108] [cursor=pointer]
+            - generic [ref=f15e111] [cursor=pointer]
+          - generic [ref=f15e115] [cursor=pointer]
+        - generic [ref=f15e119] [cursor=pointer]
+      - generic [ref=f15e124]:
+        - generic [ref=f15e126]:
+          - generic [ref=f15e133]:
+            - generic [ref=f15e145]:
+              - generic [ref=f15e146]: Sketch
+              - generic [ref=f15e158]:
+                - generic [ref=f15e159] [cursor=pointer]
+                - generic [ref=f15e163] [cursor=pointer]
+                - generic [ref=f15e167] [cursor=pointer]
+                - generic [ref=f15e171] [cursor=pointer]
+                - generic [ref=f15e176]:
+                  - generic [ref=f15e177] [cursor=pointer]
+                  - generic [ref=f15e181] [cursor=pointer]
+              - generic [ref=f15e187]:
+                - generic [ref=f15e189]:
+                  - generic [ref=f15e190] [cursor=pointer]
+                  - generic [ref=f15e194] [cursor=pointer]
+                - generic [ref=f15e197] [cursor=pointer]
+                - generic [ref=f15e202]:
+                  - generic [ref=f15e203] [cursor=pointer]
+                  - generic [ref=f15e207] [cursor=pointer]
+                - generic [ref=f15e210] [cursor=pointer]
+                - generic [ref=f15e214] [cursor=pointer]
+                - generic [ref=f15e218] [cursor=pointer]
+                - generic [ref=f15e222] [cursor=pointer]
+              - generic [ref=f15e229]:
+                - generic [ref=f15e231]:
+                  - generic [ref=f15e232] [cursor=pointer]
+                  - generic [ref=f15e236] [cursor=pointer]
+                - generic [ref=f15e239] [cursor=pointer]
+              - generic [ref=f15e246]:
+                - generic [ref=f15e247] [cursor=pointer]
+                - generic [ref=f15e251] [cursor=pointer]
+                - generic [ref=f15e256]:
+                  - generic [ref=f15e257] [cursor=pointer]
+                  - generic [ref=f15e261] [cursor=pointer]
+                - generic [ref=f15e264] [cursor=pointer]
+              - generic [ref=f15e271]:
+                - generic [ref=f15e272] [cursor=pointer]
+                - generic [ref=f15e276] [cursor=pointer]
+                - generic [ref=f15e280] [cursor=pointer]
+                - generic [ref=f15e284] [cursor=pointer]
+              - generic [ref=f15e654]:
+                - generic [ref=f15e655] [cursor=pointer]
+                - generic [ref=f15e659] [cursor=pointer]
+              - generic [ref=f15e304]:
+                - generic [ref=f15e305] [cursor=pointer]: SA
+                - generic [ref=f15e308] [cursor=pointer]
+              - generic [ref=f15e315] [cursor=pointer]
+            - button "Search tools… alt/⌥ c" [ref=f15e322] [cursor=pointer]:
+              - text: Search tools…
+              - generic [ref=f15e323]:
+                - generic [ref=f15e324]: alt/⌥
+                - generic [ref=f15e325]: c
+          - generic [ref=f15e329]:
+            - generic [ref=f15e332]:
+              - generic [ref=f15e334]:
+                - generic [ref=f15e335]:
+                  - generic [ref=f15e337]:
+                    - button [ref=f15e339] [cursor=pointer]
+                    - textbox "Filter by name or type" [ref=f15e344]
+                  - generic [ref=f15e345]:
+                    - button [ref=f15e346] [cursor=pointer]
+                    - generic [ref=f15e349]: Features (6)
+                    - button [ref=f15e350] [cursor=pointer]
+                    - button [ref=f15e353] [cursor=pointer]
+                    - button [ref=f15e356] [cursor=pointer]
+                - generic [ref=f15e360]:
+                  - generic [ref=f15e361]:
+                    - generic [ref=f15e363]:
+                      - generic [ref=f15e364] [cursor=pointer]
+                      - generic [ref=f15e367]: Default geometry
+                    - generic [ref=f15e369]: Origin
+                    - generic [ref=f15e379]: Top
+                    - generic [ref=f15e389]: Front
+                    - generic [ref=f15e399]: Right
+                    - generic [ref=f15e410]:
+                      - generic [ref=f15e412] [cursor=pointer]
+                      - generic [ref=f15e415]: Derived 1
+                    - generic [ref=f15e425]: Referenced part 1
+                  - list
+              - generic [ref=f15e440]:
+                - generic [ref=f15e442]:
+                  - generic [ref=f15e444] [cursor=pointer]
+                  - generic [ref=f15e447]: Parts (5)
+                - generic [ref=f15e451]: Part 1
+                - generic [ref=f15e463]: 20B
+                - generic [ref=f15e475]: 20B_SUBTRACT
+                - generic [ref=f15e487]: 15A
+                - generic [ref=f15e499]: 15A_SUBTRACT
+                - generic [ref=f15e512]:
+                  - generic [ref=f15e514] [cursor=pointer]
+                  - generic [ref=f15e517]: Composite parts (1)
+                - generic [ref=f15e522]:
+                  - generic [ref=f15e524] [cursor=pointer]
+                  - generic [ref=f15e527]: Surfaces (18)
+                - generic [ref=f15e532]:
+                  - generic [ref=f15e534] [cursor=pointer]
+                  - generic [ref=f15e537]: Curves (8)
+            - generic [ref=f15e542]:
+              - generic [ref=f15e544] [cursor=pointer]
+              - generic [ref=f15e548]:
+                - generic [ref=f15e550]:
+                  - button [ref=f15e551] [cursor=pointer]
+                  - button [ref=f15e555] [cursor=pointer]
+                  - button [ref=f15e559] [cursor=pointer]
+                - generic [ref=f15e563] [cursor=pointer]
+              - generic [ref=f15e568]:
+                - generic [ref=f15e569] [cursor=pointer]
+                - generic [ref=f15e573] [cursor=pointer]
+                - generic [ref=f15e577] [cursor=pointer]
+                - generic [ref=f15e581] [cursor=pointer]
+                - generic [ref=f15e585] [cursor=pointer]
+                - generic [ref=f15e589] [cursor=pointer]
+                - generic [ref=f15e593] [cursor=pointer]
+                - generic [ref=f15e596] [cursor=pointer]
+          - generic [ref=f15e600]:
+            - img [ref=f15e603] [cursor=pointer]
+            - generic [ref=f15e606]:
+              - generic [ref=f15e607] [cursor=pointer]: topsheet_surf
+              - generic [ref=f15e615] [cursor=pointer]: Thicken_tests
+              - generic [ref=f15e623] [cursor=pointer]: Reference side tests
+              - generic [ref=f15e629]: referenced part tests
+              - generic [ref=f15e640] [cursor=pointer]: featurescripts
+              - generic [ref=f15e646] [cursor=pointer]: jps_test_fixture
+        - generic [ref=f15e667]:
+          - generic [ref=f15e668]:
+            - generic [ref=f15e669]:
+              - heading "FeatureScript notices" [level=4] [ref=f15e670]
+              - generic [ref=f15e672]:
+                - button [ref=f15e674] [cursor=pointer]
+                - textbox "Filter notices" [ref=f15e679]
+            - button [ref=f15e680] [cursor=pointer]
+          - generic [ref=f15e681]:
+            - generic [ref=f15e682]: Monitor
+            - generic [ref=f15e692] [cursor=pointer]: Reference side tests
+          - generic [ref=f15e696]:
+            - generic [ref=f15e697]: Monitor
+            - generic [ref=f15e707] [cursor=pointer]: Thicken_tests
+          - generic [ref=f15e711]:
+            - generic [ref=f15e712]: Monitor
+            - generic [ref=f15e722] [cursor=pointer]: referenced part tests
+            - generic [ref=f15e726]:
+              - table [ref=f15e727]:
+                - rowgroup [ref=f15e728]:
+                  - row [ref=f15e729] [cursor=pointer]:
+                    - cell [ref=f15e730]
+                    - cell [ref=f15e734]
+                    - cell "1 warning, 1 info in referenced module" [ref=f15e736]
+                  - row [ref=f15e738] [cursor=pointer]:
+                    - cell [ref=f15e739]
+                    - cell [ref=f15e740]
+                    - cell [ref=f15e741]
+                    - cell "9be5d7797683fc5e192f9ef1/d2d549cb9ed8f1d5f2ddc6b9/1168b8f975c2b76bab4160ec" [ref=f15e742]
+                  - row [ref=f15e744] [cursor=pointer]:
+                    - cell [ref=f15e745]
+                    - cell [ref=f15e746]
+                    - cell "133:37" [ref=f15e747]
+                    - cell "onshape/std/importDerived.fs (const importDerived)" [ref=f15e749]
+                  - row [ref=f15e751] [cursor=pointer]:
+                    - cell [ref=f15e752]
+                    - cell [ref=f15e753]
+                    - cell "61:17" [ref=f15e754]
+                    - cell "onshape/std/feature.fs (defineFeature)" [ref=f15e756]
+                  - row [ref=f15e758] [cursor=pointer]:
+                    - cell [ref=f15e759]
+                    - cell [ref=f15e760]
+                    - cell [ref=f15e761]
+                    - cell "referenced part tests (Derived 1)" [ref=f15e762]
+                  - row [ref=f15e764] [cursor=pointer]:
+                    - cell [ref=f15e765]
+                    - cell [ref=f15e766]
+                    - cell [ref=f15e767]
+                    - cell "referenced part tests" [ref=f15e768]
+              - table [ref=f15e770]:
+                - rowgroup [ref=f15e771]:
+                  - row [ref=f15e772] [cursor=pointer]:
+                    - cell [ref=f15e773]
+                    - cell [ref=f15e777]
+                    - cell "throw The half and its mirror image could not be united at the mirror plane. Switch on Print diagnostics to see the pieces." [ref=f15e779]
+                  - row [ref=f15e781] [cursor=pointer]:
+                    - cell [ref=f15e782]
+                    - cell [ref=f15e783]
+                    - cell "620:9" [ref=f15e784]
+                    - cell "referenced_part (mirrorAndUnite)" [ref=f15e786]
+                  - row [ref=f15e788] [cursor=pointer]:
+                    - cell [ref=f15e789]
+                    - cell [ref=f15e790]
+                    - cell "268:22" [ref=f15e791]
+                    - cell "referenced_part (const referencedPart)" [ref=f15e793]
+                  - row [ref=f15e795] [cursor=pointer]:
+                    - cell [ref=f15e796]
+                    - cell [ref=f15e797]
+                    - cell "61:17" [ref=f15e798]
+                    - cell "onshape/std/feature.fs (defineFeature)" [ref=f15e800]
+                  - row [ref=f15e802] [cursor=pointer]:
+                    - cell [ref=f15e803]
+                    - cell [ref=f15e804]
+                    - cell [ref=f15e805]
+                    - cell "referenced part tests (Referenced part 1)" [ref=f15e806]
+                  - row [ref=f15e808] [cursor=pointer]:
+                    - cell [ref=f15e809]
+                    - cell [ref=f15e810]
+                    - cell [ref=f15e811]
+                    - cell "referenced part tests" [ref=f15e812]
+              - generic [ref=f15e814]: "NOTE: profile break at -740.000 mm taken as the source vertex 0.072 mm away. NOTE: profile break at 740.000 mm taken as the source vertex 0.063 mm away. WARNING: a run of 87 points starting at 305.1 0.0 6.0 mm reached the cap of 15 control points 0.0777 mm from its points, against a tolerance of 0.0100 mm. Raise the maximum control points. NOTE: a 0.2352 mm fragment at 1624.8, 64.3, 5.6 mm was absorbed: the edges either side of it line up. WARNING: a run of 35 points starting at 22.5 41.0 23.4 mm reached the cap of 20 control points 0.0979 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 35 points starting at 30.0 41.0 27.3 mm reached the cap of 20 control points 0.0695 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 151 points starting at 141.3 60.6 4.1 mm reached the cap of 20 control points 0.4989 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. WARNING: a run of 151 points starting at 141.2 54.6 10.1 mm reached the cap of 20 control points 0.4881 mm from its points, against a tolerance of 0.0500 mm. Raise the maximum control points. [referencedPart] start: thickened, mirror true, caps 1, periphery false [referencedPart] profile edges 462, near the mirror plane (<1 mm) 60, crossing it 13, worst distance 72500 um edge 1: -72500 .. 0 um edge 2: -72500 .. 0 um edge 3: -72500 .. 0 um edge 4: 0 .. 0 um edge 5: -64701.884 .. 0 um edge 6: 0 .. 0 um edge 7: -60432.04 .. 0 um edge 8: 0 .. 0 um [referencedPart] before cap split [referencedPart] thickened part: box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad, area 8.086 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 18.894 mm^2, edges 6 planar face near the plane: offset -0.001 um, tilt 6.218 urad, area 0.144 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 60.156 mm^2, edges 12 planar face near the plane: offset 0 um, tilt 0 urad, area 619.205 mm^2, edges 22 planar face near the plane: offset 0 um, tilt 0 urad, area 13.288 mm^2, edges 6 [referencedPart] mirror: before the cut at the plane [referencedPart] half: box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad, area 8.086 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 18.894 mm^2, edges 6 planar face near the plane: offset -0.001 um, tilt 6.218 urad, area 0.144 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 619.205 mm^2, edges 22 planar face near the plane: offset 0 um, tilt 0 urad, area 49.969 mm^2, edges 10 [referencedPart] mirror: the half reaches 0.14 um past the plane; no cut needed [referencedPart] mirror: after the cut, pieces 1 [referencedPart] pieces: box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad, area 8.086 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 18.894 mm^2, edges 6 planar face near the plane: offset -0.001 um, tilt 6.218 urad, area 0.144 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 619.205 mm^2, edges 22 planar face near the plane: offset 0 um, tilt 0 urad, area 49.969 mm^2, edges 10 [referencedPart] piece 0 volume 51413.890399 mm^3 [referencedPart] mirror: kept 1, dropped 0; before the union [referencedPart] union inputs (half and mirror): box spans -72501.4 .. 0.1 um across the plane planar face near the plane: offset 0 um, tilt 0 urad, area 8.086 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 18.894 mm^2, edges 6 planar face near the plane: offset -0.001 um, tilt 6.218 urad, area 0.144 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 619.205 mm^2, edges 22 planar face near the plane: offset 0 um, tilt 0 urad, area 49.969 mm^2, edges 10 [referencedPart] union inputs (half and mirror): box spans -0.1 .. 72501.4 um across the plane planar face near the plane: offset 0 um, tilt 0 urad, area 8.086 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 18.894 mm^2, edges 6 planar face near the plane: offset 0.001 um, tilt 6.218 urad, area 0.144 mm^2, edges 4 planar face near the plane: offset 0 um, tilt 0 urad, area 619.204 mm^2, edges 22 planar face near the plane: offset 0 um, tilt 0 urad, area 49.969 mm^2, edges 10 [referencedPart] union with both as tools failed; trying the half as target and the mirror as tool Result: Regeneration complete"
+          - generic [ref=f15e815]:
+            - generic [ref=f15e816]: Monitor
+            - generic [ref=f15e826] [cursor=pointer]: topsheet_surf
+  - tooltip "FeatureScript notices"

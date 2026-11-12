@@ -194,6 +194,10 @@ export const referencedPart = defineFeature(function(context is Context, id is I
             boundaries = append(boundaries, { "key" : "sideFaces", "surface" : side, "distance" : 0 * meter });
         }
         var caps = [];
+        // The sheet mirror (see mirroredProfile) cuts ONE full-width solid, so a cap or the periphery must act the same on
+        // both halves: a plane that contains the mirror plane's normal, or a surface that spans the plane. Anything else
+        // is one-sided and keeps the older route (cut the half, mirror the solid, unite).
+        var symmetricTools = true;
         for (var cap in [["cap1", "cap1Faces"], ["cap2", "cap2Faces"]])
         {
             if (!isQueryEmpty(context, definition[cap[0]]))
@@ -201,8 +205,28 @@ export const referencedPart = defineFeature(function(context is Context, id is I
                 const tool = capTool(context, id + (cap[0] ~ "Offset"), definition[cap[0]], definition[cap[0] ~ "Offset"], definition.referencePoint, point, cap[0]);
                 caps = append(caps, tool.tool);
                 boundaries = append(boundaries, { "key" : cap[1], "surface" : tool.tool, "plane" : tool.plane, "distance" : 0 * meter });
+                if (mirror != undefined)
+                {
+                    const symmetric = tool.plane != undefined ? abs(dot(tool.plane.normal, mirror.normal)) < 1e-6 : spansPlane(context, tool.tool, mirror);
+                    symmetricTools = symmetricTools && symmetric;
+                    if (definition.debugPrint)
+                    {
+                        debugStep(context, cap[0] ~ ": " ~ (tool.plane != undefined ? "plane" : "surface") ~ ", " ~ (symmetric ? "symmetric about the mirror plane" : "one-sided"));
+                    }
+                }
             }
         }
+        if (mirror != undefined && side != undefined)
+        {
+            const sideSymmetric = spansPlane(context, side, mirror);
+            symmetricTools = symmetricTools && sideSymmetric;
+            if (definition.debugPrint)
+            {
+                debugStep(context, "periphery: " ~ (sideSymmetric ? "spans the mirror plane" : "one-sided"));
+            }
+        }
+        // Thickened with a mirror plane and symmetric tools: mirror and merge the PROFILE sheet, then thicken once.
+        const sheetMirror = thickened && mirror != undefined && symmetricTools;
 
         // The part so far, as a HISTORY query: a split's pieces are attributed to the feature that made the
         // original body, and an evaluated query of a split body resolves to nothing afterwards (2026-09-28).
@@ -225,7 +249,26 @@ export const referencedPart = defineFeature(function(context is Context, id is I
             boundaries = concatenateArrays([boundaries, [
                             { "key" : "profileFaces", "surface" : profile, "distance" : 0 * meter },
                             { "key" : "oppositeFaces", "surface" : profile, "distance" : abs(definition.thickness) }]]);
-            if (mirror != undefined && abs(definition.profileOffset) > TOLERANCE.zeroLength * meter)
+            if (sheetMirror)
+            {
+                // The profile and its mirror image are joined into ONE sheet first (sheets merge where solids that meet in a
+                // face do not: top sheet, 2026-11-12), then that sheet is thickened as a layer built from the ORIGINAL profile.
+                const full = mirroredProfile(context, id + "mirrorProfile", definition.profile, mirror, definition.referencePoint, definition.debugPrint);
+                thickenLayer(context, id, full, definition.referencePoint,
+                    min(definition.profileOffset, definition.profileOffset + definition.thickness),
+                    max(definition.profileOffset, definition.profileOffset + definition.thickness));
+                const thickenedSolids = size(evaluateQuery(context, solids));
+                if (definition.debugPrint)
+                {
+                    debugStep(context, "sheet mirror: thickened, solids " ~ thickenedSolids);
+                }
+                if (thickenedSolids != 1)
+                {
+                    throw regenError("The profile and its mirror image did not join into one surface at the mirror plane (" ~ thickenedSolids
+                        ~ " parts after thickening). A gap wider than about 1 micron between the profile's edge and the plane stops them joining.", ["mirrorPlane"]);
+                }
+            }
+            else if (mirror != undefined && abs(definition.profileOffset) > TOLERANCE.zeroLength * meter)
             {
                 // The profile offset is not applied to the surface here; see thickenLayer.
                 thickenLayer(context, id, definition.profile, definition.referencePoint,
@@ -263,7 +306,7 @@ export const referencedPart = defineFeature(function(context is Context, id is I
         }
 
         var result = qUnion(evaluateQuery(context, solids));
-        if (mirror != undefined)
+        if (mirror != undefined && !sheetMirror)
         {
             result = mirrorAndUnite(context, id, solids, mirror, definition.debugPrint);
         }
@@ -361,6 +404,54 @@ function thickenLayer(context is Context, id is Id, profile is Query, reference 
                     "keepTools" : false
                 });
     }
+}
+
+/**
+ * The profile and its mirror image as ONE sheet. A copy of the profile (Offset+ distance 0, so the input is never changed),
+ * its mirror image, and the union of the two: the sheets sew where they meet at the mirror plane (gaps up to about 1 um,
+ * correction 73), which is what the manual Mirror (Add) does. Uniting the THICKENED halves instead fails with
+ * BOOLEAN_INVALID on the top sheet (the kernel will not merge the plane faces, whose outlines carry micron-scale detail).
+ * Returns the joined sheet; thickenLayer then makes the part from it.
+ */
+function mirroredProfile(context is Context, id is Id, profile is Query, mirror is Plane, reference is Query, debugPrint is boolean) returns Query
+{
+    const half = offsetSurface(context, id + "copy", profile, 0 * meter, reference);
+    opPattern(context, id + "mirror", {
+                "entities" : half,
+                "transforms" : [mirrorAcross(mirror)],
+                "instanceNames" : ["mirror"]
+            });
+    const image = qCreatedBy(id + "mirror", EntityType.BODY);
+    if (debugPrint)
+    {
+        debugStep(context, "sheet mirror: profile copy and mirror image made; joining");
+    }
+    opBoolean(context, id + "join", { "tools" : qUnion([half, image]), "operationType" : BooleanOperationType.UNION });
+    return qUnion(evaluateQuery(context, half));
+}
+
+/** True when a surface reaches more than MIRROR_CUT_REACH to both sides of the plane (it spans the full width). */
+function spansPlane(context is Context, tool is Query, mirror is Plane) returns boolean
+{
+    var lo = 1 * meter;
+    var hi = -1 * meter;
+    for (var body in evaluateQuery(context, tool))
+    {
+        const bx = evBox3d(context, { "topology" : body });
+        for (var cx in [bx.minCorner[0], bx.maxCorner[0]])
+        {
+            for (var cy in [bx.minCorner[1], bx.maxCorner[1]])
+            {
+                for (var cz in [bx.minCorner[2], bx.maxCorner[2]])
+                {
+                    const d = dot(vector(cx, cy, cz) - mirror.origin, mirror.normal);
+                    lo = min(lo, d);
+                    hi = max(hi, d);
+                }
+            }
+        }
+    }
+    return lo < -MIRROR_CUT_REACH && hi > MIRROR_CUT_REACH;
 }
 
 /** Offset+ of a surface toward the reference point (0 = a copy); the new surface. */
