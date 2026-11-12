@@ -197,7 +197,8 @@ export const referencedPart = defineFeature(function(context is Context, id is I
         // The sheet mirror (see mirroredProfile) cuts ONE full-width solid, so a cap or the periphery must act the same on
         // both halves: a plane that contains the mirror plane's normal, or a surface that spans the plane. Anything else
         // is one-sided and keeps the older route (cut the half, mirror the solid, unite).
-        var symmetricTools = true;
+        var planesSymmetric = true;
+        var oneSided = [];
         for (var cap in [["cap1", "cap1Faces"], ["cap2", "cap2Faces"]])
         {
             if (!isQueryEmpty(context, definition[cap[0]]))
@@ -207,26 +208,54 @@ export const referencedPart = defineFeature(function(context is Context, id is I
                 boundaries = append(boundaries, { "key" : cap[1], "surface" : tool.tool, "plane" : tool.plane, "distance" : 0 * meter });
                 if (mirror != undefined)
                 {
-                    const symmetric = tool.plane != undefined ? abs(dot(tool.plane.normal, mirror.normal)) < 1e-6 : spansPlane(context, tool.tool, mirror);
-                    symmetricTools = symmetricTools && symmetric;
+                    var kind = "plane, symmetric about the mirror plane";
+                    if (tool.plane != undefined)
+                    {
+                        if (abs(dot(tool.plane.normal, mirror.normal)) >= 1e-6)
+                        {
+                            planesSymmetric = false;
+                            kind = "plane, NOT symmetric about the mirror plane";
+                        }
+                    }
+                    else if (spansPlane(context, tool.tool, mirror))
+                    {
+                        kind = "surface, spans the mirror plane";
+                    }
+                    else
+                    {
+                        oneSided = append(oneSided, { "label" : cap[0], "tool" : tool.tool });
+                        kind = "surface on one side only";
+                    }
                     if (definition.debugPrint)
                     {
-                        debugStep(context, cap[0] ~ ": " ~ (tool.plane != undefined ? "plane" : "surface") ~ ", " ~ (symmetric ? "symmetric about the mirror plane" : "one-sided"));
+                        debugStep(context, cap[0] ~ ": " ~ kind);
                     }
                 }
             }
         }
         if (mirror != undefined && side != undefined)
         {
-            const sideSymmetric = spansPlane(context, side, mirror);
-            symmetricTools = symmetricTools && sideSymmetric;
+            const sideSpans = spansPlane(context, side, mirror);
+            if (!sideSpans)
+            {
+                oneSided = append(oneSided, { "label" : "periphery", "tool" : side });
+            }
             if (definition.debugPrint)
             {
-                debugStep(context, "periphery: " ~ (sideSymmetric ? "spans the mirror plane" : "one-sided"));
+                debugStep(context, "periphery: " ~ (sideSpans ? "spans the mirror plane" : "on one side only"));
             }
         }
-        // Thickened with a mirror plane and symmetric tools: mirror and merge the PROFILE sheet, then thicken once.
-        const sheetMirror = thickened && mirror != undefined && symmetricTools;
+        // Thickened with a mirror plane and planes that do not tilt across it: mirror and merge the PROFILE sheet and any
+        // one-sided cap / periphery surface (each joined with its mirror image into one full-width sheet), then thicken
+        // and cut ONCE. Anything else keeps the older route (cut the half, mirror the solid, unite).
+        const sheetMirror = thickened && mirror != undefined && planesSymmetric;
+        if (sheetMirror)
+        {
+            for (var item in oneSided)
+            {
+                mirrorAndJoin(context, id + (item.label ~ "Mirror"), item.tool, mirror, item.label, definition.debugPrint);
+            }
+        }
 
         // The part so far, as a HISTORY query: a split's pieces are attributed to the feature that made the
         // original body, and an evaluated query of a split body resolves to nothing afterwards (2026-09-28).
@@ -427,7 +456,68 @@ function mirroredProfile(context is Context, id is Id, profile is Query, mirror 
         debugStep(context, "sheet mirror: profile copy and mirror image made; joining");
     }
     opBoolean(context, id + "join", { "tools" : qUnion([half, image]), "operationType" : BooleanOperationType.UNION });
-    return qUnion(evaluateQuery(context, half));
+    const joined = qUnion(evaluateQuery(context, half));
+    const open = openSeamEdges(context, joined, mirror);
+    if (debugPrint)
+    {
+        debugStep(context, "sheet mirror: joined, naked edges left lying in the mirror plane " ~ open);
+    }
+    if (open > 0)
+    {
+        throw regenError("The profile and its mirror image did not join at the mirror plane (" ~ open
+            ~ " open edges left in it). A gap wider than about 1 micron between the profile's edge and the plane stops them joining.", ["profile"]);
+    }
+    return joined;
+}
+
+/**
+ * A one-sided cap or periphery surface and its mirror image, joined into one full-width sheet (in place: the tool is
+ * this feature's own temporary body). A sheet union that does not touch raises no error (correction 89), so the seam is checked.
+ */
+function mirrorAndJoin(context is Context, id is Id, tool is Query, mirror is Plane, label is string, debugPrint is boolean)
+{
+    opPattern(context, id + "image", {
+                "entities" : tool,
+                "transforms" : [mirrorAcross(mirror)],
+                "instanceNames" : ["mirror"]
+            });
+    opBoolean(context, id + "join", {
+                "tools" : qUnion([tool, qCreatedBy(id + "image", EntityType.BODY)]),
+                "operationType" : BooleanOperationType.UNION
+            });
+    const open = openSeamEdges(context, qUnion(evaluateQuery(context, tool)), mirror);
+    if (debugPrint)
+    {
+        debugStep(context, label ~ ": joined with its mirror image, naked edges left lying in the mirror plane " ~ open);
+    }
+    if (open > 0)
+    {
+        throw regenError(label ~ " and its mirror image did not join at the mirror plane (" ~ open ~ " open edges left in it).", [label == "periphery" ? "periphery" : label]);
+    }
+}
+
+/** How many naked (one-sided) edges of a sheet lie in the mirror plane: where two halves failed to sew. */
+function openSeamEdges(context is Context, sheet is Query, mirror is Plane) returns number
+{
+    var open = 0;
+    for (var edge in evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(sheet, EntityType.EDGE), EdgeTopology.ONE_SIDED)))
+    {
+        var inPlane = true;
+        for (var t in [0, 0.5, 1])
+        {
+            const d = dot(evEdgeTangentLine(context, { "edge" : edge, "parameter" : t }).origin - mirror.origin, mirror.normal);
+            if (abs(d) > 1e-6 * meter)
+            {
+                inPlane = false;
+                break;
+            }
+        }
+        if (inPlane)
+        {
+            open += 1;
+        }
+    }
+    return open;
 }
 
 /** True when a surface reaches more than MIRROR_CUT_REACH to both sides of the plane (it spans the full width). */

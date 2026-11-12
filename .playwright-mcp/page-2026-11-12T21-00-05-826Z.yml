@@ -1,0 +1,167 @@
+- generic [ref=f17e3]:
+  - navigation [ref=f17e29]:
+    - generic [ref=f17e30]:
+      - link [ref=f17e33] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f17e34]
+      - generic [ref=f17e36] [cursor=pointer]
+    - generic [ref=f17e39]:
+      - generic [ref=f17e41]:
+        - generic [ref=f17e42]: Reference_Side_Features
+        - generic [ref=f17e43]: Main
+      - generic [ref=f17e45] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f17e49] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f17e53]:
+      - generic [ref=f17e61] [cursor=pointer]
+      - generic [ref=f17e67] [cursor=pointer]
+      - button "Notifications" [ref=f17e72] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f17e80]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f17e83] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f17e88] [cursor=pointer]
+      - button "Share" [ref=f17e92] [cursor=pointer]
+      - generic "Help menu" [ref=f17e94] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f17e98] [cursor=pointer]
+  - generic [ref=f17e7]:
+    - generic [ref=f17e9]:
+      - generic [ref=f17e10]:
+        - generic [ref=f17e105]:
+          - generic [ref=f17e106] [cursor=pointer]
+          - generic [ref=f17e109] [cursor=pointer]
+          - generic [ref=f17e112] [cursor=pointer]
+          - generic [ref=f17e115] [cursor=pointer]
+          - generic [ref=f17e118] [cursor=pointer]
+          - generic [ref=f17e121] [cursor=pointer]
+          - generic [ref=f17e124] [cursor=pointer]
+          - generic [ref=f17e127] [cursor=pointer]
+        - generic [ref=f17e130] [cursor=pointer]
+      - generic [ref=f17e134] [cursor=pointer]
+    - generic [ref=f17e16]:
+      - generic [ref=f17e143]:
+        - generic [ref=f17e155]:
+          - generic [ref=f17e156]: Sketch
+          - generic [ref=f17e168]:
+            - generic [ref=f17e169] [cursor=pointer]
+            - generic [ref=f17e173] [cursor=pointer]
+            - generic [ref=f17e177] [cursor=pointer]
+            - generic [ref=f17e181] [cursor=pointer]
+            - generic [ref=f17e186]:
+              - generic [ref=f17e187] [cursor=pointer]
+              - generic [ref=f17e191] [cursor=pointer]
+          - generic [ref=f17e197]:
+            - generic [ref=f17e199]:
+              - generic [ref=f17e200] [cursor=pointer]
+              - generic [ref=f17e204] [cursor=pointer]
+            - generic [ref=f17e207] [cursor=pointer]
+            - generic [ref=f17e212]:
+              - generic [ref=f17e213] [cursor=pointer]
+              - generic [ref=f17e217] [cursor=pointer]
+            - generic [ref=f17e220] [cursor=pointer]
+            - generic [ref=f17e224] [cursor=pointer]
+            - generic [ref=f17e228] [cursor=pointer]
+            - generic [ref=f17e232] [cursor=pointer]
+          - generic [ref=f17e239]:
+            - generic [ref=f17e241]:
+              - generic [ref=f17e242] [cursor=pointer]
+              - generic [ref=f17e246] [cursor=pointer]
+            - generic [ref=f17e249] [cursor=pointer]
+          - generic [ref=f17e256]:
+            - generic [ref=f17e257] [cursor=pointer]
+            - generic [ref=f17e261] [cursor=pointer]
+            - generic [ref=f17e266]:
+              - generic [ref=f17e267] [cursor=pointer]
+              - generic [ref=f17e271] [cursor=pointer]
+            - generic [ref=f17e274] [cursor=pointer]
+          - generic [ref=f17e281]:
+            - generic [ref=f17e282] [cursor=pointer]
+            - generic [ref=f17e286] [cursor=pointer]
+            - generic [ref=f17e290] [cursor=pointer]
+            - generic [ref=f17e294] [cursor=pointer]
+          - generic [ref=f17e302]:
+            - generic [ref=f17e303] [cursor=pointer]
+            - generic [ref=f17e307] [cursor=pointer]
+          - generic [ref=f17e314]:
+            - generic [ref=f17e315] [cursor=pointer]: SA
+            - generic [ref=f17e318] [cursor=pointer]
+          - generic [ref=f17e325] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f17e332] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f17e333]:
+            - generic [ref=f17e334]: alt/⌥
+            - generic [ref=f17e335]: c
+      - generic [ref=f17e24]:
+        - generic [ref=f17e339]:
+          - generic [ref=f17e341]:
+            - generic [ref=f17e342]:
+              - generic [ref=f17e344]:
+                - button [ref=f17e346] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f17e351]
+              - generic [ref=f17e352]:
+                - button [ref=f17e353] [cursor=pointer]
+                - generic [ref=f17e356]: Features (9)
+                - button [ref=f17e357] [cursor=pointer]
+                - button [ref=f17e360] [cursor=pointer]
+                - button [ref=f17e363] [cursor=pointer]
+            - generic [ref=f17e367]:
+              - generic [ref=f17e368]:
+                - generic [ref=f17e370]:
+                  - generic [ref=f17e371] [cursor=pointer]
+                  - generic [ref=f17e374]: Default geometry
+                - generic [ref=f17e376]: Origin
+                - generic [ref=f17e386]: Top
+                - generic [ref=f17e396]: Front
+                - generic [ref=f17e406]: Right
+                - generic [ref=f17e417]:
+                  - generic [ref=f17e419] [cursor=pointer]
+                  - generic [ref=f17e422]: Derived 1
+                - generic [ref=f17e432]: Referenced part 1
+                - generic [ref=f17e439]: Referenced part 2
+                - generic [ref=f17e446]: Mirror 1
+                - generic [ref=f17e454]: Boolean 1
+              - list
+          - generic [ref=f17e470]:
+            - generic [ref=f17e472]:
+              - generic [ref=f17e474] [cursor=pointer]
+              - generic [ref=f17e477]: Parts (7)
+            - generic [ref=f17e481]: Part 1
+            - generic [ref=f17e493]: 20B
+            - generic [ref=f17e505]: 20B_SUBTRACT
+            - generic [ref=f17e517]: 15A
+            - generic [ref=f17e529]: 15A_SUBTRACT
+            - generic [ref=f17e541]: Part 6
+            - generic [ref=f17e553]: Part 7
+            - generic [ref=f17e566]:
+              - generic [ref=f17e568] [cursor=pointer]
+              - generic [ref=f17e571]: Composite parts (1)
+            - generic [ref=f17e576]:
+              - generic [ref=f17e578] [cursor=pointer]
+              - generic [ref=f17e581]: Surfaces (18)
+            - generic [ref=f17e586]:
+              - generic [ref=f17e588] [cursor=pointer]
+              - generic [ref=f17e591]: Curves (8)
+        - generic [ref=f17e25]:
+          - generic [ref=f17e597] [cursor=pointer]
+          - generic [ref=f17e26]:
+            - generic [ref=f17e602]:
+              - button [ref=f17e603] [cursor=pointer]
+              - button [ref=f17e607] [cursor=pointer]
+              - button [ref=f17e611] [cursor=pointer]
+            - generic [ref=f17e615] [cursor=pointer]
+          - generic [ref=f17e620]:
+            - generic [ref=f17e621] [cursor=pointer]
+            - generic [ref=f17e625] [cursor=pointer]
+            - generic [ref=f17e629] [cursor=pointer]
+            - generic [ref=f17e633] [cursor=pointer]
+            - generic [ref=f17e637] [cursor=pointer]
+            - generic [ref=f17e641] [cursor=pointer]
+            - generic [ref=f17e645] [cursor=pointer]
+            - generic [ref=f17e648] [cursor=pointer]
+      - generic [ref=f17e652]:
+        - img [ref=f17e655] [cursor=pointer]
+        - generic [ref=f17e658]:
+          - generic [ref=f17e659] [cursor=pointer]: topsheet_surf
+          - generic [ref=f17e667] [cursor=pointer]: Thicken_tests
+          - generic [ref=f17e675] [cursor=pointer]: Reference side tests
+          - generic [ref=f17e681]: referenced part tests
+          - generic [ref=f17e692] [cursor=pointer]: featurescripts
+          - generic [ref=f17e698] [cursor=pointer]: jps_test_fixture
