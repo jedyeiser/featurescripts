@@ -169,7 +169,8 @@ def extra(distance, mode="NONE", text="", target=None):
 def move(name, bodies, path, dist, given=(), enums=None, extras=None):
     """An instance of Move Along Edge; parameters not given take the spec defaults (correction 38)."""
     given = {p["parameterId"]: p for p in [q("moveBodies", bodies), q("moveEdge", path), num("moveDist", dist)] + list(given)}
-    enums = enums or {}
+    # The cases written before the Direction parameter assume the legacy path direction; new ones override it.
+    enums = dict({"dirMode": "PATH"}, **(enums or {}))
     params = []
     for p in SPEC["parameters"]:
         pid = p["parameterId"]
@@ -315,6 +316,44 @@ l20 = sketch("M20 path: line x 20000..20400", TOP, polyline("l", [(20000, 0), (2
 mc20 = connector("M20 mate connector at (20000, 0, 0)", 20000, 0)
 move("M20 connector picked by its vertex, points off, named 'M20 MC' -> connector moves to (20100, 0, 0), no points",
      'qOwnedByBody(%s, EntityType.VERTEX)' % body(mc20), edges(l20), "100 mm", [s("nameText", "M20 MC")], {"nameMode": "NEW_NAME"})
+
+# M21-M24 direction rules. The path is two lines drawn END TO START (second segment first, each reversed), so the
+# path direction (first edge's own) runs toward -X; the geometric rules must not care.
+def reversed_path(tag, x0):
+    return sketch("%s path: line x %d..%d drawn right to left" % (tag, x0, x0 + 400), TOP,
+                  [seg("a", *mmv(x0 + 400, 0, x0 + 200, 0)), seg("b", *mmv(x0 + 200, 0, x0, 0))])
+
+
+# M21 furthest end (the default rule): cube at x0 + 100 is nearer the left end, so it runs +X.
+l21 = reversed_path("M21", 21000)
+c21 = cube("M21 cube at (21100, 0, 0)", 21100, 0)
+move("M21 furthest end, 100 -> centroid (21200, 0, 0)", body(c21), edges(l21), "100 mm", [], {"dirMode": "FURTHEST_END"})
+
+# M22 nearest end: same fixture, runs -X toward the left end.
+l22 = reversed_path("M22", 22000)
+c22 = cube("M22 cube at (22100, 0, 0)", 22100, 0)
+move("M22 nearest end, 100 -> centroid (22000, 0, 0)", body(c22), edges(l22), "100 mm", [], {"dirMode": "NEAREST_END"})
+
+# M23 toward / away from a reference point (the dialog's Direction reference)
+l23 = reversed_path("M23", 23000)
+c23 = cube("M23 cube at (23200, 0, 0)", 23200, 0)
+r23 = sketch("M23 reference: point (23350, 80)", TOP, [point("p", *mmv(23350, 80))])
+move("M23 toward reference (23350, 80), 100 -> centroid (23300, 0, 0)", body(c23), edges(l23), "100 mm",
+     [q("dirRef", 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % r23)], {"dirMode": "TOWARD"})
+l23b = reversed_path("M23b", 23500)
+c23b = cube("M23b cube at (23700, 0, 0)", 23700, 0)
+r23b = sketch("M23b reference: point (23850, 80)", TOP, [point("p", *mmv(23850, 80))])
+move("M23b away from reference (23850, 80), 100 -> centroid (23600, 0, 0)", body(c23b), edges(l23b), "100 mm",
+     [q("dirRef", 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % r23b)], {"dirMode": "AWAY"})
+
+# M24 vector (not exactly along the path) and closed-path fallback
+l24 = reversed_path("M24", 24000)
+c24 = cube("M24 cube at (24200, 0, 0)", 24200, 0)
+move("M24 vector (1, 0.3, 0.1), 100 -> centroid (24300, 0, 0)", body(c24), edges(l24), "100 mm",
+     [num("dirX", "1"), num("dirY", "0.3"), num("dirZ", "0.1")], {"dirMode": "VECTOR"})
+l24c = sketch("M24c path: closed square 200 about (24600, 0)", TOP, polyline("s", [(24500, -100), (24700, -100), (24700, 100), (24500, 100)], closed=True))
+c24c = cube("M24c cube at (24600, -100, 0)", 24600, -100)
+move("M24c closed path, furthest end -> falls back to path direction with an INFO notice, 100 moves", body(c24c), edges(l24c), "100 mm", [], {"dirMode": "FURTHEST_END"})
 
 # M11 disconnected edges: temporary instance, must fail
 l11 = sketch("M11 path: two lines with a gap", TOP, polyline("l", [(11000, 0), (11100, 0)]) + polyline("m", [(11200, 0), (11300, 0)]))

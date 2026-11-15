@@ -2,7 +2,7 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 
 // curveTrimCore (same document) - plane-cut trim/split engine
-import(path : "d56d74c24234ab2b885e6fc1", version : "b949d12015d8f32fcd55f420");
+import(path : "d56d74c24234ab2b885e6fc1", version : "ea2966195a7ea412688a95fe");
 
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
@@ -288,15 +288,25 @@ function reportRoute(context is Context, id is Id, results is array)
     var inPlace = 0;
     var replaced = 0;
     var notes = [];
+    var vias = [];
+    var reasons = [];
     for (var r in results)
     {
         if (r.route == "inPlace")
         {
             inPlace += 1;
+            if (r.via != undefined && indexOf(vias, r.via) < 0)
+            {
+                vias = append(vias, r.via);
+            }
         }
         else if (r.route == "replaced")
         {
             replaced += 1;
+            if (r.reason != undefined && r.reason != "" && indexOf(reasons, r.reason) < 0)
+            {
+                reasons = append(reasons, r.reason);
+            }
         }
         if (r.endNote != undefined && r.endNote != "" && indexOf(notes, r.endNote) < 0)
         {
@@ -306,13 +316,13 @@ function reportRoute(context is Context, id is Id, results is array)
     var messages = notes;
     if (inPlace > 0)
     {
-        messages = append(messages, "Trimmed in place (opMoveCurveBoundary): the wire body is kept, so references to it survive.");
+        messages = append(messages, "Trimmed in place (opMoveCurveBoundary, " ~ join(vias, "; ") ~ "): the wire body is kept, so references to it survive.");
     }
     if (replaced > 0)
     {
-        messages = append(messages, "The wire was REPLACED: an in-place trim was not possible (the cutting plane crosses the curve "
-            ~ "more than once, or the side to keep was ambiguous), so the cut made new wire bodies and deleted the original. "
-            ~ "References to the old wire, such as a query variable made before this feature, no longer resolve.");
+        messages = append(messages, "The wire was REPLACED: an in-place trim was not possible, so the cut made new wire bodies and deleted the "
+            ~ "original. References to the old wire, such as a query variable made before this feature, no longer resolve. "
+            ~ join(reasons, " "));
         reportFeatureWarning(context, id, join(messages, " "));
     }
     else if (size(messages) > 0)
@@ -457,14 +467,16 @@ function applyCut(context is Context, id is Id, definition is map, wire is Query
         return { "output" : wire, "cutPoints" : points, "pieces" : spans };
     }
 
+    var inPlaceReason = "";
     if (definition.operation == OPERATION.TRIM && size(fractions) == 1)
     {
         // Preferred: trim in place so the wire body (and references to it) survive.
         var inPlace = trimWireInPlace(context, id, wire, wp, fractions[0], !definition.flipHeuristics);
         if (inPlace.done)
         {
-            return { "output" : inPlace.wire, "cutPoints" : points, "pieces" : [inPlace.wire], "route" : "inPlace" };
+            return { "output" : inPlace.wire, "cutPoints" : points, "pieces" : [inPlace.wire], "route" : "inPlace", "via" : inPlace.route };
         }
+        inPlaceReason = inPlace.reason;
     }
 
     var pieces = splitWireIntoPieces(context, id, wire, wp, fractions);
@@ -481,7 +493,7 @@ function applyCut(context is Context, id is Id, definition is map, wire is Query
         keepOnePiece(context, id, pieces, keepIndex);
         // "replaced": the single-cut trim could not run in place, so the wire was extracted and the original deleted.
         return { "output" : pieces[keepIndex], "cutPoints" : points, "pieces" : [pieces[keepIndex]],
-                 "route" : size(fractions) == 1 ? "replaced" : "" };
+                 "route" : size(fractions) == 1 ? "replaced" : "", "reason" : inPlaceReason };
     }
     return { "output" : qUnion(pieces), "cutPoints" : points, "pieces" : pieces };
 }

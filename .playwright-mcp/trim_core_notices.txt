@@ -1,0 +1,57 @@
+Found 5 matches for /curveTrimCore|betterCurveTrim|error|Error|trialTrim|judgeTrial|set but not used/:
+
+- generic [active] [ref=f22e1]:
+  - generic [ref=f22e5]:
+    - generic [ref=f22e85]:
+      - generic [ref=f22e124]:
+        - generic [ref=f22e126]:
+          - generic [ref=f22e255]:
+            - generic [ref=f22e319]:
+              - generic:
+                - generic: "import(path : \"onshape/std/common.fs\", version : \"3083.0\");"
+                - generic: "import(path : \"onshape/std/movecurveboundarytype.gen.fs\", version : \"3083.0\");"
+                - generic: /**
+                - generic: "* curveTrimCore - shared engine for the betterCurveTrim feature."
+                - generic: "*"
+                - generic: "* Trims and splits wire curves (single- or multi-edge) at arc-length locations. A"
+                - generic: "* wire is read as one ordered path (constructPath); every cut location is a fraction"
+
+----
+
+- generic [active] [ref=f22e1]:
+  - generic [ref=f22e5]:
+    - generic [ref=f22e85]:
+      - generic [ref=f22e124]:
+        - generic [ref=f22e126]:
+          - generic [ref=f22e329]:
+            - generic [ref=f22e335]:
+              - generic [ref=f22e336] [cursor=pointer]: Testing
+              - generic [ref=f22e344] [cursor=pointer]: Move_Along_Edge
+              - generic [ref=f22e350] [cursor=pointer]: trimCurvePlusIcon.svg
+              - generic [ref=f22e356] [cursor=pointer]: betterCurveTrim
+              - generic [ref=f22e362]: curveTrimCore
+              - generic [ref=f22e368] [cursor=pointer]: OS_Trim
+              - generic [ref=f22e374] [cursor=pointer]: move_along_edge_icon.svg
+              - generic [ref=f22e380] [cursor=pointer]: Move along edge tests
+
+----
+
+- generic [active] [ref=f22e1]:
+  - generic [ref=f22e5]:
+    - generic [ref=f22e85]:
+      - generic [ref=f22e124]:
+        - generic [ref=f22e410]:
+          - generic [ref=f22e454]:
+            - generic [ref=f22e455]: Monitor
+            - generic [ref=f22e465] [cursor=pointer]: Trim curve + tests
+          - generic [ref=f22e469]:
+            - generic [ref=f22e470] [cursor=pointer]: curveTrimCore
+            - table [ref=f22e475]:
+              - rowgroup [ref=f22e476]:
+                - row [ref=f22e477] [cursor=pointer]:
+                  - cell [ref=f22e478]
+                  - cell [ref=f22e482]
+                  - cell "Variable e set but not used" [ref=f22e484]
+                - row [ref=f22e486] [cursor=pointer]:
+                  - cell [ref=f22e487]
+                  - cell [ref=f22e488]

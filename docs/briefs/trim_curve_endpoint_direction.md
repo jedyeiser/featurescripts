@@ -129,3 +129,58 @@ must be the same for both directions of the same geometry.
 ## Out of scope
 
 Everything else in the studio; the deform backend. Do not edit the user's Part Studio.
+
+## Implementation (2026-11-12, FeatureScript session): pushed to the smallTools workspace, NOT versioned, NOT yet run on the user's studio
+
+Changed: `smallTools/betterCurveTrim.fs` only (`curveTrimCore.fs` and its pin are untouched, so no re-pin).
+1. **Endpoint rule (section 2).** New `pathEndOfPoint(context, wp, f0)`: 0 / 1 when the reference point is at the path start / end
+   (within `max(CTC_FRACTION_EPS, CTC_ON_CURVE_TOL / total)` = 10 um), else undefined. It also returns undefined (today's rule) for a
+   CLOSED wire (both ends coincide within 10 um) and for a wire that passes through the same spot elsewhere (400 path samples, a sample
+   within 2 sample spacings of the point outside a 6-sample zone at its own end; a heuristic, it can miss a touch finer than that).
+   In `cutFractionsFor` an end point makes `dir` = +1 (start) / -1 (end) and the distance is used as `abs(distance)`: the
+   cut always runs INTO the curve, `distanceFlip` and the sign of the distance are ignored (also for the extra distances of SPLIT). The
+   blue arrow follows. `adjustOneCurve`'s keep logic needed no change: for f0 = 1 and the cut before it, POINT_SIDE keeps the path END
+   side (the span between the end point and the cut), FAR_SIDE keeps the rest. Interior points: unchanged.
+   Behaviour changes to know: a point at an end with distanceFlip true and a NEGATIVE distance used to cut into the curve (double negative)
+   and still does; the same point with the flip alone, or a negative distance alone, used to be an error and now cuts into the curve.
+2. **Route message.** `applyCut` now returns `route` ("inPlace" or "replaced" = a single-cut TRIM that fell back to extract-and-delete;
+   multi-cut trims, split and the inflection NEAR_ENDS trim set none); `reportRoute` turns it into feature INFO ("Trimmed in place
+   (opMoveCurveBoundary): the wire body is kept...") or a feature WARNING ("The wire was REPLACED ... references to the old wire ... no
+   longer resolve"), plus the endpoint note ("The reference point is at the end of the curve, so the distance runs into the curve ...").
+   A warning shows as a failed feature in the tree (correction 87); that is the requested behaviour. The WHY of a fallback (crossing
+   count vs ambiguous side) is not named: `trimWireInPlace` returns no reason and changing it would need a re-pin of curveTrimCore.
+3. Distance / Opposite direction tooltips say the rule. `distanceFlip` is not greyed (a dialog cannot depend on geometry).
+
+**For the reported case** (reference at the END, path END side kept, 165 of 194.974 mm): the cut is at 29.974 mm from the start; the old
+error cannot occur. Whether the in-place route then succeeds is **unverified**, but nothing in the case points to a refusal: the gates are
+(a) the plane normal to the path at the cut crossing the wire exactly once (a wire with no turn-backs past the cut does) and (b) the two
+ends being more than 1% of the length apart ALONG THE PLANE NORMAL (about 165 mm vs about 30 mm for a roughly straight wire).
+The info message now says which route ran. Not covered: the identity layer (section 1c, bodyIdentity), the small-plane / vertex trim (1d).
+
+## Implementation 2 (2026-11-12): in-place trim by OBSERVATION, no gates (curveTrimCore.fs + betterCurveTrim.fs; pushed, pin chain re-pinned, NOT versioned)
+
+User direction (via the peer session): the "ambiguous side" gate must not exist, and the in-place route should succeed whenever
+geometrically sensible. `trimWireInPlace` (curveTrimCore) no longer predicts. For each cutter, in order, it makes a SCRATCH COPY
+(`opExtractWires` of the wire's edges, proven in this module), runs `opMoveCurveBoundary` TRIM on the copy with flipHeuristics false,
+and OBSERVES: which end of the path survived (vertex at the start / end point) and the kept length against the length that side of the
+cut must have (10 um tolerance); a cutter that also cut elsewhere, or not at all, fails that check. The copy and helper bodies are
+deleted; the flip that keeps the wanted side is read from the observation; then the real wire is trimmed the same way (the old
+"trimmed wire has a vertex at the kept end and the cut" check stays). Cutters: (1) plane normal to the path, 2 x wire length (the old
+route), (2) a vertex split into the wire with `opSplitEdges` and `trimTo` that vertex, (3) a plane 20% of the wire length, (4) 5%.
+Nothing counts plane crossings or end distances any more; they are only reported. When no cutter works, nothing was changed and the
+feature WARNING carries the numbers: wire length, cut position, plane crossings, end distances along the plane normal, and why each cutter
+failed (kept length vs expected). A closed wire (ends coincide) is not tried (the sides cannot be told apart). The INFO message names
+the cutter that worked.
+
+Measured (smallTools "Trim curve + tests", 23/23 cases): the old 2 x plane route is accepted for every case the old gates refused by
+PREDICTION (T10, T11, T14, T20: ends equidistant from the cut plane or near it); the old code replaced the wire there, the observed
+trial keeps it. The hook wire (line, R50 U-turn, line back; the plane through a cut on the return leg crosses the wire twice) is
+rejected by the 2 x plane trial and trimmed in place by the 20% plane (T21, T22, T23). The vertex cutter was tried before it and did
+NOT win on the hook wire; its reason was not printed (it prints only if every cutter fails), so whether `trimTo` a vertex on the wire
+itself works at all is still **unverified**: it is harmless as a second cutter.
+Cost: one extra copy-trim-delete per cutter tried (the first cutter usually wins: two trims instead of one).
+
+Which gate refused on the user's wire: **not known** (the user's wire geometry was not read). The new message prints the numbers
+and the per-cutter reasons if the in-place route still fails there; if it succeeds the message says which cutter did it.
+Version order for the user: smallTools was pushed with curveTrimCore first and betterCurveTrim re-pinned to it (repin.py);
+create ONE version of the smallTools document (both tabs go into it), then update the Trim curve + reference in the studio.

@@ -57,6 +57,36 @@ export enum MoveToMode
     NEAREST
 }
 
+/**
+ * Which way along the path a move runs. Every rule except PATH is geometric, so the direction does
+ * not depend on the order or orientation of the selected edges.
+ */
+export enum MoveDirection
+{
+    annotation { "Name" : "Toward furthest end" }
+    FURTHEST_END,
+    annotation { "Name" : "Toward nearest end" }
+    NEAREST_END,
+    annotation { "Name" : "Toward reference" }
+    TOWARD,
+    annotation { "Name" : "Away from reference" }
+    AWAY,
+    annotation { "Name" : "Vector (X, Y, Z)" }
+    VECTOR,
+    annotation { "Name" : "Along direction" }
+    ALONG,
+    annotation { "Name" : "Path direction (first edge)" }
+    PATH
+}
+
+// Components of the direction vector; they need not be exactly along the path.
+const DIRECTION_BOUNDS_X = { (unitless) : [-100000, 1, 100000] } as RealBoundSpec;
+const DIRECTION_BOUNDS_YZ = { (unitless) : [-100000, 0, 100000] } as RealBoundSpec;
+
+// Below this |cos| between the requested direction and the path tangent at the start, the direction is
+// nearly perpendicular to the path and its sign is unreliable.
+const DIRECTION_WEAK_COSINE = 0.1;
+
 // Id of the flip arrow manipulator.
 const FLIP_MANIPULATOR = "flipArrow";
 
@@ -85,7 +115,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
 
         if (definition.provideRef)
         {
-            annotation { "Name" : "Reference Vertex", "Filter" : EntityType.VERTEX, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Reference Vertex", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             definition.refVertex is Query;
         }
 
@@ -103,7 +133,34 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
             isLength(definition.moveDist, LENGTH_BOUNDS);
         }
 
-        annotation { "Name" : "Flip direction", "Description" : "Move backwards along the path (Distance moves only)." }
+        annotation { "Name" : "Direction", "UIHint" : [UIHint.SHOW_LABEL], "Description" : "Which way a positive distance runs, decided where the entity starts on the path, so it does not depend on the order or orientation of the selected edges. Ends: toward the path end furthest from (or nearest to) the start, measured along the path; a closed path has no ends and uses the path direction. Reference and vector rules compare with the path tangent at the start. In Nearest point mode the rule only breaks ties between equally near points.", "Default" : MoveDirection.FURTHEST_END }
+        definition.dirMode is MoveDirection;
+
+        if (definition.dirMode == MoveDirection.TOWARD || definition.dirMode == MoveDirection.AWAY)
+        {
+            annotation { "Name" : "Direction reference", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            definition.dirRef is Query;
+        }
+
+        if (definition.dirMode == MoveDirection.VECTOR)
+        {
+            annotation { "Name" : "X", "Icon" : Icon.ALONG_X }
+            isReal(definition.dirX, DIRECTION_BOUNDS_X);
+
+            annotation { "Name" : "Y", "Icon" : Icon.ALONG_Y }
+            isReal(definition.dirY, DIRECTION_BOUNDS_YZ);
+
+            annotation { "Name" : "Z", "Icon" : Icon.ALONG_Z }
+            isReal(definition.dirZ, DIRECTION_BOUNDS_YZ);
+        }
+
+        if (definition.dirMode == MoveDirection.ALONG)
+        {
+            annotation { "Name" : "Direction from", "Filter" : (EntityType.EDGE && GeometryType.LINE) || (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1, "Description" : "A straight edge (its direction), a planar face (its normal) or a mate connector (its Z axis)." }
+            definition.dirQuery is Query;
+        }
+
+        annotation { "Name" : "Flip direction", "Description" : "Reverse the direction above (Distance moves only)." }
         definition.flipDirection is boolean;
 
         annotation { "Name" : "Apply", "UIHint" : [UIHint.SHOW_LABEL], "Description" : "Translate only keeps the orientation. Rotate only keeps the position: the entity turns about its reference point (reference vertex, else its centroid or mate connector origin).", "Default" : MoveApplyMode.MOVE_AND_ROTATE }
@@ -174,6 +231,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         var bodyIndex = 0;
         var namesMissing = false;
         var connectorNotNamed = false;
+        var directionNote = undefined;
         // results[j] = what move j produced, over all source bodies (0 = the main move).
         var extraCount = definition.copyBodies ? size(definition.extraCopies) : 0;
         var results = makeArray(1 + extraCount, []);
@@ -192,7 +250,11 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
             {
                 // The positive move direction at the first entity's reference point; clicking it flips.
                 addManipulators(context, id, { (FLIP_MANIPULATOR) : flipManipulator({
-                                    "base" : moved.startPoint, "direction" : moved.startTangent, "flipped" : definition.flipDirection }) });
+                                    "base" : moved.startPoint, "direction" : moved.startDirection, "flipped" : definition.flipDirection }) });
+            }
+            if (directionNote == undefined)
+            {
+                directionNote = moved.directionNote;
             }
             for (var j = 0; j < size(moved.results); j += 1)
             {
@@ -207,6 +269,11 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
         if (definition.applyMode == MoveApplyMode.ROTATE && !definition.provideRef && !isQueryEmpty(context, points))
         {
             reportFeatureInfo(context, id, "Rotate only: points are created at their source locations (a point has no orientation).");
+        }
+
+        if (directionNote != undefined)
+        {
+            reportFeatureInfo(context, id, directionNote);
         }
 
         if (connectorNotNamed)
@@ -236,7 +303,7 @@ export const myFeature = defineFeature(function(context is Context, id is Id, de
                     "inputs" : qUnion([definition.moveBodies, definition.moveEdge]),
                     "queries" : queries
                 });
-    }, { "moveMode" : MoveToMode.DISTANCE, "moveTarget" : qNothing(), "applyMode" : MoveApplyMode.MOVE_AND_ROTATE, "orientation" : MoveOrientation.TANGENT, "nameMode" : MoveNameMode.NONE, "nameText" : "", "mcAsPoints" : false, "extraCopies" : [], "sourceNames" : "" });
+    }, { "moveMode" : MoveToMode.DISTANCE, "moveTarget" : qNothing(), "applyMode" : MoveApplyMode.MOVE_AND_ROTATE, "orientation" : MoveOrientation.TANGENT, "dirMode" : MoveDirection.PATH, "dirRef" : qNothing(), "dirQuery" : qNothing(), "dirX" : 1, "dirY" : 0, "dirZ" : 0, "nameMode" : MoveNameMode.NONE, "nameText" : "", "mcAsPoints" : false, "extraCopies" : [], "sourceNames" : "" });
 
 /**
  * Reads the selected bodies' names into the hidden sourceNames parameter, in the order the
@@ -332,17 +399,22 @@ function buildMovePath(context is Context, selection is Query) returns map
  * copy. A mate connector in "as points" mode, and a sketch vertex, get a point per move; a sketch
  * edge gets a wire per move. Those sources stay in place.
  * Returns { results : one Query per move, namesMissing : a prefix/suffix name lacked the source name,
- * connectorNotNamed : a name was asked for a mate connector, startPoint, startTangent : the positive direction there }.
+ * connectorNotNamed : a name was asked for a mate connector, startPoint, startDirection : the resolved positive
+ * direction there (unitless, before Flip direction), directionNote : an info message about the direction rule or undefined }.
  */
 export function moveBodyOnCurve(context is Context, id is Id, body is Query, pathData is map, baseName, definition is map) returns map
 {
     var startQ = definition.provideRef ? definition.refVertex : body;
     var startPoint = referencePoint(context, startQ);
     var startArcLength = arcLengthOf(pathData, nearestOnPath(context, pathData, startPoint));
+    var startEval = evalPathAtArcLength(context, pathData, startArcLength);
+    var direction = resolveDirection(context, pathData, startArcLength, startPoint, startEval.tangent, definition);
+    // Positive distances run along the resolved direction; Flip direction reverses it.
+    var signedDirection = definition.flipDirection ? -direction.sign : direction.sign;
 
     // The main move keeps the original ids so existing references to its copies survive.
     var moves = [{ "id" : id, "nameMode" : definition.nameMode, "nameText" : definition.nameText,
-                "end" : endArcLength(context, pathData, startArcLength, definition.moveMode, definition.moveDist, definition.moveTarget, "moveTarget", definition) }];
+                "end" : endArcLength(context, pathData, startArcLength, signedDirection, direction.sign, definition.moveMode, definition.moveDist, definition.moveTarget, "moveTarget") }];
     if (definition.copyBodies)
     {
         for (var j = 0; j < size(definition.extraCopies); j += 1)
@@ -350,7 +422,7 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
             var copy = definition.extraCopies[j];
             var mode = copy.copyMoveMode == undefined ? MoveToMode.DISTANCE : copy.copyMoveMode;
             moves = append(moves, { "id" : id + ("extra" ~ j), "nameMode" : copy.copyNameMode, "nameText" : copy.copyName,
-                        "end" : endArcLength(context, pathData, startArcLength, mode, copy.copyDistance, copy.copyTarget, "extraCopies", definition) });
+                        "end" : endArcLength(context, pathData, startArcLength, signedDirection, direction.sign, mode, copy.copyDistance, copy.copyTarget, "extraCopies") });
         }
     }
 
@@ -415,7 +487,7 @@ export function moveBodyOnCurve(context is Context, id is Id, body is Query, pat
         results = append(results, result);
     }
     return { "results" : results, "namesMissing" : namesMissing, "connectorNotNamed" : connectorNotNamed,
-            "startPoint" : startPoint, "startTangent" : evalPathAtArcLength(context, pathData, startArcLength).tangent };
+            "startPoint" : startPoint, "startDirection" : direction.sign * startEval.tangent, "directionNote" : direction.note };
 }
 
 function composeName(mode is MoveNameMode, text is string, baseName) returns string
@@ -431,12 +503,17 @@ function composeName(mode is MoveNameMode, text is string, baseName) returns str
     return baseName ~ text;
 }
 
+// Path points whose distances to a target differ by less than this are equally near.
+const TIE_DISTANCE = 1e-6 * meter;
+
 /**
- * Where a move ends, as an arc length: `distance` on from the start (backwards when flipDirection
- * is set), or the path point nearest `target`.
+ * Where a move ends, as an arc length: `distance` on from the start in direction `sign` (+1 along the
+ * path direction, -1 against it), or the path point nearest `target`. When several path points are
+ * equally near the target (a curve crossing a path edge junction), the one first reached from the
+ * start in direction `tieSign` wins.
  */
-function endArcLength(context is Context, pathData is map, startArcLength is ValueWithUnits, mode is MoveToMode,
-    distance, target, targetParameter is string, definition is map) returns ValueWithUnits
+function endArcLength(context is Context, pathData is map, startArcLength is ValueWithUnits, sign is number, tieSign is number,
+    mode is MoveToMode, distance, target, targetParameter is string) returns ValueWithUnits
 {
     if (mode == MoveToMode.NEAREST)
     {
@@ -445,9 +522,163 @@ function endArcLength(context is Context, pathData is map, startArcLength is Val
             throw regenError("Select a target for the move.", [targetParameter]);
         }
         // The target's own nearest point: a curve or face crossing the path gives the crossing.
-        return arcLengthOf(pathData, nearestOnPath(context, pathData, target));
+        return nearestArcLength(context, pathData, target, startArcLength, tieSign);
     }
-    return definition.flipDirection ? (startArcLength - distance) : (startArcLength + distance);
+    return startArcLength + sign * distance;
+}
+
+/**
+ * The arc length of the path point nearest `target`. Ties (within TIE_DISTANCE) go to the candidate
+ * first reached from startArcLength in direction `tieSign`; if none lies ahead, the closest one behind.
+ */
+function nearestArcLength(context is Context, pathData is map, target, startArcLength is ValueWithUnits, tieSign is number) returns ValueWithUnits
+{
+    var candidates = [];
+    var bestDistance = inf * meter;
+    for (var i = 0; i < size(pathData.path.edges); i += 1)
+    {
+        var d = evDistance(context, { "side0" : pathData.path.edges[i], "side1" : target });
+        candidates = append(candidates, { "distance" : d.distance, "edgeIndex" : i, "edgeParam" : d.sides[0].parameter });
+        bestDistance = min(bestDistance, d.distance);
+    }
+    var chosen = undefined;
+    var chosenAhead = inf * meter;
+    var chosenBehind = inf * meter;
+    var behind = undefined;
+    for (var candidate in candidates)
+    {
+        if (candidate.distance > bestDistance + TIE_DISTANCE)
+        {
+            continue;
+        }
+        var arc = arcLengthOf(pathData, candidate);
+        var ahead = (arc - startArcLength) * tieSign;
+        if (ahead >= -TIE_DISTANCE && ahead < chosenAhead)
+        {
+            chosen = arc;
+            chosenAhead = ahead;
+        }
+        else if (ahead < -TIE_DISTANCE && -ahead < chosenBehind)
+        {
+            behind = arc;
+            chosenBehind = -ahead;
+        }
+    }
+    return chosen == undefined ? behind : chosen;
+}
+
+/**
+ * Decides which way along the path a positive distance runs, as a sign: +1 along the path direction
+ * (the first selected edge's own direction), -1 against it. Returns { sign, note } where note is an
+ * info message when a rule could not be applied as asked, else undefined.
+ */
+function resolveDirection(context is Context, pathData is map, startArcLength is ValueWithUnits, startPoint is Vector,
+    tangent is Vector, definition is map) returns map
+{
+    var mode = definition.dirMode;
+    var totalLen = pathData.totalLen;
+    if (mode == undefined || mode == MoveDirection.PATH)
+    {
+        return { "sign" : 1, "note" : undefined };
+    }
+
+    if (mode == MoveDirection.FURTHEST_END || mode == MoveDirection.NEAREST_END)
+    {
+        if (pathData.path.closed)
+        {
+            return { "sign" : 1, "note" : "The path is closed and has no ends, so the path direction is used. Pick a reference, vector or direction for a stable move direction." };
+        }
+        // The end at arc length totalLen is the furthest when the start is in the first half. A start at
+        // the exact middle is a tie, broken toward the path's last end.
+        var toLastEnd = startArcLength <= totalLen / 2;
+        if (mode == MoveDirection.NEAREST_END)
+        {
+            toLastEnd = startArcLength > totalLen / 2;
+        }
+        return { "sign" : toLastEnd ? 1 : -1, "note" : undefined };
+    }
+
+    var wanted;
+    if (mode == MoveDirection.TOWARD || mode == MoveDirection.AWAY)
+    {
+        if (definition.dirRef == undefined || isQueryEmpty(context, definition.dirRef))
+        {
+            throw regenError("Select a direction reference.", ["dirRef"]);
+        }
+        var refPoint = referencePoint(context, definition.dirRef);
+        // Compare positions along the path, not the straight line: it stays right for a reference
+        // off to the side of the path, and on a closed path it takes the shorter way round.
+        var delta = arcLengthOf(pathData, nearestOnPath(context, pathData, refPoint)) - startArcLength;
+        if (pathData.path.closed && totalLen > 0 * meter)
+        {
+            if (delta > totalLen / 2)
+            {
+                delta = delta - totalLen;
+            }
+            else if (delta < -totalLen / 2)
+            {
+                delta = delta + totalLen;
+            }
+        }
+        if (abs(delta) > TOLERANCE.zeroLength * meter)
+        {
+            var towardSign = delta > 0 * meter ? 1 : -1;
+            return { "sign" : mode == MoveDirection.AWAY ? -towardSign : towardSign, "note" : undefined };
+        }
+        // The reference projects onto the start itself: fall back to the straight line to it.
+        wanted = (refPoint - startPoint) / meter;
+        if (norm(wanted) < TOLERANCE.zeroLength)
+        {
+            return { "sign" : 1, "note" : "The direction reference is at the start point, so the path direction is used." };
+        }
+        if (mode == MoveDirection.AWAY)
+        {
+            wanted = -wanted;
+        }
+    }
+    else if (mode == MoveDirection.VECTOR)
+    {
+        wanted = vector(definition.dirX, definition.dirY, definition.dirZ);
+    }
+    else
+    {
+        wanted = queryDirection(context, definition.dirQuery);
+    }
+
+    if (norm(wanted) < TOLERANCE.zeroLength)
+    {
+        throw regenError("The direction is zero. Give a non-zero vector.", ["dirX", "dirY", "dirZ"]);
+    }
+    var cosine = dot(normalize(wanted), tangent);
+    var note = undefined;
+    if (abs(cosine) < DIRECTION_WEAK_COSINE)
+    {
+        note = "The direction is nearly perpendicular to the path at the start, so which way it runs is unreliable. Choose another direction.";
+    }
+    return { "sign" : cosine < 0 ? -1 : 1, "note" : note };
+}
+
+/**
+ * The direction picked by a direction query: a straight edge's direction, a planar face's normal or
+ * a mate connector's Z axis.
+ */
+function queryDirection(context is Context, selection) returns Vector
+{
+    if (selection == undefined || isQueryEmpty(context, selection))
+    {
+        throw regenError("Select a direction.", ["dirQuery"]);
+    }
+    // An implicit mate connector can arrive as its vertex: resolve to the connector body.
+    var connector = qBodyType(qOwnerBody(selection), BodyType.MATE_CONNECTOR);
+    if (!isQueryEmpty(context, connector))
+    {
+        return evMateConnector(context, { "mateConnector" : connector }).zAxis;
+    }
+    if (!isQueryEmpty(context, qEntityFilter(selection, EntityType.FACE)))
+    {
+        return evPlane(context, { "face" : selection }).normal;
+    }
+    return evLine(context, { "edge" : selection }).direction;
 }
 
 /**

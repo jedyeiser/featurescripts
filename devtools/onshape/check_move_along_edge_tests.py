@@ -103,6 +103,17 @@ moved_to("M8 ", "M8 cube", 8200, 200, 30)
 moved_to("M9 ", "M9 cube", 8950, 0, 0)
 moved_to("M10 ", "M10 cube", 10100, 50, 0)
 
+# Direction rules: the paths are drawn right to left, so these only pass if the rule is geometric.
+moved_to("M21 ", "M21 cube", 21200, 0, 0)
+moved_to("M22 ", "M22 cube", 22000, 0, 0)
+moved_to("M23 ", "M23 cube", 23300, 0, 0)
+moved_to("M23b ", "M23b cube", 23600, 0, 0)
+moved_to("M24 ", "M24 cube", 24300, 0, 0)
+case("M24c ", r'''
+        const cube = created(@CUBE@);
+        return [at(cube, 24700, -100, 0) || at(cube, 24500, -100, 0), describe("cube", cube) ~ ", expected (24700 or 24500, -100, 0)"];''',
+     CUBE="M24c cube")
+
 case("M12 ", r'''
         const q0 = embedded(SELF).query.initial_copy.value;
         const wires = count(qBodyType(q0, BodyType.WIRE));
@@ -165,7 +176,7 @@ case("M20 ", r'''
      MC="M20 mate connector")
 
 # M3b: names missing -> warning; M20: a connector cannot be named -> info.
-EXPECTED_STATUS = {"M3b ": "WARNING", "M20 ": "INFO"}
+EXPECTED_STATUS = {"M3b ": "WARNING", "M20 ": "INFO", "M24c ": "INFO"}
 
 
 def strings(result):

@@ -1,0 +1,195 @@
+- generic [ref=f21e3]:
+  - navigation [ref=f21e29]:
+    - generic [ref=f21e30]:
+      - link [ref=f21e33] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f21e34]
+      - generic [ref=f21e36] [cursor=pointer]
+    - generic [ref=f21e39]:
+      - generic [ref=f21e41]:
+        - generic [ref=f21e42]: Small Tools
+        - generic [ref=f21e43]: Main
+      - generic [ref=f21e45] [cursor=pointer]
+      - link "Ski Featurescripts" [ref=f21e49] [cursor=pointer]:
+        - /url: /documents?nodeId=57002a237ac4cbcc7d7cd398&resourceType=folder
+    - generic [ref=f21e53]:
+      - generic [ref=f21e61] [cursor=pointer]
+      - generic [ref=f21e67] [cursor=pointer]
+      - button "Notifications" [ref=f21e72] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f21e80]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f21e83] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f21e88] [cursor=pointer]
+      - button "Share" [ref=f21e92] [cursor=pointer]
+      - generic "Help menu" [ref=f21e94] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f21e98] [cursor=pointer]
+  - generic [ref=f21e7]:
+    - generic [ref=f21e9]:
+      - generic [ref=f21e10]:
+        - generic [ref=f21e105]:
+          - generic [ref=f21e106] [cursor=pointer]
+          - generic [ref=f21e109] [cursor=pointer]
+          - generic [ref=f21e112] [cursor=pointer]
+          - generic [ref=f21e115] [cursor=pointer]
+          - generic [ref=f21e118] [cursor=pointer]
+          - generic [ref=f21e121] [cursor=pointer]
+          - generic [ref=f21e124] [cursor=pointer]
+          - generic [ref=f21e127] [cursor=pointer]
+        - generic [ref=f21e130] [cursor=pointer]
+      - generic [ref=f21e134] [cursor=pointer]
+    - generic [ref=f21e16]:
+      - generic [ref=f21e139]:
+        - generic [ref=f21e143]:
+          - generic [ref=f21e155]:
+            - generic [ref=f21e156]: New feature
+            - generic [ref=f21e169]:
+              - generic [ref=f21e170] [cursor=pointer]: Length parameter
+              - generic [ref=f21e172] [cursor=pointer]
+            - generic [ref=f21e179]:
+              - generic [ref=f21e180] [cursor=pointer]
+              - generic [ref=f21e184] [cursor=pointer]
+            - generic [ref=f21e187]: Commit
+          - button "Search tools… alt/⌥ c" [ref=f21e198] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f21e199]:
+              - generic [ref=f21e200]: alt/⌥
+              - generic [ref=f21e201]: c
+          - generic [ref=f21e202]:
+            - switch "Co-complete" [disabled] [ref=f21e204] [cursor=pointer]
+            - generic [ref=f21e205]: Co-complete
+        - generic [ref=f21e210]:
+          - generic [ref=f21e211]: Monitor Move along edge tests
+          - generic [ref=f21e223]: Module outline
+          - generic [ref=f21e258]: Line 1 , Column 1
+      - generic [ref=f21e260]:
+        - textbox "Cursor at row 1" [active] [ref=f21e261]: FeatureScript 3083;
+        - generic [ref=f21e263]:
+          - generic [aria-hidden] [ref=f21e264]: "1"
+          - generic [aria-hidden] [ref=f21e265]: "2"
+          - generic [aria-hidden] [ref=f21e266]: "3"
+          - generic [aria-hidden] [ref=f21e267]: "4"
+          - generic [aria-hidden] [ref=f21e268]: "5"
+          - generic [aria-hidden] [ref=f21e269]: "6"
+          - generic [aria-hidden] [ref=f21e270]: "7"
+          - generic [aria-hidden] [ref=f21e271]: "8"
+          - generic [aria-hidden] [ref=f21e272]: "9"
+          - generic [aria-hidden] [ref=f21e273]: "10"
+          - generic [aria-hidden] [ref=f21e274]: "11"
+          - generic [aria-hidden] [ref=f21e275]: "12"
+          - generic [ref=f21e276]:
+            - text: "13"
+            - button [expanded] [ref=f21e277] [cursor=pointer]
+          - generic [aria-hidden] [ref=f21e278]: "14"
+          - generic [aria-hidden] [ref=f21e279]: "15"
+          - generic [aria-hidden] [ref=f21e280]: "16"
+          - generic [aria-hidden] [ref=f21e281]: "17"
+          - generic [aria-hidden] [ref=f21e282]: "18"
+          - generic [aria-hidden] [ref=f21e283]: "19"
+          - generic [aria-hidden] [ref=f21e284]: "20"
+          - generic [aria-hidden] [ref=f21e285]: "21"
+          - generic [aria-hidden] [ref=f21e286]: "22"
+          - generic [aria-hidden] [ref=f21e287]: "23"
+          - generic [aria-hidden] [ref=f21e288]: "24"
+          - generic [aria-hidden] [ref=f21e289]: "25"
+          - generic [aria-hidden] [ref=f21e290]: "26"
+          - generic [aria-hidden] [ref=f21e291]: "27"
+          - generic [aria-hidden] [ref=f21e292]: "28"
+          - generic [ref=f21e293]:
+            - text: "29"
+            - button [expanded] [ref=f21e294] [cursor=pointer]
+          - generic [aria-hidden] [ref=f21e295]: "30"
+          - generic [aria-hidden] [ref=f21e296]: "31"
+          - generic [aria-hidden] [ref=f21e297]: "32"
+          - generic [aria-hidden] [ref=f21e298]: "33"
+          - generic [aria-hidden] [ref=f21e299]: "34"
+          - generic [aria-hidden] [ref=f21e300]: "35"
+          - generic [aria-hidden] [ref=f21e301]: "36"
+          - generic [aria-hidden] [ref=f21e302]: "37"
+          - generic [aria-hidden] [ref=f21e303]: "38"
+          - generic [ref=f21e304]:
+            - text: "39"
+            - button [expanded] [ref=f21e305] [cursor=pointer]
+          - generic [aria-hidden] [ref=f21e306]: "40"
+          - generic [aria-hidden] [ref=f21e307]: "41"
+          - generic [aria-hidden] [ref=f21e308]: "42"
+          - generic [aria-hidden] [ref=f21e309]: "43"
+          - generic [ref=f21e310]:
+            - text: "44"
+            - button [expanded] [ref=f21e311] [cursor=pointer]
+          - generic [aria-hidden] [ref=f21e312]: "45"
+          - generic [aria-hidden] [ref=f21e313]: "46"
+          - generic [aria-hidden] [ref=f21e314]: "47"
+          - generic [aria-hidden] [ref=f21e315]: "48"
+          - generic [aria-hidden] [ref=f21e316]: "49"
+          - generic [aria-hidden] [ref=f21e317]: "50"
+          - generic [ref=f21e318]:
+            - text: "51"
+            - button [expanded] [ref=f21e319] [cursor=pointer]
+          - generic [aria-hidden] [ref=f21e320]: "52"
+          - generic [aria-hidden] [ref=f21e321]: "53"
+          - generic [aria-hidden] [ref=f21e322]: "54"
+        - generic [ref=f21e324]:
+          - generic:
+            - generic: FeatureScript 3083;
+            - generic: "import(path : \"onshape/std/common.fs\", version : \"3083.0\");"
+            - generic: // curveTrimCore (same document) - plane-cut trim/split engine
+            - generic: "import(path : \"d56d74c24234ab2b885e6fc1\", version : \"b949d12015d8f32fcd55f420\");"
+            - generic: "// IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)"
+            - generic: "import(path : \"a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3\", version : \"cffacd73d80aa6dc1a2c4273\");"
+            - generic: "IconNamespace::import(path : \"a4ceb2cfcdb959208b76a85c\", version : \"e1d6923ac9355dc407e71a4f\");"
+            - generic: /**
+            - generic: "* betterCurveTrim - a more powerful curve trim/split, in the look and feel of"
+            - generic: "* the stock Onshape \"Trim curve\" (see OS_Trim.fs, reference only - not imported)."
+            - generic: "*"
+            - generic: "* Capabilities:"
+            - generic: "* - Trim OR split (split keeps all geometry; optionally return one wire). [done]"
+            - generic: "* - Cut at points, evenly between two points, or every X from a point. [done]"
+            - generic: "* - Cut at one or more signed arc-length distances from a reference point [done]"
+            - generic: "* (blue arrow = positive direction), optionally also at the reference point."
+            - generic: "* - Cut at solved inflection points: pick any (toggle), or nearest each end. [done]"
+            - generic: "* - EXTEND (pass-through to opMoveCurveBoundary) to fully supersede OS_Trim. [pending]"
+            - generic: "*"
+            - generic: "* Wires may have any number of edges: a wire is read as one path (constructPath) and"
+            - generic: "* cut exactly with opSplitEdges at arc-length parameters (see curveTrimCore.fs)."
+            - generic: "* Inflection mode still needs a single-edge wire."
+            - generic: "*"
+            - generic: "* Variable_tools outputs (Extract variables): the standard keys plus cut_1..n (the"
+            - generic: "* vertex at each cut, ordered along the curve), cutVertices (all of them), piece_1..m"
+            - generic: "* (each span between cuts: a body, or its edges when split in place as one wire) and"
+            - generic: "* cutCount."
+            - generic: "*/"
+            - generic: // ============================================================================
+            - generic: // ENUMS
+            - generic: // ============================================================================
+            - generic: /**
+            - generic: "* Top-level operation. TRIM keeps one side of a cut; SPLIT keeps every piece."
+            - generic: "* (An EXTEND mode is still pending - see the file header.)"
+            - generic: "*/"
+            - generic: export enum OPERATION
+            - generic: "{"
+            - generic: "annotation { \"Name\" : \"Trim\" }"
+            - generic: TRIM,
+            - generic: "annotation { \"Name\" : \"Split\" }"
+            - generic: SPLIT
+            - generic: "}"
+            - generic: /**
+            - generic: "* How the cut location(s) along the curve are defined."
+            - generic: "*/"
+            - generic: export enum CUT_BY
+          - generic [ref=f21e325]:
+            - generic [ref=f21e326]: curveTrimCore
+            - generic [ref=f21e328]: trimCurvePlusIcon.svg
+            - generic [ref=f21e334]:
+              - generic [ref=f21e335] [cursor=pointer]
+              - text: Variable_Tools / V6 / extract_outputs
+      - generic [ref=f21e342]:
+        - img [ref=f21e345] [cursor=pointer]
+        - generic [ref=f21e348]:
+          - generic [ref=f21e349] [cursor=pointer]: Testing
+          - generic [ref=f21e357] [cursor=pointer]: Move_Along_Edge
+          - generic [ref=f21e363] [cursor=pointer]: trimCurvePlusIcon.svg
+          - generic [ref=f21e369]: betterCurveTrim
+          - generic [ref=f21e375] [cursor=pointer]: curveTrimCore
+          - generic [ref=f21e381] [cursor=pointer]: OS_Trim
+          - generic [ref=f21e387] [cursor=pointer]: move_along_edge_icon.svg
+          - generic [ref=f21e393] [cursor=pointer]: Move along edge tests
+          - generic [ref=f21e399] [cursor=pointer]: Trim curve + tests

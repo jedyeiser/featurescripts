@@ -1,0 +1,164 @@
+- generic [active] [ref=f22e1]:
+  - generic [ref=f22e5]:
+    - navigation [ref=f22e6]:
+      - generic [ref=f22e7]:
+        - link [ref=f22e10] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f22e11]
+        - generic [ref=f22e13] [cursor=pointer]
+      - generic [ref=f22e16]:
+        - generic [ref=f22e18]:
+          - generic [ref=f22e19]: Small Tools
+          - generic [ref=f22e20]: Main
+        - generic [ref=f22e22] [cursor=pointer]
+        - link "Ski Featurescripts" [ref=f22e26] [cursor=pointer]:
+          - /url: /documents?nodeId=57002a237ac4cbcc7d7cd398&resourceType=folder
+      - generic [ref=f22e30]:
+        - generic [ref=f22e38] [cursor=pointer]
+        - generic [ref=f22e44] [cursor=pointer]
+        - button "Notifications" [ref=f22e49] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f22e57]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f22e60] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f22e65] [cursor=pointer]
+        - button "Share" [ref=f22e69] [cursor=pointer]
+        - generic "Help menu" [ref=f22e71] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f22e75] [cursor=pointer]
+    - generic [ref=f22e85]:
+      - generic [ref=f22e87]:
+        - generic [ref=f22e88]:
+          - generic [ref=f22e89]:
+            - generic [ref=f22e90] [cursor=pointer]
+            - generic [ref=f22e93] [cursor=pointer]
+            - generic [ref=f22e96] [cursor=pointer]
+            - generic [ref=f22e99] [cursor=pointer]
+            - generic [ref=f22e102] [cursor=pointer]
+            - generic [ref=f22e105] [cursor=pointer]
+            - generic [ref=f22e108] [cursor=pointer]
+            - generic [ref=f22e111] [cursor=pointer]
+          - generic [ref=f22e115] [cursor=pointer]
+        - generic [ref=f22e119] [cursor=pointer]
+      - generic [ref=f22e124]:
+        - generic [ref=f22e126]:
+          - generic [ref=f22e129]:
+            - generic [ref=f22e133]:
+              - generic [ref=f22e145]:
+                - generic [ref=f22e146]: New feature
+                - generic [ref=f22e399]:
+                  - generic [ref=f22e400] [cursor=pointer]: Length parameter
+                  - generic [ref=f22e402] [cursor=pointer]
+                - generic [ref=f22e169]:
+                  - generic [ref=f22e170] [cursor=pointer]
+                  - generic [ref=f22e174] [cursor=pointer]
+                - generic [ref=f22e177]: Commit
+              - button "Search tools… alt/⌥ c" [ref=f22e188] [cursor=pointer]:
+                - text: Search tools…
+                - generic [ref=f22e189]:
+                  - generic [ref=f22e190]: alt/⌥
+                  - generic [ref=f22e191]: c
+              - generic [ref=f22e192]:
+                - switch "Co-complete" [disabled] [ref=f22e194] [cursor=pointer]
+                - generic [ref=f22e195]: Co-complete
+            - generic [ref=f22e200]:
+              - generic [ref=f22e201]: Monitor Move along edge tests
+              - generic [ref=f22e213]: Module outline
+              - generic [ref=f22e248]: Line 1 , Column 1
+          - generic [ref=f22e255]:
+            - textbox "Cursor at row 1" [ref=f22e256]: FeatureScript 3083;
+            - generic [ref=f22e258]:
+              - generic [aria-hidden] [ref=f22e259]: "1"
+              - generic [aria-hidden] [ref=f22e260]: "2"
+              - generic [aria-hidden] [ref=f22e261]: "3"
+              - generic [aria-hidden] [ref=f22e262]: "4"
+              - generic [ref=f22e263]:
+                - text: "5"
+                - button [expanded] [ref=f22e264] [cursor=pointer]
+              - generic [aria-hidden] [ref=f22e265]: "6"
+              - generic [aria-hidden] [ref=f22e266]: "7"
+              - generic [aria-hidden] [ref=f22e267]: "8"
+              - generic [aria-hidden] [ref=f22e268]: "9"
+              - generic [aria-hidden] [ref=f22e269]: "10"
+              - generic [ref=f22e270]:
+                - text: "11"
+                - button [expanded] [ref=f22e271] [cursor=pointer]
+              - generic [aria-hidden] [ref=f22e272]: "12"
+              - generic [aria-hidden] [ref=f22e273]: "13"
+              - generic [aria-hidden] [ref=f22e274]: "14"
+              - generic [aria-hidden] [ref=f22e275]: "15"
+              - generic [aria-hidden] [ref=f22e276]: "16"
+              - generic [aria-hidden] [ref=f22e277]: "17"
+              - generic [aria-hidden] [ref=f22e278]: "18"
+              - generic [aria-hidden] [ref=f22e279]: "19"
+              - generic [aria-hidden] [ref=f22e280]: "20"
+              - generic [aria-hidden] [ref=f22e281]: "21"
+              - generic [aria-hidden] [ref=f22e282]: "22"
+              - generic [aria-hidden] [ref=f22e283]: "23"
+              - generic [aria-hidden] [ref=f22e284]: "24"
+              - generic [aria-hidden] [ref=f22e285]: "25"
+            - generic [ref=f22e319]:
+              - generic:
+                - generic: FeatureScript 3083;
+                - generic: "import(path : \"onshape/std/common.fs\", version : \"3083.0\");"
+                - generic: "import(path : \"onshape/std/movecurveboundarytype.gen.fs\", version : \"3083.0\");"
+                - generic: /**
+                - generic: "* curveTrimCore - shared engine for the betterCurveTrim feature."
+                - generic: "*"
+                - generic: "* Trims and splits wire curves (single- or multi-edge) at arc-length locations. A"
+                - generic: "* wire is read as one ordered path (constructPath); every cut location is a fraction"
+                - generic: "* of the path length. Cuts are made exactly with opSplitEdges at arc-length"
+                - generic: "* parameters (evEdge* / evDistance / opSplitEdges are all arc-length parameterized"
+                - generic: "* by default), so no knot handling and no cutting planes - a plane would also cut the"
+                - generic: "* curve anywhere else it crossed."
+                - generic: "*"
+                - generic: "* The exported helpers are grouped as:"
+                - generic: "* - wire path : wirePath, pathTangentAtFraction, pathPointAtFraction"
+                - generic: "* - locating cuts : projectToPath, fractionOfPoint, fractionNearestEntity,"
+                - generic: "* fractionAtSignedDistance, evenDivisionFractions,"
+                - generic: "* spacedFromPointFractions"
+                - generic: "* - preview marks : markCutPoints, markProjectionToCurve, markPositiveDirection"
+                - generic: "* - performing cuts : splitEdgesAtFractions (in place, one wire),"
+                - generic: "* splitWireIntoPieces (separate wires), edgesBetweenCuts"
+                - generic: "* - selecting result: keepPieceRange / keepOnePiece"
+                - generic: "*/"
+          - generic [ref=f22e329]:
+            - img [ref=f22e332] [cursor=pointer]
+            - generic [ref=f22e335]:
+              - generic [ref=f22e336] [cursor=pointer]: Testing
+              - generic [ref=f22e344] [cursor=pointer]: Move_Along_Edge
+              - generic [ref=f22e350] [cursor=pointer]: trimCurvePlusIcon.svg
+              - generic [ref=f22e356] [cursor=pointer]: betterCurveTrim
+              - generic [ref=f22e362]: curveTrimCore
+              - generic [ref=f22e368] [cursor=pointer]: OS_Trim
+              - generic [ref=f22e374] [cursor=pointer]: move_along_edge_icon.svg
+              - generic [ref=f22e380] [cursor=pointer]: Move along edge tests
+              - generic [ref=f22e386] [cursor=pointer]: Trim curve + tests
+        - generic [ref=f22e410]:
+          - generic [ref=f22e411]:
+            - generic [ref=f22e412]:
+              - heading "FeatureScript notices" [level=4] [ref=f22e413]
+              - generic [ref=f22e415]:
+                - button [ref=f22e417] [cursor=pointer]
+                - textbox "Filter notices" [ref=f22e422]
+            - button [ref=f22e423] [cursor=pointer]
+          - generic [ref=f22e424]:
+            - generic [ref=f22e425]: Monitor
+            - generic [ref=f22e435] [cursor=pointer]: Move along edge tests
+          - generic [ref=f22e439]:
+            - generic [ref=f22e440]: Monitor
+            - generic [ref=f22e450] [cursor=pointer]: Testing
+          - generic [ref=f22e454]:
+            - generic [ref=f22e455]: Monitor
+            - generic [ref=f22e465] [cursor=pointer]: Trim curve + tests
+          - generic [ref=f22e469]:
+            - generic [ref=f22e470] [cursor=pointer]: curveTrimCore
+            - table [ref=f22e475]:
+              - rowgroup [ref=f22e476]:
+                - row [ref=f22e477] [cursor=pointer]:
+                  - cell [ref=f22e478]
+                  - cell [ref=f22e482]
+                  - cell "Variable e set but not used" [ref=f22e484]
+                - row [ref=f22e486] [cursor=pointer]:
+                  - cell [ref=f22e487]
+                  - cell [ref=f22e488]
+                  - cell "776:5" [ref=f22e489]
+                  - cell "d56d74c24234ab2b885e6fc1" [ref=f22e491]
+  - tooltip "FeatureScript notices"

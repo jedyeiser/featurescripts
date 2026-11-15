@@ -1,4 +1,4 @@
-﻿"""Check the "Trim curve + tests" Part Studio built by build_trim_curve_plus_tests.py.
+"""Check the "Trim curve + tests" Part Studio built by build_trim_curve_plus_tests.py.
 
 Reads every non-sketch wire body (edge count, length, case by x offset), the feature statuses, and the
 Variable_tools keys embedded by T1 and T2 (cut_k vertices / piece_k), and compares with the expected results.
@@ -21,7 +21,18 @@ EXPECT = {
     "T1": [100, 100, 357.080], "T2": [557.080], "T3": [457.080], "T4": [100, 150, 307.080],
     "T5": [50, 507.080], "T6": [50, 507.080], "T7": [100, 457.080], "T8": [557.080],
     "T9": [20, 130, 100, 307.080], "T10": [407.080], "T11": [150], "T12": [50], "T13": [507.080], "T14": [150],
+    # 2026-11-12 endpoint reference: from an END of the wire the distance runs INTO the wire, the flip is ignored
+    "T15": [100], "T16": [457.080], "T17": [100], "T18": [457.080], "T19": [100],
+    # 2026-11-12 in-place trims the old gates refused (ends equidistant; the cut plane crossing the wire twice)
+    "T20": [150], "T21": [400], "T22": [107.080], "T23": [100],
 }
+# Expected feature status. Since 2026-11-12 a single-cut TRIM reports its route: INFO = trimmed in place (the wire body is
+# kept), WARNING = the wire was replaced (extract-and-delete fallback). T10, T11 and T14 took that fallback until the in-place
+# trim was changed (2026-11-12) to try each cutter on a scratch copy and observe the result; no test case needs it now.
+# Anything not listed must be OK.
+WANT_STATUS = {"T8": "ERROR", "T3": "INFO", "T12": "INFO", "T13": "INFO", "T10": "INFO", "T11": "INFO", "T14": "INFO",
+               "T15": "INFO", "T16": "INFO", "T17": "INFO", "T18": "INFO", "T19": "INFO",
+               "T20": "INFO", "T21": "INFO", "T22": "INFO", "T23": "INFO"}
 EXPECT_EDGES = {"T2": 5}
 
 SCRIPT = """function(context is Context, queries)
@@ -78,7 +89,7 @@ for case, want in EXPECT.items():
     have = sorted(got.get(case, []))
     ok = len(have) == len(want) and all(abs(a - b) < 0.01 for a, b in zip(have, sorted(want)))
     ok = ok and (case not in EXPECT_EDGES or edges[case] == EXPECT_EDGES[case])
-    want_status = "ERROR" if case == "T8" else "OK"
+    want_status = WANT_STATUS.get(case, "OK")
     ok = ok and status[trims[case]] == want_status
     fails += not ok
     print("%-4s %s  status %-5s wires %s edges %d" % (case, "PASS" if ok else "FAIL", status[trims[case]],

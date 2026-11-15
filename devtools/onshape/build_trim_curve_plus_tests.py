@@ -1,4 +1,4 @@
-﻿"""Build the Trim curve + test cases as real features in smallTools' "Trim curve + tests" Part Studio
+"""Build the Trim curve + test cases as real features in smallTools' "Trim curve + tests" Part Studio
 (created when missing; upsert by name). Fixtures are native features only. Checked by
 check_trim_curve_plus_tests.py.
 
@@ -243,3 +243,52 @@ p = points("T14", [(13100, 0)])
 trim("T14 trim 50 from point, default side to keep (toward point) -> 1 wire 150", body(w), [q("fromPoint", vertices(p)), num("distance", "50 mm")],
      {"operation": "TRIM", "cutBy": "ARC_LENGTH_FROM_POINT"})
 
+
+
+# ---- Endpoint reference (2026-11-12): from an END of the wire the distance runs INTO the wire, whatever the path direction ----
+# The wire runs (x0, 0) -> (x0+300, 300), length 557.080. Reference = the wire's own end vertex (picked by position).
+def end_vertex(wid, x, y):
+    return 'qContainsPoint(qCreatedBy(makeId("%s"), EntityType.VERTEX), vector(%s, %s, 0) * meter)' % (wid, x / 1000.0, y / 1000.0)
+
+
+def end_case(tag, x0, label, at_start, keep, flip):
+    wid = wire(tag, x0)
+    ref = end_vertex(wid, x0, 0) if at_start else end_vertex(wid, x0 + 300, 300)
+    trim("%s %s" % (tag, label), body(wid),
+         [q("fromPoint", ref), num("distance", "100 mm"), b("distanceFlip", flip)],
+         {"operation": "TRIM", "cutBy": "ARC_LENGTH_FROM_POINT", "trimKeep": keep})
+
+
+end_case("T15", 14000, "trim 100 from the START vertex, keep toward point -> 1 wire 100", True, "POINT_SIDE", False)
+end_case("T16", 15000, "trim 100 from the START vertex, keep away from point -> 1 wire 457.080", True, "FAR_SIDE", False)
+end_case("T17", 16000, "trim 100 from the END vertex, keep toward point -> 1 wire 100", False, "POINT_SIDE", False)
+end_case("T18", 17000, "trim 100 from the END vertex, keep away from point -> 1 wire 457.080", False, "FAR_SIDE", False)
+end_case("T19", 18000, "trim 100 from the END vertex, Opposite direction ON (ignored) -> 1 wire 100", False, "POINT_SIDE", True)
+
+
+# ---- In-place trim without gates (2026-11-12): the trim is tried on a scratch copy and the result observed ----
+# HOOK wire: line (x0,0)->(x0+200,0), R50 half circle up to (x0+200,100), line back to (x0+50,100). Length 507.080.
+# A cut on the return leg is crossed twice by the plane normal to the path there (the old "more than once" refusal).
+def hook_wire(tag, x0):
+    sk = sketch("%s hook wire sketch: line, R50 U-turn, line back (x0 %d)" % (tag, x0),
+                [seg("l1", *mmv(x0, 0, x0 + 200, 0)), arc("a", *mmv(x0 + 200, 50, 50), -math.pi / 2, math.pi / 2),
+                 seg("l2", *mmv(x0 + 200, 100, x0 + 50, 100))])
+    return feature("%s hook wire (composite curve)" % tag, "compositeCurve", [q("edges", sketch_edges(sk))])
+
+
+def gate_case(tag, x0, label, make_wire, ref_xy, distance, keep):
+    wid = make_wire(tag, x0)
+    trim("%s %s" % (tag, label), body(wid),
+         [q("fromPoint", end_vertex(wid, x0 + ref_xy[0], ref_xy[1])), num("distance", "%g mm" % distance), b("distanceFlip", False)],
+         {"operation": "TRIM", "cutBy": "ARC_LENGTH_FROM_POINT", "trimKeep": keep})
+
+
+# 3-edge wire cut at its midpoint: both ends are equally far from the cut plane (the old "ambiguous side" refusal).
+gate_case("T20", 19000, "3-edge wire, trim 150 from the START vertex (ends equidistant from the cut plane), keep toward point -> 1 wire 150",
+          wire, (0, 0), 150, "POINT_SIDE")
+gate_case("T21", 20000, "hook wire, trim 400 from the START vertex (cut on the return leg), keep toward point -> 1 wire 400",
+          hook_wire, (0, 0), 400, "POINT_SIDE")
+gate_case("T22", 21000, "hook wire, trim 400 from the START vertex, keep away from point -> 1 wire 107.080",
+          hook_wire, (0, 0), 400, "FAR_SIDE")
+gate_case("T23", 22000, "hook wire, trim 100 from the END vertex (cut on the return leg), keep toward point -> 1 wire 100",
+          hook_wire, (50, 100), 100, "POINT_SIDE")
