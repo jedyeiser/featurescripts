@@ -181,40 +181,40 @@ export enum FilletCompare
  */
 export predicate initialQueryPredicate(definition is map)
 {
-    annotation { "Name" : "Selection type" }
+    annotation { "Name" : "Selection type", "Description" : "How the source query is built (Query Variable+ methods). The options below depend on this choice." }
     definition.selectionType is SelectionType;
 
     if (definition.selectionType == SelectionType.TANGENT_CONNECTED
         || definition.selectionType == SelectionType.MATCHING)
     {
-        annotation { "Name" : "Entity type" }
+        annotation { "Name" : "Entity type", "Description" : "Whether the seed entities are faces or edges." }
         definition.seedType is SeedType;
     }
 
     if (definition.selectionType == SelectionType.SELECTION)
     {
-        annotation { "Name" : "Selections", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
+        annotation { "Name" : "Selections", "Description" : "Entities to store in the variable. Faces, edges, vertices, bodies and mate connectors are allowed.", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
         definition.selectionQuery is Query;
     }
     else if (definition.selectionType == SelectionType.CREATED_BY)
     {
-        annotation { "Name" : "Created by features", "UIHint" : UIHint.ALLOW_FLAT_SKETCH_SELECTION }
+        annotation { "Name" : "Created by features", "Description" : "Features whose created entities are included.", "UIHint" : UIHint.ALLOW_FLAT_SKETCH_SELECTION }
         definition.createdByFeatures is FeatureList;
     }
     else if (definition.selectionType == SelectionType.CAP_ENTITY)
     {
-        annotation { "Name" : "Created by features", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
+        annotation { "Name" : "Created by features", "Description" : "Features whose start or end cap entities are included.", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
         definition.capEntityCreatedByFeatures is FeatureList;
     }
     else if (definition.selectionType == SelectionType.NON_CAP_ENTITY)
     {
-        annotation { "Name" : "Created by features", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
+        annotation { "Name" : "Created by features", "Description" : "Features whose entities other than start and end caps are included.", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
         definition.nonCapEntityCreatedByFeatures is FeatureList;
     }
 
     else if (definition.selectionType == SelectionType.OWNED_BY || definition.selectionType == SelectionType.EDGE_CONVEXITY || definition.selectionType == SelectionType.MATCHING_BODIES)
     {
-        annotation { "Name" : "Entities", "Filter" : EntityType.BODY && AllowFlattenedGeometry.YES && AllowMeshGeometry.YES }
+        annotation { "Name" : "Entities", "Description" : "Bodies the result is taken from.", "Filter" : EntityType.BODY && AllowFlattenedGeometry.YES && AllowMeshGeometry.YES }
         definition.seedBodies is Query;
     }
     else if (definition.selectionType == SelectionType.PROTRUSION
@@ -225,49 +225,49 @@ export predicate initialQueryPredicate(definition is map)
         || (definition.selectionType == SelectionType.TANGENT_CONNECTED && definition.seedType == SeedType.FACE)
         || (definition.selectionType == SelectionType.MATCHING && definition.seedType == SeedType.FACE))
     {
-        annotation { "Name" : "Faces", "Filter" : EntityType.FACE }
+        annotation { "Name" : "Faces", "Description" : "Faces the result is built from.", "Filter" : EntityType.FACE }
         definition.seedFaces is Query;
     }
     else if (definition.selectionType == SelectionType.ADJACENT)
     {
-        annotation { "Name" : "Seed entities", "Filter" : (EntityType.FACE || EntityType.EDGE || EntityType.VERTEX) && AllowFlattenedGeometry.YES && AllowMeshGeometry.YES }
+        annotation { "Name" : "Seed entities", "Description" : "Entities whose neighbors are collected.", "Filter" : (EntityType.FACE || EntityType.EDGE || EntityType.VERTEX) && AllowFlattenedGeometry.YES && AllowMeshGeometry.YES }
         definition.adjacentSeedEntities is Query;
 
-        annotation { "Name" : "Adjacency type" }
+        annotation { "Name" : "Adjacency type", "Description" : "Adjacent through a shared edge or through a shared vertex." }
         definition.adjacencyType is AdjacencyType;
 
-        annotation { "Name" : "Result entities", "Default" : AdjacentResultType.SAME_AS_SEED }
+        annotation { "Name" : "Result entities", "Description" : "Type of entity to return: the same as the seed, or faces, edges or vertices.", "Default" : AdjacentResultType.SAME_AS_SEED }
         definition.adjacentResultType is AdjacentResultType;
     }
     else if (definition.selectionType == SelectionType.SIZE_COMPARISON)
     {
-        annotation { "Name" : "Entities", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
+        annotation { "Name" : "Entities", "Description" : "Entities to compare by size. All must be one type: bodies, faces or edges.", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
         definition.sizeComparisonEntities is Query;
 
-        annotation { "Name" : "Comparison type", "Default" : SizeComparisonType.LARGEST }
+        annotation { "Name" : "Comparison type", "Description" : "Largest, smallest, or larger, smaller or equal to a reference entity.", "Default" : SizeComparisonType.LARGEST }
         definition.sizeComparisonType is SizeComparisonType;
 
         if (definition.sizeComparisonType == SizeComparisonType.LARGER_THAN_SELECTION
             || definition.sizeComparisonType == SizeComparisonType.SMALLER_THAN_SELECTION
             || definition.sizeComparisonType == SizeComparisonType.EQUAL_TO_SELECTION)
         {
-            annotation { "Name" : "Reference selection", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Reference selection", "Description" : "The entity whose size is the reference.", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES, "MaxNumberOfPicks" : 1 }
             definition.sizeComparisonReference is Query;
 
             if (definition.sizeComparisonType == SizeComparisonType.LARGER_THAN_SELECTION
                 || definition.sizeComparisonType == SizeComparisonType.SMALLER_THAN_SELECTION)
             {
-                annotation { "Name" : "Or equal to selection", "Default" : false }
+                annotation { "Name" : "Or equal to selection", "Description" : "Also include entities equal in size to the reference.", "Default" : false }
                 definition.sizeComparisonAllowEqual is boolean;
             }
         }
     }
     else if (definition.selectionType == SelectionType.POSITIONAL_DIRECTIONAL)
     {
-        annotation { "Name" : "Entities", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
+        annotation { "Name" : "Entities", "Description" : "Entities to test against the reference.", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
         definition.positionalEntities is Query;
 
-        annotation { "Name" : "Positional query", "Default" : PositionalDirectionalType.PLANE_NORMAL }
+        annotation { "Name" : "Positional query", "Description" : "Which positional or directional test to apply.", "Default" : PositionalDirectionalType.PLANE_NORMAL }
         definition.positionalMetricType is PositionalDirectionalType;
 
         if (definition.positionalMetricType == PositionalDirectionalType.PLANE_NORMAL
@@ -275,28 +275,28 @@ export predicate initialQueryPredicate(definition is map)
             || definition.positionalMetricType == PositionalDirectionalType.COINCIDES_WITH_PLANE
             || definition.positionalMetricType == PositionalDirectionalType.IN_FRONT_OF_PLANE)
         {
-            annotation { "Name" : "Reference plane", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR }
+            annotation { "Name" : "Reference plane", "Description" : "Planar faces or mate connectors (plane normal to Z). An entity matches if it matches any of them.", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR }
             definition.positionalPlane is Query;
         }
         else if (definition.positionalMetricType == PositionalDirectionalType.INTERSECTS_LINE)
         {
-            annotation { "Name" : "Reference line", "Filter" : (EntityType.EDGE && GeometryType.LINE) || BodyType.MATE_CONNECTOR }
+            annotation { "Name" : "Reference line", "Description" : "Straight edges or mate connectors (Z axis). An entity matches if it matches any of them.", "Filter" : (EntityType.EDGE && GeometryType.LINE) || BodyType.MATE_CONNECTOR }
             definition.positionalLine is Query;
         }
         else if (definition.positionalMetricType == PositionalDirectionalType.CLOSEST_TO)
         {
-            annotation { "Name" : "Closest to", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Closest to", "Description" : "A vertex, edge, face, body or mate connector. The result is the entity closest to it.", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             definition.positionalClosestRef is Query;
         }
         else if (definition.positionalMetricType == PositionalDirectionalType.CONTAINS_POINT
             || definition.positionalMetricType == PositionalDirectionalType.INTERSECTS_BALL)
         {
-            annotation { "Name" : "Reference point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+            annotation { "Name" : "Reference point", "Description" : "Vertices or mate connectors (origin). An entity matches if it matches any of them.", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR }
             definition.positionalVertex is Query;
 
             if (definition.positionalMetricType == PositionalDirectionalType.INTERSECTS_BALL)
             {
-                annotation { "Name" : "Radius", "Default" : 0 * meter }
+                annotation { "Name" : "Radius", "Description" : "Distance around the reference point.", "Default" : 0 * meter }
                 isLength(definition.positionalRadius, NONNEGATIVE_LENGTH_BOUNDS);
             }
         }
@@ -304,21 +304,21 @@ export predicate initialQueryPredicate(definition is map)
             || definition.positionalMetricType == PositionalDirectionalType.PLANE_PARALLEL_DIRECTION
             || definition.positionalMetricType == PositionalDirectionalType.FACE_PARALLEL_DIRECTION)
         {
-            annotation { "Name" : "Direction", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Direction", "Description" : "An edge, planar face, cylinder axis or mate connector (Z axis) that gives the direction.", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             definition.positionalDirection is Query;
         }
     }
     else if (definition.selectionType == SelectionType.GEOMETRY)
     {
-        annotation { "Name" : "Seed entities", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
+        annotation { "Name" : "Seed entities", "Description" : "Entities to filter by geometry type.", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
         definition.geometrySeedEntities is Query;
 
-        annotation { "Name" : "Geometry type" }
+        annotation { "Name" : "Geometry type", "Description" : "Keep entities of this geometry type: plane, cylinder, line, circle, ..." }
         definition.geometryType is GeometryType;
     }
     else if (definition.selectionType == SelectionType.LOOP_CHAIN_CONNECTED)
     {
-        annotation { "Name" : "Edges or faces", "Filter" : EntityType.EDGE || EntityType.FACE }
+        annotation { "Name" : "Edges or faces", "Description" : "Edges or faces the result is built from.", "Filter" : EntityType.EDGE || EntityType.FACE }
         definition.seedEdgesOrFaces is Query;
     }
     else if (definition.selectionType == SelectionType.PARALLEL
@@ -326,7 +326,7 @@ export predicate initialQueryPredicate(definition is map)
         || (definition.selectionType == SelectionType.TANGENT_CONNECTED && definition.seedType == SeedType.EDGE)
         || (definition.selectionType == SelectionType.MATCHING && definition.seedType == SeedType.EDGE))
     {
-        annotation { "Name" : "Edges", "Filter" : EntityType.EDGE }
+        annotation { "Name" : "Edges", "Description" : "Edges the result is built from.", "Filter" : EntityType.EDGE }
         definition.seedEdges is Query;
     }
     if (definition.selectionType == SelectionType.CREATED_BY
@@ -335,60 +335,60 @@ export predicate initialQueryPredicate(definition is map)
         || definition.selectionType == SelectionType.OWNED_BY
         || definition.selectionType == SelectionType.EVERYTHING)
     {
-        annotation { "Name" : "Entity type" }
+        annotation { "Name" : "Entity type", "Description" : "The type of entity to return: face, edge, vertex or body." }
         definition.entityType is EntityType;
     }
     if (definition.selectionType == SelectionType.FILLETS)
     {
-        annotation { "Name" : "Fillet compare type" }
+        annotation { "Name" : "Fillet compare type", "Description" : "Fillets equal to, no larger than, or no smaller than the seed fillet." }
         definition.filletCompareType is FilletCompare;
     }
     if (definition.selectionType == SelectionType.BOUNDED_FACES)
     {
-        annotation { "Name" : "Bounds", "Filter" : EntityType.EDGE || EntityType.FACE }
+        annotation { "Name" : "Bounds", "Description" : "Faces or edges that bound the result.", "Filter" : EntityType.EDGE || EntityType.FACE }
         definition.boundedFacesBounds is Query;
     }
     if (definition.selectionType == SelectionType.EDGE_CONVEXITY)
     {
-        annotation { "Name" : "Edge convexity type" }
+        annotation { "Name" : "Edge convexity type", "Description" : "Convex, concave or smooth edges." }
         definition.edgeConvexityType is EdgeConvexityType;
     }
     if (definition.selectionType == SelectionType.TOLERANT_PARALLEL)
     {
-        annotation { "Name" : "Direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Direction", "Description" : "The reference direction: an edge, planar face, cylinder axis or mate connector (Z axis).", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
         definition.direction is Query;
     }
     if (definition.selectionType == SelectionType.TANGENT_CONNECTED && definition.seedType == SeedType.FACE
         || definition.selectionType == SelectionType.TOLERANT_PARALLEL)
     {
-        annotation { "Name" : "Angle tolerance", "Default" : 0 * degree }
+        annotation { "Name" : "Angle tolerance", "Description" : "Largest angle from the reference that still counts as a match.", "Default" : 0 * degree }
         isAngle(definition.angleTolerance, ANGLE_STRICT_180_BOUNDS);
     }
     if (definition.selectionType == SelectionType.CREATED_BY
         || definition.selectionType == SelectionType.EVERYTHING)
     {
-        annotation { "Name" : "Filter construction entities", "Default" : true }
+        annotation { "Name" : "Filter construction entities", "Description" : "Leave out construction geometry.", "Default" : true }
         definition.filterConstruction is boolean;
 
-        annotation { "Name" : "Filter by body type", "Default" : false }
+        annotation { "Name" : "Filter by body type", "Description" : "Restrict the result to one body type.", "Default" : false }
         definition.filterByBodyType is boolean;
 
         if (definition.filterByBodyType)
         {
-            annotation { "Name" : "Body type" }
+            annotation { "Name" : "Body type", "Description" : "The body type to keep." }
             definition.createdByBodyType is BodyTypeOptions;
         }
     }
 
     if (definition.selectionType == SelectionType.CAP_ENTITY)
     {
-        annotation { "Name" : "Cap type", "Default" : CapType.EITHER }
+        annotation { "Name" : "Cap type", "Description" : "Start caps, end caps, or either.", "Default" : CapType.EITHER }
         definition.capType is CapType;
     }
     
     if (definition.selectionType == SelectionType.LOAD_FROM_DERIVE)
     {
-        annotation { "Name" : "Derive feature", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
+        annotation { "Name" : "Derive feature", "Description" : "Derive feature(s) to read the saved query variables from.", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
         definition.deriveFeature is FeatureList;
     }
 }
@@ -400,7 +400,7 @@ export predicate initialQueryPredicate(definition is map)
  */
 export predicate additionalQueryPredicate(addQ is map)
 {
-    annotation { "Name" : "Selection type" }
+    annotation { "Name" : "Selection type", "Description" : "How the source query is built (Query Variable+ methods). The options below depend on this choice." }
     addQ.addQselectionType is SelectionType;
 
     annotation { "Name" : "Selection type", "UIHint" : UIHint.ALWAYS_HIDDEN }
@@ -409,34 +409,34 @@ export predicate additionalQueryPredicate(addQ is map)
     if (addQ.addQselectionType == SelectionType.TANGENT_CONNECTED
         || addQ.addQselectionType == SelectionType.MATCHING)
     {
-        annotation { "Name" : "Entity type" }
+        annotation { "Name" : "Entity type", "Description" : "Whether the seed entities are faces or edges." }
         addQ.addQseedType is SeedType;
     }
 
     if (addQ.addQselectionType == SelectionType.SELECTION)
     {
-        annotation { "Name" : "Selections", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
+        annotation { "Name" : "Selections", "Description" : "Entities to store in the variable. Faces, edges, vertices, bodies and mate connectors are allowed.", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
         addQ.addQselectionQuery is Query;
     }
     else if (addQ.addQselectionType == SelectionType.CREATED_BY)
     {
-        annotation { "Name" : "Created by features", "UIHint" : UIHint.ALLOW_FLAT_SKETCH_SELECTION }
+        annotation { "Name" : "Created by features", "Description" : "Features whose created entities are included.", "UIHint" : UIHint.ALLOW_FLAT_SKETCH_SELECTION }
         addQ.addQcreatedByFeatures is FeatureList;
     }
     else if (addQ.addQselectionType == SelectionType.CAP_ENTITY)
     {
-        annotation { "Name" : "Created by features", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
+        annotation { "Name" : "Created by features", "Description" : "Features whose start or end cap entities are included.", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
         addQ.addQcapEntityCreatedByFeatures is FeatureList;
     }
     else if (addQ.addQselectionType == SelectionType.NON_CAP_ENTITY)
     {
-        annotation { "Name" : "Created by features", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
+        annotation { "Name" : "Created by features", "Description" : "Features whose entities other than start and end caps are included.", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
         addQ.addQnonCapEntityCreatedByFeatures is FeatureList;
     }
 
     else if (addQ.addQselectionType == SelectionType.OWNED_BY || addQ.addQselectionType == SelectionType.EDGE_CONVEXITY || addQ.addQselectionType == SelectionType.MATCHING_BODIES)
     {
-        annotation { "Name" : "Entities", "Filter" : EntityType.BODY && AllowFlattenedGeometry.YES && AllowMeshGeometry.YES }
+        annotation { "Name" : "Entities", "Description" : "Bodies the result is taken from.", "Filter" : EntityType.BODY && AllowFlattenedGeometry.YES && AllowMeshGeometry.YES }
         addQ.addQseedBodies is Query;
     }
     else if (addQ.addQselectionType == SelectionType.PROTRUSION
@@ -447,49 +447,49 @@ export predicate additionalQueryPredicate(addQ is map)
         || (addQ.addQselectionType == SelectionType.TANGENT_CONNECTED && addQ.addQseedType == SeedType.FACE)
         || (addQ.addQselectionType == SelectionType.MATCHING && addQ.addQseedType == SeedType.FACE))
     {
-        annotation { "Name" : "Faces", "Filter" : EntityType.FACE }
+        annotation { "Name" : "Faces", "Description" : "Faces the result is built from.", "Filter" : EntityType.FACE }
         addQ.addQseedFaces is Query;
     }
     else if (addQ.addQselectionType == SelectionType.ADJACENT)
     {
-        annotation { "Name" : "Seed entities", "Filter" : (EntityType.FACE || EntityType.EDGE || EntityType.VERTEX) && AllowFlattenedGeometry.YES && AllowMeshGeometry.YES }
+        annotation { "Name" : "Seed entities", "Description" : "Entities whose neighbors are collected.", "Filter" : (EntityType.FACE || EntityType.EDGE || EntityType.VERTEX) && AllowFlattenedGeometry.YES && AllowMeshGeometry.YES }
         addQ.addQadjacentSeedEntities is Query;
 
-        annotation { "Name" : "Adjacency type" }
+        annotation { "Name" : "Adjacency type", "Description" : "Adjacent through a shared edge or through a shared vertex." }
         addQ.addQadjacencyType is AdjacencyType;
 
-        annotation { "Name" : "Result entities", "Default" : AdjacentResultType.SAME_AS_SEED }
+        annotation { "Name" : "Result entities", "Description" : "Type of entity to return: the same as the seed, or faces, edges or vertices.", "Default" : AdjacentResultType.SAME_AS_SEED }
         addQ.addQadjacentResultType is AdjacentResultType;
     }
     else if (addQ.addQselectionType == SelectionType.SIZE_COMPARISON)
     {
-        annotation { "Name" : "Entities", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
+        annotation { "Name" : "Entities", "Description" : "Entities to compare by size. All must be one type: bodies, faces or edges.", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
         addQ.addQsizeComparisonEntities is Query;
 
-        annotation { "Name" : "Comparison type", "Default" : SizeComparisonType.LARGEST }
+        annotation { "Name" : "Comparison type", "Description" : "Largest, smallest, or larger, smaller or equal to a reference entity.", "Default" : SizeComparisonType.LARGEST }
         addQ.addQsizeComparisonType is SizeComparisonType;
 
         if (addQ.addQsizeComparisonType == SizeComparisonType.LARGER_THAN_SELECTION
             || addQ.addQsizeComparisonType == SizeComparisonType.SMALLER_THAN_SELECTION
             || addQ.addQsizeComparisonType == SizeComparisonType.EQUAL_TO_SELECTION)
         {
-            annotation { "Name" : "Reference selection", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Reference selection", "Description" : "The entity whose size is the reference.", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES, "MaxNumberOfPicks" : 1 }
             addQ.addQsizeComparisonReference is Query;
 
             if (addQ.addQsizeComparisonType == SizeComparisonType.LARGER_THAN_SELECTION
                 || addQ.addQsizeComparisonType == SizeComparisonType.SMALLER_THAN_SELECTION)
             {
-                annotation { "Name" : "Or equal to selection", "Default" : false }
+                annotation { "Name" : "Or equal to selection", "Description" : "Also include entities equal in size to the reference.", "Default" : false }
                 addQ.addQsizeComparisonAllowEqual is boolean;
             }
         }
     }
     else if (addQ.addQselectionType == SelectionType.POSITIONAL_DIRECTIONAL)
     {
-        annotation { "Name" : "Entities", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
+        annotation { "Name" : "Entities", "Description" : "Entities to test against the reference.", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
         addQ.addQpositionalEntities is Query;
 
-        annotation { "Name" : "Positional query", "Default" : PositionalDirectionalType.PLANE_NORMAL }
+        annotation { "Name" : "Positional query", "Description" : "Which positional or directional test to apply.", "Default" : PositionalDirectionalType.PLANE_NORMAL }
         addQ.addQpositionalMetricType is PositionalDirectionalType;
 
         if (addQ.addQpositionalMetricType == PositionalDirectionalType.PLANE_NORMAL
@@ -497,28 +497,28 @@ export predicate additionalQueryPredicate(addQ is map)
             || addQ.addQpositionalMetricType == PositionalDirectionalType.COINCIDES_WITH_PLANE
             || addQ.addQpositionalMetricType == PositionalDirectionalType.IN_FRONT_OF_PLANE)
         {
-            annotation { "Name" : "Reference plane", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR }
+            annotation { "Name" : "Reference plane", "Description" : "Planar faces or mate connectors (plane normal to Z). An entity matches if it matches any of them.", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR }
             addQ.addQpositionalPlane is Query;
         }
         else if (addQ.addQpositionalMetricType == PositionalDirectionalType.INTERSECTS_LINE)
         {
-            annotation { "Name" : "Reference line", "Filter" : (EntityType.EDGE && GeometryType.LINE) || BodyType.MATE_CONNECTOR }
+            annotation { "Name" : "Reference line", "Description" : "Straight edges or mate connectors (Z axis). An entity matches if it matches any of them.", "Filter" : (EntityType.EDGE && GeometryType.LINE) || BodyType.MATE_CONNECTOR }
             addQ.addQpositionalLine is Query;
         }
         else if (addQ.addQpositionalMetricType == PositionalDirectionalType.CLOSEST_TO)
         {
-            annotation { "Name" : "Closest to", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Closest to", "Description" : "A vertex, edge, face, body or mate connector. The result is the entity closest to it.", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             addQ.addQpositionalClosestRef is Query;
         }
         else if (addQ.addQpositionalMetricType == PositionalDirectionalType.CONTAINS_POINT
             || addQ.addQpositionalMetricType == PositionalDirectionalType.INTERSECTS_BALL)
         {
-            annotation { "Name" : "Reference point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+            annotation { "Name" : "Reference point", "Description" : "Vertices or mate connectors (origin). An entity matches if it matches any of them.", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR }
             addQ.addQpositionalVertex is Query;
 
             if (addQ.addQpositionalMetricType == PositionalDirectionalType.INTERSECTS_BALL)
             {
-                annotation { "Name" : "Radius", "Default" : 0 * meter }
+                annotation { "Name" : "Radius", "Description" : "Distance around the reference point.", "Default" : 0 * meter }
                 isLength(addQ.addQpositionalRadius, NONNEGATIVE_LENGTH_BOUNDS);
             }
         }
@@ -526,21 +526,21 @@ export predicate additionalQueryPredicate(addQ is map)
             || addQ.addQpositionalMetricType == PositionalDirectionalType.PLANE_PARALLEL_DIRECTION
             || addQ.addQpositionalMetricType == PositionalDirectionalType.FACE_PARALLEL_DIRECTION)
         {
-            annotation { "Name" : "Direction", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Direction", "Description" : "An edge, planar face, cylinder axis or mate connector (Z axis) that gives the direction.", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             addQ.addQpositionalDirection is Query;
         }
     }
     else if (addQ.addQselectionType == SelectionType.GEOMETRY)
     {
-        annotation { "Name" : "Seed entities", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
+        annotation { "Name" : "Seed entities", "Description" : "Entities to filter by geometry type.", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
         addQ.addQgeometrySeedEntities is Query;
 
-        annotation { "Name" : "Geometry type" }
+        annotation { "Name" : "Geometry type", "Description" : "Keep entities of this geometry type: plane, cylinder, line, circle, ..." }
         addQ.addQgeometryType is GeometryType;
     }
     else if (addQ.addQselectionType == SelectionType.LOOP_CHAIN_CONNECTED)
     {
-        annotation { "Name" : "Edges or faces", "Filter" : EntityType.EDGE || EntityType.FACE }
+        annotation { "Name" : "Edges or faces", "Description" : "Edges or faces the result is built from.", "Filter" : EntityType.EDGE || EntityType.FACE }
         addQ.addQseedEdgesOrFaces is Query;
     }
     else if (addQ.addQselectionType == SelectionType.PARALLEL
@@ -548,7 +548,7 @@ export predicate additionalQueryPredicate(addQ is map)
         || (addQ.addQselectionType == SelectionType.TANGENT_CONNECTED && addQ.addQseedType == SeedType.EDGE)
         || (addQ.addQselectionType == SelectionType.MATCHING && addQ.addQseedType == SeedType.EDGE))
     {
-        annotation { "Name" : "Edges", "Filter" : EntityType.EDGE }
+        annotation { "Name" : "Edges", "Description" : "Edges the result is built from.", "Filter" : EntityType.EDGE }
         addQ.addQseedEdges is Query;
     }
     if (addQ.addQselectionType == SelectionType.CREATED_BY
@@ -557,60 +557,60 @@ export predicate additionalQueryPredicate(addQ is map)
         || addQ.addQselectionType == SelectionType.OWNED_BY
         || addQ.addQselectionType == SelectionType.EVERYTHING)
     {
-        annotation { "Name" : "Entity type" }
+        annotation { "Name" : "Entity type", "Description" : "The type of entity to return: face, edge, vertex or body." }
         addQ.addQentityType is EntityType;
     }
     if (addQ.addQselectionType == SelectionType.FILLETS)
     {
-        annotation { "Name" : "Fillet compare type" }
+        annotation { "Name" : "Fillet compare type", "Description" : "Fillets equal to, no larger than, or no smaller than the seed fillet." }
         addQ.addQfilletCompareType is FilletCompare;
     }
     if (addQ.addQselectionType == SelectionType.BOUNDED_FACES)
     {
-        annotation { "Name" : "Bounds", "Filter" : EntityType.EDGE || EntityType.FACE }
+        annotation { "Name" : "Bounds", "Description" : "Faces or edges that bound the result.", "Filter" : EntityType.EDGE || EntityType.FACE }
         addQ.addQboundedFacesBounds is Query;
     }
     if (addQ.addQselectionType == SelectionType.EDGE_CONVEXITY)
     {
-        annotation { "Name" : "Edge convexity type" }
+        annotation { "Name" : "Edge convexity type", "Description" : "Convex, concave or smooth edges." }
         addQ.addQedgeConvexityType is EdgeConvexityType;
     }
     if (addQ.addQselectionType == SelectionType.TOLERANT_PARALLEL)
     {
-        annotation { "Name" : "Direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Direction", "Description" : "The reference direction: an edge, planar face, cylinder axis or mate connector (Z axis).", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
         addQ.addQdirection is Query;
     }
     if (addQ.addQselectionType == SelectionType.TANGENT_CONNECTED && addQ.addQseedType == SeedType.FACE
         || addQ.addQselectionType == SelectionType.TOLERANT_PARALLEL)
     {
-        annotation { "Name" : "Angle tolerance", "Default" : 0 * degree }
+        annotation { "Name" : "Angle tolerance", "Description" : "Largest angle from the reference that still counts as a match.", "Default" : 0 * degree }
         isAngle(addQ.addQangleTolerance, ANGLE_STRICT_180_BOUNDS);
     }
     if (addQ.addQselectionType == SelectionType.CREATED_BY
         || addQ.addQselectionType == SelectionType.EVERYTHING)
     {
-        annotation { "Name" : "Filter construction entities", "Default" : true }
+        annotation { "Name" : "Filter construction entities", "Description" : "Leave out construction geometry.", "Default" : true }
         addQ.addQfilterConstruction is boolean;
 
-        annotation { "Name" : "Filter by body type", "Default" : false }
+        annotation { "Name" : "Filter by body type", "Description" : "Restrict the result to one body type.", "Default" : false }
         addQ.addQfilterByBodyType is boolean;
 
         if (addQ.addQfilterByBodyType)
         {
-            annotation { "Name" : "Body type" }
+            annotation { "Name" : "Body type", "Description" : "The body type to keep." }
             addQ.addQcreatedByBodyType is BodyTypeOptions;
         }
     }
 
     if (addQ.addQselectionType == SelectionType.CAP_ENTITY)
     {
-        annotation { "Name" : "Cap type", "Default" : CapType.EITHER }
+        annotation { "Name" : "Cap type", "Description" : "Start caps, end caps, or either.", "Default" : CapType.EITHER }
         addQ.addQcapType is CapType;
     }
     
     if (addQ.addQselectionType == SelectionType.LOAD_FROM_DERIVE)
     {
-        annotation { "Name" : "Derive feature", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
+        annotation { "Name" : "Derive feature", "Description" : "Derive feature(s) to read the saved query variables from.", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
         addQ.addQderiveFeature is FeatureList;
     }
 }
@@ -685,10 +685,10 @@ annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Query var
 export const queryVariable = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Name", "UIHint" : [UIHint.UNCONFIGURABLE, UIHint.QUERY_VARIABLE_NAME], "MaxLength" : 10000 }
+        annotation { "Name" : "Name", "Description" : "Name of the query variable. Pick it later from the Variable selection dropdown, or read it with getQueryVariable.", "UIHint" : [UIHint.UNCONFIGURABLE, UIHint.QUERY_VARIABLE_NAME], "MaxLength" : 10000 }
         definition.name is string;
 
-        annotation { "Name" : "Description", "MaxLength" : 256, "Default" : "" }
+        annotation { "Name" : "Description", "Description" : "Optional note shown in the feature tooltip.", "MaxLength" : 256, "Default" : "" }
         definition.description is string;
 
         initialQueryPredicate(definition);
@@ -696,18 +696,18 @@ export const queryVariable = defineFeature(function(context is Context, id is Id
         // Filters do not apply to a load from derive feature: the loaded variables are rebuilt as they were saved.
         if (definition.selectionType != SelectionType.LOAD_FROM_DERIVE)
         {
-            annotation { "Name" : "Add additional queries" }
+            annotation { "Name" : "Add additional queries", "Description" : "Combine more queries into the source query before the filters run." }
             definition.addAdditionalQueries is boolean;
 
             annotation { "Group Name" : "Additional queries", "Driving Parameter" : "addAdditionalQueries", "Collapsed By Default" : false }
             {
                 if (definition.addAdditionalQueries)
                 {
-                    annotation { "Name" : "Additional queries", "Item name" : "additional query", "Item label template" : "#booleanOperation of #addQlowercaseSelectionType" }
+                    annotation { "Name" : "Additional queries", "Description" : "Each item is a full query that is combined with the result so far.", "Item name" : "additional query", "Item label template" : "#booleanOperation of #addQlowercaseSelectionType" }
                     definition.additionalQueries is array;
                     for (var addQ in definition.additionalQueries)
                     {
-                        annotation { "Name" : "Boolean operation", "UIHint" : UIHint.HORIZONTAL_ENUM }
+                        annotation { "Name" : "Boolean operation", "Description" : "Union adds the entities, Subtract removes them, Intersect keeps only entities found in both.", "UIHint" : UIHint.HORIZONTAL_ENUM }
                         addQ.booleanOperation is BooleanOperationType;
 
                         additionalQueryPredicate(addQ);
@@ -715,33 +715,36 @@ export const queryVariable = defineFeature(function(context is Context, id is Id
                 }
             }
 
-            annotation { "Name" : "Filters", "Item name" : "filter", "Item label template" : "#fltMode #fltType: #fltCount" }
+            annotation { "Name" : "Filters", "Description" : "Applied in order after the source query. Each filter keeps or rejects entities.", "Item name" : "filter", "Item label template" : "#fltMode #fltType: #fltCount" }
             definition.filters is array;
             for (var flt in definition.filters)
             {
                 filterPredicate(flt);
             }
 
-            annotation { "Name" : "Highlight each filter stage", "Default" : false }
+            annotation { "Name" : "Combine filters", "Description" : "All: each filter narrows the previous result. Any: every Keep filter runs on the whole source and the matches are united; Reject filters then run in order.", "Default" : FilterCombine.ALL, "UIHint" : UIHint.SHOW_LABEL }
+            definition.filterCombine is FilterCombine;
+
+            annotation { "Name" : "Highlight each filter stage", "Description" : "Highlight the result of each filter in its own color to see where entities drop out.", "Default" : false }
             definition.debugStages is boolean;
 
-            annotation { "Name" : "Specify output type", "Default" : false }
+            annotation { "Name" : "Specify output type", "Description" : "Restrict the final result to one entity type and warn if none of that type is left.", "Default" : false }
             definition.specifyOutputType is boolean;
 
             if (definition.specifyOutputType)
             {
-                annotation { "Name" : "Output entity type", "UIHint" : UIHint.SHOW_LABEL }
+                annotation { "Name" : "Output entity type", "Description" : "The entity type to keep in the final result.", "UIHint" : UIHint.SHOW_LABEL }
                 definition.outputEntityType is EntityType;
             }
         }
 
-        annotation { "Name" : "Evaluate on use", "Default" : false }
+        annotation { "Name" : "Evaluate on use", "Description" : "Re-evaluate the query where the variable is used instead of storing the entities now. Slower, but follows later edits.", "Default" : false }
         definition.evaluateOnUse is boolean;
 
-        annotation { "Name" : "Show selection", "Default" : true }
+        annotation { "Name" : "Show selection", "Description" : "Highlight the result in yellow while editing.", "Default" : true }
         definition.showSelection is boolean;
         
-        annotation { "Name" : "Save for derived studios", "Default" : false }
+        annotation { "Name" : "Save for derived studios", "Description" : "Tag the entities so the variables can be rebuilt in a Part Studio that derives from this one.", "Default" : false }
         definition.saveForDerivedStudios is boolean;
     }
     {

@@ -180,10 +180,10 @@ def modified_by(fids, mode="KEEP"):
     return [en("fltMode", "FilterMode", mode, NS), en("fltType", "FilterType", "LAST_MODIFIED_BY", NS), flist("fltModifiedBy", fids)]
 
 
-def qvx(var, label, source, *filters):
+def qvx(var, label, source, *filters, combine="ALL"):
     post({"btType": "BTMFeature-134", "featureType": "queryVariable", "name": "%s %s" % (var, label), "namespace": NS, "parameters": [
         s("name", var), s("description", ""), en("selectionType", "SelectionType", "SELECTION", NS), q("selectionQuery", source),
-        arr("filters", [item(f) for f in filters]), b("debugStages", False), b("specifyOutputType", False),
+        b("addAdditionalQueries", False), arr("additionalQueries", []), arr("filters", [item(f) for f in filters]), en("filterCombine", "FilterCombine", combine, NS), b("debugStages", False), b("specifyOutputType", False),
         b("evaluateOnUse", False), b("showSelection", False), b("saveForDerivedStudios", False)]})
 
 
@@ -206,3 +206,8 @@ qvx("t15", "Arc edge, direction parallel Y by END tangent -> 1", ARC_EDGES, dire
 qvx("t16", "Arc edge, direction parallel Y by CHORD -> 0", ARC_EDGES, direction(Y_REF, curve="CHORD"))
 qvx("t17", "Arc edge, direction parallel X by CHORD -> 1", ARC_EDGES, direction(X_REF, curve="CHORD"))
 qvx("t18", "Chain: parallel Z then between A top and B top -> 3", SOLID_FACES, direction(Z_REF), between(top(A), top(B), "FULLY_BETWEEN"))
+qvx("t19", "Position coincides with ANY of two planes (B top, cylinder top) -> 2", SOLID_FACES,
+    [en("fltMode", "FilterMode", "KEEP", NS), en("fltType", "FilterType", "POSITION", NS),
+     en("fltPosType", "PositionalDirectionalType", "COINCIDES_WITH_PLANE", NS), q("fltPosPlane", top(B), top(CYL))])
+qvx("t20", "Combine ANY: keep direction parallel Z, keep geometry CYLINDER -> 8", SOLID_FACES, direction(Z_REF), geometry("CYLINDER"), combine="ANY")
+qvx("t21", "Combine ANY, then reject CYLINDER -> 6", SOLID_FACES, direction(Z_REF), geometry("CYLINDER"), geometry("CYLINDER", mode="REJECT"), combine="ANY")
