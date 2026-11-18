@@ -678,7 +678,9 @@ export predicate additionalQueryPredicate(addQ is map)
  *      @field showSelection {boolean} : Whether to highlight the entities contained in the created variable.
  * }}
  */
-annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Query variable X", "Feature Name Template" : "###name", "UIHint" : UIHint.NO_PREVIEW_PROVIDED,
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Query variable X",
+        "Feature Type Description" : "Names a query in two stages. Source: pick entities in any of the Query Variable+ ways (created by, adjacent, size, positional, ...), optionally combined with more queries by union, subtract or intersect. Filters: an ordered list that keeps or rejects entities by direction, between two bounds, position, closest to, geometry, size, edge topology, convexity or last modifying feature. Faces, edges, vertices and mate connectors all work as references. Each stage shows its entity count. Built on Query Variable+ by Derek Van Allen.",
+"Feature Name Template" : "###name", "UIHint" : UIHint.NO_PREVIEW_PROVIDED,
         "Tooltip Template" : "###name #description #qvxSummary" }
 export const queryVariable = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
