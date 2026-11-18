@@ -275,12 +275,12 @@ export predicate initialQueryPredicate(definition is map)
             || definition.positionalMetricType == PositionalDirectionalType.COINCIDES_WITH_PLANE
             || definition.positionalMetricType == PositionalDirectionalType.IN_FRONT_OF_PLANE)
         {
-            annotation { "Name" : "Reference plane", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Reference plane", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR }
             definition.positionalPlane is Query;
         }
         else if (definition.positionalMetricType == PositionalDirectionalType.INTERSECTS_LINE)
         {
-            annotation { "Name" : "Reference line", "Filter" : (EntityType.EDGE && GeometryType.LINE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Reference line", "Filter" : (EntityType.EDGE && GeometryType.LINE) || BodyType.MATE_CONNECTOR }
             definition.positionalLine is Query;
         }
         else if (definition.positionalMetricType == PositionalDirectionalType.CLOSEST_TO)
@@ -291,7 +291,7 @@ export predicate initialQueryPredicate(definition is map)
         else if (definition.positionalMetricType == PositionalDirectionalType.CONTAINS_POINT
             || definition.positionalMetricType == PositionalDirectionalType.INTERSECTS_BALL)
         {
-            annotation { "Name" : "Reference point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Reference point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR }
             definition.positionalVertex is Query;
 
             if (definition.positionalMetricType == PositionalDirectionalType.INTERSECTS_BALL)
@@ -497,12 +497,12 @@ export predicate additionalQueryPredicate(addQ is map)
             || addQ.addQpositionalMetricType == PositionalDirectionalType.COINCIDES_WITH_PLANE
             || addQ.addQpositionalMetricType == PositionalDirectionalType.IN_FRONT_OF_PLANE)
         {
-            annotation { "Name" : "Reference plane", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Reference plane", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR }
             addQ.addQpositionalPlane is Query;
         }
         else if (addQ.addQpositionalMetricType == PositionalDirectionalType.INTERSECTS_LINE)
         {
-            annotation { "Name" : "Reference line", "Filter" : (EntityType.EDGE && GeometryType.LINE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Reference line", "Filter" : (EntityType.EDGE && GeometryType.LINE) || BodyType.MATE_CONNECTOR }
             addQ.addQpositionalLine is Query;
         }
         else if (addQ.addQpositionalMetricType == PositionalDirectionalType.CLOSEST_TO)
@@ -513,7 +513,7 @@ export predicate additionalQueryPredicate(addQ is map)
         else if (addQ.addQpositionalMetricType == PositionalDirectionalType.CONTAINS_POINT
             || addQ.addQpositionalMetricType == PositionalDirectionalType.INTERSECTS_BALL)
         {
-            annotation { "Name" : "Reference point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Reference point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR }
             addQ.addQpositionalVertex is Query;
 
             if (addQ.addQpositionalMetricType == PositionalDirectionalType.INTERSECTS_BALL)

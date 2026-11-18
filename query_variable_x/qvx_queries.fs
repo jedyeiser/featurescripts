@@ -298,7 +298,22 @@ export function evaluateDirectionReference(context is Context, directionQuery is
 }
 
 /**
- * Builds positional and directional queries that relate a seed selection to reference geometry.
+ * The individual entities of a reference selection (one query per picked entity), failing when nothing is picked.
+ * A mate connector picked by its origin vertex or as a body is one entity.
+ */
+export function qvxReferenceEntities(context is Context, referenceQuery is Query, errorField is string) returns array
+{
+    const entities = evaluateQuery(context, referenceQuery);
+    if (size(entities) == 0)
+    {
+        throw regenError(ErrorStringEnum.INVALID_INPUT, [errorField]);
+    }
+    return entities;
+}
+
+/**
+ * Builds positional and directional queries that relate a seed selection to reference geometry. The plane, line
+ * and point references accept several picks and match any of them.
  */
 export function positionalDirectionalSelection(context is Context, definition is map) returns Query
 {
@@ -310,34 +325,39 @@ export function positionalDirectionalSelection(context is Context, definition is
         || positionalType == PositionalDirectionalType.COINCIDES_WITH_PLANE
         || positionalType == PositionalDirectionalType.IN_FRONT_OF_PLANE)
     {
-        const referencePlane = evaluatePlaneReference(context, definition.positionalPlane as Query, "positionalPlane");
-        if (positionalType == PositionalDirectionalType.PLANE_NORMAL)
+        // Several planes may be picked: an entity matches when it matches ANY of them.
+        var planeHits = [];
+        for (var referenceEntity in qvxReferenceEntities(context, definition.positionalPlane as Query, "positionalPlane"))
         {
-            return qParallelPlanes(candidateEntities, referencePlane);
+            const referencePlane = qvxPlane(context, referenceEntity);
+            if (positionalType == PositionalDirectionalType.PLANE_NORMAL)
+            {
+                planeHits = append(planeHits, qParallelPlanes(candidateEntities, referencePlane));
+            }
+            else if (positionalType == PositionalDirectionalType.INTERSECTS_PLANE)
+            {
+                planeHits = append(planeHits, qIntersectsPlane(candidateEntities, referencePlane));
+            }
+            else if (positionalType == PositionalDirectionalType.COINCIDES_WITH_PLANE)
+            {
+                planeHits = append(planeHits, qCoincidesWithPlane(candidateEntities, referencePlane));
+            }
+            else
+            {
+                planeHits = append(planeHits, qInFrontOfPlane(candidateEntities, referencePlane));
+            }
         }
-
-        if (positionalType == PositionalDirectionalType.INTERSECTS_PLANE)
-        {
-            return qIntersectsPlane(candidateEntities, referencePlane);
-        }
-
-        if (positionalType == PositionalDirectionalType.COINCIDES_WITH_PLANE)
-        {
-            return qCoincidesWithPlane(candidateEntities, referencePlane);
-        }
-
-        if (positionalType == PositionalDirectionalType.IN_FRONT_OF_PLANE)
-        {
-            return qInFrontOfPlane(candidateEntities, referencePlane);
-        }
-
-        throw regenError(ErrorStringEnum.INVALID_INPUT, ["positionalMetricType"]);
+        return qUnion(planeHits);
     }
 
     if (positionalType == PositionalDirectionalType.INTERSECTS_LINE)
     {
-        const referenceLine = evaluateLineReference(context, definition.positionalLine as Query, "positionalLine");
-        return qIntersectsLine(candidateEntities, referenceLine);
+        var lineHits = [];
+        for (var referenceEntity in qvxReferenceEntities(context, definition.positionalLine as Query, "positionalLine"))
+        {
+            lineHits = append(lineHits, qIntersectsLine(candidateEntities, qvxLine(context, referenceEntity)));
+        }
+        return qUnion(lineHits);
     }
 
     if (positionalType == PositionalDirectionalType.CLOSEST_TO)
@@ -348,14 +368,20 @@ export function positionalDirectionalSelection(context is Context, definition is
     if (positionalType == PositionalDirectionalType.CONTAINS_POINT
         || positionalType == PositionalDirectionalType.INTERSECTS_BALL)
     {
-        const referencePoint = evaluatePointReference(context, definition.positionalVertex as Query, "positionalVertex");
-        if (positionalType == PositionalDirectionalType.CONTAINS_POINT)
+        var pointHits = [];
+        for (var referenceEntity in qvxReferenceEntities(context, definition.positionalVertex as Query, "positionalVertex"))
         {
-            return qContainsPoint(candidateEntities, referencePoint);
+            const referencePoint = qvxPoint(context, referenceEntity);
+            if (positionalType == PositionalDirectionalType.CONTAINS_POINT)
+            {
+                pointHits = append(pointHits, qContainsPoint(candidateEntities, referencePoint));
+            }
+            else
+            {
+                pointHits = append(pointHits, qWithinRadius(candidateEntities, referencePoint, definition.positionalRadius as ValueWithUnits));
+            }
         }
-
-        const radius = definition.positionalRadius as ValueWithUnits;
-        return qWithinRadius(candidateEntities, referencePoint, radius);
+        return qUnion(pointHits);
     }
 
     const referenceDirection = evaluateDirectionReference(context, definition.positionalDirection as Query, "positionalDirection");
