@@ -1,0 +1,246 @@
+- generic [ref=f5e5]:
+  - navigation [ref=f5e6]:
+    - generic [ref=f5e7]:
+      - link [ref=f5e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f5e11]
+      - generic [ref=f5e13] [cursor=pointer]
+    - generic [ref=f5e16]:
+      - generic [ref=f5e18]:
+        - generic [ref=f5e19]: Tooling_Blanks
+        - generic [ref=f5e20]: Main
+      - generic [ref=f5e22] [cursor=pointer]
+      - link "Document Templates" [ref=f5e26] [cursor=pointer]:
+        - /url: /documents?nodeId=0c169bfd2562190e433a7000&resourceType=folder
+    - generic [ref=f5e30]:
+      - generic [ref=f5e38] [cursor=pointer]
+      - button "Notifications" [ref=f5e43] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f5e51]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f5e54] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f5e59] [cursor=pointer]
+      - button "Share" [ref=f5e63] [cursor=pointer]
+      - generic "Help menu" [ref=f5e65] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f5e69] [cursor=pointer]
+  - generic [ref=f5e79]:
+    - generic [ref=f5e81]:
+      - generic [ref=f5e82]:
+        - generic [ref=f5e83]:
+          - generic [ref=f5e84] [cursor=pointer]
+          - generic [ref=f5e87] [cursor=pointer]
+          - generic [ref=f5e90] [cursor=pointer]
+          - generic [ref=f5e93] [cursor=pointer]
+          - generic [ref=f5e96] [cursor=pointer]
+          - generic [ref=f5e99] [cursor=pointer]
+          - generic [ref=f5e102] [cursor=pointer]
+          - generic [ref=f5e105] [cursor=pointer]
+        - generic [ref=f5e109] [cursor=pointer]
+      - generic [ref=f5e113] [cursor=pointer]
+    - generic [ref=f5e120]:
+      - generic [ref=f5e127]:
+        - generic [ref=f5e139]:
+          - generic [ref=f5e140]: Sketch
+          - generic [ref=f5e152]:
+            - generic [ref=f5e153] [cursor=pointer]
+            - generic [ref=f5e157] [cursor=pointer]
+            - generic [ref=f5e161] [cursor=pointer]
+            - generic [ref=f5e165] [cursor=pointer]
+            - generic [ref=f5e170]:
+              - generic [ref=f5e171] [cursor=pointer]
+              - generic [ref=f5e175] [cursor=pointer]
+          - generic [ref=f5e181]:
+            - generic [ref=f5e183]:
+              - generic [ref=f5e184] [cursor=pointer]
+              - generic [ref=f5e188] [cursor=pointer]
+            - generic [ref=f5e191] [cursor=pointer]
+            - generic [ref=f5e196]:
+              - generic [ref=f5e197] [cursor=pointer]
+              - generic [ref=f5e201] [cursor=pointer]
+            - generic [ref=f5e204] [cursor=pointer]
+            - generic [ref=f5e208] [cursor=pointer]
+            - generic [ref=f5e212] [cursor=pointer]
+            - generic [ref=f5e216] [cursor=pointer]
+          - generic [ref=f5e223]:
+            - generic [ref=f5e225]:
+              - generic [ref=f5e226] [cursor=pointer]
+              - generic [ref=f5e230] [cursor=pointer]
+            - generic [ref=f5e233] [cursor=pointer]
+          - generic [ref=f5e240]:
+            - generic [ref=f5e241] [cursor=pointer]
+            - generic [ref=f5e245] [cursor=pointer]
+            - generic [ref=f5e250]:
+              - generic [ref=f5e251] [cursor=pointer]
+              - generic [ref=f5e255] [cursor=pointer]
+            - generic [ref=f5e258] [cursor=pointer]
+          - generic [ref=f5e265]:
+            - generic [ref=f5e266] [cursor=pointer]
+            - generic [ref=f5e270] [cursor=pointer]
+            - generic [ref=f5e274] [cursor=pointer]
+            - generic [ref=f5e278] [cursor=pointer]
+          - generic [ref=f5e286]:
+            - generic [ref=f5e287] [cursor=pointer]
+            - generic [ref=f5e291] [cursor=pointer]
+          - generic [ref=f5e298]:
+            - generic [ref=f5e299] [cursor=pointer]: SA
+            - generic [ref=f5e302] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f5e306] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f5e307]:
+            - generic [ref=f5e308]: alt/⌥
+            - generic [ref=f5e309]: c
+      - generic [ref=f5e313]:
+        - generic [ref=f5e316]:
+          - generic [ref=f5e318]:
+            - generic [ref=f5e319]:
+              - generic [ref=f5e320]: Configurations
+              - button "Configuration actions" [ref=f5e326] [cursor=pointer]
+            - generic [ref=f5e330]:
+              - generic [ref=f5e334]:
+                - generic [ref=f5e335]: Spitzeblock
+                - generic [ref=f5e338]:
+                  - generic [ref=f5e339]: Aufbug 22
+                  - button "Select box focus" [ref=f5e344] [cursor=pointer]
+              - generic [ref=f5e348]:
+                - generic [ref=f5e349]: Endeblock
+                - generic [ref=f5e352]:
+                  - generic [ref=f5e353]: FR1
+                  - button "Select box focus" [ref=f5e358] [cursor=pointer]
+              - generic [ref=f5e362]:
+                - generic [ref=f5e363]: lauflange
+                - textbox [ref=f5e365]: 1480 mm
+              - generic [ref=f5e369]:
+                - generic [ref=f5e370]: endelange
+                - textbox [ref=f5e372]: 145 mm
+              - generic [ref=f5e376]:
+                - generic [ref=f5e377]: ofl_bereite
+                - textbox [ref=f5e379]: 130 mm
+              - generic [ref=f5e383]:
+                - generic [ref=f5e384]: mitte_bereite
+                - textbox [ref=f5e386]: 45 mm
+              - generic [ref=f5e390]:
+                - generic [ref=f5e391]: UT_Bereite
+                - textbox [ref=f5e393]: 360 mm
+              - generic [ref=f5e397]:
+                - generic [ref=f5e398]: UT_dicke
+                - textbox [ref=f5e400]: "5"
+              - generic [ref=f5e404]:
+                - generic [ref=f5e405]: wand_hohe
+                - textbox [ref=f5e407]: 20 mm
+              - generic [ref=f5e411]:
+                - generic [ref=f5e412]: wand_ofset
+                - textbox [ref=f5e414]: 5 mm
+              - generic [ref=f5e418]:
+                - generic [ref=f5e419]: tooling_allignment_loc
+                - textbox [ref=f5e421]: 100 mm
+              - generic [ref=f5e425]:
+                - generic [ref=f5e426]: spitze_wand_lange
+                - textbox [ref=f5e428]: 170 mm
+              - generic [ref=f5e432]:
+                - generic [ref=f5e433]: addtl_ende_dicke
+                - textbox [ref=f5e435]: 15 mm
+              - generic [ref=f5e439]:
+                - generic [ref=f5e440]: ende_loche_hohe
+                - textbox [ref=f5e442]: 5 mm
+          - generic [ref=f5e445]:
+            - generic [ref=f5e446]:
+              - generic [ref=f5e448]:
+                - button [ref=f5e450] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f5e455]
+              - generic [ref=f5e456]:
+                - button [ref=f5e457] [cursor=pointer]
+                - generic [ref=f5e460]: Features (169)
+                - button [ref=f5e461] [cursor=pointer]
+                - button [ref=f5e464] [cursor=pointer]
+                - button [ref=f5e467] [cursor=pointer]
+            - generic [ref=f5e471]:
+              - generic [ref=f5e472]:
+                - generic [ref=f5e474]:
+                  - generic [ref=f5e475] [cursor=pointer]
+                  - generic [ref=f5e478]: Default geometry
+                - generic [ref=f5e480]: Origin
+                - generic [ref=f5e490]: Top
+                - generic [ref=f5e500]: Front
+                - generic [ref=f5e510]: Right
+                - generic [ref=f5e520]: rsl_wire
+                - generic [ref=f5e529]:
+                  - generic [ref=f5e531] [cursor=pointer]
+                  - generic [ref=f5e534]: Ref_Geo (6)
+                - generic [ref=f5e540]:
+                  - generic [ref=f5e542] [cursor=pointer]
+                  - generic [ref=f5e545]: Spitze/EndeBlock (12)
+                - generic [ref=f5e550]: "#tip_wire"
+                - generic [ref=f5e558]: "#tail_wire"
+                - generic [ref=f5e566]: EDA
+                - generic [ref=f5e574]: MRS
+                - generic [ref=f5e582]: SPA
+                - generic [ref=f5e590]: Tip_Shift
+                - generic [ref=f5e598]: rotate_tail_block
+                - generic [ref=f5e607]:
+                  - generic [ref=f5e609] [cursor=pointer]
+                  - generic [ref=f5e612]: Tail_Lengths (11)
+                - generic [ref=f5e617]: Shift_Contact_Points
+                - generic [ref=f5e626]:
+                  - generic [ref=f5e628] [cursor=pointer]
+                  - generic [ref=f5e631]: width_planes (8)
+                - generic [ref=f5e637]:
+                  - generic [ref=f5e639] [cursor=pointer]
+                  - generic [ref=f5e642]: ctr_geo (6)
+                - generic [ref=f5e648]:
+                  - generic [ref=f5e650] [cursor=pointer]
+                  - generic [ref=f5e653]: tooling_allignment (5)
+                - generic [ref=f5e659]:
+                  - generic [ref=f5e661] [cursor=pointer]
+                  - generic [ref=f5e664]: ende (4)
+                - generic [ref=f5e670]:
+                  - generic [ref=f5e672] [cursor=pointer]
+                  - generic [ref=f5e675]: spitze (6)
+                - generic [ref=f5e681]:
+                  - generic [ref=f5e683] [cursor=pointer]
+                  - generic [ref=f5e686]: body_generation (76)
+                - generic [ref=f5e691]: "#ut_faces"
+                - generic [ref=f5e703]: "#ot_faces"
+                - generic [ref=f5e711]: "#ot_faces"
+                - generic [ref=f5e723]: "#ut_inside_face"
+                - generic [ref=f5e735]: "#ut_outside_face"
+                - generic [ref=f5e747]: "#ot_inside_face"
+                - generic [ref=f5e759]: "#ot_outside_face"
+              - list
+          - generic [ref=f5e775]:
+            - generic [ref=f5e777]:
+              - generic [ref=f5e779] [cursor=pointer]
+              - generic [ref=f5e782]: Parts (7)
+            - generic [ref=f5e786]: lid_body
+            - generic [ref=f5e798]: Part 2
+            - generic [ref=f5e810]: UT
+            - generic [ref=f5e822]: wall_solid
+            - generic [ref=f5e834]: wall_solid
+            - generic [ref=f5e846]: Part 6
+            - generic [ref=f5e858]: Part 7
+            - generic [ref=f5e871]:
+              - generic [ref=f5e873] [cursor=pointer]
+              - generic [ref=f5e876]: Curves (4)
+        - generic [ref=f5e881]:
+          - generic [ref=f5e883] [cursor=pointer]
+          - generic [ref=f5e887]:
+            - generic [ref=f5e889]:
+              - button [ref=f5e890] [cursor=pointer]
+              - button [ref=f5e894] [cursor=pointer]
+              - button [ref=f5e898] [cursor=pointer]
+            - generic [ref=f5e902] [cursor=pointer]
+          - generic [ref=f5e907]:
+            - generic [ref=f5e908] [cursor=pointer]
+            - generic [ref=f5e912] [cursor=pointer]
+            - generic [ref=f5e916] [cursor=pointer]
+            - generic [ref=f5e920] [cursor=pointer]
+            - generic [ref=f5e924] [cursor=pointer]
+            - generic [ref=f5e928] [cursor=pointer]
+            - generic [ref=f5e932] [cursor=pointer]
+            - generic [ref=f5e935] [cursor=pointer]
+      - generic [ref=f5e939]:
+        - img [ref=f5e942] [cursor=pointer]
+        - generic [ref=f5e945]:
+          - generic [ref=f5e946] [cursor=pointer]: ATTM_Blank
+          - generic [ref=f5e952] [cursor=pointer]: STR_Tooling_Blank
+          - generic [ref=f5e958]: STR_2
+          - generic [ref=f5e969] [cursor=pointer]: Part Studio 1
+          - generic [ref=f5e975] [cursor=pointer]: Key_Tooling_Locations
+          - generic [ref=f5e981] [cursor=pointer]: Assembly 1
