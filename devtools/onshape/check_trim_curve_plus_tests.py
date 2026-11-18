@@ -37,8 +37,8 @@ WANT_STATUS = {"T8": "ERROR", "T3": "INFO", "T12": "INFO", "T13": "INFO", "T10":
                "T20": "INFO", "T21": "INFO", "T22": "INFO", "T23": "INFO",
                "T24": "INFO", "T26": "INFO", "T27": "INFO", "T28": "ERROR", "T29": "ERROR", "T30": "INFO", "T31": "INFO", "T32": "INFO", "T33": "INFO", "T34": "INFO", "T35": "ERROR"}
 # Where the single trimmed wire starts, as an x offset from its case origin (T26: 30 from the start end, T27: 70 from the start end).
-# T30 (hook wire, 60 from BOTH ends) is a KNOWN LIMIT: the wire ends are 50 mm apart, so after the first in-place trim the second cut is ambiguous
-# (plane crosses twice, ends 60 and 50 mm from it) and the extraction fallback fails too. It must ERROR with the explanation; T31/T32 (one end) work.
+# T30 (hook wire, 60 from BOTH ends): the ends are 50 mm apart, so trimming the start end first made the second cut ambiguous and it ERRORed
+# until 2026-11-18. The order that works is now chosen on a scratch copy first. T31/T32 are the one-end cases.
 EXPECT_MIN_X = {"T24": 50, "T26": 30, "T27": 70, "T33": -40, "T34": 50}
 EXPECT_EDGES = {"T2": 5}
 

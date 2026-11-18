@@ -1,5 +1,6 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+export import(path : "onshape/std/movecurveboundarytype.gen.fs", version : "3083.0");
 export import(path : "onshape/std/curveextensionshape.gen.fs", version : "3083.0");
 export import(path : "onshape/std/curveextensionendcondition.gen.fs", version : "3083.0");
 
