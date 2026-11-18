@@ -338,7 +338,7 @@ export function qvxApplyFilters(context is Context, id is Id, definition is map,
 {
     var entities = evaluateQuery(context, source);
     setFeatureComputedParameter(context, id, { "name" : "qvxSummary", "value" : size(entities) ~ " source entities" });
-    if (definition.selectionType == SelectionType.LOAD_FROM_DERIVE || definition.filters == undefined)
+    if (definition.filters == undefined)
     {
         return source;
     }
