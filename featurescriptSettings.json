@@ -368,6 +368,17 @@
       "last_push": "2026-11-09T02:04:05.502675+00:00",
       "document_id": "a39a5952c0df830cde96ffb6",
       "workspace_id": "c85128a9d158805ce2dafa19"
+    },
+    {
+      "name": "query_variable_x",
+      "description": "Query Variable X: source + ordered filter stages (builds on Derek Van Allen's Query Variable+)",
+      "working_directory": "query_variable_x",
+      "onshape_url": "https://k2-sports.onshape.com/documents/fd4cb2fb919ca649f4025685/w/ddc52b954f5dfd60c5d71cde",
+      "references": [],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "fd4cb2fb919ca649f4025685",
+      "workspace_id": "ddc52b954f5dfd60c5d71cde"
     }
   ],
   "sync_metadata": {}
