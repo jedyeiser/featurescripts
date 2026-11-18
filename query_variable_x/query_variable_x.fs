@@ -312,8 +312,12 @@ export predicate initialQueryPredicate(definition is map)
             annotation { "Name" : "Reference line", "Filter" : (EntityType.EDGE && GeometryType.LINE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             definition.positionalLine is Query;
         }
+        else if (definition.positionalMetricType == PositionalDirectionalType.CLOSEST_TO)
+        {
+            annotation { "Name" : "Closest to", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            definition.positionalClosestRef is Query;
+        }
         else if (definition.positionalMetricType == PositionalDirectionalType.CONTAINS_POINT
-            || definition.positionalMetricType == PositionalDirectionalType.CLOSEST_TO
             || definition.positionalMetricType == PositionalDirectionalType.INTERSECTS_BALL)
         {
             annotation { "Name" : "Reference point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
@@ -453,7 +457,8 @@ export predicate initialQueryPredicate(definition is map)
  *      @field positionalMetricType {PositionalDirectionalType} : If selectionType is POSITIONAL_DIRECTIONAL, the positional or directional query to apply.
  *      @field positionalPlane {Query} : If positionalMetricType references a plane, the plane face used in the comparison.
  *      @field positionalLine {Query} : If positionalMetricType is INTERSECTS_LINE, the line entity used for intersection.
- *      @field positionalVertex {Query} : If positionalMetricType requires a point reference, the vertex used for evaluation.
+ *      @field positionalVertex {Query} : If positionalMetricType requires a point reference, the vertex or mate connector used for evaluation.
+ *      @field positionalClosestRef {Query} : If positionalMetricType is CLOSEST_TO, the vertex, edge, face, body or mate connector the result must be closest to.
  *      @field positionalRadius {ValueWithUnits} : If positionalMetricType is INTERSECTS_BALL, the sphere radius used for filtering.
  *      @field positionalDirection {Query} : If positionalMetricType requires a direction, the entity defining the direction.
  *      @field geometrySeedEntities {Query} : If selectionType is GEOMETRY, entities that will be filtered by geometry type.
@@ -862,19 +867,18 @@ function positionalDirectionalSelection(context is Context, definition is map) r
         return qIntersectsLine(candidateEntities, referenceLine);
     }
 
+    if (positionalType == PositionalDirectionalType.CLOSEST_TO)
+    {
+        return qvxClosestTo(context, candidateEntities, definition.positionalClosestRef as Query);
+    }
+
     if (positionalType == PositionalDirectionalType.CONTAINS_POINT
-        || positionalType == PositionalDirectionalType.CLOSEST_TO
         || positionalType == PositionalDirectionalType.INTERSECTS_BALL)
     {
         const referencePoint = evaluatePointReference(context, definition.positionalVertex as Query, "positionalVertex");
         if (positionalType == PositionalDirectionalType.CONTAINS_POINT)
         {
             return qContainsPoint(candidateEntities, referencePoint);
-        }
-
-        if (positionalType == PositionalDirectionalType.CLOSEST_TO)
-        {
-            return qClosestTo(candidateEntities, referencePoint);
         }
 
         const radius = definition.positionalRadius as ValueWithUnits;
@@ -1462,8 +1466,12 @@ export predicate filterPredicate(flt is map)
             annotation { "Name" : "Reference line", "Filter" : (EntityType.EDGE && GeometryType.LINE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             flt.fltPosLine is Query;
         }
+        else if (flt.fltPosType == PositionalDirectionalType.CLOSEST_TO)
+        {
+            annotation { "Name" : "Closest to", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            flt.fltPosClosestRef is Query;
+        }
         else if (flt.fltPosType == PositionalDirectionalType.CONTAINS_POINT
-            || flt.fltPosType == PositionalDirectionalType.CLOSEST_TO
             || flt.fltPosType == PositionalDirectionalType.INTERSECTS_BALL)
         {
             annotation { "Name" : "Reference point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
@@ -1739,6 +1747,59 @@ function qvxDirectionMatches(context is Context, flt is map, current is Query) r
     return qUnion(hits);
 }
 
+/**
+ * The entities of `candidates` closest to `reference`. The reference may be a vertex or mate connector (a point),
+ * or an edge, face or body (measured with evDistance, so the nearest points on both sides are used). Ties within
+ * TOLERANCE.zeroLength are all returned. The reference itself is never a result, and for a body reference neither
+ * are the entities it owns (they would all be at distance zero).
+ */
+function qvxClosestTo(context is Context, candidates is Query, reference is Query) returns Query
+{
+    if (isQueryEmpty(context, reference))
+    {
+        throw regenError("Select what the result should be closest to");
+    }
+
+    var excluded = reference;
+    if (!isQueryEmpty(context, qEntityFilter(reference, EntityType.BODY)))
+    {
+        excluded = qUnion([reference, qOwnedByBody(reference)]);
+    }
+    const pool = evaluateQuery(context, qSubtraction(candidates, excluded));
+    if (size(pool) == 0)
+    {
+        return qNothing();
+    }
+
+    const referenceIsPoint = !isQueryEmpty(context, qvxMateConnector(context, reference))
+        || !isQueryEmpty(context, qEntityFilter(reference, EntityType.VERTEX));
+    var side0 = reference;
+    if (referenceIsPoint)
+    {
+        side0 = qvxPoint(context, reference);
+    }
+
+    var distances = [];
+    for (var entity in pool)
+    {
+        distances = append(distances, evDistance(context, { "side0" : side0, "side1" : entity }).distance);
+    }
+    var nearest = distances[0];
+    for (var d in distances)
+    {
+        nearest = min(nearest, d);
+    }
+
+    var hits = [];
+    for (var i = 0; i < size(pool); i += 1)
+    {
+        if (distances[i] <= nearest + TOLERANCE.zeroLength * meter)
+        {
+            hits = append(hits, pool[i]);
+        }
+    }
+    return qUnion(hits);
+}
 // ---------------------------------------------------------------------------------------------------------
 // Between
 // ---------------------------------------------------------------------------------------------------------
@@ -1886,6 +1947,7 @@ function qvxFilterMatches(context is Context, flt is map, current is Query) retu
                     "positionalPlane" : flt.fltPosPlane,
                     "positionalLine" : flt.fltPosLine,
                     "positionalVertex" : flt.fltPosVertex,
+                    "positionalClosestRef" : flt.fltPosClosestRef,
                     "positionalRadius" : flt.fltPosRadius,
                     "positionalDirection" : flt.fltPosDirection
                 });
