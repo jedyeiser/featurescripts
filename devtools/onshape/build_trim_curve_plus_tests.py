@@ -292,3 +292,28 @@ gate_case("T22", 21000, "hook wire, trim 400 from the START vertex, keep away fr
           hook_wire, (0, 0), 400, "FAR_SIDE")
 gate_case("T23", 22000, "hook wire, trim 100 from the END vertex (cut on the return leg), keep toward point -> 1 wire 100",
           hook_wire, (50, 100), 100, "POINT_SIDE")
+
+# ---- Distance from ends (2026-11-18): trim or cut a distance in from the ENDS of the wire (not of its edges) ----
+# The 3-edge wire runs (x0, 0) -> (x0+300, 300), length 557.080.
+def ends_case(tag, x0, label, given, enums, make_wire=None):
+    wid = (make_wire or wire)(tag, x0)
+    trim("%s %s" % (tag, label), body(wid), given(wid, x0), dict({"cutBy": "DISTANCE_FROM_ENDS"}, **enums))
+
+
+ends_case("T24", 23000, "trim 50 from BOTH ends -> 1 wire 457.080 (starts at x0+50)",
+          lambda wid, x0: [num("endsDistance", "50 mm")], {"operation": "TRIM", "endsMode": "SAME_AT_BOTH"})
+ends_case("T25", 24000, "split 120 in from both ends -> 3 wires 120 / 317.080 / 120",
+          lambda wid, x0: [num("endsDistance", "120 mm")], {"operation": "SPLIT", "endsMode": "SAME_AT_BOTH"})
+ends_case("T26", 25000, "trim, start point = START vertex, 30 from the start and 70 from the end -> 457.080 (starts at x0+30)",
+          lambda wid, x0: [q("endsStartPoint", end_vertex(wid, x0, 0)), num("endsStartDistance", "30 mm"), num("endsEndDistance", "70 mm")],
+          {"operation": "TRIM", "endsMode": "DIFFERENT_AT_EACH"})
+ends_case("T27", 26000, "trim, start point = END vertex, 30 from it and 70 from the other end -> 457.080 (starts at x0+70)",
+          lambda wid, x0: [q("endsStartPoint", end_vertex(wid, x0 + 300, 300)), num("endsStartDistance", "30 mm"), num("endsEndDistance", "70 mm")],
+          {"operation": "TRIM", "endsMode": "DIFFERENT_AT_EACH"})
+ends_case("T28", 27000, "start point NOT at an end of the curve -> ERROR",
+          lambda wid, x0: [q("endsStartPoint", end_vertex(wid, x0 + 200, 0)), num("endsStartDistance", "30 mm"), num("endsEndDistance", "70 mm")],
+          {"operation": "TRIM", "endsMode": "DIFFERENT_AT_EACH"})
+ends_case("T29", 28000, "300 mm from each end of a 557.080 mm curve -> ERROR (not shorter than the curve)",
+          lambda wid, x0: [num("endsDistance", "300 mm")], {"operation": "TRIM", "endsMode": "SAME_AT_BOTH"})
+ends_case("T30", 29000, "hook wire, trim 60 from BOTH ends -> 1 wire 387.080",
+          lambda wid, x0: [num("endsDistance", "60 mm")], {"operation": "TRIM", "endsMode": "SAME_AT_BOTH"}, make_wire=hook_wire)

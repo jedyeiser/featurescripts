@@ -32,7 +32,10 @@ EXPECT = {
 # Anything not listed must be OK.
 WANT_STATUS = {"T8": "ERROR", "T3": "INFO", "T12": "INFO", "T13": "INFO", "T10": "INFO", "T11": "INFO", "T14": "INFO",
                "T15": "INFO", "T16": "INFO", "T17": "INFO", "T18": "INFO", "T19": "INFO",
-               "T20": "INFO", "T21": "INFO", "T22": "INFO", "T23": "INFO"}
+               "T20": "INFO", "T21": "INFO", "T22": "INFO", "T23": "INFO",
+               "T24": "INFO", "T26": "INFO", "T27": "INFO", "T28": "ERROR", "T29": "ERROR", "T30": "INFO"}
+# Where the single trimmed wire starts, as an x offset from its case origin (T26: 30 from the start end, T27: 70 from the start end).
+EXPECT_MIN_X = {"T24": 50, "T26": 30, "T27": 70}
 EXPECT_EDGES = {"T2": 5}
 
 SCRIPT = """function(context is Context, queries)
@@ -76,12 +79,13 @@ for n in r.get("notices") or []:
     print("[%s] %s" % (n.get("level"), n.get("message")))
 lines = [v for v in re.findall(r'"value":\s*"((?:[^"\\]|\\.)*)"', json.dumps(r.get("result"))) if v[:2] in ("W ", "K ")]
 
-got, edges = {}, {}
+got, edges, minx = {}, {}, {}
 for ln in lines:
     if ln.startswith("W "):
         _, x, ne, length = ln.split()
         case = "T%d" % (int(float(x) + 50) // 1000 + 1)
         got.setdefault(case, []).append(float(length))
+        minx[case] = float(x) - (int(case[1:]) - 1) * 1000
         edges[case] = edges.get(case, 0) + int(ne)
 
 fails = 0
@@ -89,6 +93,7 @@ for case, want in EXPECT.items():
     have = sorted(got.get(case, []))
     ok = len(have) == len(want) and all(abs(a - b) < 0.01 for a, b in zip(have, sorted(want)))
     ok = ok and (case not in EXPECT_EDGES or edges[case] == EXPECT_EDGES[case])
+    ok = ok and (case not in EXPECT_MIN_X or abs(minx.get(case, -1) - EXPECT_MIN_X[case]) < 0.01)
     want_status = WANT_STATUS.get(case, "OK")
     ok = ok and status[trims[case]] == want_status
     fails += not ok
