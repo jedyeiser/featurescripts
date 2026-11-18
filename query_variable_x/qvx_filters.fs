@@ -106,6 +106,9 @@ export predicate filterPredicate(flt is map)
 
         annotation { "Name" : "Include entities on the bounds", "Default" : true }
         flt.fltIncludeBounds is boolean;
+
+        annotation { "Name" : "Treat mate connectors as planes (normal to Z)", "Default" : false }
+        flt.fltMateAsPlane is boolean;
     }
     else if (flt.fltType == FilterType.POSITION)
     {
@@ -228,8 +231,9 @@ export function qvxDirectionMatches(context is Context, flt is map, current is Q
 
 export function qvxBetweenMatches(context is Context, flt is map, current is Query) returns Query
 {
-    const boundA = qvxBound(context, flt.fltBetweenA);
-    const boundB = qvxBound(context, flt.fltBetweenB);
+    const mateAsPlane = flt.fltMateAsPlane == true;
+    const boundA = qvxBound(context, flt.fltBetweenA, mateAsPlane);
+    const boundB = qvxBound(context, flt.fltBetweenB, mateAsPlane);
     const axis = qvxBetweenAxis(boundA, boundB);
     const posA = dot(boundA.origin, axis);
     const posB = dot(boundB.origin, axis);

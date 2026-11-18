@@ -608,15 +608,19 @@ export function qvxClosestTo(context is Context, candidates is Query, reference 
 }
 
 /**
- * Reduce a Between bound to {isPlane, origin, normal}. Planar faces and mate connectors are planes (a mate
- * connector uses its origin and Z axis); a vertex is a point.
+ * Reduce a Between bound to {isPlane, origin, normal}. A planar face is a plane. A vertex is a point. A mate
+ * connector is a point (its origin) unless `mateAsPlane`, when it is the plane through its origin normal to its Z axis.
  */
-export function qvxBound(context is Context, q is Query) returns map
+export function qvxBound(context is Context, q is Query, mateAsPlane is boolean) returns map
 {
     if (!isQueryEmpty(context, qvxMateConnector(context, q)))
     {
         const cs = qvxMateConnectorFrame(context, q);
-        return { "isPlane" : true, "origin" : cs.origin, "normal" : cs.zAxis };
+        if (mateAsPlane)
+        {
+            return { "isPlane" : true, "origin" : cs.origin, "normal" : cs.zAxis };
+        }
+        return { "isPlane" : false, "origin" : cs.origin };
     }
     if (!isQueryEmpty(context, qEntityFilter(q, EntityType.VERTEX)))
     {
