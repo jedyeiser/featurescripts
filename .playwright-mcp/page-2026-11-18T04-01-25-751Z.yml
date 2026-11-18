@@ -1,0 +1,186 @@
+- generic [ref=f5e3]:
+  - navigation [ref=f5e29]:
+    - generic [ref=f5e30]:
+      - link [ref=f5e33] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f5e34]
+      - generic [ref=f5e36] [cursor=pointer]
+    - generic [ref=f5e39]:
+      - generic [ref=f5e41]:
+        - generic [ref=f5e42]: Query Variable X
+        - generic [ref=f5e43]: Main
+      - generic [ref=f5e45] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f5e49] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f5e53]:
+      - generic [ref=f5e61] [cursor=pointer]
+      - generic [ref=f5e67] [cursor=pointer]
+      - button "Notifications" [ref=f5e72] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f5e80]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f5e83] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f5e88] [cursor=pointer]
+      - button "Share" [ref=f5e92] [cursor=pointer]
+      - generic "Help menu" [ref=f5e94] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f5e98] [cursor=pointer]
+  - generic [ref=f5e7]:
+    - generic [ref=f5e9]:
+      - generic [ref=f5e10]:
+        - generic [ref=f5e105]:
+          - generic [ref=f5e106] [cursor=pointer]
+          - generic [ref=f5e109] [cursor=pointer]
+          - generic [ref=f5e112] [cursor=pointer]
+          - generic [ref=f5e115] [cursor=pointer]
+          - generic [ref=f5e118] [cursor=pointer]
+          - generic [ref=f5e121] [cursor=pointer]
+          - generic [ref=f5e124] [cursor=pointer]
+          - generic [ref=f5e127] [cursor=pointer]
+        - generic [ref=f5e130] [cursor=pointer]
+      - generic [ref=f5e134] [cursor=pointer]
+    - generic [ref=f5e16]:
+      - generic [ref=f5e139]:
+        - generic [ref=f5e143]:
+          - generic [ref=f5e155]:
+            - generic [ref=f5e156]: New feature
+            - generic [ref=f5e169]:
+              - generic [ref=f5e170] [cursor=pointer]: Length parameter
+              - generic [ref=f5e172] [cursor=pointer]
+            - generic [ref=f5e179]:
+              - generic [ref=f5e180] [cursor=pointer]
+              - generic [ref=f5e184] [cursor=pointer]
+            - generic [ref=f5e187]: Commit
+          - button "Search tools… alt/⌥ c" [ref=f5e198] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f5e199]:
+              - generic [ref=f5e200]: alt/⌥
+              - generic [ref=f5e201]: c
+          - generic [ref=f5e202]:
+            - switch "Co-complete" [disabled] [ref=f5e204] [cursor=pointer]
+            - generic [ref=f5e205]: Co-complete
+        - generic [ref=f5e210]:
+          - generic [ref=f5e211]: Monitor Part Studio 1
+          - generic [ref=f5e223]: Module outline
+          - generic [ref=f5e258]: Line 1 , Column 1
+      - generic [ref=f5e260]:
+        - textbox "Cursor at row 1" [active] [ref=f5e261]: FeatureScript 3083;
+        - generic [ref=f5e263]:
+          - generic [aria-hidden] [ref=f5e264]: "1"
+          - generic [ref=f5e265]:
+            - text: "2"
+            - button [expanded] [ref=f5e266] [cursor=pointer]
+          - generic [aria-hidden] [ref=f5e267]: "3"
+          - generic [aria-hidden] [ref=f5e268]: "4"
+          - generic [aria-hidden] [ref=f5e269]: "5"
+          - generic [ref=f5e270]:
+            - text: "6"
+            - button [expanded] [ref=f5e271] [cursor=pointer]
+          - generic [aria-hidden] [ref=f5e272]: "7"
+          - generic [aria-hidden] [ref=f5e273]: "8"
+          - generic [aria-hidden] [ref=f5e274]: "9"
+          - generic [aria-hidden] [ref=f5e275]: "10"
+          - generic [aria-hidden] [ref=f5e276]: "11"
+          - generic [aria-hidden] [ref=f5e277]: "12"
+          - generic [aria-hidden] [ref=f5e278]: "13"
+          - generic [aria-hidden] [ref=f5e279]: "14"
+          - generic [aria-hidden] [ref=f5e280]: "15"
+          - generic [aria-hidden] [ref=f5e281]: "16"
+          - generic [aria-hidden] [ref=f5e282]: "17"
+          - generic [aria-hidden] [ref=f5e283]: "18"
+          - generic [aria-hidden] [ref=f5e284]: "19"
+          - generic [aria-hidden] [ref=f5e285]: "20"
+          - generic [aria-hidden] [ref=f5e286]: "21"
+          - generic [aria-hidden] [ref=f5e287]: "22"
+          - generic [aria-hidden] [ref=f5e288]: "23"
+          - generic [aria-hidden] [ref=f5e289]: "24"
+          - generic [aria-hidden] [ref=f5e290]: "25"
+          - generic [aria-hidden] [ref=f5e291]: "26"
+          - generic [aria-hidden] [ref=f5e292]: "27"
+          - generic [aria-hidden] [ref=f5e293]: "28"
+          - generic [aria-hidden] [ref=f5e294]: "29"
+          - generic [ref=f5e295]:
+            - text: "30"
+            - button [expanded] [ref=f5e296] [cursor=pointer]
+          - generic [aria-hidden] [ref=f5e297]: "31"
+          - generic [aria-hidden] [ref=f5e298]: "32"
+          - generic [aria-hidden] [ref=f5e299]: "33"
+          - generic [aria-hidden] [ref=f5e300]: "34"
+          - generic [aria-hidden] [ref=f5e301]: "35"
+          - generic [ref=f5e302]:
+            - text: "36"
+            - button [expanded] [ref=f5e303] [cursor=pointer]
+          - generic [aria-hidden] [ref=f5e304]: "37"
+          - generic [aria-hidden] [ref=f5e305]: "38"
+          - generic [aria-hidden] [ref=f5e306]: "39"
+          - generic [ref=f5e307]:
+            - text: "40"
+            - button [expanded] [ref=f5e308] [cursor=pointer]
+          - generic [aria-hidden] [ref=f5e309]: "41"
+          - generic [aria-hidden] [ref=f5e310]: "42"
+          - generic [aria-hidden] [ref=f5e311]: "43"
+          - generic [aria-hidden] [ref=f5e312]: "44"
+          - generic [aria-hidden] [ref=f5e313]: "45"
+          - generic [aria-hidden] [ref=f5e314]: "46"
+          - generic [aria-hidden] [ref=f5e315]: "47"
+          - generic [aria-hidden] [ref=f5e316]: "48"
+          - generic [aria-hidden] [ref=f5e317]: "49"
+          - generic [aria-hidden] [ref=f5e318]: "50"
+          - generic [aria-hidden] [ref=f5e319]: "51"
+          - generic [aria-hidden] [ref=f5e320]: "52"
+          - generic [aria-hidden] [ref=f5e321]: "53"
+          - generic [aria-hidden] [ref=f5e322]: "54"
+        - generic [ref=f5e324]:
+          - generic:
+            - generic: FeatureScript 3083;
+            - generic: /**
+            - generic: "* Query Variable X"
+            - generic: "*"
+            - generic: "* An extension of Query Variable+ with a second stage: after the source query is built, an ordered list of"
+            - generic: "* filters keeps or rejects entities (direction, between, position, geometry type, entity type, body type,"
+            - generic: "* size, edge convexity, in selection). Mate connectors work as faces, vertices and axes in every reference."
+            - generic: "*"
+            - generic: "* Built on Query Variable+, maintained by Derek Van Allen, which is itself an extension of Onshape's standard"
+            - generic: "* query variable feature. Parallelish selection and cap entity features were contributed to it by Jelte."
+            - generic: "* Original thread: https://forum.onshape.com/discussion/29012/custom-feature-query-variable"
+            - generic: "*/"
+            - generic: "export import(path : \"onshape/std/query.fs\", version : \"3083.0\");"
+            - generic: "export import(path : \"onshape/std/edgeconvexitytype.gen.fs\", version : \"3083.0\");"
+            - generic: "export import(path : \"onshape/std/booleanoperationtype.gen.fs\", version : \"3083.0\");"
+            - generic: "import(path : \"onshape/std/common.fs\", version : \"3083.0\");"
+            - generic: "import(path : \"onshape/std/debug.fs\", version : \"3083.0\");"
+            - generic: "import(path : \"onshape/std/feature.fs\", version : \"3083.0\");"
+            - generic: "import(path : \"onshape/std/featureList.fs\", version : \"3083.0\");"
+            - generic: "import(path : \"onshape/std/evaluate.fs\", version : \"3083.0\");"
+            - generic: "import(path : \"onshape/std/string.fs\", version : \"3083.0\");"
+            - generic: "import(path : \"onshape/std/containers.fs\", version : \"3083.0\");"
+            - generic: "import(path : \"onshape/std/error.fs\", version : \"3083.0\");"
+            - generic: "import(path : \"onshape/std/sketch.fs\", version : \"3083.0\");"
+            - generic: "import(path : \"onshape/std/variable.fs\", version : \"3083.0\");"
+            - generic: "import(path : \"onshape/std/attributes.fs\", version : \"3083.0\");"
+            - generic: /**
+            - generic: "* Attribute name used to store query variable names on entities for persistence through derived part studios."
+            - generic: "*/"
+            - generic: const QUERY_VARIABLE_ATTRIBUTE_NAME = "queryVariableName";
+            - generic: /**
+            - generic: "* Allowed selection types to create query variable."
+            - generic: "*/"
+            - generic: export enum SelectionType
+            - generic: "{"
+            - generic: "annotation { \"Name\" : \"Selection\" }"
+            - generic: SELECTION,
+            - generic: "annotation { \"Name\" : \"Created by\" }"
+            - generic: CREATED_BY,
+            - generic: "annotation { \"Name\" : \"Cap entities\" }"
+            - generic: CAP_ENTITY,
+            - generic: "annotation { \"Name\" : \"Non-cap entities\" }"
+            - generic: NON_CAP_ENTITY,
+            - generic: "annotation { \"Name\" : \"Owned by\" }"
+            - generic: OWNED_BY,
+            - generic: "annotation { \"Name\" : \"Protrusion\" }"
+            - generic: PROTRUSION,
+            - generic: "annotation { \"Name\" : \"Pocket\" }"
+            - generic: POCKET,
+      - generic [ref=f5e329]:
+        - img [ref=f5e332] [cursor=pointer]
+        - generic [ref=f5e335]:
+          - generic [ref=f5e336] [cursor=pointer]: Part Studio 1
+          - generic [ref=f5e347] [cursor=pointer]: Assembly 1
+          - generic [ref=f5e353]: query_variable_x

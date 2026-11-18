@@ -1391,17 +1391,6 @@ export enum BetweenMode
     CENTER_BETWEEN
 }
 
-const FilterTypeToLowercaseName = {
-        FilterType.DIRECTION : "direction",
-        FilterType.BETWEEN : "between",
-        FilterType.POSITION : "position",
-        FilterType.GEOMETRY : "geometry type",
-        FilterType.ENTITY_TYPE : "entity type",
-        FilterType.BODY_TYPE : "body type",
-        FilterType.SIZE : "size",
-        FilterType.CONVEXITY : "edge convexity",
-        FilterType.SELECTION : "in selection"
-    };
 
 /**
  * One item of the Filters array. Parameter ids all start with `flt` because array item ids share the feature's
