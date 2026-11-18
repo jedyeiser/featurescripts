@@ -7,6 +7,7 @@ FeatureScript 3083;
  */
 export import(path : "onshape/std/query.fs", version : "3083.0");
 export import(path : "onshape/std/edgeconvexitytype.gen.fs", version : "3083.0");
+export import(path : "onshape/std/edgetopology.gen.fs", version : "3083.0");
 import(path : "onshape/std/common.fs", version : "3083.0");
 import(path : "onshape/std/debug.fs", version : "3083.0");
 import(path : "onshape/std/feature.fs", version : "3083.0");
@@ -49,6 +50,8 @@ export enum FilterType
     SIZE,
     annotation { "Name" : "Edge convexity" }
     CONVEXITY,
+    annotation { "Name" : "Edge topology (one or two sided)" }
+    EDGE_TOPOLOGY,
     annotation { "Name" : "In selection" }
     SELECTION,
     annotation { "Name" : "Last modified by feature" }
@@ -69,7 +72,7 @@ export predicate filterPredicate(flt is map)
 
     if (flt.fltType == FilterType.DIRECTION)
     {
-        annotation { "Name" : "Reference direction", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Reference direction", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
         flt.fltDirRef is Query;
 
         annotation { "Name" : "Relation", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
@@ -147,7 +150,7 @@ export predicate filterPredicate(flt is map)
         }
         else
         {
-            annotation { "Name" : "Direction", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Direction", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             flt.fltPosDirection is Query;
         }
     }
@@ -190,6 +193,11 @@ export predicate filterPredicate(flt is map)
     {
         annotation { "Name" : "Edge convexity type", "UIHint" : UIHint.SHOW_LABEL }
         flt.fltConvexity is EdgeConvexityType;
+    }
+    else if (flt.fltType == FilterType.EDGE_TOPOLOGY)
+    {
+        annotation { "Name" : "Edge topology", "UIHint" : UIHint.SHOW_LABEL }
+        flt.fltEdgeTopology is EdgeTopology;
     }
     else if (flt.fltType == FilterType.LAST_MODIFIED_BY)
     {
@@ -323,6 +331,10 @@ export function qvxFilterMatches(context is Context, flt is map, current is Quer
     if (flt.fltType == FilterType.CONVEXITY)
     {
         return qEdgeConvexityTypeFilter(current, flt.fltConvexity);
+    }
+    if (flt.fltType == FilterType.EDGE_TOPOLOGY)
+    {
+        return qEdgeTopologyFilter(current, flt.fltEdgeTopology);
     }
     if (flt.fltType == FilterType.LAST_MODIFIED_BY)
     {

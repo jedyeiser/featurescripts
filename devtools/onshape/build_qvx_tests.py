@@ -148,7 +148,7 @@ def _defaults():
             q("fltPosVertex"), num("fltPosRadius", "0 mm"), q("fltPosDirection"),
             en("fltGeometryType", "GeometryType", "CYLINDER", NS), en("fltEntityType", "EntityType", "FACE", NS),
             en("fltBodyType", "BodyTypeOptions", "SOLID", NS), en("fltSizeType", "SizeComparisonType", "LARGEST", NS), q("fltSizeReference"),
-            b("fltSizeAllowEqual", False), en("fltConvexity", "EdgeConvexityType", "CONVEX", NS), flist("fltModifiedBy", []), q("fltSelection")]
+            b("fltSizeAllowEqual", False), en("fltConvexity", "EdgeConvexityType", "CONVEX", NS), en("fltEdgeTopology", "EdgeTopology", "ONE_SIDED", NS), flist("fltModifiedBy", []), q("fltSelection")]
 
 
 def item(params):

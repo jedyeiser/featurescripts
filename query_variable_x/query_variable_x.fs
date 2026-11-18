@@ -12,6 +12,7 @@ FeatureScript 3083;
  */
 export import(path : "onshape/std/query.fs", version : "3083.0");
 export import(path : "onshape/std/edgeconvexitytype.gen.fs", version : "3083.0");
+export import(path : "onshape/std/edgetopology.gen.fs", version : "3083.0");
 export import(path : "onshape/std/booleanoperationtype.gen.fs", version : "3083.0");
 
 import(path : "onshape/std/common.fs", version : "3083.0");
@@ -303,7 +304,7 @@ export predicate initialQueryPredicate(definition is map)
             || definition.positionalMetricType == PositionalDirectionalType.PLANE_PARALLEL_DIRECTION
             || definition.positionalMetricType == PositionalDirectionalType.FACE_PARALLEL_DIRECTION)
         {
-            annotation { "Name" : "Direction", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Direction", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             definition.positionalDirection is Query;
         }
     }
@@ -354,7 +355,7 @@ export predicate initialQueryPredicate(definition is map)
     }
     if (definition.selectionType == SelectionType.TOLERANT_PARALLEL)
     {
-        annotation { "Name" : "Direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
         definition.direction is Query;
     }
     if (definition.selectionType == SelectionType.TANGENT_CONNECTED && definition.seedType == SeedType.FACE
@@ -525,7 +526,7 @@ export predicate additionalQueryPredicate(addQ is map)
             || addQ.addQpositionalMetricType == PositionalDirectionalType.PLANE_PARALLEL_DIRECTION
             || addQ.addQpositionalMetricType == PositionalDirectionalType.FACE_PARALLEL_DIRECTION)
         {
-            annotation { "Name" : "Direction", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Direction", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             addQ.addQpositionalDirection is Query;
         }
     }
@@ -576,7 +577,7 @@ export predicate additionalQueryPredicate(addQ is map)
     }
     if (addQ.addQselectionType == SelectionType.TOLERANT_PARALLEL)
     {
-        annotation { "Name" : "Direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1 }
+        annotation { "Name" : "Direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
         addQ.addQdirection is Query;
     }
     if (addQ.addQselectionType == SelectionType.TANGENT_CONNECTED && addQ.addQseedType == SeedType.FACE
