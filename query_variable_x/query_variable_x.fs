@@ -29,7 +29,7 @@ import(path : "onshape/std/attributes.fs", version : "3083.0");
 export import(path : "4215a2585ebe1072420e5d9c", version : "");
 export import(path : "8c9af309042a42cff3846c7a", version : "");
 // IMPORT: query_variable_x_icon.svg (feature icon)
-IconNamespace::import(path : "e20e933b77f390be84b0de55", version : "13491ef582c20e825588a67c");
+IconNamespace::import(path : "e20e933b77f390be84b0de55", version : "25952eef060813fe2000bd47");
 
 
 /**
