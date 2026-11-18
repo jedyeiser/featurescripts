@@ -293,6 +293,7 @@ gate_case("T22", 21000, "hook wire, trim 400 from the START vertex, keep away fr
 gate_case("T23", 22000, "hook wire, trim 100 from the END vertex (cut on the return leg), keep toward point -> 1 wire 100",
           hook_wire, (50, 100), 100, "POINT_SIDE")
 
+# NOTE T30 (hook wire, trim 60 from BOTH ends) is a known limit and is EXPECTED to ERROR (see check_trim_curve_plus_tests.py); its label still says 387.080.
 # ---- Distance from ends (2026-11-18): trim or cut a distance in from the ENDS of the wire (not of its edges) ----
 # The 3-edge wire runs (x0, 0) -> (x0+300, 300), length 557.080.
 def ends_case(tag, x0, label, given, enums, make_wire=None):
@@ -324,3 +325,11 @@ ends_case("T31", 30000, "hook wire, trim 60 from the START end only -> 1 wire 44
 ends_case("T32", 31000, "hook wire, trim 60 from the END end only -> 1 wire 447.080",
           lambda wid, x0: [q("endsStartPoint", end_vertex(wid, x0, 0)), num("endsStartDistance", "0 mm"), num("endsEndDistance", "60 mm")],
           {"operation": "TRIM", "endsMode": "DIFFERENT_AT_EACH"}, make_wire=hook_wire)
+# ---- Negative distance EXTENDS the end (2026-11-18) ----
+ends_case("T33", 32000, "extend BOTH ends by 40 mm (distance -40) -> 1 wire 637.080 (starts at x0-40)",
+          lambda wid, x0: [num("endsDistance", "-40 mm")], {"operation": "TRIM", "endsMode": "SAME_AT_BOTH"})
+ends_case("T34", 33000, "trim 50 from the START end and extend the other end 40 -> 1 wire 547.080 (starts at x0+50)",
+          lambda wid, x0: [q("endsStartPoint", end_vertex(wid, x0, 0)), num("endsStartDistance", "50 mm"), num("endsEndDistance", "-40 mm")],
+          {"operation": "TRIM", "endsMode": "DIFFERENT_AT_EACH"})
+ends_case("T35", 34000, "split with a negative distance -> ERROR (Split cannot extend)",
+          lambda wid, x0: [num("endsDistance", "-40 mm")], {"operation": "SPLIT", "endsMode": "SAME_AT_BOTH"})

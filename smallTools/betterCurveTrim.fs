@@ -1,5 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+export import(path : "onshape/std/curveextensionshape.gen.fs", version : "3083.0");
+export import(path : "onshape/std/curveextensionendcondition.gen.fs", version : "3083.0");
 
 // curveTrimCore (same document) - plane-cut trim/split engine
 import(path : "d56d74c24234ab2b885e6fc1", version : "ea2966195a7ea412688a95fe");
@@ -80,7 +82,7 @@ export enum END_TRIM_MODE
 }
 
 // Default 5 mm, in the units the user works in, for the end distances (a new length parameter's default migrates in mm).
-const END_TRIM_BOUNDS = { (meter) : [0, 0.005, 500], (centimeter) : 0.5, (millimeter) : 5.0, (inch) : 0.2 } as LengthBoundSpec;
+const END_TRIM_BOUNDS = { (meter) : [-500, 0.005, 500], (centimeter) : 0.5, (millimeter) : 5.0, (inch) : 0.2 } as LengthBoundSpec;
 
 /**
  * Even-division style: divide the span between two points into equal parts, or
@@ -128,27 +130,28 @@ const INFLECTION_MANIPULATOR = "inflectionManipulator";
 // FEATURE
 // ============================================================================
 
-annotation { "Feature Type Name" : "Trim curve +", "Icon" : IconNamespace::BLOB_DATA, "Manipulator Change Function" : "onInflectionPick" }
+annotation { "Feature Type Name" : "Trim curve +", "Icon" : IconNamespace::BLOB_DATA,
+        "Feature Type Description" : "Trim or split wires at exact places: up to an entity, a distance from a point, an even division, at points, at inflections, or a distance from the ends of the wire (positive trims, negative extends). Wires may have any number of edges and are cut along their whole path. A trim is done in place when it can be, so references to the wire survive, and the feature says which route it took. Feeds Extract variables with the cut vertices and pieces.", "Manipulator Change Function" : "onInflectionPick" }
 export const betterCurveTrim = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Operation", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : OPERATION.SPLIT }
+        annotation { "Name" : "Operation", "Description" : "Trim keeps one side of each cut and removes the rest. Split keeps every piece.", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : OPERATION.SPLIT }
         definition.operation is OPERATION;
 
-        annotation { "Name" : "Curves to adjust", "Filter" : EntityType.BODY && BodyType.WIRE && SketchObject.NO }
+        annotation { "Name" : "Curves to adjust", "Description" : "The wire bodies to cut. Each wire is read as one path, however many edges it has.", "Filter" : EntityType.BODY && BodyType.WIRE && SketchObject.NO }
         definition.curves is Query;
 
-        annotation { "Name" : "Cut location", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : CUT_BY.AT_POINTS }
+        annotation { "Name" : "Cut location", "Description" : "How the cut locations are defined: up to an entity, a distance from a point, even division, at points, at inflections, or a distance from the ends of the wire.", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : CUT_BY.AT_POINTS }
         definition.cutBy is CUT_BY;
 
         if (definition.cutBy == CUT_BY.UP_TO_ENTITY)
         {
-            annotation { "Name" : "Up to entity", "Filter" : (EntityType.BODY && SketchObject.NO) || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "Up to entity", "Description" : "A face, edge, vertex, body or mate connector. The curve is cut where it meets this entity.", "Filter" : (EntityType.BODY && SketchObject.NO) || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             definition.boundary is Query;
         }
         else if (definition.cutBy == CUT_BY.ARC_LENGTH_FROM_POINT)
         {
-            annotation { "Name" : "From point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            annotation { "Name" : "From point", "Description" : "A vertex or mate connector on the curve. The distance is measured along the curve from here.", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
             definition.fromPoint is Query;
 
             annotation { "Name" : "Distance", "Description" : "Arc length from the reference point. Positive runs the way the blue arrow points; negative runs the other way. From an END of the curve it always runs into the curve." }
@@ -180,29 +183,29 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
         }
         else if (definition.cutBy == CUT_BY.EVEN_DIVISION)
         {
-            annotation { "Name" : "Division style", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : DIVISION_MODE.BETWEEN_POINTS }
+            annotation { "Name" : "Division style", "Description" : "Between two points: divide the span into equal parts. Every distance from point: cuts at a fixed spacing repeated from one point.", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : DIVISION_MODE.BETWEEN_POINTS }
             definition.divisionMode is DIVISION_MODE;
 
             if (definition.divisionMode == DIVISION_MODE.BETWEEN_POINTS)
             {
-                annotation { "Name" : "Start point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                annotation { "Name" : "Start point", "Description" : "Start of the span to divide. A vertex or mate connector on the curve.", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
                 definition.startPoint is Query;
 
-                annotation { "Name" : "End point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                annotation { "Name" : "End point", "Description" : "End of the span to divide. A vertex or mate connector on the curve.", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
                 definition.endPoint is Query;
 
-                annotation { "Name" : "Number of segments" }
+                annotation { "Name" : "Number of segments", "Description" : "Number of equal parts the span is divided into." }
                 isInteger(definition.divisions, CTC_DIVISION_BOUNDS);
             }
             else
             {
-                annotation { "Name" : "From point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+                annotation { "Name" : "From point", "Description" : "A vertex or mate connector on the curve. The cuts are spaced from here.", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
                 definition.spacingFromPoint is Query;
 
-                annotation { "Name" : "Spacing" }
+                annotation { "Name" : "Spacing", "Description" : "Arc length between consecutive cuts." }
                 isLength(definition.spacing, CTC_SPACING_BOUNDS);
 
-                annotation { "Name" : "Number of cuts" }
+                annotation { "Name" : "Number of cuts", "Description" : "How many cuts to place, each one spacing further along the curve." }
                 isInteger(definition.spacingCount, CTC_SPACING_COUNT_BOUNDS);
 
                 annotation { "Name" : "Reverse direction", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false, "Description" : "Space the cuts away from the midpoint instead of toward it." }
@@ -211,13 +214,13 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
         }
         else if (definition.cutBy == CUT_BY.AT_POINTS)
         {
-            annotation { "Name" : "Cut points", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR }
+            annotation { "Name" : "Cut points", "Description" : "Vertices or mate connectors on the curve. The curve is cut at each one (a point off the curve is projected onto it).", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR }
             definition.atPoints is Query;
         }
         else if (definition.cutBy == CUT_BY.AT_INFLECTION)
         {
             // Inflections are solved from the curve; this only chooses which to cut.
-            annotation { "Name" : "Inflection selection", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : INFLECTION_MODE.PICK }
+            annotation { "Name" : "Inflection selection", "Description" : "Pick: click the inflection points to cut at. Nearest each endpoint: cut at the inflection closest to each end of the curve.", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : INFLECTION_MODE.PICK }
             definition.inflectionMode is INFLECTION_MODE;
         }
         else if (definition.cutBy == CUT_BY.DISTANCE_FROM_ENDS)
@@ -228,7 +231,7 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
 
             if (definition.endsMode == END_TRIM_MODE.SAME_AT_BOTH)
             {
-                annotation { "Name" : "Distance from each end", "Description" : "Arc length measured along the wire from each end." }
+                annotation { "Name" : "Distance from each end", "Description" : "Arc length measured along the wire from each end. Positive trims that much off each end; negative extends each end by that much." }
                 isLength(definition.endsDistance, END_TRIM_BOUNDS);
             }
             else
@@ -237,12 +240,16 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
                             "Description" : "A vertex or mate connector at one end of the wire. That end is the start; the other is the end." }
                 definition.endsStartPoint is Query;
 
-                annotation { "Name" : "Start distance", "Description" : "Arc length measured along the wire from the start end." }
+                annotation { "Name" : "Start distance", "Description" : "Arc length measured along the wire from the start end. Positive trims; negative extends the start end by that much." }
                 isLength(definition.endsStartDistance, END_TRIM_BOUNDS);
 
-                annotation { "Name" : "End distance", "Description" : "Arc length measured along the wire from the other end." }
+                annotation { "Name" : "End distance", "Description" : "Arc length measured along the wire from the other end. Positive trims; negative extends that end by that much." }
                 isLength(definition.endsEndDistance, END_TRIM_BOUNDS);
             }
+
+            annotation { "Name" : "Extension shape", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : CurveExtensionShape.TANGENT,
+                        "Description" : "Used only for a negative distance (an extension). Tangent continues straight along the end tangent; Curvature continues the end curvature." }
+            definition.endsExtensionShape is CurveExtensionShape;
         }
 
         if (definition.operation == OPERATION.SPLIT)
@@ -316,7 +323,8 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
         "trimKeep" : TRIM_KEEP.POINT_SIDE,
         "extraDistances" : [],
         "splitAtReference" : false,
-        "endsMode" : END_TRIM_MODE.SAME_AT_BOTH
+        "endsMode" : END_TRIM_MODE.SAME_AT_BOTH,
+        "endsExtensionShape" : CurveExtensionShape.TANGENT
     });
 
 /**
@@ -429,11 +437,14 @@ function adjustOneCurve(context is Context, id is Id, definition is map, wire is
 }
 
 /**
- * Distance from ends. The ENDS are the ends of the whole wire (its path), not of its edges. Two distances are removed
- * (the same at both ends, or a start and an end distance with the start end chosen by a picked point).
- *   TRIM  keeps the middle: each end is trimmed in place in turn, so the wire body (and references to it) survive.
- *   SPLIT cuts at both distances and keeps all three pieces.
- * The two distances together must be shorter than the wire.
+ * Distance from ends. The ENDS are the ends of the whole wire (its path), not of its edges. Two distances are applied
+ * (the same at both ends, or a start and an end distance with the start end chosen by a picked point). A positive
+ * distance TRIMS that much off the end; a negative distance EXTENDS the end by that much (opMoveCurveBoundary EXTEND).
+ *   TRIM  keeps the middle: each end is handled in place in turn, so the wire body (and references to it) survive.
+ *         When the second end cannot be done after the first (the in-place trim needs a clear side), the other order is
+ *         tried on a scratch copy first, so the order that works is the one used.
+ *   SPLIT cuts at both distances and keeps all three pieces (it cannot extend).
+ * The trimmed distances together must be shorter than the wire.
  */
 function adjustEnds(context is Context, id is Id, definition is map, wire is Query) returns map
 {
@@ -462,15 +473,21 @@ function adjustEnds(context is Context, id is Id, definition is map, wire is Que
         startDistance = definition.endsStartDistance;
         endDistance = definition.endsEndDistance;
     }
-    if (startDistance + endDistance >= total - CTC_ON_CURVE_TOL)
+
+    const trimmed = max(startDistance, 0 * meter) + max(endDistance, 0 * meter);
+    if (trimmed >= total - CTC_ON_CURVE_TOL)
     {
-        throw regenError("The two distances (" ~ roundToPrecision(startDistance / millimeter, 3) ~ " mm and "
-            ~ roundToPrecision(endDistance / millimeter, 3) ~ " mm) are not shorter than the curve ("
+        throw regenError("The trimmed distances (" ~ roundToPrecision(max(startDistance, 0 * meter) / millimeter, 3) ~ " mm and "
+            ~ roundToPrecision(max(endDistance, 0 * meter) / millimeter, 3) ~ " mm) are not shorter than the curve ("
             ~ roundToPrecision(total / millimeter, 3) ~ " mm)", ["curves"]);
     }
 
     if (definition.operation == OPERATION.SPLIT)
     {
+        if (startDistance < 0 * meter || endDistance < 0 * meter)
+        {
+            throw regenError("A negative distance extends the curve, which Split cannot do. Use Trim, or enter positive distances.", ["curves"]);
+        }
         var fractions = [];
         if (startDistance > CTC_ON_CURVE_TOL)
         {
@@ -488,27 +505,69 @@ function adjustEnds(context is Context, id is Id, definition is map, wire is Que
         return applyCut(context, id, definition, wire, wp, fractions);
     }
 
-    // TRIM: one end at a time, each in place on the wire the previous step left.
+    var active = [];
+    if (abs(startDistance) > CTC_ON_CURVE_TOL)
+    {
+        active = append(active, [startEnd, startDistance, "a"]);
+    }
+    if (abs(endDistance) > CTC_ON_CURVE_TOL)
+    {
+        active = append(active, [otherEnd, endDistance, "b"]);
+    }
+    if (size(active) == 0)
+    {
+        throw regenError("Both distances are zero, so there is nothing to trim", ["curves"]);
+    }
+
+    // Both ends: use the order that works. The first order is checked on a scratch copy; if it fails, the other is.
+    var steps = active;
+    if (size(active) == 2)
+    {
+        const reasonFirst = dryRunEndSteps(context, id, definition, wire, active);
+        if (reasonFirst != "")
+        {
+            const reversed = [active[1], active[0]];
+            const reasonSecond = dryRunEndSteps(context, id, definition, wire, reversed);
+            if (reasonSecond != "")
+            {
+                throw regenError("Neither order of the two end changes works. Start end first: " ~ reasonFirst
+                    ~ " Other end first: " ~ reasonSecond, ["curves"]);
+            }
+            steps = reversed;
+        }
+    }
+    return runEndSteps(context, id, definition, wire, steps);
+}
+
+/**
+ * Apply the end steps in order, each on the wire the previous one left. A step is [end point, signed distance, id suffix]:
+ * positive trims that far in from the end (in place), negative extends the end by that much.
+ */
+function runEndSteps(context is Context, id is Id, definition is map, wire is Query, steps is array) returns map
+{
     var current = wire;
     var cutPoints = [];
     var route = "";
     var via = undefined;
     var reason = "";
-    var steps = [[startEnd, startDistance, "a"], [otherEnd, endDistance, "b"]];
     for (var step in steps)
     {
-        if (step[1] <= CTC_ON_CURVE_TOL)
-        {
-            continue;
-        }
         const stepWp = wirePath(context, current);
         const which = endOfWireAt(context, stepWp, step[0]);
-        var stepDef = definition;
-        stepDef.operation = OPERATION.TRIM;
-        // Cutting near the path start keeps the path END side; cutting near the path end keeps the path START side.
-        stepDef.flipHeuristics = which != 0;
-        const fraction = which == 0 ? step[1] / stepWp.total : 1 - step[1] / stepWp.total;
-        const result = applyCut(context, id + ("end" ~ step[2]), stepDef, current, stepWp, [fraction]);
+        var result = {};
+        if (step[1] < 0 * meter)
+        {
+            result = extendEnd(context, id + ("end" ~ step[2]), definition, current, step[0], -step[1]);
+        }
+        else
+        {
+            var stepDef = definition;
+            stepDef.operation = OPERATION.TRIM;
+            // Cutting near the path start keeps the path END side; cutting near the path end keeps the path START side.
+            stepDef.flipHeuristics = which != 0;
+            const fraction = which == 0 ? step[1] / stepWp.total : 1 - step[1] / stepWp.total;
+            result = applyCut(context, id + ("end" ~ step[2]), stepDef, current, stepWp, [fraction]);
+        }
         current = result.output;
         cutPoints = concatenateArrays([cutPoints, result.cutPoints]);
         if (result.route == "replaced" || route == "")
@@ -524,10 +583,6 @@ function adjustEnds(context is Context, id is Id, definition is map, wire is Que
             reason = result.reason;
         }
     }
-    if (current == wire && size(cutPoints) == 0)
-    {
-        throw regenError("Both distances are zero, so there is nothing to trim", ["curves"]);
-    }
     var out = { "output" : current, "cutPoints" : cutPoints, "pieces" : [current] };
     if (route != "")
     {
@@ -538,6 +593,54 @@ function adjustEnds(context is Context, id is Id, definition is map, wire is Que
     return out;
 }
 
+/**
+ * Does this order of end steps work? Runs it on a scratch copy of the wire and deletes everything it made. Returns ""
+ * when it worked, otherwise why not.
+ */
+function dryRunEndSteps(context is Context, id is Id, definition is map, wire is Query, steps is array) returns string
+{
+    const dryId = id + ("dry" ~ steps[0][2]);
+    var reason = "";
+    try
+    {
+        opExtractWires(context, dryId + "copy", { "edges" : qOwnedByBody(wire, EntityType.EDGE) });
+        runEndSteps(context, dryId + "run", definition, qCreatedBy(dryId + "copy", EntityType.BODY), steps);
+    }
+    catch (dryError)
+    {
+        reason = toString(dryError);
+    }
+    const leftovers = qCreatedBy(dryId, EntityType.BODY);
+    if (!isQueryEmpty(context, leftovers))
+    {
+        opDeleteBodies(context, dryId + "delete", { "entities" : leftovers });
+    }
+    return reason;
+}
+
+/**
+ * Extend the wire end at `endPoint` by `distance` (positive) along its end tangent or curvature, in place.
+ */
+function extendEnd(context is Context, id is Id, definition is map, wire is Query, endPoint is Vector, distance is ValueWithUnits) returns map
+{
+    const endVertex = qContainsPoint(qOwnedByBody(wire, EntityType.VERTEX), endPoint);
+    if (isQueryEmpty(context, endVertex))
+    {
+        throw regenError("Could not find the end of the curve to extend", ["curves"]);
+    }
+    opMoveCurveBoundary(context, id + "extend", {
+                "wires" : wire,
+                "moveBoundaryType" : MoveCurveBoundaryType.EXTEND,
+                "endCondition" : CurveExtensionEndCondition.BLIND,
+                "extensionDistance" : distance,
+                "extensionShape" : definition.endsExtensionShape,
+                "helpPoint" : endVertex,
+                "flipHeuristics" : false
+            });
+    // The wire keeps its body; find it again through its other end, which has not moved.
+    return { "output" : wire, "cutPoints" : [endPoint], "pieces" : [wire], "route" : "inPlace",
+             "via" : "extended " ~ roundToPrecision(distance / millimeter, 3) ~ " mm" };
+}
 /**
  * Which end of the wire path a point is at: 0 (path start) or 1 (path end). Throws when the point is not at an end.
  */

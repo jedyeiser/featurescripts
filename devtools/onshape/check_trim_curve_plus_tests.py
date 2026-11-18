@@ -26,7 +26,7 @@ EXPECT = {
     # 2026-11-12 in-place trims the old gates refused (ends equidistant; the cut plane crossing the wire twice)
     "T20": [150], "T21": [400], "T22": [107.080], "T23": [100],
     # 2026-11-18 distance from the ENDS of the wire
-    "T24": [457.080], "T25": [120, 120, 317.080], "T26": [457.080], "T27": [457.080], "T28": [557.080], "T29": [557.080], "T30": [387.080], "T31": [447.080], "T32": [447.080],
+    "T24": [457.080], "T25": [120, 120, 317.080], "T26": [457.080], "T27": [457.080], "T28": [557.080], "T29": [557.080], "T30": [387.080], "T31": [447.080], "T32": [447.080], "T33": [637.080], "T34": [547.080], "T35": [557.080],
 }
 # Expected feature status. Since 2026-11-12 a single-cut TRIM reports its route: INFO = trimmed in place (the wire body is
 # kept), WARNING = the wire was replaced (extract-and-delete fallback). T10, T11 and T14 took that fallback until the in-place
@@ -35,9 +35,11 @@ EXPECT = {
 WANT_STATUS = {"T8": "ERROR", "T3": "INFO", "T12": "INFO", "T13": "INFO", "T10": "INFO", "T11": "INFO", "T14": "INFO",
                "T15": "INFO", "T16": "INFO", "T17": "INFO", "T18": "INFO", "T19": "INFO",
                "T20": "INFO", "T21": "INFO", "T22": "INFO", "T23": "INFO",
-               "T24": "INFO", "T26": "INFO", "T27": "INFO", "T28": "ERROR", "T29": "ERROR", "T30": "INFO", "T31": "INFO", "T32": "INFO"}
+               "T24": "INFO", "T26": "INFO", "T27": "INFO", "T28": "ERROR", "T29": "ERROR", "T30": "INFO", "T31": "INFO", "T32": "INFO", "T33": "INFO", "T34": "INFO", "T35": "ERROR"}
 # Where the single trimmed wire starts, as an x offset from its case origin (T26: 30 from the start end, T27: 70 from the start end).
-EXPECT_MIN_X = {"T24": 50, "T26": 30, "T27": 70}
+# T30 (hook wire, 60 from BOTH ends) is a KNOWN LIMIT: the wire ends are 50 mm apart, so after the first in-place trim the second cut is ambiguous
+# (plane crosses twice, ends 60 and 50 mm from it) and the extraction fallback fails too. It must ERROR with the explanation; T31/T32 (one end) work.
+EXPECT_MIN_X = {"T24": 50, "T26": 30, "T27": 70, "T33": -40, "T34": 50}
 EXPECT_EDGES = {"T2": 5}
 
 SCRIPT = """function(context is Context, queries)
