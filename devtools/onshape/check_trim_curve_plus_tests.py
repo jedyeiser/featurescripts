@@ -26,7 +26,7 @@ EXPECT = {
     # 2026-11-12 in-place trims the old gates refused (ends equidistant; the cut plane crossing the wire twice)
     "T20": [150], "T21": [400], "T22": [107.080], "T23": [100],
     # 2026-11-18 distance from the ENDS of the wire
-    "T24": [457.080], "T25": [120, 120, 317.080], "T26": [457.080], "T27": [457.080], "T28": [557.080], "T29": [557.080], "T30": [387.080], "T31": [447.080], "T32": [447.080], "T33": [637.080], "T34": [547.080], "T35": [557.080],
+    "T24": [457.080], "T25": [120, 120, 317.080], "T26": [457.080], "T27": [457.080], "T28": [557.080], "T29": [557.080], "T30": [387.080], "T31": [447.080], "T32": [447.080], "T33": [637.080], "T34": [547.080], "T35": [557.080], "T36": [15, 15, 15, 15, 527.080, 527.080], "T37": [15, 15, 1450],
 }
 # Expected feature status. Since 2026-11-12 a single-cut TRIM reports its route: INFO = trimmed in place (the wire body is
 # kept), WARNING = the wire was replaced (extract-and-delete fallback). T10, T11 and T14 took that fallback until the in-place

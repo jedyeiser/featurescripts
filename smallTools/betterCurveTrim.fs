@@ -293,6 +293,10 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
             throw regenError("Select one or more curves to adjust", ["curves"]);
         }
 
+        // Any error that is not already a message for the user (a failing operation, a bad query) would show as the bare
+        // "Error regenerating." Say what it was instead.
+        try
+        {
         var wires = evaluateQuery(context, definition.curves);
         var results = [];
 
@@ -316,6 +320,15 @@ export const betterCurveTrim = defineFeature(function(context is Context, id is 
 
         embedTrimOutputs(context, id, definition, results);
         reportRoute(context, id, results);
+        }
+        catch (unexpected)
+        {
+            if (unexpected is map && unexpected.message != undefined)
+            {
+                throw unexpected;
+            }
+            throw regenError("Trim curve + stopped on an unexpected error: " ~ toString(unexpected), ["curves"]);
+        }
     },
     {
         "inflectionIndices" : [],

@@ -293,7 +293,7 @@ gate_case("T22", 21000, "hook wire, trim 400 from the START vertex, keep away fr
 gate_case("T23", 22000, "hook wire, trim 100 from the END vertex (cut on the return leg), keep toward point -> 1 wire 100",
           hook_wire, (50, 100), 100, "POINT_SIDE")
 
-# NOTE T30 (hook wire, trim 60 from BOTH ends) is a known limit and is EXPECTED to ERROR (see check_trim_curve_plus_tests.py); its label still says 387.080.
+# NOTE T30 (hook wire, trim 60 from BOTH ends) ERRORed until 2026-11-18; the feature now tries the other end order on a scratch copy and it passes (387.080).
 # ---- Distance from ends (2026-11-18): trim or cut a distance in from the ENDS of the wire (not of its edges) ----
 # The 3-edge wire runs (x0, 0) -> (x0+300, 300), length 557.080.
 def ends_case(tag, x0, label, given, enums, make_wire=None):
@@ -333,3 +333,17 @@ ends_case("T34", 33000, "trim 50 from the START end and extend the other end 40 
           {"operation": "TRIM", "endsMode": "DIFFERENT_AT_EACH"})
 ends_case("T35", 34000, "split with a negative distance -> ERROR (Split cannot extend)",
           lambda wid, x0: [num("endsDistance", "-40 mm")], {"operation": "SPLIT", "endsMode": "SAME_AT_BOTH"})
+
+# ---- Reported failure (2026-11-18, RD 25ONE studio): Split, 15 mm from both ends, on a long single-edge intersection curve /
+# several near-identical wires selected together. Two suspects: coincident wires, and one long edge. ----
+def long_line_wire(tag, x0):
+    sk = sketch("%s long single-edge wire (line, 1480 mm) (x0 %d)" % (tag, x0), [seg("l1", *mmv(x0, 0, x0 + 1480, 0))])
+    return feature("%s 1-edge wire (composite curve)" % tag, "compositeCurve", [q("edges", sketch_edges(sk))])
+
+
+w1 = wire("T36", 35000)
+w2 = wire("T36b", 35000)     # an identical wire on top of the first
+trim("T36 split 15 from both ends, TWO COINCIDENT wires selected -> 6 wires 15 x4 / 527.080 x2", "qUnion([%s, %s])" % (body(w1), body(w2)), [num("endsDistance", "15 mm")],
+     {"cutBy": "DISTANCE_FROM_ENDS", "operation": "SPLIT", "endsMode": "SAME_AT_BOTH"})
+ends_case("T37", 36000, "long single-edge wire (1480), split 15 from both ends -> 3 wires 15 / 1450 / 15",
+          lambda wid, x0: [num("endsDistance", "15 mm")], {"operation": "SPLIT", "endsMode": "SAME_AT_BOTH"}, make_wire=long_line_wire)
