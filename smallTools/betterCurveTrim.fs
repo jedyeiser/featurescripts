@@ -80,7 +80,7 @@ export enum END_TRIM_MODE
 }
 
 // Default 5 mm, in the units the user works in, for the end distances (a new length parameter's default migrates in mm).
-const END_TRIM_BOUNDS = { (meter) : [0, 0.005, 500], (centimeter) : [0, 0.5, 50000], (millimeter) : [0, 5, 500000], (inch) : [0, 0.2, 20000] } as LengthBoundSpec;
+const END_TRIM_BOUNDS = { (meter) : [0, 0.005, 500], (centimeter) : 0.5, (millimeter) : 5.0, (inch) : 0.2 } as LengthBoundSpec;
 
 /**
  * Even-division style: divide the span between two points into equal parts, or
