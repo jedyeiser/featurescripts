@@ -664,7 +664,17 @@ function applyCut(context is Context, id is Id, definition is map, wire is Query
         inPlaceReason = inPlace.reason;
     }
 
-    var pieces = splitWireIntoPieces(context, id, wire, wp, fractions);
+    var pieces = [];
+    try
+    {
+        pieces = splitWireIntoPieces(context, id, wire, wp, fractions);
+    }
+    catch (extractError)
+    {
+        // Say why the in-place trim was refused: this fallback is the last resort and its own error does not mention it.
+        throw regenError("The wire could not be trimmed in place" ~ (inPlaceReason == "" ? "" : " (" ~ inPlaceReason ~ ")")
+            ~ ", and extracting the pieces failed too (" ~ toString(extractError) ~ ")", ["curves"]);
+    }
     if (definition.debugCuts)
     {
         println("applyCut: " ~ size(fractions) ~ " cut(s) -> " ~ size(pieces) ~ " piece(s)");

@@ -317,3 +317,10 @@ ends_case("T29", 28000, "300 mm from each end of a 557.080 mm curve -> ERROR (no
           lambda wid, x0: [num("endsDistance", "300 mm")], {"operation": "TRIM", "endsMode": "SAME_AT_BOTH"})
 ends_case("T30", 29000, "hook wire, trim 60 from BOTH ends -> 1 wire 387.080",
           lambda wid, x0: [num("endsDistance", "60 mm")], {"operation": "TRIM", "endsMode": "SAME_AT_BOTH"}, make_wire=hook_wire)
+# Isolating T30: the same hook wire, one end at a time (start point = START vertex, the other distance 0).
+ends_case("T31", 30000, "hook wire, trim 60 from the START end only -> 1 wire 447.080",
+          lambda wid, x0: [q("endsStartPoint", end_vertex(wid, x0, 0)), num("endsStartDistance", "60 mm"), num("endsEndDistance", "0 mm")],
+          {"operation": "TRIM", "endsMode": "DIFFERENT_AT_EACH"}, make_wire=hook_wire)
+ends_case("T32", 31000, "hook wire, trim 60 from the END end only -> 1 wire 447.080",
+          lambda wid, x0: [q("endsStartPoint", end_vertex(wid, x0, 0)), num("endsStartDistance", "0 mm"), num("endsEndDistance", "60 mm")],
+          {"operation": "TRIM", "endsMode": "DIFFERENT_AT_EACH"}, make_wire=hook_wire)
