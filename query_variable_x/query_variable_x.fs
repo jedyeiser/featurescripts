@@ -94,6 +94,37 @@ export enum SelectionType
     LOAD_FROM_DERIVE
 }
 
+/**
+ * @internal
+ */
+const SelectionTypeToLowercaseName = {
+        SelectionType.SELECTION : "selection",
+        SelectionType.CREATED_BY : "created by",
+        SelectionType.CAP_ENTITY : "cap entities",
+        SelectionType.NON_CAP_ENTITY : "non-cap entities",
+        SelectionType.OWNED_BY : "owned by",
+        SelectionType.PROTRUSION : "protrusion",
+        SelectionType.POCKET : "pocket",
+        SelectionType.HOLE : "hole",
+        SelectionType.FILLETS : "fillets",
+        SelectionType.BOUNDED_FACES : "bounded faces",
+        SelectionType.LOOP_CHAIN_CONNECTED : "loop/chain connected",
+        SelectionType.PARALLEL : "parallel",
+        SelectionType.TOLERANT_PARALLEL : "parallelish edges",
+        SelectionType.TANGENT_CONNECTED : "tangent connected",
+        SelectionType.MATCHING : "matching",
+        SelectionType.MATCHING_BODIES : "matching bodies",
+        SelectionType.ADJACENT : "adjacent",
+        SelectionType.SIZE_COMPARISON : "size comparison",
+        SelectionType.POSITIONAL_DIRECTIONAL : "positional/directional",
+        SelectionType.GEOMETRY : "geometry type",
+        SelectionType.ALL_SOLID_BODIES : "all solid bodies",
+        SelectionType.EVERYTHING : "everything",
+        SelectionType.NOTHING : "nothing",
+        SelectionType.EDGE_CONVEXITY : "edge convexity",
+        SelectionType.LOAD_FROM_DERIVE : "load from derive feature"
+    };
+
 const MATCHING_BODY_CLUSTER_RELATIVE_TOLERANCE = 1e-4;
 
 /**
@@ -362,6 +393,228 @@ export predicate initialQueryPredicate(definition is map)
 }
 
 /**
+ * The same dialog as initialQueryPredicate, one array item per additional query. It has to be a separate
+ * predicate because parameter ids inside an array item share the feature's id space (hence the addQ prefix).
+ * Generated from initialQueryPredicate by prefixing every parameter id with addQ.
+ */
+export predicate additionalQueryPredicate(addQ is map)
+{
+    annotation { "Name" : "Selection type" }
+    addQ.addQselectionType is SelectionType;
+
+    annotation { "Name" : "Selection type", "UIHint" : UIHint.ALWAYS_HIDDEN }
+    addQ.addQlowercaseSelectionType is string;
+
+    if (addQ.addQselectionType == SelectionType.TANGENT_CONNECTED
+        || addQ.addQselectionType == SelectionType.MATCHING)
+    {
+        annotation { "Name" : "Entity type" }
+        addQ.addQseedType is SeedType;
+    }
+
+    if (addQ.addQselectionType == SelectionType.SELECTION)
+    {
+        annotation { "Name" : "Selections", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
+        addQ.addQselectionQuery is Query;
+    }
+    else if (addQ.addQselectionType == SelectionType.CREATED_BY)
+    {
+        annotation { "Name" : "Created by features", "UIHint" : UIHint.ALLOW_FLAT_SKETCH_SELECTION }
+        addQ.addQcreatedByFeatures is FeatureList;
+    }
+    else if (addQ.addQselectionType == SelectionType.CAP_ENTITY)
+    {
+        annotation { "Name" : "Created by features", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
+        addQ.addQcapEntityCreatedByFeatures is FeatureList;
+    }
+    else if (addQ.addQselectionType == SelectionType.NON_CAP_ENTITY)
+    {
+        annotation { "Name" : "Created by features", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
+        addQ.addQnonCapEntityCreatedByFeatures is FeatureList;
+    }
+
+    else if (addQ.addQselectionType == SelectionType.OWNED_BY || addQ.addQselectionType == SelectionType.EDGE_CONVEXITY || addQ.addQselectionType == SelectionType.MATCHING_BODIES)
+    {
+        annotation { "Name" : "Entities", "Filter" : EntityType.BODY && AllowFlattenedGeometry.YES && AllowMeshGeometry.YES }
+        addQ.addQseedBodies is Query;
+    }
+    else if (addQ.addQselectionType == SelectionType.PROTRUSION
+        || addQ.addQselectionType == SelectionType.POCKET
+        || addQ.addQselectionType == SelectionType.HOLE
+        || addQ.addQselectionType == SelectionType.FILLETS
+        || addQ.addQselectionType == SelectionType.BOUNDED_FACES
+        || (addQ.addQselectionType == SelectionType.TANGENT_CONNECTED && addQ.addQseedType == SeedType.FACE)
+        || (addQ.addQselectionType == SelectionType.MATCHING && addQ.addQseedType == SeedType.FACE))
+    {
+        annotation { "Name" : "Faces", "Filter" : EntityType.FACE }
+        addQ.addQseedFaces is Query;
+    }
+    else if (addQ.addQselectionType == SelectionType.ADJACENT)
+    {
+        annotation { "Name" : "Seed entities", "Filter" : (EntityType.FACE || EntityType.EDGE || EntityType.VERTEX) && AllowFlattenedGeometry.YES && AllowMeshGeometry.YES }
+        addQ.addQadjacentSeedEntities is Query;
+
+        annotation { "Name" : "Adjacency type" }
+        addQ.addQadjacencyType is AdjacencyType;
+
+        annotation { "Name" : "Result entities", "Default" : AdjacentResultType.SAME_AS_SEED }
+        addQ.addQadjacentResultType is AdjacentResultType;
+    }
+    else if (addQ.addQselectionType == SelectionType.SIZE_COMPARISON)
+    {
+        annotation { "Name" : "Entities", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
+        addQ.addQsizeComparisonEntities is Query;
+
+        annotation { "Name" : "Comparison type", "Default" : SizeComparisonType.LARGEST }
+        addQ.addQsizeComparisonType is SizeComparisonType;
+
+        if (addQ.addQsizeComparisonType == SizeComparisonType.LARGER_THAN_SELECTION
+            || addQ.addQsizeComparisonType == SizeComparisonType.SMALLER_THAN_SELECTION
+            || addQ.addQsizeComparisonType == SizeComparisonType.EQUAL_TO_SELECTION)
+        {
+            annotation { "Name" : "Reference selection", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES, "MaxNumberOfPicks" : 1 }
+            addQ.addQsizeComparisonReference is Query;
+
+            if (addQ.addQsizeComparisonType == SizeComparisonType.LARGER_THAN_SELECTION
+                || addQ.addQsizeComparisonType == SizeComparisonType.SMALLER_THAN_SELECTION)
+            {
+                annotation { "Name" : "Or equal to selection", "Default" : false }
+                addQ.addQsizeComparisonAllowEqual is boolean;
+            }
+        }
+    }
+    else if (addQ.addQselectionType == SelectionType.POSITIONAL_DIRECTIONAL)
+    {
+        annotation { "Name" : "Entities", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
+        addQ.addQpositionalEntities is Query;
+
+        annotation { "Name" : "Positional query", "Default" : PositionalDirectionalType.PLANE_NORMAL }
+        addQ.addQpositionalMetricType is PositionalDirectionalType;
+
+        if (addQ.addQpositionalMetricType == PositionalDirectionalType.PLANE_NORMAL
+            || addQ.addQpositionalMetricType == PositionalDirectionalType.INTERSECTS_PLANE
+            || addQ.addQpositionalMetricType == PositionalDirectionalType.COINCIDES_WITH_PLANE
+            || addQ.addQpositionalMetricType == PositionalDirectionalType.IN_FRONT_OF_PLANE)
+        {
+            annotation { "Name" : "Reference plane", "Filter" : (EntityType.FACE && GeometryType.PLANE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            addQ.addQpositionalPlane is Query;
+        }
+        else if (addQ.addQpositionalMetricType == PositionalDirectionalType.INTERSECTS_LINE)
+        {
+            annotation { "Name" : "Reference line", "Filter" : (EntityType.EDGE && GeometryType.LINE) || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            addQ.addQpositionalLine is Query;
+        }
+        else if (addQ.addQpositionalMetricType == PositionalDirectionalType.CLOSEST_TO)
+        {
+            annotation { "Name" : "Closest to", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            addQ.addQpositionalClosestRef is Query;
+        }
+        else if (addQ.addQpositionalMetricType == PositionalDirectionalType.CONTAINS_POINT
+            || addQ.addQpositionalMetricType == PositionalDirectionalType.INTERSECTS_BALL)
+        {
+            annotation { "Name" : "Reference point", "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            addQ.addQpositionalVertex is Query;
+
+            if (addQ.addQpositionalMetricType == PositionalDirectionalType.INTERSECTS_BALL)
+            {
+                annotation { "Name" : "Radius", "Default" : 0 * meter }
+                isLength(addQ.addQpositionalRadius, NONNEGATIVE_LENGTH_BOUNDS);
+            }
+        }
+        else if (addQ.addQpositionalMetricType == PositionalDirectionalType.FARTHEST_ALONG
+            || addQ.addQpositionalMetricType == PositionalDirectionalType.PLANE_PARALLEL_DIRECTION
+            || addQ.addQpositionalMetricType == PositionalDirectionalType.FACE_PARALLEL_DIRECTION)
+        {
+            annotation { "Name" : "Direction", "Filter" : EntityType.EDGE || QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1 }
+            addQ.addQpositionalDirection is Query;
+        }
+    }
+    else if (addQ.addQselectionType == SelectionType.GEOMETRY)
+    {
+        annotation { "Name" : "Seed entities", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES }
+        addQ.addQgeometrySeedEntities is Query;
+
+        annotation { "Name" : "Geometry type" }
+        addQ.addQgeometryType is GeometryType;
+    }
+    else if (addQ.addQselectionType == SelectionType.LOOP_CHAIN_CONNECTED)
+    {
+        annotation { "Name" : "Edges or faces", "Filter" : EntityType.EDGE || EntityType.FACE }
+        addQ.addQseedEdgesOrFaces is Query;
+    }
+    else if (addQ.addQselectionType == SelectionType.PARALLEL
+        || addQ.addQselectionType == SelectionType.TOLERANT_PARALLEL
+        || (addQ.addQselectionType == SelectionType.TANGENT_CONNECTED && addQ.addQseedType == SeedType.EDGE)
+        || (addQ.addQselectionType == SelectionType.MATCHING && addQ.addQseedType == SeedType.EDGE))
+    {
+        annotation { "Name" : "Edges", "Filter" : EntityType.EDGE }
+        addQ.addQseedEdges is Query;
+    }
+    if (addQ.addQselectionType == SelectionType.CREATED_BY
+        || addQ.addQselectionType == SelectionType.CAP_ENTITY
+        || addQ.addQselectionType == SelectionType.NON_CAP_ENTITY
+        || addQ.addQselectionType == SelectionType.OWNED_BY
+        || addQ.addQselectionType == SelectionType.EVERYTHING)
+    {
+        annotation { "Name" : "Entity type" }
+        addQ.addQentityType is EntityType;
+    }
+    if (addQ.addQselectionType == SelectionType.FILLETS)
+    {
+        annotation { "Name" : "Fillet compare type" }
+        addQ.addQfilletCompareType is FilletCompare;
+    }
+    if (addQ.addQselectionType == SelectionType.BOUNDED_FACES)
+    {
+        annotation { "Name" : "Bounds", "Filter" : EntityType.EDGE || EntityType.FACE }
+        addQ.addQboundedFacesBounds is Query;
+    }
+    if (addQ.addQselectionType == SelectionType.EDGE_CONVEXITY)
+    {
+        annotation { "Name" : "Edge convexity type" }
+        addQ.addQedgeConvexityType is EdgeConvexityType;
+    }
+    if (addQ.addQselectionType == SelectionType.TOLERANT_PARALLEL)
+    {
+        annotation { "Name" : "Direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1 }
+        addQ.addQdirection is Query;
+    }
+    if (addQ.addQselectionType == SelectionType.TANGENT_CONNECTED && addQ.addQseedType == SeedType.FACE
+        || addQ.addQselectionType == SelectionType.TOLERANT_PARALLEL)
+    {
+        annotation { "Name" : "Angle tolerance", "Default" : 0 * degree }
+        isAngle(addQ.addQangleTolerance, ANGLE_STRICT_180_BOUNDS);
+    }
+    if (addQ.addQselectionType == SelectionType.CREATED_BY
+        || addQ.addQselectionType == SelectionType.EVERYTHING)
+    {
+        annotation { "Name" : "Filter construction entities", "Default" : true }
+        addQ.addQfilterConstruction is boolean;
+
+        annotation { "Name" : "Filter by body type", "Default" : false }
+        addQ.addQfilterByBodyType is boolean;
+
+        if (addQ.addQfilterByBodyType)
+        {
+            annotation { "Name" : "Body type" }
+            addQ.addQcreatedByBodyType is BodyTypeOptions;
+        }
+    }
+
+    if (addQ.addQselectionType == SelectionType.CAP_ENTITY)
+    {
+        annotation { "Name" : "Cap type", "Default" : CapType.EITHER }
+        addQ.addQcapType is CapType;
+    }
+    
+    if (addQ.addQselectionType == SelectionType.LOAD_FROM_DERIVE)
+    {
+        annotation { "Name" : "Derive feature", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
+        addQ.addQderiveFeature is FeatureList;
+    }
+}
+
+/**
  * Feature to create a query variable via calling `setQueryVariable`.
  * This variable may be used in featurescript via call `getQueryVariable` or in the UI by clicking the "Variable selection" dropdown in the feature dialog
  * or by selecting the query variable feature in the feature list.
@@ -411,6 +664,9 @@ export predicate initialQueryPredicate(definition is map)
  *      @field boundedFacesBounds {Query} : If selectionType is BOUNDED_FACES, the faces or edges bounding the selection.
  *      @field edgeConvexityType {EdgeConvexityType} : If selectionType is EDGE_CONVEXITY, the convexity type of edges to include in the variable.
  *
+ *      @field addAdditionalQueries {boolean} : Whether to combine more queries into the source query before filtering.
+ *      @field additionalQueries {array} : Additional queries; each item has the same fields as the main query with an
+ *          addQ prefix, plus `booleanOperation` (union, subtract or intersect) saying how it combines with the query so far.
  *      @field filters {array} : Filters applied in order to the source query. Each item has `fltMode` (keep or reject),
  *          `fltType`, and the parameters of that filter type (all prefixed `flt`).
  *      @field debugStages {boolean} : Highlight each filter stage's result in its own color.
@@ -437,6 +693,25 @@ export const queryVariable = defineFeature(function(context is Context, id is Id
         // Filters do not apply to a load from derive feature: the loaded variables are rebuilt as they were saved.
         if (definition.selectionType != SelectionType.LOAD_FROM_DERIVE)
         {
+            annotation { "Name" : "Add additional queries" }
+            definition.addAdditionalQueries is boolean;
+
+            annotation { "Group Name" : "Additional queries", "Driving Parameter" : "addAdditionalQueries", "Collapsed By Default" : false }
+            {
+                if (definition.addAdditionalQueries)
+                {
+                    annotation { "Name" : "Additional queries", "Item name" : "additional query", "Item label template" : "#booleanOperation of #addQlowercaseSelectionType" }
+                    definition.additionalQueries is array;
+                    for (var addQ in definition.additionalQueries)
+                    {
+                        annotation { "Name" : "Boolean operation", "UIHint" : UIHint.HORIZONTAL_ENUM }
+                        addQ.booleanOperation is BooleanOperationType;
+
+                        additionalQueryPredicate(addQ);
+                    }
+                }
+            }
+
             annotation { "Name" : "Filters", "Item name" : "filter", "Item label template" : "#fltMode #fltType: #fltCount" }
             definition.filters is array;
             for (var flt in definition.filters)
@@ -467,6 +742,17 @@ export const queryVariable = defineFeature(function(context is Context, id is Id
         definition.saveForDerivedStudios is boolean;
     }
     {
+        if (definition.addAdditionalQueries)
+        {
+            for (var i = 0; i < size(definition.additionalQueries); i += 1)
+            {
+                setFeatureComputedParameter(context, id, {
+                            "name" : faultyArrayParameterId("additionalQueries", i, "addQlowercaseSelectionType"),
+                            "value" : SelectionTypeToLowercaseName[definition.additionalQueries[i].addQselectionType]
+                        });
+            }
+        }
+
         // Special handling for LOAD_FROM_DERIVE: reconstruct all query variables from a derive feature
         if (definition.selectionType == SelectionType.LOAD_FROM_DERIVE)
         {
@@ -482,6 +768,21 @@ export const queryVariable = defineFeature(function(context is Context, id is Id
         checkQueryVariableName(context, definition.name);
 
         var query = mapSelectionTypeToQuery(context, definition);
+
+        if (definition.addAdditionalQueries)
+        {
+            for (var addQ in definition.additionalQueries)
+            {
+                const innerQuery = mapSelectionTypeToQuery(context, remapAdditionalQuery(addQ));
+
+                query = switch (addQ.booleanOperation)
+                    {
+                            BooleanOperationType.UNION : qUnion(query, innerQuery),
+                            BooleanOperationType.SUBTRACTION : qSubtraction(query, innerQuery),
+                            BooleanOperationType.INTERSECTION : qIntersection(query, innerQuery)
+                        };
+            }
+        }
 
         query = qvxApplyFilters(context, id, definition, query);
         query = qvxApplyOutputType(context, id, definition, query);
@@ -764,6 +1065,25 @@ function nonCapEntitiesCreatedBy(definition is map) returns Query
     return nonCapEntitiesQuery;
 }
 
+
+/**
+ * Strips the addQ prefix from an additional query item so it can be handled like the main query.
+ */
+function remapAdditionalQuery(definition is map) returns map
+{
+    var remapped = {};
+    const prefix = "addQ";
+    const offset = 4;
+    for (var key, value in definition)
+    {
+        if (!startsWith(key, prefix))
+        {
+            continue;
+        }
+        remapped[substring(key, offset)] = value;
+    }
+    return remapped;
+}
 
 /**
  * Filters input edges by angle tolerance to a reference direction.
