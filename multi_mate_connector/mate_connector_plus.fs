@@ -635,7 +635,7 @@ function mcpBuild(context is Context, id is Id, cs is CoordSystem, length is Val
     const faces = qOwnedByBody(qCreatedBy(id + "zFace", EntityType.BODY), EntityType.FACE);
     for (var face in evaluateQuery(context, faces))
     {
-        const n = evPlane(context, { "face" : face }).normal;
+        const n = evFaceTangentPlane(context, { "face" : face, "parameter" : vector(0.5, 0.5) }).normal;
         var paint = undefined;
         if (abs(dot(n, ez)) > 0.99)
         {
