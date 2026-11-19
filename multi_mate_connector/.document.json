@@ -4,9 +4,11 @@
   "document_name": "multi_mate_connector",
   "folder_path": "",
   "onshape_url": "https://k2-sports.onshape.com/documents/a9d184fc09755034a5c9bf65/w/3cd8b949b8523f5371f5b448",
-  "last_sync": "2026-11-19T22:38:47.463560+00:00",
+  "last_sync": "2026-11-19T22:44:09.462420+00:00",
   "feature_studios": {
-    "multi_mate_connector": "f4a978fc5b981f404648b437"
+    "multi_mate_connector": "f4a978fc5b981f404648b437",
+    "mate_connector_plus": "a4d958581077028c2970a4e9",
+    "mc_core": "0a18eeece6adacc759621422"
   },
   "tab_folders": {}
 }
