@@ -347,3 +347,15 @@ trim("T36 split 15 from both ends, TWO COINCIDENT wires selected -> 6 wires 15 x
      {"cutBy": "DISTANCE_FROM_ENDS", "operation": "SPLIT", "endsMode": "SAME_AT_BOTH"})
 ends_case("T37", 36000, "long single-edge wire (1480), split 15 from both ends -> 3 wires 15 / 1450 / 15",
           lambda wid, x0: [num("endsDistance", "15 mm")], {"operation": "SPLIT", "endsMode": "SAME_AT_BOTH"}, make_wire=long_line_wire)
+
+# ---- A 0.003 mm micro-edge at one end (the reported wire has one: 13 edges, 1660.6 mm, std constructPath refused it at 1e-8 m) ----
+def micro_edge_wire(tag, x0):
+    sk = sketch("%s wire with a 0.003 mm edge at the start (x0 %d)" % (tag, x0),
+                [seg("m1", *mmv(x0, 0, x0 + 0.003, 0)), seg("m2", *mmv(x0 + 0.003, 0, x0 + 500, 0)), seg("m3", *mmv(x0 + 500, 0, x0 + 900, 0))])
+    return feature("%s 3-edge wire with a micro-edge (composite curve)" % tag, "compositeCurve", [q("edges", sketch_edges(sk))])
+
+
+ends_case("T38", 37000, "wire with a 0.003 mm edge, split 15 from both ends -> 3 wires 15 / 870 / 15",
+          lambda wid, x0: [num("endsDistance", "15 mm")], {"operation": "SPLIT", "endsMode": "SAME_AT_BOTH"}, make_wire=micro_edge_wire)
+ends_case("T39", 38000, "wire with a 0.003 mm edge, trim 15 from both ends -> 1 wire 870",
+          lambda wid, x0: [num("endsDistance", "15 mm")], {"operation": "TRIM", "endsMode": "SAME_AT_BOTH"}, make_wire=micro_edge_wire)

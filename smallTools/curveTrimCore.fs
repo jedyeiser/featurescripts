@@ -79,6 +79,30 @@ export const CTC_INFLECTION_INDEX_BOUNDS =
 // ============================================================================
 
 /**
+ * constructPath for a wire, tolerant of the small gaps between the edges of intersection and projected curves. std
+ * constructPath chains edges whose ends meet within 1e-8 m and otherwise throws a bare string ("Edges do not form a continuous
+ * path"), which Onshape shows as "Error regenerating." Tries the std tolerance, then 1 um, 10 um and 100 um. When even that
+ * fails the edges do not form one chain (a wider gap, a branch, or a curve that touches itself), and a message says so.
+ */
+export function wireConstructPath(context is Context, wire is Query) returns Path
+{
+    const edges = qOwnedByBody(wire, EntityType.EDGE);
+    try silent
+    {
+        return constructPath(context, edges);
+    }
+    for (var tolerance in [0.000001, 0.00001, 0.0001])
+    {
+        try silent
+        {
+            return constructPath(context, edges, { "tolerance" : tolerance * meter }).path;
+        }
+    }
+    throw regenError("The edges of this curve do not form one continuous chain: its " ~ size(evaluateQuery(context, edges))
+        ~ " edges do not meet end to end within 0.1 mm, or the curve branches or touches itself. Rebuild or clean the curve first "
+        ~ "(for example with Clean wire).", ["curves"]);
+}
+/**
  * A wire's edges as one ordered path (constructPath: the first edge's own direction
  * is "forward"), with each edge's arc length and the arc length at which it starts.
  * Every cut "fraction" in this module is a fraction of this path's total length, so a
@@ -93,7 +117,7 @@ export const CTC_INFLECTION_INDEX_BOUNDS =
  */
 export function wirePath(context is Context, wire is Query) returns map
 {
-    return wirePathInfo(context, constructPath(context, qOwnedByBody(wire, EntityType.EDGE)));
+    return wirePathInfo(context, wireConstructPath(context, wire));
 }
 
 function wirePathInfo(context is Context, path is Path) returns map
@@ -117,7 +141,7 @@ function wirePathInfo(context is Context, path is Path) returns map
  */
 function wirePathFrom(context is Context, wire is Query, startPoint is Vector) returns map
 {
-    var path = constructPath(context, qOwnedByBody(wire, EntityType.EDGE));
+    var path = wireConstructPath(context, wire);
     var wp = wirePathInfo(context, path);
     if (!tolerantEquals(pathPointAtFraction(context, wp, 0), startPoint))
     {

@@ -5,7 +5,7 @@ export import(path : "onshape/std/curveextensionshape.gen.fs", version : "3083.0
 export import(path : "onshape/std/curveextensionendcondition.gen.fs", version : "3083.0");
 
 // curveTrimCore (same document) - plane-cut trim/split engine
-import(path : "d56d74c24234ab2b885e6fc1", version : "ea2966195a7ea412688a95fe");
+import(path : "d56d74c24234ab2b885e6fc1", version : "d4904fc04cacf4572b9ed461");
 
 // IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
 import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
