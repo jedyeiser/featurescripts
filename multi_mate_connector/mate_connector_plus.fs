@@ -3,6 +3,8 @@ import(path : "onshape/std/common.fs", version : "3095.0");
 import(path : "onshape/std/path.fs", version : "3095.0");
 // IMPORT: mc_core.fs (same document: references, paths, arc length)
 import(path : "0a18eeece6adacc759621422", version : "");
+// IMPORT: mate_connector_plus_icon.svg (feature icon)
+IconNamespace::import(path : "c77b15e39da290cd4c47d86e", version : "8cd6167f6128c77d55b6e4d4");
 
 /**
  * Mate connector +.
@@ -109,7 +111,7 @@ const MCP_ROTATION_BOUNDS = { (degree) : [-360, 0, 360], (radian) : 0.0 } as Ang
 const MCP_COMPONENT_BOUNDS = { (unitless) : [-100000, 0, 100000] } as RealBoundSpec;
 const MCP_COMPONENT_Z_BOUNDS = { (unitless) : [-100000, 1, 100000] } as RealBoundSpec;
 
-annotation { "Feature Type Name" : "Mate connector +",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Mate connector +",
         "Feature Type Description" : "Defines a mate connector frame precisely and then creates it, builds a colored half-cube marker (blue Z, red X, green Y), or transforms bodies from another mate connector to it. The origin can be a point, a place on an edge or wire, or a place on a face. Z and X come from a world axis, a vector, or the tangent or normal of an edge or face; X is squared up to Z. Modify moves and turns the frame about its own axes." }
 export const mateConnectorPlus = defineFeature(function(context is Context, id is Id, definition is map)
     precondition

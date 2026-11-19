@@ -3,6 +3,8 @@ import(path : "onshape/std/common.fs", version : "3095.0");
 import(path : "onshape/std/path.fs", version : "3095.0");
 // IMPORT: Variable_tools V2 extract_outputs.fs (embedStandardOutputs, extractableVariable, extractableQuery)
 import(path : "a47f90bfa6b17a59e20cebd0/f4f872fe20d1498201fed64d/3cac74f0bc2b98272db13cd3", version : "b8c80ac05dcfd9f3cc172ffc");
+// IMPORT: multi_mate_connector_icon.svg (feature icon)
+IconNamespace::import(path : "42ddf8c75f1fe64822c4ddba", version : "1bf78f9d25a7ce91c2a1b35e");
 
 /**
  * Multi mate connector.
@@ -51,7 +53,7 @@ export enum MmcNormalCorrection
 
 const MMC_COUNT_BOUNDS = { (unitless) : [1, 5, 200] } as IntegerBoundSpec;
 
-annotation { "Feature Type Name" : "Multi mate connector",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Multi mate connector",
         "Feature Type Description" : "Places N mate connectors evenly along a wire or edges. Each Z axis follows the normal of a surface or faces you pick (the closest point to each connector), and the X axis follows the curve. Normals can be kept consistent along the curve, or forced toward a reference point or direction, so faces whose normals flip do not turn connectors over. Flip reverses them all." }
 export const multiMateConnector = defineFeature(function(context is Context, id is Id, definition is map)
     precondition

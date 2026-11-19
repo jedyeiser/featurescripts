@@ -34,7 +34,9 @@ TARGETS = [
     ("example_1", "refSurfCreation/offsetEdges", "offset_edges"),
     ("bodyRename", "Simple_Rename", "simple_body_rename"),
     ("clean_surfaces", "clean_surfaces", "clean_surfaces"),  # 2026-11-06 (concept A)
-    ("query_variable_x", "query_variable_x", "query_variable_x"),  # 2026-11-18 (candidate A, bolt behind the lens)
+    ("query_variable_x", "query_variable_x", "query_variable_x"),
+    ("multi_mate_connector", "multi_mate_connector", "multi_mate_connector"),  # 2026-11-19 (candidate B, agent draft)
+    ("multi_mate_connector", "mate_connector_plus", "mate_connector_plus"),  # 2026-11-19 (candidate A, agent draft)  # 2026-11-18 (candidate A, bolt behind the lens)
     ("evenly_divide_surface", "evenly_divide_surface", "evenly_divide_surface"),  # 2026-10-17 (concept A2, agent draft)
     # RESTYLES: these files already carry an (off-style) icon, so install_icons.py leaves them alone. Swap by hand:
     # replace the IconNamespace::import tab id/version with a NEW tab (the script matches tabs by name).
