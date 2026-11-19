@@ -96,7 +96,13 @@ export enum McpXAxisType
 
 export enum McpWorldAxis
 {
-    annotation { "Name" : "X" }
+    annotation { "Name" : "X", "Icon" : Icon.ALONG_X }
+    X_AXIS,
+    annotation { "Name" : "Y", "Icon" : Icon.ALONG_Y }
+    Y_AXIS,
+    annotation { "Name" : "Z", "Icon" : Icon.ALONG_Z }
+    Z_AXIS
+}
     X_AXIS,
     annotation { "Name" : "Y" }
     Y_AXIS,
