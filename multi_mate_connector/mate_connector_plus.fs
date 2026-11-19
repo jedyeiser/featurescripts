@@ -2,7 +2,7 @@ FeatureScript 3095;
 import(path : "onshape/std/common.fs", version : "3095.0");
 import(path : "onshape/std/path.fs", version : "3095.0");
 // IMPORT: mc_core.fs (same document: references, paths, arc length)
-import(path : "0a18eeece6adacc759621422", version : "");
+import(path : "0a18eeece6adacc759621422", version : "2095707b9424d45d3bf94814");
 // IMPORT: mate_connector_plus_icon.svg (feature icon)
 IconNamespace::import(path : "c77b15e39da290cd4c47d86e", version : "8cd6167f6128c77d55b6e4d4");
 
@@ -96,11 +96,11 @@ export enum McpXAxisType
 
 export enum McpWorldAxis
 {
-    annotation { "Name" : "X", "Icon" : Icon.ALONG_X }
+    annotation { "Name" : "X" }
     X_AXIS,
-    annotation { "Name" : "Y", "Icon" : Icon.ALONG_Y }
+    annotation { "Name" : "Y" }
     Y_AXIS,
-    annotation { "Name" : "Z", "Icon" : Icon.ALONG_Z }
+    annotation { "Name" : "Z" }
     Z_AXIS
 }
     X_AXIS,
