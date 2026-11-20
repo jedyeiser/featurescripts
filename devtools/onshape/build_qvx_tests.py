@@ -156,6 +156,7 @@ def _defaults():
             b("fltSizeAllowEqual", False), en("fltConvexity", "EdgeConvexityType", "CONVEX", NS), en("fltEdgeTopology", "EdgeTopology", "ONE_SIDED", NS), flist("fltModifiedBy", []),
             q("fltDistRef"), en("fltDistMode", "DistanceMode", "CLOSEST", NS), {"btType": "BTMParameterQuantity-147", "parameterId": "fltDistCount", "expression": "1", "isInteger": True},
             num("fltDistFrom", "0 mm"), num("fltDistTo", "0 mm"), num("fltDistValue", "0 mm"),
+            q("fltWithinRef"), num("fltWithinDist", "0 mm"), en("fltWithinMeasure", "WithinMeasure", "NEAREST", NS), b("fltWithinIncludeRef", False),
             q("fltAdjRef"), en("fltAdjKind", "AdjacencyKind", "EDGE", NS), {"btType": "BTMParameterQuantity-147", "parameterId": "fltAdjSteps", "expression": "1", "isInteger": True}, b("fltAdjIncludeRef", False),
             q("fltAxisRef"), num("fltAxisTol", "0 mm"), num("fltAxisAngleTol", "0 deg"), en("fltFaceConvexity", "FaceConvexity", "CONVEX", NS),
             q("fltSelection")]
@@ -264,6 +265,21 @@ qvx("t30", "Adjacent to A's top face, 2 steps -> 6 (the five plus A's bottom)", 
 qvx("t31", "Adjacent (share a vertex) to A's top face -> 5", SOLID_FACES, adjacent(top(A), kind="VERTEX"))
 qvx("t32", "Coaxial with the cylinder's top circular edge -> 1 (its side face)", SOLID_FACES, coaxial('qContainsPoint(qEverything(EntityType.EDGE), vector(210, 0, 30) * millimeter)'))
 qvx("t33", "Coaxial with the fillet face -> 0 (nothing else shares its axis)", SOLID_FACES, coaxial('qGeometry(qCreatedBy(makeId("%s"), EntityType.FACE), GeometryType.CYLINDER)' % FIL))
+def within(refs, value, measure="NEAREST", mode="KEEP", include=False):
+    return [en("fltMode", "FilterMode", mode, NS), en("fltType", "FilterType", "WITHIN", NS), q("fltWithinRef", *refs), num("fltWithinDist", value),
+            en("fltWithinMeasure", "WithinMeasure", measure, NS), b("fltWithinIncludeRef", include)]
+
+
+# B is x 100..120, y -10..10, z 0..50; A is x -30..30, y -20..20, z 0..20. B's five other faces are 0 (touching) to 20 (-X face) from the +X face.
+A_NEG_X = face_at(A, -30, 0, 10)     # A's -X face
+qvx("t39", "Within 25 mm (nearest) of B +X face -> 5 (B's other five faces; same as Distance nearer than)", SOLID_FACES, within([X_REF], "25 mm"))
+qvx("t40", "Within 25 mm of B +X face, include the references -> 6", SOLID_FACES, within([X_REF], "25 mm", include=True))
+qvx("t41", "Within 15 mm (nearest) of B +X face -> 4 (the four faces touching it; the -X face is 20 away)", SOLID_FACES, within([X_REF], "15 mm"))
+qvx("t42", "Within 15 mm (center) of B +X face -> 4 (centroids of the +-Y and +-Z faces are 10 away; the -X face centroid is 20)", SOLID_FACES, within([X_REF], "15 mm", measure="CENTER"))
+qvx("t43", "Within 15 mm (whole entity) of B +X face -> 0 (every B face has a vertex at x = 100, 20 away)", SOLID_FACES, within([X_REF], "15 mm", measure="WHOLE"))
+qvx("t44", "Within 25 mm (whole entity) of B +X face -> 5", SOLID_FACES, within([X_REF], "25 mm", measure="WHOLE"))
+qvx("t45", "Within 0 mm of B +X face OR A -X face -> 8 (the four B faces touching the +X face plus A's -Y, +Y, top, bottom)", SOLID_FACES, within([X_REF, A_NEG_X], "0 mm"))
+qvx("t46", "Reject within 25 mm of B +X face -> 11 (16 minus 5; the reference stays)", SOLID_FACES, within([X_REF], "25 mm", mode="REJECT"))
 qvx("t34", "Face convexity CONVEX on the L-shape -> 6 (all but the two faces at the concave edge)", L_FACES, face_convexity("CONVEX"))
 qvx("t35", "Face convexity HAS_CONCAVE on the L-shape -> 2", L_FACES, face_convexity("HAS_CONCAVE"))
 qvx("t36", "Face convexity MIXED on the L-shape -> 2", L_FACES, face_convexity("MIXED"))
