@@ -1,0 +1,198 @@
+- generic [ref=f6e1]:
+  - generic [ref=f6e5]:
+    - navigation [ref=f6e6]:
+      - generic [ref=f6e7]:
+        - link [ref=f6e10] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f6e11]
+        - generic [ref=f6e13] [cursor=pointer]
+      - generic [ref=f6e16]:
+        - generic [ref=f6e18]:
+          - generic [ref=f6e19]: Query Variable X
+          - generic [ref=f6e20]: Main
+        - generic [ref=f6e22] [cursor=pointer]
+        - link "EOC Featurescripts" [ref=f6e26] [cursor=pointer]:
+          - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+      - generic [ref=f6e30]:
+        - generic [ref=f6e33] [cursor=pointer]
+        - generic [ref=f6e39] [cursor=pointer]
+        - button "Notifications" [ref=f6e44] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f6e52]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f6e55] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f6e60] [cursor=pointer]
+        - button "Share" [ref=f6e64] [cursor=pointer]
+        - generic "Help menu" [ref=f6e66] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f6e70] [cursor=pointer]
+    - generic [ref=f6e80]:
+      - generic [ref=f6e82]:
+        - generic [ref=f6e83]:
+          - generic [ref=f6e84]:
+            - generic [ref=f6e85] [cursor=pointer]
+            - generic [ref=f6e88] [cursor=pointer]
+            - generic [ref=f6e91] [cursor=pointer]
+            - generic [ref=f6e94] [cursor=pointer]
+            - generic [ref=f6e97] [cursor=pointer]
+            - generic [ref=f6e100] [cursor=pointer]
+            - generic [ref=f6e103] [cursor=pointer]
+            - generic [ref=f6e106] [cursor=pointer]
+          - generic [ref=f6e110] [cursor=pointer]
+        - generic [ref=f6e114] [cursor=pointer]
+      - generic [ref=f6e121]:
+        - generic [ref=f6e283]:
+          - generic [ref=f6e287]:
+            - generic [ref=f6e299]:
+              - generic [ref=f6e300]: New feature
+              - generic [ref=f6e543]:
+                - generic [ref=f6e544] [cursor=pointer]: Length parameter
+                - generic [ref=f6e546] [cursor=pointer]
+              - generic [ref=f6e550]:
+                - generic [ref=f6e551] [cursor=pointer]
+                - generic [ref=f6e555] [cursor=pointer]
+              - generic [ref=f6e380]: Commit
+            - button "Search tools… alt/⌥ c" [ref=f6e476] [cursor=pointer]:
+              - text: Search tools…
+              - generic [ref=f6e477]:
+                - generic [ref=f6e478]: alt/⌥
+                - generic [ref=f6e479]: c
+            - generic [ref=f6e565]:
+              - switch "Co-complete" [disabled] [ref=f6e567] [cursor=pointer]
+              - generic [ref=f6e568]: Co-complete
+          - generic [ref=f6e572]:
+            - generic [ref=f6e573]: Monitor Part Studio 1
+            - generic [ref=f6e585]: Module outline
+            - generic [ref=f6e620]: Line 1 , Column 1
+        - generic [ref=f6e622]:
+          - textbox "Cursor at row 1" [active] [ref=f6e623]: FeatureScript 3083;
+          - generic [ref=f6e625]:
+            - generic [aria-hidden] [ref=f6e626]: "1"
+            - generic [ref=f6e627]:
+              - text: "2"
+              - button [expanded] [ref=f6e628] [cursor=pointer]
+            - generic [aria-hidden] [ref=f6e629]: "3"
+            - generic [aria-hidden] [ref=f6e630]: "4"
+            - generic [aria-hidden] [ref=f6e631]: "5"
+            - generic [aria-hidden] [ref=f6e632]: "6"
+            - generic [aria-hidden] [ref=f6e633]: "7"
+            - generic [aria-hidden] [ref=f6e634]: "8"
+            - generic [aria-hidden] [ref=f6e635]: "9"
+            - generic [aria-hidden] [ref=f6e636]: "10"
+            - generic [aria-hidden] [ref=f6e637]: "11"
+            - generic [aria-hidden] [ref=f6e638]: "12"
+            - generic [aria-hidden] [ref=f6e639]: "13"
+            - generic [aria-hidden] [ref=f6e640]: "14"
+            - generic [aria-hidden] [ref=f6e641]: "15"
+            - generic [aria-hidden] [ref=f6e642]: "16"
+            - generic [aria-hidden] [ref=f6e643]: "17"
+            - generic [aria-hidden] [ref=f6e644]: "18"
+            - generic [aria-hidden] [ref=f6e645]: "19"
+            - generic [aria-hidden] [ref=f6e646]: "20"
+            - generic [ref=f6e647]:
+              - text: "21"
+              - button [expanded] [ref=f6e648] [cursor=pointer]
+            - generic [aria-hidden] [ref=f6e649]: "22"
+            - generic [aria-hidden] [ref=f6e650]: "23"
+            - generic [aria-hidden] [ref=f6e651]: "24"
+            - generic [ref=f6e652]:
+              - text: "25"
+              - button [expanded] [ref=f6e653] [cursor=pointer]
+            - generic [aria-hidden] [ref=f6e654]: "26"
+            - generic [aria-hidden] [ref=f6e655]: "27"
+            - generic [aria-hidden] [ref=f6e656]: "28"
+            - generic [aria-hidden] [ref=f6e657]: "29"
+            - generic [aria-hidden] [ref=f6e658]: "30"
+            - generic [aria-hidden] [ref=f6e659]: "31"
+            - generic [ref=f6e660]:
+              - text: "32"
+              - button [expanded] [ref=f6e661] [cursor=pointer]
+            - generic [aria-hidden] [ref=f6e662]: "33"
+            - generic [aria-hidden] [ref=f6e663]: "34"
+            - generic [aria-hidden] [ref=f6e664]: "35"
+            - generic [ref=f6e665]:
+              - text: "36"
+              - button [expanded] [ref=f6e666] [cursor=pointer]
+            - generic [aria-hidden] [ref=f6e667]: "37"
+            - generic [aria-hidden] [ref=f6e668]: "38"
+            - generic [aria-hidden] [ref=f6e669]: "39"
+            - generic [aria-hidden] [ref=f6e670]: "40"
+            - generic [aria-hidden] [ref=f6e671]: "41"
+            - generic [aria-hidden] [ref=f6e672]: "42"
+            - generic [aria-hidden] [ref=f6e673]: "43"
+            - generic [aria-hidden] [ref=f6e674]: "44"
+            - generic [aria-hidden] [ref=f6e675]: "45"
+            - generic [aria-hidden] [ref=f6e676]: "46"
+            - generic [aria-hidden] [ref=f6e677]: "47"
+            - generic [aria-hidden] [ref=f6e678]: "48"
+            - generic [aria-hidden] [ref=f6e679]: "49"
+            - generic [aria-hidden] [ref=f6e680]: "50"
+            - generic [aria-hidden] [ref=f6e681]: "51"
+            - generic [aria-hidden] [ref=f6e682]: "52"
+            - generic [aria-hidden] [ref=f6e683]: "53"
+            - generic [aria-hidden] [ref=f6e684]: "54"
+          - generic [ref=f6e686]:
+            - generic:
+              - generic: FeatureScript 3083;
+              - generic: /**
+              - generic: "* Query Variable X: the filter stage."
+              - generic: "*"
+              - generic: "* An ordered list of filters, each of which keeps or rejects the entities it matches. Used by the"
+              - generic: "* Query variable X feature; the logic they call lives in qvx_queries.fs."
+              - generic: "*/"
+              - generic: "export import(path : \"onshape/std/query.fs\", version : \"3083.0\");"
+              - generic: "export import(path : \"onshape/std/edgeconvexitytype.gen.fs\", version : \"3083.0\");"
+              - generic: "export import(path : \"onshape/std/edgetopology.gen.fs\", version : \"3083.0\");"
+              - generic: "import(path : \"onshape/std/common.fs\", version : \"3083.0\");"
+              - generic: "import(path : \"onshape/std/debug.fs\", version : \"3083.0\");"
+              - generic: "import(path : \"onshape/std/feature.fs\", version : \"3083.0\");"
+              - generic: "import(path : \"onshape/std/featureList.fs\", version : \"3083.0\");"
+              - generic: "import(path : \"onshape/std/evaluate.fs\", version : \"3083.0\");"
+              - generic: "import(path : \"onshape/std/string.fs\", version : \"3083.0\");"
+              - generic: "import(path : \"onshape/std/containers.fs\", version : \"3083.0\");"
+              - generic: "import(path : \"onshape/std/error.fs\", version : \"3083.0\");"
+              - generic: "export import(path : \"4215a2585ebe1072420e5d9c\", version : \"f24bdc00531678d03348cda6\");"
+              - generic: /**
+              - generic: "* Whether a filter keeps or removes the entities it matches."
+              - generic: "*/"
+              - generic: export enum FilterMode
+              - generic: "{"
+              - generic: "annotation { \"Name\" : \"Keep\" }"
+              - generic: KEEP,
+              - generic: "annotation { \"Name\" : \"Reject\" }"
+              - generic: REJECT
+              - generic: "}"
+              - generic: /**
+              - generic: "* The kinds of filter that can be applied to the source query."
+              - generic: "*/"
+              - generic: export enum FilterType
+              - generic: "{"
+              - generic: "annotation { \"Name\" : \"Direction\" }"
+              - generic: DIRECTION,
+              - generic: "annotation { \"Name\" : \"Between\" }"
+              - generic: BETWEEN,
+              - generic: "annotation { \"Name\" : \"Position\" }"
+              - generic: POSITION,
+              - generic: "annotation { \"Name\" : \"Geometry type\" }"
+              - generic: GEOMETRY,
+              - generic: "annotation { \"Name\" : \"Entity type\" }"
+              - generic: ENTITY_TYPE,
+              - generic: "annotation { \"Name\" : \"Body type\" }"
+              - generic: BODY_TYPE,
+              - generic: "annotation { \"Name\" : \"Size\" }"
+              - generic: SIZE,
+              - generic: "annotation { \"Name\" : \"Edge convexity\" }"
+              - generic: CONVEXITY,
+              - generic: "annotation { \"Name\" : \"Edge topology (one or two sided)\" }"
+              - generic: EDGE_TOPOLOGY,
+            - generic [ref=f6e687]: qvx_queries
+        - generic [ref=f6e219]:
+          - img [ref=f6e222] [cursor=pointer]
+          - generic [ref=f6e225]:
+            - generic [ref=f6e226] [cursor=pointer]: Part Studio 1
+            - generic [ref=f6e232] [cursor=pointer]: Assembly 1
+            - generic [ref=f6e238] [cursor=pointer]: query_variable_x
+            - generic [ref=f6e244]: qvx_filters
+            - generic [ref=f6e250] [cursor=pointer]: qvx_queries
+            - generic [ref=f6e256] [cursor=pointer]: QVX tests
+            - generic [ref=f6e262] [cursor=pointer]: query_variable_x_icon.svg
+            - generic [ref=f6e268] [cursor=pointer]: QVX derive src
+            - generic [ref=f6e274] [cursor=pointer]: QVX derive tests
+  - img "Generic thumbnail image for a document without a preview image." [ref=f6e696]
