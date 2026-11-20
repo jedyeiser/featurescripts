@@ -1,7 +1,7 @@
 FeatureScript 3095;
 import(path : "onshape/std/common.fs", version : "3095.0");
 import(path : "onshape/std/path.fs", version : "3095.0");
-import(path : "onshape/std/bridgingCurve.fs", version : "3095.0");
+export import(path : "onshape/std/bridgingCurve.fs", version : "3095.0");
 // IMPORT: mc_core.fs (same document: references, paths, arc length)
 import(path : "0a18eeece6adacc759621422", version : "2095707b9424d45d3bf94814");
 // IMPORT: bridging_curve_plus_icon.svg (feature icon)
