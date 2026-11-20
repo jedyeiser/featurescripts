@@ -206,6 +206,11 @@ export const bridgingCurvePlus = defineFeature(function(context is Context, id i
             passed = bcpResolve(context, definition).definition;
         }
 
+        // These are only declared in some dialog branches (not with position on both sides); std reads them unconditionally.
+        passed.editControlPoints = passed.editControlPoints == true;
+        passed.editEdgePositions = passed.editEdgePositions == true;
+        passed.editTangencyAngles = passed.editTangencyAngles == true;
+
         // The standard feature builds the curve (and shows its own errors on side1 / side2 / the matching parameters).
         bridgingCurve(context, id + "bridge", passed);
         bcpShowWire(context, id, qCreatedBy(id + "bridge", EntityType.BODY));

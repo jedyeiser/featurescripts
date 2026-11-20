@@ -135,25 +135,38 @@ MC = post({"btType": "BTMFeature-134", "featureType": "mateConnectorPlus", "name
     num("modOffsetX", "0 mm"), num("modOffsetY", "0 mm"), num("modOffsetZ", "0 mm"), num("modRotX", "0 deg"), num("modRotY", "0 deg"), num("modRotZ", "0 deg")]})
 
 
-def bcp(name, start, end, start_match="TANGENCY", end_match="TANGENCY", edit=None, start_reverse=False):
-    """edit: None, or {"startMagnitude": 2, "endMagnitude": 0.5, ...} (the Edit control points group)."""
-    p = [q("startSide", start), en("startMatch", "BcpMatch", start_match, NS_B)]
-    if start_match != "POSITION":
-        p.append(b("startReverse", start_reverse))
-    p += [q("endSide", end), en("endMatch", "BcpMatch", end_match, NS_B)]
-    if end_match != "POSITION":
-        p.append(b("endReverse", False))
-    if start_match != "POSITION" or end_match != "POSITION":
+ATT1 = sketch("ATT1 point (-50,0)", [point("t", *mm(-50, 0))])
+ATT2 = sketch("ATT2 point (350,50)", [point("t", *mm(350, 50))])
+ATT3 = sketch("ATT3 point (550,50)", [point("t", *mm(550, 50))])
+
+
+def verts(sk):
+    return 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % sk
+
+
+def bcp(name, side1, side2, m1="TANGENCY", m2="TANGENCY", choose="NEAREST_PAIR", attractor=None, edit=None, flip1=False):
+    """choose: STANDARD / NEAREST_PAIR / ATTRACTOR. edit: None, or {"side1Magnitude": 2, ...} (the Edit control points group)."""
+    p = [en("endChoice", "BcpEndChoice", choose, NS_B)]
+    if choose == "ATTRACTOR" and attractor is not None:
+        p.append(q("attractor", attractor))
+    p += [q("side1", side1), en("match1", "BridgingCurveMatchType", m1, NS_B)]
+    if m1 != "POSITION":
+        p.append(b("flip1", flip1))
+    p += [q("side2", side2), en("match2", "BridgingCurveMatchType", m2, NS_B)]
+    if m2 != "POSITION":
+        p.append(b("flip2", False))
+    if m1 != "POSITION" or m2 != "POSITION":
+        p.append(en("method", "BridgingCurveMethod", "CONTROL_POINTS", NS_B))
         p.append(b("editControlPoints", bool(edit)))
         if edit:
-            if start_match != "POSITION":
-                p.append(num("startMagnitude", str(edit.get("startMagnitude", 1))))
-                if start_match == "CURVATURE":
-                    p.append(num("startCurvatureOffset", str(edit.get("startCurvatureOffset", 1))))
-            if end_match != "POSITION":
-                p.append(num("endMagnitude", str(edit.get("endMagnitude", 1))))
-                if end_match == "CURVATURE":
-                    p.append(num("endCurvatureOffset", str(edit.get("endCurvatureOffset", 1))))
+            if m1 != "POSITION":
+                p.append(num("side1Magnitude", str(edit.get("side1Magnitude", 1))))
+                if m1 == "CURVATURE":
+                    p.append(num("side1CurvatureOffset", str(edit.get("side1CurvatureOffset", 1))))
+            if m2 != "POSITION":
+                p.append(num("side2Magnitude", str(edit.get("side2Magnitude", 1))))
+                if m2 == "CURVATURE":
+                    p.append(num("side2CurvatureOffset", str(edit.get("side2CurvatureOffset", 1))))
     return post({"btType": "BTMFeature-134", "featureType": "bridgingCurvePlus", "name": name, "namespace": NS_B, "parameters": p})
 
 bcp("B1 A to B, tangent both -> S curve (100,0)-(200,50), heading +X at both ends", edges_of(A), edges_of(B))
@@ -163,8 +176,14 @@ bcp("B4 A to ARC, tangent both -> nearest ARC end (200,150)", edges_of(A), edges
 bcp("B5 A to B, curvature both -> degree 5, same ends as B1", edges_of(A), edges_of(B), "CURVATURE", "CURVATURE")
 bcp("B6 mate connector to B, tangent both -> from (100,300) heading +X", 'qCreatedBy(makeId("%s"), EntityType.BODY)' % MC, edges_of(B))
 bcp("B7 A to W3 (3-edge wire), tangent both -> nearest end (400,0)", edges_of(A), edges_of(W3))
-bcp("B8 A to SP (B-spline), tangent both -> nearest end (400,200)", edges_of(A), edges_of(SP).replace('makeId("%s")' % SP, 'makeId("%s")' % SP))
-bcp("B9 vertex to B, tangent -> ERROR (a vertex has no tangent)", 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % VTX, edges_of(B))
-bcp("B10 A to B, tangent both, Edit control points: magnitudes 2 and 0.5 -> same ends and headings as B1, a different shape", edges_of(A), edges_of(B), edit={"startMagnitude": 2, "endMagnitude": 0.5})
-bcp("B11 A to B, start tangent reversed -> starts heading -X (a deliberate loop)", edges_of(A), edges_of(B), start_reverse=True)
-bcp("B12 A to B, curvature both, curvature offsets 0.5 -> degree 5, same ends", edges_of(A), edges_of(B), "CURVATURE", "CURVATURE", edit={"startCurvatureOffset": 0.5, "endCurvatureOffset": 0.5})
+bcp("B8 A to SP (B-spline), tangent both -> nearest end (400,200)", edges_of(A), edges_of(SP))
+bcp("B9 vertex to B, tangent -> ERROR (a lone point has no edge to take a tangent from)", verts(VTX), edges_of(B))
+bcp("B10 A to B, tangent both, Edit control points: magnitudes 2 and 0.5 -> same ends and headings as B1, a different shape", edges_of(A), edges_of(B), edit={"side1Magnitude": 2, "side2Magnitude": 0.5})
+bcp("B11 A to B, start tangent reversed -> starts heading -X (a deliberate loop)", edges_of(A), edges_of(B), flip1=True)
+bcp("B12 A to B, curvature both, curvature offsets 0.5 -> degree 5, same ends", edges_of(A), edges_of(B), "CURVATURE", "CURVATURE", edit={"side1CurvatureOffset": 0.5, "side2CurvatureOffset": 0.5})
+# attractor mode: each open side joins at the end nearest the attractor
+bcp("B13 attractor (350,50), A to B -> ends (100,0) (300,50); B's end (300,50) leaves +X so the bridge arrives heading -X", edges_of(A), edges_of(B), choose="ATTRACTOR", attractor=verts(ATT2))
+bcp("B14 attractor (-50,0), A to B -> ends (0,0) (200,50); starts heading -X (out of A's start), arrives heading +X", edges_of(A), edges_of(B), choose="ATTRACTOR", attractor=verts(ATT1))
+bcp("B15 attractor (550,50), A to W3 (3-edge wire) -> ends (100,0) (500,50); arrives heading -X", edges_of(A), edges_of(W3), choose="ATTRACTOR", attractor=verts(ATT3))
+bcp("B16 standard mode, vertex (100,0) to vertex (200,50), position -> a straight line", 'qContainsPoint(%s, vector(0.1, 0, 0) * meter)' % verts(A), 'qContainsPoint(%s, vector(0.2, 0.05, 0) * meter)' % verts(B), "POSITION", "POSITION", choose="STANDARD")
+bcp("B17 attractor mode with no attractor picked -> ERROR", edges_of(A), edges_of(B), choose="ATTRACTOR")

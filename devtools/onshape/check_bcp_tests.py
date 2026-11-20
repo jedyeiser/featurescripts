@@ -75,7 +75,7 @@ def heading(case, start=None, end=None, tol=0.02):
 
 
 for case, st in sorted(status.items(), key=lambda kv: int(kv[0][1:])):
-    check("%s status" % case, (st == "ERROR") if case == "B9" else (st in ("OK", "INFO")), st)
+    check("%s status" % case, (st == "ERROR") if case in ("B9", "B17") else (st in ("OK", "INFO")), st)
 
 ends("B1", (100, 0), (200, 50))
 heading("B1", (1, 0), (1, 0))
@@ -102,5 +102,14 @@ ends("B11", (100, 0), (200, 50))
 heading("B11", (-1, 0), (1, 0))
 ends("B12", (100, 0), (200, 50))
 heading("B12", (1, 0), (1, 0))
+ends("B13", (100, 0), (300, 50))
+heading("B13", (1, 0), (-1, 0))
+ends("B14", (0, 0), (200, 50))
+heading("B14", (-1, 0), (1, 0))
+ends("B15", (100, 0), (500, 50))
+heading("B15", (1, 0), (-1, 0))
+ends("B16", (100, 0), (200, 50))
+r16 = row("B16")
+check("B16 straight: length = 111.80", r16 is not None and abs(r16[8] - 111.8) < 0.05, str(r16[8] if r16 else None))
 print("%d failure(s)" % fails)
 sys.exit(1 if fails else 0)

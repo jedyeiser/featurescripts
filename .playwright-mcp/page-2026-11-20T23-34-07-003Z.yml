@@ -1,0 +1,184 @@
+- generic [active] [ref=f9e1]:
+  - generic [ref=f9e5]:
+    - navigation [ref=f9e6]:
+      - generic [ref=f9e7]:
+        - link [ref=f9e10] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f9e11]
+        - generic [ref=f9e13] [cursor=pointer]
+      - generic [ref=f9e16]:
+        - generic [ref=f9e18]:
+          - generic [ref=f9e19]: Mate_Connector_Plus
+          - generic [ref=f9e20]: Main
+        - generic [ref=f9e22] [cursor=pointer]
+        - link "EOC Featurescripts" [ref=f9e26] [cursor=pointer]:
+          - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+      - generic [ref=f9e30]:
+        - generic [ref=f9e33] [cursor=pointer]
+        - generic [ref=f9e39] [cursor=pointer]
+        - button "Notifications" [ref=f9e44] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f9e52]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f9e55] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f9e60] [cursor=pointer]
+        - button "Share" [ref=f9e64] [cursor=pointer]
+        - generic "Help menu" [ref=f9e66] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f9e70] [cursor=pointer]
+    - generic [ref=f9e80]:
+      - generic [ref=f9e82]:
+        - generic [ref=f9e83]:
+          - generic [ref=f9e84]:
+            - generic [ref=f9e85] [cursor=pointer]
+            - generic [ref=f9e88] [cursor=pointer]
+            - generic [ref=f9e91] [cursor=pointer]
+            - generic [ref=f9e94] [cursor=pointer]
+            - generic [ref=f9e97] [cursor=pointer]
+            - generic [ref=f9e100] [cursor=pointer]
+            - generic [ref=f9e103] [cursor=pointer]
+            - generic [ref=f9e106] [cursor=pointer]
+          - generic [ref=f9e110] [cursor=pointer]
+        - generic [ref=f9e114] [cursor=pointer]
+      - generic [ref=f9e121]:
+        - generic [ref=f9e332]:
+          - generic [ref=f9e344]:
+            - generic [ref=f9e345]: Sketch
+            - generic [ref=f9e357]:
+              - generic [ref=f9e358] [cursor=pointer]
+              - generic [ref=f9e362] [cursor=pointer]
+              - generic [ref=f9e366] [cursor=pointer]
+              - generic [ref=f9e370] [cursor=pointer]
+              - generic [ref=f9e375]:
+                - generic [ref=f9e376] [cursor=pointer]
+                - generic [ref=f9e380] [cursor=pointer]
+            - generic [ref=f9e386]:
+              - generic [ref=f9e388]:
+                - generic [ref=f9e389] [cursor=pointer]
+                - generic [ref=f9e393] [cursor=pointer]
+              - generic [ref=f9e396] [cursor=pointer]
+              - generic [ref=f9e401]:
+                - generic [ref=f9e402] [cursor=pointer]
+                - generic [ref=f9e406] [cursor=pointer]
+              - generic [ref=f9e409] [cursor=pointer]
+              - generic [ref=f9e413] [cursor=pointer]
+              - generic [ref=f9e417] [cursor=pointer]
+              - generic [ref=f9e421] [cursor=pointer]
+            - generic [ref=f9e428]:
+              - generic [ref=f9e430]:
+                - generic [ref=f9e431] [cursor=pointer]
+                - generic [ref=f9e435] [cursor=pointer]
+              - generic [ref=f9e438] [cursor=pointer]
+            - generic [ref=f9e445]:
+              - generic [ref=f9e446] [cursor=pointer]
+              - generic [ref=f9e450] [cursor=pointer]
+              - generic [ref=f9e455]:
+                - generic [ref=f9e456] [cursor=pointer]
+                - generic [ref=f9e460] [cursor=pointer]
+              - generic [ref=f9e463] [cursor=pointer]
+            - generic [ref=f9e470]:
+              - generic [ref=f9e471] [cursor=pointer]
+              - generic [ref=f9e475] [cursor=pointer]
+              - generic [ref=f9e479] [cursor=pointer]
+              - generic [ref=f9e483] [cursor=pointer]
+            - generic [ref=f9e491]:
+              - generic [ref=f9e492] [cursor=pointer]
+              - generic [ref=f9e496] [cursor=pointer]
+            - generic [ref=f9e503]:
+              - generic [ref=f9e504] [cursor=pointer]: SA
+              - generic [ref=f9e507] [cursor=pointer]
+            - generic [ref=f9e514] [cursor=pointer]
+          - button "Search tools… alt/⌥ c" [ref=f9e521] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f9e522]:
+              - generic [ref=f9e523]: alt/⌥
+              - generic [ref=f9e524]: c
+        - generic [ref=f9e129]:
+          - generic [ref=f9e528]:
+            - generic [ref=f9e530]:
+              - generic [ref=f9e531]:
+                - generic [ref=f9e533]:
+                  - button [ref=f9e535] [cursor=pointer]
+                  - textbox "Filter by name or type" [ref=f9e540]
+                - generic [ref=f9e541]:
+                  - button [ref=f9e542] [cursor=pointer]
+                  - generic [ref=f9e545]: Features (34)
+                  - button [ref=f9e546] [cursor=pointer]
+                  - button [ref=f9e549] [cursor=pointer]
+                  - button [ref=f9e552] [cursor=pointer]
+              - generic [ref=f9e556]:
+                - generic [ref=f9e557]:
+                  - generic [ref=f9e615]: B line (200,50)-(300,50)
+                  - generic [ref=f9e625]: Brev line (300,100)-(200,100), drawn the other way
+                  - generic [ref=f9e635]: ARC centre (200,200) r 50, 270 to 360 deg
+                  - generic [ref=f9e645]: W3 wire (400,0)-(450,0)-(450,50)-(500,50)
+                  - generic [ref=f9e655]: SP points (400,200) (450,230) (500,200) (550,230)
+                  - generic [ref=f9e665]: V point (50,300)
+                  - generic [ref=f9e675]: MC point (100,300)
+                  - generic [ref=f9e685]: SP fit spline (a B-spline)
+                  - generic [ref=f9e694]:
+                    - generic [ref=f9e696] [cursor=pointer]
+                    - generic [ref=f9e699]: MC Mate connector + at (100,300), Z = +X
+                  - generic [ref=f9e703]: ATT1 point (-50,0)
+                  - generic [ref=f9e713]: ATT2 point (350,50)
+                  - generic [ref=f9e723]: ATT3 point (550,50)
+                  - generic [ref=f9e733]: B1 A to B, tangent both -> S curve (100,0)-(200,50), heading +X at both ends
+                  - generic [ref=f9e740]: B2 A to Brev (drawn the other way), tangent both -> (100,0)-(200,100)
+                  - generic [ref=f9e747]: B3 A to B, position only -> a straight line (100,0)-(200,50)
+                  - generic [ref=f9e754]: B4 A to ARC, tangent both -> nearest ARC end (200,150)
+                  - generic [ref=f9e761]: B5 A to B, curvature both -> degree 5, same ends as B1
+                  - generic [ref=f9e768]: B6 mate connector to B, tangent both -> from (100,300) heading +X
+                  - generic [ref=f9e775]: B7 A to W3 (3-edge wire), tangent both -> nearest end (400,0)
+                  - generic [ref=f9e782]: B8 A to SP (B-spline), tangent both -> nearest end (400,200)
+                  - generic [ref=f9e789]: B9 vertex to B, tangent -> ERROR (a lone point has no edge to take a tangent from)
+                  - generic [ref=f9e796]: "B10 A to B, tangent both, Edit control points: magnitudes 2 and 0.5 -> same ends and headings as B1, a different shape"
+                  - generic [ref=f9e803]: B11 A to B, start tangent reversed -> starts heading -X (a deliberate loop)
+                  - generic [ref=f9e810]: B12 A to B, curvature both, curvature offsets 0.5 -> degree 5, same ends
+                  - generic [ref=f9e891]: B13 attractor (350,50), A to B -> ends (100,0) (300,50); B's end (300,50) leaves +X so the bridge arrives heading -X
+                  - generic [ref=f9e898]: B14 attractor (-50,0), A to B -> ends (0,0) (200,50); starts heading -X (out of A's start), arrives heading +X
+                  - generic [ref=f9e905]: B15 attractor (550,50), A to W3 (3-edge wire) -> ends (100,0) (500,50); arrives heading -X
+                  - generic [ref=f9e912]: B16 standard mode, vertex (100,0) to vertex (200,50), position -> a straight line
+                  - generic [ref=f9e919]: B17 attractor mode with no attractor picked -> ERROR
+                - list
+            - generic [ref=f9e821]:
+              - generic [ref=f9e823]:
+                - generic [ref=f9e825] [cursor=pointer]
+                - generic [ref=f9e828]: Parts (0)
+              - generic [ref=f9e832]:
+                - generic [ref=f9e834] [cursor=pointer]
+                - generic [ref=f9e837]: Curves (14)
+          - generic [ref=f9e173]:
+            - generic [ref=f9e842] [cursor=pointer]
+            - generic [ref=f9e179]:
+              - generic [ref=f9e181]:
+                - button [ref=f9e930] [cursor=pointer]
+                - button [ref=f9e934] [cursor=pointer]
+                - button [ref=f9e938] [cursor=pointer]
+              - generic [ref=f9e194] [cursor=pointer]
+            - generic [ref=f9e199]:
+              - generic [ref=f9e860] [cursor=pointer]
+              - generic [ref=f9e864] [cursor=pointer]
+              - generic [ref=f9e868] [cursor=pointer]
+              - generic [ref=f9e872] [cursor=pointer]
+              - generic [ref=f9e876] [cursor=pointer]
+              - generic [ref=f9e880] [cursor=pointer]
+              - generic [ref=f9e883] [cursor=pointer]
+        - generic [ref=f9e219]:
+          - img [ref=f9e222] [cursor=pointer]
+          - generic [ref=f9e225]:
+            - generic [ref=f9e226] [cursor=pointer]: Part Studio 1
+            - generic [ref=f9e232] [cursor=pointer]: Assembly 1
+            - generic [ref=f9e238] [cursor=pointer]: multi_mate_connector
+            - generic [ref=f9e244] [cursor=pointer]: MMC tests
+            - generic [ref=f9e250] [cursor=pointer]: mate_connector_plus
+            - generic [ref=f9e256] [cursor=pointer]: mc_core
+            - generic [ref=f9e262] [cursor=pointer]: MCP tests
+            - generic [ref=f9e268] [cursor=pointer]: multi_mate_connector_icon.svg
+            - generic [ref=f9e274] [cursor=pointer]: mate_connector_plus_icon.svg
+            - generic [ref=f9e280] [cursor=pointer]: bridging_curve_plus
+            - generic [ref=f9e286] [cursor=pointer]: mc_axis_x_icon.svg
+            - generic [ref=f9e292] [cursor=pointer]: mc_axis_y_icon.svg
+            - generic [ref=f9e298] [cursor=pointer]: mc_axis_z_icon.svg
+            - generic [ref=f9e304]: BCP tests
+            - generic [ref=f9e310] [cursor=pointer]: bridging_curve_plus_icon.svg
+          - generic [ref=f9e316]:
+            - listitem [ref=f9e317]
+            - listitem [ref=f9e321]
+  - 'tooltip "B3 A to B, position only -> a straight line (100,0)-(200,50) [Bridging curve +] did not regenerate properly: Error regenerating."'
