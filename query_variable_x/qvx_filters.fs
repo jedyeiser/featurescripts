@@ -273,10 +273,10 @@ export predicate filterPredicate(flt is map)
         else if (flt.fltDistMode == DistanceMode.BETWEEN_DISTANCES)
         {
             annotation { "Name" : "From distance", "Default" : 0 * meter }
-            isLength(flt.fltDistValue, NONNEGATIVE_LENGTH_BOUNDS);
+            isLength(flt.fltDistFrom, NONNEGATIVE_LENGTH_BOUNDS);
 
             annotation { "Name" : "To distance", "Default" : 0 * meter }
-            isLength(flt.fltDistValue2, NONNEGATIVE_LENGTH_BOUNDS);
+            isLength(flt.fltDistTo, NONNEGATIVE_LENGTH_BOUNDS);
         }
         else
         {
@@ -449,8 +449,8 @@ function qvxDistanceMatches(context is Context, flt is map, current is Query) re
     }
     else
     {
-        low = min(flt.fltDistValue, flt.fltDistValue2) - tol;
-        high = max(flt.fltDistValue, flt.fltDistValue2) + tol;
+        low = min(flt.fltDistFrom, flt.fltDistTo) - tol;
+        high = max(flt.fltDistFrom, flt.fltDistTo) + tol;
     }
 
     var hits = [];
