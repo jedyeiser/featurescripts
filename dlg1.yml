@@ -1,0 +1,227 @@
+- generic [ref=f5e1] [box=0,0,1600,1000]:
+  - generic [ref=f5e4] [box=0,0,1600,1000]:
+    - navigation [ref=f5e5] [box=0,0,1600,40]:
+      - generic [ref=f5e6] [box=0,0,171,40]:
+        - link [ref=f5e9] [cursor=pointer] [box=0,0,139,40]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f5e10] [box=14,6,120,28]
+        - generic [ref=f5e12] [cursor=pointer] [box=139,0,32,40]
+      - generic [ref=f5e15] [box=171,0,1026,40]:
+        - generic [ref=f5e17] [box=171,2,186,37]:
+          - generic [ref=f5e18] [box=171,2,143,37]: RIP Footprint
+          - generic [ref=f5e19] [box=318,9,34,28]: Main
+        - generic [ref=f5e21] [cursor=pointer] [box=357,0,32,40]
+        - link "RIP - (K035_SZ04)" [ref=f5e25] [cursor=pointer] [box=389,8,124,24]:
+          - /url: /documents?nodeId=ad3f3aff4dc6cc3fe3f43809&resourceType=folder
+      - generic [ref=f5e29] [box=1197,0,403,40]:
+        - generic [ref=f5e37] [cursor=pointer] [box=1237,0,32,40]
+        - button "Notifications" [ref=f5e42] [cursor=pointer] [box=1269,0,32,40]:
+          - generic "9+ unread notifications" [ref=f5e50] [box=1285,6,16,16]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f5e53] [cursor=pointer] [box=1301,0,32,40]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f5e58] [cursor=pointer] [box=1333,0,32,40]
+        - button "Share" [ref=f5e62] [cursor=pointer] [box=1369,3,59,34]
+        - generic "Help menu" [ref=f5e64] [cursor=pointer] [box=1432,0,47,40]
+        - button "Jed Yeiser" [ref=f5e68] [cursor=pointer] [box=1479,0,121,40]
+    - generic [ref=f5e78] [box=0,40,1600,960]:
+      - generic [ref=f5e80] [box=0,40,40,960]:
+        - generic [ref=f5e81] [box=0,41,39,316]:
+          - generic [ref=f5e82] [box=0,41,39,280]:
+            - generic [ref=f5e83] [cursor=pointer] [box=0,41,39,31]
+            - generic [ref=f5e86] [cursor=pointer] [box=0,76,39,31]
+            - generic [ref=f5e89] [cursor=pointer] [box=0,111,39,31]
+            - generic [ref=f5e92] [cursor=pointer] [box=0,146,39,31]
+            - generic [ref=f5e95] [cursor=pointer] [box=0,181,39,31]
+            - generic [ref=f5e98] [cursor=pointer] [box=0,216,39,31]
+            - generic [ref=f5e101] [cursor=pointer] [box=0,251,39,31]
+            - generic [ref=f5e104] [cursor=pointer] [box=0,286,39,31]
+          - generic [ref=f5e108] [cursor=pointer] [box=0,322,39,31]
+        - generic [ref=f5e112] [cursor=pointer] [box=0,969,39,31]
+      - generic [ref=f5e119] [box=40,40,1560,960]:
+        - generic [ref=f5e126] [box=40,40,1553,36]:
+          - generic [ref=f5e138] [box=110,40,1059,36]:
+            - generic [ref=f5e139] [box=110,40,89,36]: Sketch
+            - generic [ref=f5e151] [box=202,41,188,34]:
+              - generic [ref=f5e152] [cursor=pointer] [box=203,42,32,32]
+              - generic [ref=f5e156] [cursor=pointer] [box=237,42,32,32]
+              - generic [ref=f5e160] [cursor=pointer] [box=271,42,32,32]
+              - generic [ref=f5e164] [cursor=pointer] [box=305,42,32,32]
+              - generic [ref=f5e169] [box=339,42,50,32]:
+                - generic [ref=f5e170] [cursor=pointer] [box=339,42,32,32]
+                - generic [ref=f5e174] [cursor=pointer] [box=371,42,18,32]
+            - generic [ref=f5e180] [box=394,41,274,34]:
+              - generic [ref=f5e182] [box=395,42,50,32]:
+                - generic [ref=f5e183] [cursor=pointer] [box=395,42,32,32]
+                - generic [ref=f5e187] [cursor=pointer] [box=427,42,18,32]
+              - generic [ref=f5e190] [cursor=pointer] [box=447,42,32,32]
+              - generic [ref=f5e195] [box=481,42,50,32]:
+                - generic [ref=f5e196] [cursor=pointer] [box=481,42,32,32]
+                - generic [ref=f5e200] [cursor=pointer] [box=513,42,18,32]
+              - generic [ref=f5e203] [cursor=pointer] [box=533,42,32,32]
+              - generic [ref=f5e207] [cursor=pointer] [box=567,42,32,32]
+              - generic [ref=f5e211] [cursor=pointer] [box=601,42,32,32]
+              - generic [ref=f5e215] [cursor=pointer] [box=635,42,32,32]
+            - generic [ref=f5e222] [box=672,41,86,34]:
+              - generic [ref=f5e224] [box=673,42,50,32]:
+                - generic [ref=f5e225] [cursor=pointer] [box=673,42,32,32]
+                - generic [ref=f5e229] [cursor=pointer] [box=705,42,18,32]
+              - generic [ref=f5e232] [cursor=pointer] [box=725,42,32,32]
+            - generic [ref=f5e239] [box=762,41,154,34]:
+              - generic [ref=f5e240] [cursor=pointer] [box=763,42,32,32]
+              - generic [ref=f5e244] [cursor=pointer] [box=797,42,32,32]
+              - generic [ref=f5e249] [box=831,42,50,32]:
+                - generic [ref=f5e250] [cursor=pointer] [box=831,42,32,32]
+                - generic [ref=f5e254] [cursor=pointer] [box=863,42,18,32]
+              - generic [ref=f5e257] [cursor=pointer] [box=883,42,32,32]
+            - generic [ref=f5e264] [box=920,41,136,34]:
+              - generic [ref=f5e265] [cursor=pointer] [box=921,42,32,32]
+              - generic [ref=f5e269] [cursor=pointer] [box=955,42,32,32]
+              - generic [ref=f5e273] [cursor=pointer] [box=989,42,32,32]
+              - generic [ref=f5e277] [cursor=pointer] [box=1023,42,32,32]
+            - generic [ref=f5e285] [box=1061,42,50,32]:
+              - generic [ref=f5e286] [cursor=pointer] [box=1061,42,32,32]
+              - generic [ref=f5e290] [cursor=pointer] [box=1093,42,18,32]
+            - generic [ref=f5e297] [box=1117,42,50,32]:
+              - generic [ref=f5e298] [cursor=pointer] [box=1117,42,32,32]
+              - generic [ref=f5e301] [cursor=pointer] [box=1149,42,18,32]
+          - button "Search tools… alt/⌥ c" [ref=f5e305] [cursor=pointer] [box=1179,42,160,33]:
+            - text: Search tools…
+            - generic [ref=f5e306] [box=1279,48,50,19]:
+              - generic [ref=f5e307] [box=1279,50,33,20]: alt/⌥
+              - generic [ref=f5e308] [box=1312,50,17,20]: c
+        - generic [ref=f5e310] [box=40,76,1560,894]:
+          - generic [ref=f5e312] [box=40,76,1560,894]:
+            - generic [ref=f5e315] [box=40,77,200,892]:
+              - generic [ref=f5e317] [box=40,77,200,80]:
+                - generic [ref=f5e318] [box=40,77,200,35]:
+                  - generic [ref=f5e319] [box=40,82,93,30]: Configurations
+                  - button "Configuration actions" [ref=f5e325] [cursor=pointer] [box=214,83,20,28]
+                - generic [ref=f5e329] [box=42,112,178,57]:
+                  - generic [ref=f5e333] [box=42,112,178,26]:
+                    - generic [ref=f5e334] [box=42,112,32,23]: Size
+                    - generic [ref=f5e337] [box=74,112,146,26]:
+                      - generic [ref=f5e338] [box=74,112,146,26]: "178"
+                      - button "Select box focus" [ref=f5e343] [cursor=pointer] [box=74,112,1,1]
+                  - generic [ref=f5e348] [cursor=pointer] [box=42,140,80,27]:
+                    - checkbox "Tail Notch" [checked] [box=42,147,0,13]
+                    - generic [ref=f5e350] [box=62,140,60,27]: Tail Notch
+              - generic [ref=f5e353] [box=40,158,200,579]:
+                - generic [ref=f5e354] [box=40,158,200,67]:
+                  - generic [ref=f5e356] [box=40,165,200,30]:
+                    - button [ref=f5e358] [cursor=pointer] [box=43,165,30,30]
+                    - textbox "Filter by name or type" [ref=f5e363] [box=79,165,158,30]
+                  - generic [ref=f5e364] [box=40,195,200,30]:
+                    - generic [ref=f5e365] [box=40,195,100,30]: Features (54)
+                    - button [disabled] [ref=f5e366] [box=140,195,30,30]
+                    - button [disabled] [ref=f5e369] [box=170,195,30,30]
+                    - button [ref=f5e372] [cursor=pointer] [box=200,195,30,30]
+                - generic [ref=f5e376] [box=40,225,200,512]:
+                  - generic [ref=f5e377] [box=40,225,185,1014]:
+                    - generic [ref=f5e379] [box=40,225,185,26]:
+                      - generic [ref=f5e380] [cursor=pointer] [box=40,228,20,20]
+                      - generic [ref=f5e383] [box=60,228,165,21]: Default geometry
+                    - generic [ref=f5e385] [box=40,251,185,26]: Origin
+                    - generic [ref=f5e395] [box=40,277,185,26]: Top
+                    - generic [ref=f5e405] [box=40,303,185,26]: Front
+                    - generic [ref=f5e415] [box=40,329,185,26]: Right
+                    - generic [ref=f5e425] [box=40,355,185,26]: Derive_Seed
+                    - generic [ref=f5e433] [box=40,381,185,26]: "#rsl = 1480 mm"
+                    - generic [ref=f5e441] [box=40,407,185,26]: Split_input
+                    - generic [ref=f5e450] [box=40,433,185,26]:
+                      - generic [ref=f5e452] [cursor=pointer] [box=40,433,20,26]
+                      - generic [ref=f5e455] [box=60,433,165,26]: tail_notching (9)
+                    - generic [ref=f5e460] [box=40,459,185,26]: Rejoin_wires
+                    - generic [ref=f5e472] [box=40,485,185,26]: new_rsl_sketch
+                    - generic [ref=f5e480] [box=40,511,185,26]: SPA
+                    - generic [ref=f5e488] [box=40,537,185,26]: EDA
+                    - generic [ref=f5e496] [box=40,563,185,26]: "#input_fpt"
+                    - generic [ref=f5e504] [box=40,589,185,26]: Scale Footprint 1
+                    - generic [ref=f5e516] [box=40,615,185,26]: Delete part 2
+                    - generic [ref=f5e524] [box=40,641,185,26]: "#fpt_wire"
+                    - generic [ref=f5e533] [box=40,667,185,26]:
+                      - generic [ref=f5e535] [cursor=pointer] [box=40,667,20,26]
+                      - generic [ref=f5e538] [box=60,667,165,26]: tip/tail tangency (10)
+                    - generic [ref=f5e543] [box=40,693,185,26]: "#fpt_wire"
+                    - generic [ref=f5e555] [box=40,719,185,26]: "#length_str = \"185\""
+                    - generic [ref=f5e563] [box=40,745,185,26]: fpt_rename
+                    - generic [ref=f5e575] [box=40,771,185,26]: create_rsl_wire
+                    - generic [ref=f5e587] [box=40,797,185,26]: "#mid_wire"
+                    - generic [ref=f5e599] [box=40,823,185,26]: mirror_fpt
+                    - generic [ref=f5e607] [box=40,849,185,26]: "#mirrored_wire"
+                    - generic [ref=f5e615] [box=40,875,185,26]: "#fill_edges"
+                    - generic [ref=f5e623] [box=40,901,185,26]: fill_fpt
+                    - generic [ref=f5e631] [box=40,927,185,26]: "#fill_surf"
+                    - generic [ref=f5e643] [box=40,953,185,26]: Thicken_FPT
+                    - generic [ref=f5e655] [box=40,979,185,26]: "#fpt_body"
+                  - list [box=40,1239,185,0]
+              - generic [ref=f5e671] [box=40,738,200,52]:
+                - generic [ref=f5e673] [box=40,738,200,26]:
+                  - generic [ref=f5e675] [cursor=pointer] [box=40,738,20,26]
+                  - generic [ref=f5e678] [box=60,738,180,26]: Parts (0)
+                - generic [ref=f5e705] [box=40,764,200,26]:
+                  - generic [ref=f5e707] [cursor=pointer] [box=40,764,20,26]
+                  - generic [ref=f5e710] [box=60,764,180,26]: Curves (1)
+            - generic [ref=f5e715] [box=246,76,1354,894]:
+              - generic [ref=f5e717] [cursor=pointer] [box=245,498,33,34]
+              - generic [ref=f5e721] [box=246,76,1354,894]:
+                - button [ref=f5e923] [cursor=pointer] [box=1565,940,30,30]
+                - generic [ref=f5e736] [cursor=pointer] [box=1541,218,44,28]
+              - generic [ref=f5e741] [box=1568,394,32,242]:
+                - generic [ref=f5e742] [cursor=pointer] [box=1568,393,33,34]
+                - generic [ref=f5e746] [cursor=pointer] [box=1568,426,33,34]
+                - generic [ref=f5e750] [cursor=pointer] [box=1568,459,33,34]
+                - generic [ref=f5e754] [cursor=pointer] [box=1568,492,33,34]
+                - generic [ref=f5e758] [cursor=pointer] [box=1568,525,33,34]
+                - generic [ref=f5e762] [cursor=pointer] [box=1568,569,33,34]
+                - generic [ref=f5e765] [cursor=pointer] [box=1568,602,33,34]
+          - generic [ref=f5e806] [box=246,79,220,354]:
+            - dialog [ref=f5e807] [box=246,79,220,29]:
+              - generic [ref=f5e808] [box=246,79,164,28]: "#fpt_wire"
+            - generic [ref=f5e819] [box=246,108,220,325]:
+              - list [ref=f5e820] [box=246,108,220,297]:
+                - generic [ref=f5e821] [box=246,108,220,297]:
+                  - generic [ref=f5e822] [box=246,108,220,160]:
+                    - generic [ref=f5e825] [box=246,108,194,26]:
+                      - generic [ref=f5e826] [box=246,108,41,23]: Name
+                      - textbox [active] [ref=f5e827] [box=287,108,153,26]: fpt_wire
+                    - generic [ref=f5e830] [box=246,134,194,26]:
+                      - generic [ref=f5e831] [box=246,134,70,23]: Description
+                      - textbox [ref=f5e832] [box=316,134,124,26]
+                    - generic [ref=f5e838] [box=246,160,194,26]:
+                      - generic [ref=f5e839] [box=246,160,194,26]: Created by
+                      - button "Select box focus" [ref=f5e844] [cursor=pointer] [box=246,160,1,1]
+                    - generic [ref=f5e851] [box=250,194,232,40]:
+                      - generic [ref=f5e852] [box=250,194,212,16]: Created by features
+                      - list [ref=f5e854] [box=250,210,212,24]:
+                        - listitem [ref=f5e855] [box=250,210,212,24]:
+                          - generic [ref=f5e856] [box=256,210,186,24]: Scale Footprint 1
+                          - generic [ref=f5e858] [cursor=pointer] [box=437,210,20,24]: ×
+                    - generic [ref=f5e864] [box=246,240,194,26]:
+                      - generic [ref=f5e865] [box=246,240,194,26]: Body
+                      - button "Select box focus" [ref=f5e870] [cursor=pointer] [box=246,240,1,1]
+                  - generic [ref=f5e875] [cursor=pointer] [box=246,268,178,27]:
+                    - checkbox "Filter construction entities" [checked] [box=246,275,0,13]
+                    - generic [ref=f5e877] [box=266,268,158,27]: Filter construction entities
+                  - generic [ref=f5e882] [cursor=pointer] [box=246,296,132,27]:
+                    - checkbox "Filter by body type" [box=246,303,0,13]
+                    - generic [ref=f5e884] [box=266,296,112,27]: Filter by body type
+                  - generic [ref=f5e887] [box=246,323,220,27]:
+                    - generic [ref=f5e889] [cursor=pointer] [box=246,323,20,27]
+                    - generic [ref=f5e896] [cursor=pointer] [box=266,323,155,27]:
+                      - checkbox "Add additional queries" [box=266,330,0,13]
+                      - generic [ref=f5e898] [box=286,323,135,27]: Add additional queries
+                  - generic [ref=f5e903] [cursor=pointer] [box=246,350,117,27]:
+                    - checkbox "Evaluate on use" [box=246,357,0,13]
+                    - generic [ref=f5e905] [box=266,350,97,27]: Evaluate on use
+                  - generic [ref=f5e910] [cursor=pointer] [box=246,378,113,27]:
+                    - checkbox "Show selection" [checked] [box=246,385,0,13]
+                    - generic [ref=f5e912] [box=266,378,93,27]: Show selection
+              - button "Final" [ref=f5e915] [cursor=pointer] [box=391,408,49,22]
+            - link [ref=f5e918] [cursor=pointer] [box=448,415,14,14]:
+              - /url: /help/index.htm#cshid=queryvariable
+        - generic [ref=f5e769] [box=40,970,1560,30]:
+          - img [ref=f5e772] [cursor=pointer] [box=40,970,34,30]
+          - generic [ref=f5e775] [box=74,970,1526,32]:
+            - generic [ref=f5e776] [cursor=pointer] [box=79,970,200,27]: RIP
+            - generic [ref=f5e782] [box=281,970,200,28]: FPT_Scaling
+            - generic [ref=f5e793] [cursor=pointer] [box=483,970,200,27]: Part 4 Drawing 1
+  - tooltip "#fpt_wire [Query variable]" [box=228,641,149,26]

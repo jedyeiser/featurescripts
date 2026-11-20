@@ -1,0 +1,248 @@
+- generic [ref=f5e1]:
+  - generic [ref=f5e4]:
+    - navigation [ref=f5e5]:
+      - generic [ref=f5e6]:
+        - link [ref=f5e9] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f5e10]
+        - generic [ref=f5e12] [cursor=pointer]
+      - generic [ref=f5e15]:
+        - generic [ref=f5e17]:
+          - generic [ref=f5e18]: RIP Footprint
+          - generic [ref=f5e19]: Main
+        - generic [ref=f5e21] [cursor=pointer]
+        - link "RIP - (K035_SZ04)" [ref=f5e25] [cursor=pointer]:
+          - /url: /documents?nodeId=ad3f3aff4dc6cc3fe3f43809&resourceType=folder
+      - generic [ref=f5e29]:
+        - generic [ref=f5e37] [cursor=pointer]
+        - button "Notifications" [ref=f5e42] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f5e50]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f5e53] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f5e58] [cursor=pointer]
+        - button "Share" [ref=f5e62] [cursor=pointer]
+        - generic "Help menu" [ref=f5e64] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f5e68] [cursor=pointer]
+    - generic [ref=f5e78]:
+      - generic [ref=f5e80]:
+        - generic [ref=f5e81]:
+          - generic [ref=f5e82]:
+            - generic [ref=f5e83] [cursor=pointer]
+            - generic [ref=f5e86] [cursor=pointer]
+            - generic [ref=f5e89] [cursor=pointer]
+            - generic [ref=f5e92] [cursor=pointer]
+            - generic [ref=f5e95] [cursor=pointer]
+            - generic [ref=f5e98] [cursor=pointer]
+            - generic [ref=f5e101] [cursor=pointer]
+            - generic [ref=f5e104] [cursor=pointer]
+          - generic [ref=f5e108] [cursor=pointer]
+        - generic [ref=f5e112] [cursor=pointer]
+      - generic [ref=f5e119]:
+        - generic [ref=f5e126]:
+          - generic [ref=f5e138]:
+            - generic [ref=f5e139]: Sketch
+            - generic [ref=f5e151]:
+              - generic [ref=f5e152] [cursor=pointer]
+              - generic [ref=f5e156] [cursor=pointer]
+              - generic [ref=f5e160] [cursor=pointer]
+              - generic [ref=f5e164] [cursor=pointer]
+              - generic [ref=f5e169]:
+                - generic [ref=f5e170] [cursor=pointer]
+                - generic [ref=f5e174] [cursor=pointer]
+            - generic [ref=f5e180]:
+              - generic [ref=f5e182]:
+                - generic [ref=f5e183] [cursor=pointer]
+                - generic [ref=f5e187] [cursor=pointer]
+              - generic [ref=f5e190] [cursor=pointer]
+              - generic [ref=f5e195]:
+                - generic [ref=f5e196] [cursor=pointer]
+                - generic [ref=f5e200] [cursor=pointer]
+              - generic [ref=f5e203] [cursor=pointer]
+              - generic [ref=f5e207] [cursor=pointer]
+              - generic [ref=f5e211] [cursor=pointer]
+              - generic [ref=f5e215] [cursor=pointer]
+            - generic [ref=f5e222]:
+              - generic [ref=f5e224]:
+                - generic [ref=f5e225] [cursor=pointer]
+                - generic [ref=f5e229] [cursor=pointer]
+              - generic [ref=f5e232] [cursor=pointer]
+            - generic [ref=f5e239]:
+              - generic [ref=f5e240] [cursor=pointer]
+              - generic [ref=f5e244] [cursor=pointer]
+              - generic [ref=f5e249]:
+                - generic [ref=f5e250] [cursor=pointer]
+                - generic [ref=f5e254] [cursor=pointer]
+              - generic [ref=f5e257] [cursor=pointer]
+            - generic [ref=f5e264]:
+              - generic [ref=f5e265] [cursor=pointer]
+              - generic [ref=f5e269] [cursor=pointer]
+              - generic [ref=f5e273] [cursor=pointer]
+              - generic [ref=f5e277] [cursor=pointer]
+            - generic [ref=f5e285]:
+              - generic [ref=f5e286] [cursor=pointer]
+              - generic [ref=f5e290] [cursor=pointer]
+            - generic [ref=f5e297]:
+              - generic [ref=f5e298] [cursor=pointer]
+              - generic [ref=f5e301] [cursor=pointer]
+          - button "Search tools… alt/⌥ c" [ref=f5e305] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f5e306]:
+              - generic [ref=f5e307]: alt/⌥
+              - generic [ref=f5e308]: c
+        - generic [ref=f5e310]:
+          - generic [ref=f5e312]:
+            - generic [ref=f5e315]:
+              - generic [ref=f5e317]:
+                - generic [ref=f5e318]:
+                  - generic [ref=f5e319]: Configurations
+                  - button "Configuration actions" [ref=f5e325] [cursor=pointer]
+                - generic [ref=f5e329]:
+                  - generic [ref=f5e333]:
+                    - generic [ref=f5e334]: Size
+                    - generic [ref=f5e337]:
+                      - generic [ref=f5e338]: "178"
+                      - button "Select box focus" [ref=f5e343] [cursor=pointer]
+                  - generic [ref=f5e348] [cursor=pointer]:
+                    - checkbox "Tail Notch" [checked]
+                    - generic [ref=f5e350]: Tail Notch
+              - generic [ref=f5e353]:
+                - generic [ref=f5e354]:
+                  - generic [ref=f5e356]:
+                    - button [ref=f5e358] [cursor=pointer]
+                    - textbox "Filter by name or type" [ref=f5e363]
+                  - generic [ref=f5e364]:
+                    - generic [ref=f5e365]: Features (54)
+                    - button [disabled] [ref=f5e366]
+                    - button [disabled] [ref=f5e369]
+                    - button [ref=f5e372] [cursor=pointer]
+                - generic [ref=f5e376]:
+                  - generic [ref=f5e377]:
+                    - generic [ref=f5e379]:
+                      - generic [ref=f5e380] [cursor=pointer]
+                      - generic [ref=f5e383]: Default geometry
+                    - generic [ref=f5e385]: Origin
+                    - generic [ref=f5e395]: Top
+                    - generic [ref=f5e405]: Front
+                    - generic [ref=f5e415]: Right
+                    - generic [ref=f5e425]: Derive_Seed
+                    - generic [ref=f5e433]: "#rsl = 1480 mm"
+                    - generic [ref=f5e441]: Split_input
+                    - generic [ref=f5e450]:
+                      - generic [ref=f5e452] [cursor=pointer]
+                      - generic [ref=f5e455]: tail_notching (9)
+                    - generic [ref=f5e460]: Rejoin_wires
+                    - generic [ref=f5e472]: new_rsl_sketch
+                    - generic [ref=f5e480]: SPA
+                    - generic [ref=f5e488]: EDA
+                    - generic [ref=f5e496]: "#input_fpt"
+                    - generic [ref=f5e504]: Scale Footprint 1
+                    - generic [ref=f5e516]: Delete part 2
+                    - generic [ref=f5e524]: "#fpt_wire"
+                    - generic [ref=f5e533]:
+                      - generic [ref=f5e535] [cursor=pointer]
+                      - generic [ref=f5e538]: tip/tail tangency (10)
+                    - generic [ref=f5e543]: "#fpt_wire"
+                    - generic [ref=f5e555]: "#length_str = \"185\""
+                    - generic [ref=f5e563]: fpt_rename
+                    - generic [ref=f5e575]: create_rsl_wire
+                    - generic [ref=f5e587]: "#mid_wire"
+                    - generic [ref=f5e599]: mirror_fpt
+                    - generic [ref=f5e607]: "#mirrored_wire"
+                    - generic [ref=f5e615]: "#fill_edges"
+                    - generic [ref=f5e623]: fill_fpt
+                    - generic [ref=f5e631]: "#fill_surf"
+                    - generic [ref=f5e643]: Thicken_FPT
+                    - generic [ref=f5e655]: "#fpt_body"
+                  - list
+              - generic [ref=f5e671]:
+                - generic [ref=f5e673]:
+                  - generic [ref=f5e675] [cursor=pointer]
+                  - generic [ref=f5e678]: Parts (0)
+                - generic [ref=f5e705]:
+                  - generic [ref=f5e707] [cursor=pointer]
+                  - generic [ref=f5e710]: Curves (1)
+            - generic [ref=f5e715]:
+              - generic [ref=f5e717] [cursor=pointer]
+              - generic [ref=f5e721]:
+                - button [ref=f5e927] [cursor=pointer]
+                - generic [ref=f5e736] [cursor=pointer]
+              - generic [ref=f5e741]:
+                - generic [ref=f5e742] [cursor=pointer]
+                - generic [ref=f5e746] [cursor=pointer]
+                - generic [ref=f5e750] [cursor=pointer]
+                - generic [ref=f5e754] [cursor=pointer]
+                - generic [ref=f5e758] [cursor=pointer]
+                - generic [ref=f5e762] [cursor=pointer]
+                - generic [ref=f5e765] [cursor=pointer]
+          - generic [ref=f5e931]:
+            - dialog [ref=f5e932]:
+              - generic [ref=f5e933]: "#fpt_wire"
+            - generic [ref=f5e944]:
+              - list [ref=f5e945]:
+                - generic [ref=f5e946]:
+                  - generic [ref=f5e947]:
+                    - generic [ref=f5e950]:
+                      - generic [ref=f5e951]: Name
+                      - textbox [active] [ref=f5e952]: fpt_wire
+                    - generic [ref=f5e955]:
+                      - generic [ref=f5e956]: Description
+                      - textbox [ref=f5e957]
+                    - generic [ref=f5e963]:
+                      - generic [ref=f5e964]: Created by
+                      - button "Select box focus" [ref=f5e969] [cursor=pointer]
+                    - generic [ref=f5e976]:
+                      - generic [ref=f5e977]: Created by features
+                      - list [ref=f5e979]:
+                        - listitem [ref=f5e980]:
+                          - generic [ref=f5e981]: join_cleaned_wires
+                          - generic [ref=f5e983] [cursor=pointer]: ×
+                    - generic [ref=f5e989]:
+                      - generic [ref=f5e990]: Body
+                      - button "Select box focus" [ref=f5e995] [cursor=pointer]
+                  - generic [ref=f5e1000] [cursor=pointer]:
+                    - checkbox "Filter construction entities" [checked]
+                    - generic [ref=f5e1002]: Filter construction entities
+                  - generic [ref=f5e1003]:
+                    - generic [ref=f5e1007] [cursor=pointer]:
+                      - checkbox "Filter by body type" [checked]
+                      - generic [ref=f5e1009]: Filter by body type
+                    - generic [ref=f5e1015]:
+                      - generic [ref=f5e1016]: Curve
+                      - button "Select box focus" [ref=f5e1021] [cursor=pointer]
+                  - generic [ref=f5e1024]:
+                    - generic [ref=f5e1026] [cursor=pointer]
+                    - generic [ref=f5e1033] [cursor=pointer]:
+                      - checkbox "Add additional queries"
+                      - generic [ref=f5e1035]: Add additional queries
+                  - generic [ref=f5e1036]:
+                    - generic [ref=f5e1041]:
+                      - generic [ref=f5e1042]: Filters
+                      - list
+                      - button "Add filter" [ref=f5e1044] [cursor=pointer]
+                    - generic [ref=f5e1047]:
+                      - generic [ref=f5e1048]: Combine filters
+                      - generic [ref=f5e1051]:
+                        - generic [ref=f5e1052]: All (each filter narrows the previous result)
+                        - button "Select box focus" [ref=f5e1057] [cursor=pointer]
+                  - generic [ref=f5e1062] [cursor=pointer]:
+                    - checkbox "Highlight each filter stage"
+                    - generic [ref=f5e1064]: Highlight each filter stage
+                  - generic [ref=f5e1069] [cursor=pointer]:
+                    - checkbox "Specify output type"
+                    - generic [ref=f5e1071]: Specify output type
+                  - generic [ref=f5e1076] [cursor=pointer]:
+                    - checkbox "Evaluate on use"
+                    - generic [ref=f5e1078]: Evaluate on use
+                  - generic [ref=f5e1083] [cursor=pointer]:
+                    - checkbox "Show selection" [checked]
+                    - generic [ref=f5e1085]: Show selection
+                  - generic [ref=f5e1090] [cursor=pointer]:
+                    - checkbox "Save for derived studios" [checked]
+                    - generic [ref=f5e1092]: Save for derived studios
+              - button "Final" [ref=f5e1095] [cursor=pointer]
+        - generic [ref=f5e769]:
+          - img [ref=f5e772] [cursor=pointer]
+          - generic [ref=f5e775]:
+            - generic [ref=f5e776] [cursor=pointer]: RIP
+            - generic [ref=f5e782]: FPT_Scaling
+            - generic [ref=f5e793] [cursor=pointer]: Part 4 Drawing 1
+  - tooltip "#fpt_wire 1 entities after 0 filters [Query variable X]"

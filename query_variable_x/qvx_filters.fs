@@ -55,7 +55,60 @@ export enum FilterType
     annotation { "Name" : "In selection" }
     SELECTION,
     annotation { "Name" : "Last modified by feature" }
-    LAST_MODIFIED_BY
+    LAST_MODIFIED_BY,
+    annotation { "Name" : "Distance from a reference" }
+    DISTANCE,
+    annotation { "Name" : "Adjacent to a reference" }
+    ADJACENT,
+    annotation { "Name" : "Coaxial with a reference" }
+    COAXIAL,
+    annotation { "Name" : "Face convexity" }
+    FACE_CONVEXITY
+}
+
+/**
+ * How the Distance filter uses the distance from the reference.
+ */
+export enum DistanceMode
+{
+    annotation { "Name" : "Closest" }
+    CLOSEST,
+    annotation { "Name" : "Furthest" }
+    FURTHEST,
+    annotation { "Name" : "Nearer than" }
+    NEARER_THAN,
+    annotation { "Name" : "Farther than" }
+    FARTHER_THAN,
+    annotation { "Name" : "Between two distances" }
+    BETWEEN_DISTANCES
+}
+
+/**
+ * What counts as adjacent for the Adjacent filter.
+ */
+export enum AdjacencyKind
+{
+    annotation { "Name" : "Share an edge" }
+    EDGE,
+    annotation { "Name" : "Share a vertex" }
+    VERTEX
+}
+
+/**
+ * Which faces the Face convexity filter keeps. Smooth (tangent) edges are ignored: only convex and concave edges count.
+ */
+export enum FaceConvexity
+{
+    annotation { "Name" : "Convex (every sharp edge convex)" }
+    CONVEX,
+    annotation { "Name" : "Concave (every sharp edge concave)" }
+    CONCAVE,
+    annotation { "Name" : "Has a convex edge" }
+    HAS_CONVEX,
+    annotation { "Name" : "Has a concave edge" }
+    HAS_CONCAVE,
+    annotation { "Name" : "Mixed (convex and concave edges)" }
+    MIXED
 }
 
 /**
@@ -204,6 +257,63 @@ export predicate filterPredicate(flt is map)
         annotation { "Name" : "Features", "Description" : "Features to test. An entity matches if the last operation that created or modified it belongs to one of them.", "UIHint" : UIHint.ALLOW_FEATURE_SELECTION }
         flt.fltModifiedBy is FeatureList;
     }
+    else if (flt.fltType == FilterType.DISTANCE)
+    {
+        annotation { "Name" : "Distance from", "Description" : "A vertex, edge, face, body or mate connector. Distance is the shortest distance between it and each entity. The reference itself (and the entities of a body reference) never match.", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+        flt.fltDistRef is Query;
+
+        annotation { "Name" : "Distance test", "Description" : "Closest or furthest N entities (ties are kept), nearer or farther than a distance, or between two distances.", "UIHint" : UIHint.SHOW_LABEL }
+        flt.fltDistMode is DistanceMode;
+
+        if (flt.fltDistMode == DistanceMode.CLOSEST || flt.fltDistMode == DistanceMode.FURTHEST)
+        {
+            annotation { "Name" : "How many", "Description" : "Keep this many entities, plus any tied with the last one." }
+            isInteger(flt.fltDistCount, { (unitless) : [1, 1, 1000] } as IntegerBoundSpec);
+        }
+        else if (flt.fltDistMode == DistanceMode.BETWEEN_DISTANCES)
+        {
+            annotation { "Name" : "From distance", "Default" : 0 * meter }
+            isLength(flt.fltDistValue, NONNEGATIVE_LENGTH_BOUNDS);
+
+            annotation { "Name" : "To distance", "Default" : 0 * meter }
+            isLength(flt.fltDistValue2, NONNEGATIVE_LENGTH_BOUNDS);
+        }
+        else
+        {
+            annotation { "Name" : "Distance", "Default" : 0 * meter }
+            isLength(flt.fltDistValue, NONNEGATIVE_LENGTH_BOUNDS);
+        }
+    }
+    else if (flt.fltType == FilterType.ADJACENT)
+    {
+        annotation { "Name" : "Adjacent to", "Description" : "Faces, edges, vertices or bodies. Keeps the candidates next to them (faces and vertices as candidates; edges always meet through a vertex).", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY }
+        flt.fltAdjRef is Query;
+
+        annotation { "Name" : "Adjacent means", "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+        flt.fltAdjKind is AdjacencyKind;
+
+        annotation { "Name" : "Steps away", "Description" : "1 keeps the direct neighbours; 2 also their neighbours, and so on." }
+        isInteger(flt.fltAdjSteps, { (unitless) : [1, 1, 50] } as IntegerBoundSpec);
+
+        annotation { "Name" : "Include the reference itself", "Default" : false }
+        flt.fltAdjIncludeRef is boolean;
+    }
+    else if (flt.fltType == FilterType.COAXIAL)
+    {
+        annotation { "Name" : "Reference axis", "Description" : "A cylindrical, conical or toroidal face, a straight or circular edge, or a mate connector (Z axis).", "Filter" : EntityType.EDGE || EntityType.FACE || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+        flt.fltAxisRef is Query;
+
+        annotation { "Name" : "Distance tolerance", "Description" : "How far an entity's axis may sit off the reference axis.", "Default" : 0 * meter }
+        isLength(flt.fltAxisTol, NONNEGATIVE_LENGTH_BOUNDS);
+
+        annotation { "Name" : "Angle tolerance", "Default" : 0 * degree }
+        isAngle(flt.fltAxisAngleTol, ANGLE_STRICT_180_BOUNDS);
+    }
+    else if (flt.fltType == FilterType.FACE_CONVEXITY)
+    {
+        annotation { "Name" : "Face convexity", "Description" : "Judged from the face's edges (tangent edges are ignored). A fillet whose edges are all tangent has no sharp edge and never matches.", "UIHint" : UIHint.SHOW_LABEL }
+        flt.fltFaceConvexity is FaceConvexity;
+    }
     else if (flt.fltType == FilterType.SELECTION)
     {
         annotation { "Name" : "Selections", "Description" : "Entities to test membership of.", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES, "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
@@ -281,6 +391,215 @@ export function qvxBetweenMatches(context is Context, flt is map, current is Que
     return qUnion(hits);
 }
 
+/** Shortest distance from every candidate to the reference, with the candidates that count. */
+function qvxDistanceMatches(context is Context, flt is map, current is Query) returns Query
+{
+    const reference = flt.fltDistRef;
+    if (isQueryEmpty(context, reference))
+    {
+        throw regenError("Select what the distance is measured from", ["fltDistRef"]);
+    }
+    var excluded = reference;
+    if (!isQueryEmpty(context, qEntityFilter(reference, EntityType.BODY)))
+    {
+        excluded = qUnion([reference, qOwnedByBody(reference)]);
+    }
+    const pool = evaluateQuery(context, qSubtraction(current, excluded));
+    if (size(pool) == 0)
+    {
+        return qNothing();
+    }
+    var side0 = reference;
+    if (!isQueryEmpty(context, qvxMateConnector(context, reference)) || !isQueryEmpty(context, qEntityFilter(reference, EntityType.VERTEX)))
+    {
+        side0 = qvxPoint(context, reference);
+    }
+    var distances = [];
+    for (var entity in pool)
+    {
+        distances = append(distances, evDistance(context, { "side0" : side0, "side1" : entity }).distance);
+    }
+
+    const tol = TOLERANCE.zeroLength * meter;
+    var low = undefined;
+    var high = undefined;
+    if (flt.fltDistMode == DistanceMode.CLOSEST || flt.fltDistMode == DistanceMode.FURTHEST)
+    {
+        const sorted = sort(distances, function(a, b)
+            {
+                return (a - b) / meter;
+            });
+        const count = min(flt.fltDistCount, size(sorted));
+        if (flt.fltDistMode == DistanceMode.CLOSEST)
+        {
+            high = sorted[count - 1] + tol;
+        }
+        else
+        {
+            low = sorted[size(sorted) - count] - tol;
+        }
+    }
+    else if (flt.fltDistMode == DistanceMode.NEARER_THAN)
+    {
+        high = flt.fltDistValue + tol;
+    }
+    else if (flt.fltDistMode == DistanceMode.FARTHER_THAN)
+    {
+        low = flt.fltDistValue - tol;
+    }
+    else
+    {
+        low = min(flt.fltDistValue, flt.fltDistValue2) - tol;
+        high = max(flt.fltDistValue, flt.fltDistValue2) + tol;
+    }
+
+    var hits = [];
+    for (var i = 0; i < size(pool); i += 1)
+    {
+        if ((low == undefined || distances[i] >= low) && (high == undefined || distances[i] <= high))
+        {
+            hits = append(hits, pool[i]);
+        }
+    }
+    return qUnion(hits);
+}
+
+/** The candidates of `current` that are `steps` neighbours away from the reference entities. */
+function qvxAdjacentMatches(context is Context, flt is map, current is Query) returns Query
+{
+    const reference = flt.fltAdjRef;
+    if (isQueryEmpty(context, reference))
+    {
+        throw regenError("Select what the result should be adjacent to", ["fltAdjRef"]);
+    }
+    var perType = [];
+    for (var entityType in [EntityType.FACE, EntityType.EDGE, EntityType.VERTEX])
+    {
+        const candidates = qEntityFilter(current, entityType);
+        if (isQueryEmpty(context, candidates))
+        {
+            continue;
+        }
+        // Edges only meet through a vertex.
+        const kind = (entityType == EntityType.EDGE || flt.fltAdjKind == AdjacencyKind.VERTEX) ? AdjacencyType.VERTEX : AdjacencyType.EDGE;
+        // The reference as entities of this type (a body or face reference seeds its own faces, edges, vertices).
+        var seed = qUnion([reference, qOwnedByBody(qEntityFilter(reference, EntityType.BODY), entityType)]);
+        var reached = seed;
+        var frontier = seed;
+        for (var step = 0; step < flt.fltAdjSteps; step += 1)
+        {
+            const next = qSubtraction(qAdjacent(frontier, kind, entityType), reached);
+            if (isQueryEmpty(context, next))
+            {
+                break;
+            }
+            reached = qUnion([reached, next]);
+            frontier = next;
+        }
+        var found = flt.fltAdjIncludeRef == true ? reached : qSubtraction(reached, seed);
+        perType = append(perType, qIntersection([candidates, found]));
+    }
+    return qUnion(perType);
+}
+
+/** The axis line of a cylindrical, conical or toroidal face, a straight or circular edge or a mate connector; undefined for anything else. */
+function qvxAxisOf(context is Context, entity is Query)
+{
+    if (!isQueryEmpty(context, qvxMateConnector(context, entity)))
+    {
+        const cs = qvxMateConnectorFrame(context, entity);
+        return line(cs.origin, cs.zAxis);
+    }
+    if (!isQueryEmpty(context, qEntityFilter(entity, EntityType.FACE)))
+    {
+        if (!isQueryEmpty(context, qUnion([qGeometry(entity, GeometryType.CYLINDER), qGeometry(entity, GeometryType.CONE), qGeometry(entity, GeometryType.TORUS)])))
+        {
+            return evAxis(context, { "axis" : entity });
+        }
+        return undefined;
+    }
+    if (!isQueryEmpty(context, qEntityFilter(entity, EntityType.EDGE)))
+    {
+        if (!isQueryEmpty(context, qGeometry(entity, GeometryType.LINE)))
+        {
+            return evLine(context, { "edge" : entity });
+        }
+        if (!isQueryEmpty(context, qUnion([qGeometry(entity, GeometryType.CIRCLE), qGeometry(entity, GeometryType.ARC)])))
+        {
+            return evAxis(context, { "axis" : entity });
+        }
+    }
+    return undefined;
+}
+
+function qvxCoaxialMatches(context is Context, flt is map, current is Query) returns Query
+{
+    if (isQueryEmpty(context, flt.fltAxisRef))
+    {
+        throw regenError("Select the reference axis", ["fltAxisRef"]);
+    }
+    const ref = qvxAxisOf(context, flt.fltAxisRef);
+    if (ref == undefined)
+    {
+        throw regenError("The reference must be a cylindrical, conical or toroidal face, a straight or circular edge, or a mate connector", ["fltAxisRef"]);
+    }
+    const distTol = max(flt.fltAxisTol, 1e-6 * meter);
+    const sinTol = sin(max(flt.fltAxisAngleTol, 1e-6 * radian));
+    var hits = [];
+    for (var entity in evaluateQuery(context, qSubtraction(current, flt.fltAxisRef)))
+    {
+        const axis = qvxAxisOf(context, entity);
+        if (axis == undefined)
+        {
+            continue;
+        }
+        const parallel = norm(cross(ref.direction, axis.direction)) <= sinTol;
+        const offset = norm(cross(ref.direction, axis.origin - ref.origin));
+        if (parallel && offset <= distTol)
+        {
+            hits = append(hits, entity);
+        }
+    }
+    return qUnion(hits);
+}
+
+function qvxFaceConvexityMatches(context is Context, flt is map, current is Query) returns Query
+{
+    var hits = [];
+    for (var face in evaluateQuery(context, qEntityFilter(current, EntityType.FACE)))
+    {
+        const edges = qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE);
+        const convex = size(evaluateQuery(context, qEdgeConvexityTypeFilter(edges, EdgeConvexityType.CONVEX)));
+        const concave = size(evaluateQuery(context, qEdgeConvexityTypeFilter(edges, EdgeConvexityType.CONCAVE)));
+        var match = false;
+        if (flt.fltFaceConvexity == FaceConvexity.CONVEX)
+        {
+            match = convex > 0 && concave == 0;
+        }
+        else if (flt.fltFaceConvexity == FaceConvexity.CONCAVE)
+        {
+            match = concave > 0 && convex == 0;
+        }
+        else if (flt.fltFaceConvexity == FaceConvexity.HAS_CONVEX)
+        {
+            match = convex > 0;
+        }
+        else if (flt.fltFaceConvexity == FaceConvexity.HAS_CONCAVE)
+        {
+            match = concave > 0;
+        }
+        else
+        {
+            match = convex > 0 && concave > 0;
+        }
+        if (match)
+        {
+            hits = append(hits, face);
+        }
+    }
+    return qUnion(hits);
+}
+
 /**
  * The entities of `current` that one filter matches (before Keep / Reject is applied).
  */
@@ -339,6 +658,22 @@ export function qvxFilterMatches(context is Context, flt is map, current is Quer
     if (flt.fltType == FilterType.LAST_MODIFIED_BY)
     {
         return qvxLastModifiedBy(context, current, flt.fltModifiedBy);
+    }
+    if (flt.fltType == FilterType.DISTANCE)
+    {
+        return qvxDistanceMatches(context, flt, current);
+    }
+    if (flt.fltType == FilterType.ADJACENT)
+    {
+        return qvxAdjacentMatches(context, flt, current);
+    }
+    if (flt.fltType == FilterType.COAXIAL)
+    {
+        return qvxCoaxialMatches(context, flt, current);
+    }
+    if (flt.fltType == FilterType.FACE_CONVEXITY)
+    {
+        return qvxFaceConvexityMatches(context, flt, current);
     }
     return qIntersection(current, flt.fltSelection);
 }
