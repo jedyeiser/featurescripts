@@ -1,0 +1,206 @@
+- generic [ref=f7e5]:
+  - navigation [ref=f7e6]:
+    - generic [ref=f7e7]:
+      - link [ref=f7e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f7e11]
+      - generic [ref=f7e13] [cursor=pointer]
+    - generic [ref=f7e16]:
+      - generic [ref=f7e18]:
+        - generic [ref=f7e19]: RD 20RIP 28 (K035_SZ04)
+        - generic [ref=f7e20]: Main
+      - generic [ref=f7e22] [cursor=pointer]
+      - link "RIP - (K035_SZ04)" [ref=f7e26] [cursor=pointer]:
+        - /url: /documents?nodeId=ad3f3aff4dc6cc3fe3f43809&resourceType=folder
+    - generic [ref=f7e30]:
+      - generic [ref=f7e41] [cursor=pointer]
+      - button "Notifications" [ref=f7e46] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f7e54]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f7e57] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f7e62] [cursor=pointer]
+      - button "Share" [ref=f7e66] [cursor=pointer]
+      - generic "Help menu" [ref=f7e68] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f7e72] [cursor=pointer]
+  - generic [ref=f7e82]:
+    - generic [ref=f7e84]:
+      - generic [ref=f7e85]:
+        - generic [ref=f7e86]:
+          - generic [ref=f7e87] [cursor=pointer]
+          - generic [ref=f7e90] [cursor=pointer]
+          - generic [ref=f7e93] [cursor=pointer]
+          - generic [ref=f7e96] [cursor=pointer]
+          - generic [ref=f7e99] [cursor=pointer]
+          - generic [ref=f7e102] [cursor=pointer]
+          - generic [ref=f7e105] [cursor=pointer]
+          - generic [ref=f7e108] [cursor=pointer]
+        - generic [ref=f7e112] [cursor=pointer]
+      - generic [ref=f7e116] [cursor=pointer]
+    - generic [ref=f7e123]:
+      - generic [ref=f7e130]:
+        - generic [ref=f7e142]:
+          - generic [ref=f7e143]: Sketch
+          - generic [ref=f7e155]:
+            - generic [ref=f7e156] [cursor=pointer]
+            - generic [ref=f7e160] [cursor=pointer]
+            - generic [ref=f7e164] [cursor=pointer]
+            - generic [ref=f7e168] [cursor=pointer]
+            - generic [ref=f7e173]:
+              - generic [ref=f7e174] [cursor=pointer]
+              - generic [ref=f7e178] [cursor=pointer]
+          - generic [ref=f7e184]:
+            - generic [ref=f7e186]:
+              - generic [ref=f7e187] [cursor=pointer]
+              - generic [ref=f7e191] [cursor=pointer]
+            - generic [ref=f7e194] [cursor=pointer]
+            - generic [ref=f7e199]:
+              - generic [ref=f7e200] [cursor=pointer]
+              - generic [ref=f7e204] [cursor=pointer]
+            - generic [ref=f7e207] [cursor=pointer]
+            - generic [ref=f7e211] [cursor=pointer]
+            - generic [ref=f7e215] [cursor=pointer]
+            - generic [ref=f7e219] [cursor=pointer]
+          - generic [ref=f7e226]:
+            - generic [ref=f7e228]:
+              - generic [ref=f7e229] [cursor=pointer]
+              - generic [ref=f7e233] [cursor=pointer]
+            - generic [ref=f7e236] [cursor=pointer]
+          - generic [ref=f7e243]:
+            - generic [ref=f7e244] [cursor=pointer]
+            - generic [ref=f7e248] [cursor=pointer]
+            - generic [ref=f7e253]:
+              - generic [ref=f7e254] [cursor=pointer]
+              - generic [ref=f7e258] [cursor=pointer]
+            - generic [ref=f7e261] [cursor=pointer]
+          - generic [ref=f7e268]:
+            - generic [ref=f7e269] [cursor=pointer]
+            - generic [ref=f7e273] [cursor=pointer]
+            - generic [ref=f7e277] [cursor=pointer]
+            - generic [ref=f7e281] [cursor=pointer]
+          - generic [ref=f7e289]:
+            - generic [ref=f7e290] [cursor=pointer]
+            - generic [ref=f7e294] [cursor=pointer]
+          - generic [ref=f7e301]:
+            - generic [ref=f7e302] [cursor=pointer]: SA
+            - generic [ref=f7e305] [cursor=pointer]
+          - generic [ref=f7e312] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f7e319] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f7e320]:
+            - generic [ref=f7e321]: alt/⌥
+            - generic [ref=f7e322]: c
+      - generic [ref=f7e326]:
+        - generic [ref=f7e329]:
+          - generic [ref=f7e331]:
+            - generic [ref=f7e332]:
+              - generic [ref=f7e334]:
+                - button [ref=f7e336] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f7e341]
+              - generic [ref=f7e342]:
+                - button [ref=f7e343] [cursor=pointer]
+                - generic [ref=f7e346]: Features (110)
+                - button [ref=f7e347] [cursor=pointer]
+                - button [ref=f7e350] [cursor=pointer]
+                - button [ref=f7e353] [cursor=pointer]
+            - generic [ref=f7e357]:
+              - generic [ref=f7e358]:
+                - generic [ref=f7e360]:
+                  - generic [ref=f7e361] [cursor=pointer]
+                  - generic [ref=f7e364]: Default geometry
+                - generic [ref=f7e366]: Origin
+                - generic [ref=f7e376]: Top
+                - generic [ref=f7e386]: Front
+                - generic [ref=f7e396]: Right
+                - generic [ref=f7e407]:
+                  - generic [ref=f7e409] [cursor=pointer]
+                  - generic [ref=f7e412]: Setup (0)
+                - generic [ref=f7e418]:
+                  - generic [ref=f7e420] [cursor=pointer]
+                  - generic [ref=f7e423]: Derive Footprint
+                - generic [ref=f7e434]:
+                  - generic [ref=f7e436] [cursor=pointer]
+                  - generic [ref=f7e439]: fpt_vars (7)
+                - generic [ref=f7e444]: shift_fpt_back
+                - generic [ref=f7e452]: RSL and Layout
+                - generic [ref=f7e460]: copy_fpt_wire_1
+                - generic [ref=f7e468]: Tail_Split
+                - generic [ref=f7e476]: copy_fpt_wire_2
+                - generic [ref=f7e486]: "#ref_pt"
+                - generic [ref=f7e494]: Routing curve
+                - generic [ref=f7e502]: join_fpt_tail
+                - generic [ref=f7e516]: "#fpt_wire_test"
+                - generic [ref=f7e530]: "#FPT_Edges"
+                - generic [ref=f7e538]: Analyze footprint 1
+                - generic [ref=f7e551]:
+                  - generic [ref=f7e553] [cursor=pointer]
+                  - generic [ref=f7e556]: Ref Wire Creation (7)
+                - generic [ref=f7e562]:
+                  - generic [ref=f7e564] [cursor=pointer]
+                  - generic [ref=f7e567]: Profiles (8)
+                - generic [ref=f7e573]:
+                  - generic [ref=f7e575] [cursor=pointer]
+                  - generic [ref=f7e578]: Tip_Tail_Locs (8)
+                - generic [ref=f7e584]:
+                  - generic [ref=f7e586] [cursor=pointer]
+                  - generic [ref=f7e589]: Baseline (8)
+                - generic [ref=f7e595]:
+                  - generic [ref=f7e597] [cursor=pointer]
+                  - generic [ref=f7e600]: Create_SW_Shelf (5)
+                - generic [ref=f7e606]:
+                  - generic [ref=f7e608] [cursor=pointer]
+                  - generic [ref=f7e611]: Profile/Periphery Surfaces (10)
+                - generic [ref=f7e617]:
+                  - generic [ref=f7e619] [cursor=pointer]
+                  - generic [ref=f7e622]: Part_Trim_Surfaces (9)
+                - generic [ref=f7e627]: 2D_SW_Shelf
+                - generic [ref=f7e640]:
+                  - generic [ref=f7e642] [cursor=pointer]
+                  - generic [ref=f7e645]: SW_Rout_Surf (9)
+                - generic [ref=f7e651]:
+                  - generic [ref=f7e653] [cursor=pointer]
+                  - generic [ref=f7e656]: VOLUME (5)
+              - list
+          - generic [ref=f7e665]:
+            - generic [ref=f7e667]:
+              - generic [ref=f7e669] [cursor=pointer]
+              - generic [ref=f7e672]: Parts (0)
+            - generic [ref=f7e676]:
+              - generic [ref=f7e678] [cursor=pointer]
+              - generic [ref=f7e681]: Composite parts (1)
+            - generic [ref=f7e686]:
+              - generic [ref=f7e688] [cursor=pointer]
+              - generic [ref=f7e691]: Curves (3)
+        - generic [ref=f7e696]:
+          - generic [ref=f7e698] [cursor=pointer]
+          - generic [ref=f7e702]:
+            - generic [ref=f7e704]:
+              - button [ref=f7e705] [cursor=pointer]
+              - button [ref=f7e709] [cursor=pointer]
+              - button [ref=f7e713] [cursor=pointer]
+            - generic [ref=f7e717] [cursor=pointer]
+          - generic [ref=f7e722]:
+            - generic [ref=f7e723] [cursor=pointer]
+            - generic [ref=f7e727] [cursor=pointer]
+            - generic [ref=f7e731] [cursor=pointer]
+            - generic [ref=f7e735] [cursor=pointer]
+            - generic [ref=f7e739] [cursor=pointer]
+            - generic [ref=f7e743] [cursor=pointer]
+            - generic [ref=f7e746] [cursor=pointer]
+      - generic [ref=f7e750]:
+        - img [ref=f7e753] [cursor=pointer]
+        - generic [ref=f7e756]:
+          - generic [ref=f7e757] [cursor=pointer]: Setup
+          - generic [ref=f7e763]: Design Master
+          - generic [ref=f7e779] [cursor=pointer]: K035_SZ04 Drawing 1
+          - generic [ref=f7e785] [cursor=pointer]: RD K035_SZ04 178 VOLUME PRIMITIVE Drawing 1
+          - generic [ref=f7e793] [cursor=pointer]: Parts
+          - generic [ref=f7e801] [cursor=pointer]: Parts_Export
+          - generic [ref=f7e807] [cursor=pointer]: Part Export
+          - generic [ref=f7e813] [cursor=pointer]: Part Drawings
+          - generic [ref=f7e819] [cursor=pointer]: 3D_Ski
+          - generic [ref=f7e825] [cursor=pointer]: Tooling
+          - generic [ref=f7e831] [cursor=pointer]: BeamSimulator
+          - generic [ref=f7e836] [cursor=pointer]: RD K035_SZ04 178 Aufbau
+          - generic [ref=f7e842] [cursor=pointer]: RD K035_SZ04 178 Aufbau
+        - generic [ref=f7e848]:
+          - listitem [ref=f7e849]
+          - listitem [ref=f7e853]

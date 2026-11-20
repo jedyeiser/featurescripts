@@ -1,0 +1,186 @@
+- generic [ref=f8e3]:
+  - navigation [ref=f8e29]:
+    - generic [ref=f8e30]:
+      - link [ref=f8e33] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f8e34]
+      - generic [ref=f8e36] [cursor=pointer]
+    - generic [ref=f8e39]:
+      - generic [ref=f8e41]:
+        - generic [ref=f8e42]: RIP Footprint
+        - generic [ref=f8e43]: Main
+      - generic [ref=f8e45] [cursor=pointer]
+      - link "RIP - (K035_SZ04)" [ref=f8e49] [cursor=pointer]:
+        - /url: /documents?nodeId=ad3f3aff4dc6cc3fe3f43809&resourceType=folder
+    - generic [ref=f8e53]:
+      - generic [ref=f8e61] [cursor=pointer]
+      - button "Notifications" [ref=f8e66] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f8e74]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f8e77] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f8e82] [cursor=pointer]
+      - button "Share" [ref=f8e86] [cursor=pointer]
+      - generic "Help menu" [ref=f8e88] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f8e92] [cursor=pointer]
+  - generic [ref=f8e7]:
+    - generic [ref=f8e9]:
+      - generic [ref=f8e10]:
+        - generic [ref=f8e99]:
+          - generic [ref=f8e100] [cursor=pointer]
+          - generic [ref=f8e103] [cursor=pointer]
+          - generic [ref=f8e106] [cursor=pointer]
+          - generic [ref=f8e109] [cursor=pointer]
+          - generic [ref=f8e112] [cursor=pointer]
+          - generic [ref=f8e115] [cursor=pointer]
+          - generic [ref=f8e118] [cursor=pointer]
+          - generic [ref=f8e121] [cursor=pointer]
+        - generic [ref=f8e124] [cursor=pointer]
+      - generic [ref=f8e128] [cursor=pointer]
+    - generic [ref=f8e16]:
+      - generic [ref=f8e137]:
+        - generic [ref=f8e149]:
+          - generic [ref=f8e150]: Sketch
+          - generic [ref=f8e162]:
+            - generic [ref=f8e163] [cursor=pointer]
+            - generic [ref=f8e167] [cursor=pointer]
+            - generic [ref=f8e171] [cursor=pointer]
+            - generic [ref=f8e175] [cursor=pointer]
+            - generic [ref=f8e180]:
+              - generic [ref=f8e181] [cursor=pointer]
+              - generic [ref=f8e185] [cursor=pointer]
+          - generic [ref=f8e191]:
+            - generic [ref=f8e193]:
+              - generic [ref=f8e194] [cursor=pointer]
+              - generic [ref=f8e198] [cursor=pointer]
+            - generic [ref=f8e201] [cursor=pointer]
+            - generic [ref=f8e206]:
+              - generic [ref=f8e207] [cursor=pointer]
+              - generic [ref=f8e211] [cursor=pointer]
+            - generic [ref=f8e214] [cursor=pointer]
+            - generic [ref=f8e218] [cursor=pointer]
+            - generic [ref=f8e222] [cursor=pointer]
+            - generic [ref=f8e226] [cursor=pointer]
+          - generic [ref=f8e233]:
+            - generic [ref=f8e235]:
+              - generic [ref=f8e236] [cursor=pointer]
+              - generic [ref=f8e240] [cursor=pointer]
+            - generic [ref=f8e243] [cursor=pointer]
+          - generic [ref=f8e250]:
+            - generic [ref=f8e251] [cursor=pointer]
+            - generic [ref=f8e255] [cursor=pointer]
+            - generic [ref=f8e260]:
+              - generic [ref=f8e261] [cursor=pointer]
+              - generic [ref=f8e265] [cursor=pointer]
+            - generic [ref=f8e268] [cursor=pointer]
+          - generic [ref=f8e275]:
+            - generic [ref=f8e276] [cursor=pointer]
+            - generic [ref=f8e280] [cursor=pointer]
+            - generic [ref=f8e284] [cursor=pointer]
+            - generic [ref=f8e288] [cursor=pointer]
+          - generic [ref=f8e296]:
+            - generic [ref=f8e297] [cursor=pointer]
+            - generic [ref=f8e301] [cursor=pointer]
+          - generic [ref=f8e308]:
+            - generic [ref=f8e309] [cursor=pointer]: SA
+            - generic [ref=f8e312] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f8e316] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f8e317]:
+            - generic [ref=f8e318]: alt/⌥
+            - generic [ref=f8e319]: c
+      - generic [ref=f8e24]:
+        - generic [ref=f8e323]:
+          - generic [ref=f8e325]:
+            - generic [ref=f8e326]:
+              - generic [ref=f8e327]: Configurations
+              - button "Configuration actions" [ref=f8e333] [cursor=pointer]
+            - generic [ref=f8e337]:
+              - generic [ref=f8e341]:
+                - generic [ref=f8e342]: Size
+                - generic [ref=f8e345]:
+                  - generic [ref=f8e346]: "178"
+                  - button "Select box focus" [ref=f8e351] [cursor=pointer]
+              - generic [ref=f8e356] [cursor=pointer]:
+                - checkbox "Tail Notch" [checked]
+                - generic [ref=f8e358]: Tail Notch
+          - generic [ref=f8e361]:
+            - generic [ref=f8e362]:
+              - generic [ref=f8e364]:
+                - button [ref=f8e366] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f8e371]
+              - generic [ref=f8e372]:
+                - generic [ref=f8e373]: Features (54)
+                - button [ref=f8e374] [cursor=pointer]
+                - button [ref=f8e377] [cursor=pointer]
+                - button [ref=f8e380] [cursor=pointer]
+            - generic [ref=f8e384]:
+              - generic [ref=f8e385]:
+                - generic [ref=f8e387]:
+                  - generic [ref=f8e388] [cursor=pointer]
+                  - generic [ref=f8e391]: Default geometry
+                - generic [ref=f8e393]: Origin
+                - generic [ref=f8e403]: Top
+                - generic [ref=f8e413]: Front
+                - generic [ref=f8e423]: Right
+                - generic [ref=f8e433]: Derive_Seed
+                - generic [ref=f8e441]: "#rsl = 1480 mm"
+                - generic [ref=f8e449]: Split_input
+                - generic [ref=f8e458]:
+                  - generic [ref=f8e460] [cursor=pointer]
+                  - generic [ref=f8e463]: tail_notching (9)
+                - generic [ref=f8e468]: Rejoin_wires
+                - generic [ref=f8e480]: new_rsl_sketch
+                - generic [ref=f8e488]: SPA
+                - generic [ref=f8e496]: EDA
+                - generic [ref=f8e504]: "#input_fpt"
+                - generic [ref=f8e512]: Scale Footprint 1
+                - generic [ref=f8e524]: Delete part 2
+                - generic [ref=f8e532]: "#fpt_wire"
+                - generic [ref=f8e541]:
+                  - generic [ref=f8e543] [cursor=pointer]
+                  - generic [ref=f8e546]: tip/tail tangency (10)
+                - generic [ref=f8e551]: "#fpt_wire"
+                - generic [ref=f8e563]: "#length_str = \"178\""
+                - generic [ref=f8e571]: fpt_rename
+                - generic [ref=f8e583]: create_rsl_wire
+                - generic [ref=f8e595]: "#rsl_wire"
+                - generic [ref=f8e607]: mirror_fpt
+                - generic [ref=f8e615]: "#mirrored_wire"
+                - generic [ref=f8e623]: "#fill_edges"
+                - generic [ref=f8e631]: fill_fpt
+                - generic [ref=f8e639]: "#fill_surf"
+                - generic [ref=f8e651]: Thicken_FPT
+                - generic [ref=f8e663]: "#fpt_body"
+              - list
+          - generic [ref=f8e679]:
+            - generic [ref=f8e681]:
+              - generic [ref=f8e683] [cursor=pointer]
+              - generic [ref=f8e686]: Parts (1)
+            - generic [ref=f8e690]: 178 RIP fpt
+            - generic [ref=f8e703]:
+              - generic [ref=f8e705] [cursor=pointer]
+              - generic [ref=f8e708]: Composite parts (1)
+            - generic [ref=f8e713]:
+              - generic [ref=f8e715] [cursor=pointer]
+              - generic [ref=f8e718]: Curves (2)
+        - generic [ref=f8e25]:
+          - generic [ref=f8e724] [cursor=pointer]
+          - generic [ref=f8e26]:
+            - generic [ref=f8e729]:
+              - button [ref=f8e730] [cursor=pointer]
+              - button [ref=f8e734] [cursor=pointer]
+              - button [ref=f8e738] [cursor=pointer]
+            - generic [ref=f8e742] [cursor=pointer]
+          - generic [ref=f8e747]:
+            - generic [ref=f8e748] [cursor=pointer]
+            - generic [ref=f8e752] [cursor=pointer]
+            - generic [ref=f8e756] [cursor=pointer]
+            - generic [ref=f8e760] [cursor=pointer]
+            - generic [ref=f8e764] [cursor=pointer]
+            - generic [ref=f8e768] [cursor=pointer]
+            - generic [ref=f8e771] [cursor=pointer]
+      - generic [ref=f8e775]:
+        - img [ref=f8e778] [cursor=pointer]
+        - generic [ref=f8e781]:
+          - generic [ref=f8e782] [cursor=pointer]: RIP
+          - generic [ref=f8e788]: FPT_Scaling
+          - generic [ref=f8e799] [cursor=pointer]: Part 4 Drawing 1

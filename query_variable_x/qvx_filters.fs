@@ -63,7 +63,22 @@ export enum FilterType
     annotation { "Name" : "Coaxial with a reference" }
     COAXIAL,
     annotation { "Name" : "Face convexity" }
-    FACE_CONVEXITY
+    FACE_CONVEXITY,
+    annotation { "Name" : "Within distance of references" }
+    WITHIN
+}
+
+/**
+ * What part of a candidate must be within the distance for the Within filter.
+ */
+export enum WithinMeasure
+{
+    annotation { "Name" : "Any part (nearest point)" }
+    NEAREST,
+    annotation { "Name" : "Center (centroid, vertex or connector origin)" }
+    CENTER,
+    annotation { "Name" : "Whole entity (all its vertices)" }
+    WHOLE
 }
 
 /** A length bound whose minimum is zero (std NONNEGATIVE_LENGTH_BOUNDS starts at 0.01 mm). */
@@ -287,6 +302,20 @@ export predicate filterPredicate(flt is map)
             isLength(flt.fltDistValue, QVX_ZERO_OK_LENGTH_BOUNDS);
         }
     }
+    else if (flt.fltType == FilterType.WITHIN)
+    {
+        annotation { "Name" : "Within distance of", "Description" : "Vertices, edges, faces, bodies or mate connectors. An entity matches when it is within the distance of ANY of them.", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY || BodyType.MATE_CONNECTOR }
+        flt.fltWithinRef is Query;
+
+        annotation { "Name" : "Distance", "Description" : "Largest distance that still counts as within (inclusive).", "Default" : 0 * meter }
+        isLength(flt.fltWithinDist, QVX_ZERO_OK_LENGTH_BOUNDS);
+
+        annotation { "Name" : "Measured at", "Description" : "Any part: the shortest distance between the entity and a reference. Center: the entity's centroid (a vertex's point, a connector's origin). Whole entity: every vertex of the entity, so curved edges and faces without vertices fall back to any part.", "UIHint" : UIHint.SHOW_LABEL }
+        flt.fltWithinMeasure is WithinMeasure;
+
+        annotation { "Name" : "Include the references themselves", "Description" : "Off: the references (and the entities of a body reference) never match.", "Default" : false }
+        flt.fltWithinIncludeRef is boolean;
+    }
     else if (flt.fltType == FilterType.ADJACENT)
     {
         annotation { "Name" : "Adjacent to", "Description" : "Faces, edges, vertices or bodies. Keeps the candidates next to them (faces and vertices as candidates; edges always meet through a vertex).", "Filter" : EntityType.VERTEX || EntityType.EDGE || EntityType.FACE || EntityType.BODY }
@@ -462,6 +491,130 @@ function qvxDistanceMatches(context is Context, flt is map, current is Query) re
         if ((low == undefined || distances[i] >= low) && (high == undefined || distances[i] <= high))
         {
             hits = append(hits, pool[i]);
+        }
+    }
+    return qUnion(hits);
+}
+
+/** Shortest distance from `target` (a Query or a point) to the references (an array of points and/or a Query, either may be empty). */
+function qvxWithinDistance(context is Context, target, refPoints is array, refGeometry is Query) returns ValueWithUnits
+{
+    var best = undefined;
+    if (size(refPoints) > 0)
+    {
+        best = evDistance(context, { "side0" : refPoints, "side1" : target }).distance;
+    }
+    if (!isQueryEmpty(context, refGeometry))
+    {
+        const d = evDistance(context, { "side0" : refGeometry, "side1" : target }).distance;
+        if (best == undefined || d < best)
+        {
+            best = d;
+        }
+    }
+    return best;
+}
+
+/** The point that stands for a candidate in the Center measure. */
+function qvxWithinCenter(context is Context, entity is Query) returns Vector
+{
+    if (!isQueryEmpty(context, qvxMateConnector(context, entity)) || !isQueryEmpty(context, qEntityFilter(entity, EntityType.VERTEX)))
+    {
+        return qvxPoint(context, entity);
+    }
+    return evApproximateCentroid(context, { "entities" : entity });
+}
+
+/** Candidates of `current` within the distance of ANY of the reference entities, measured per the chosen mode. */
+function qvxWithinMatches(context is Context, flt is map, current is Query) returns Query
+{
+    const reference = flt.fltWithinRef;
+    if (isQueryEmpty(context, reference))
+    {
+        throw regenError("Select what the distance is measured from", ["fltWithinRef"]);
+    }
+    var pool = [];
+    if (flt.fltWithinIncludeRef)
+    {
+        pool = evaluateQuery(context, current);
+    }
+    else
+    {
+        var excluded = reference;
+        if (!isQueryEmpty(context, qEntityFilter(reference, EntityType.BODY)))
+        {
+            excluded = qUnion([reference, qOwnedByBody(reference)]);
+        }
+        pool = evaluateQuery(context, qSubtraction(current, excluded));
+    }
+    if (size(pool) == 0)
+    {
+        return qNothing();
+    }
+
+    // Vertices and mate connectors become points; everything else is measured as geometry.
+    var refPoints = [];
+    var geometry = [];
+    for (var ref in evaluateQuery(context, reference))
+    {
+        if (!isQueryEmpty(context, qvxMateConnector(context, ref)) || !isQueryEmpty(context, qEntityFilter(ref, EntityType.VERTEX)))
+        {
+            refPoints = append(refPoints, qvxPoint(context, ref));
+        }
+        else
+        {
+            geometry = append(geometry, ref);
+        }
+    }
+    const refGeometry = qUnion(geometry);
+
+    const limit = flt.fltWithinDist + TOLERANCE.zeroLength * meter;
+    var hits = [];
+    for (var entity in pool)
+    {
+        var distance = undefined;
+        if (flt.fltWithinMeasure == WithinMeasure.CENTER)
+        {
+            distance = qvxWithinDistance(context, qvxWithinCenter(context, entity), refPoints, refGeometry);
+        }
+        else if (flt.fltWithinMeasure == WithinMeasure.WHOLE)
+        {
+            var vertices = [];
+            if (!isQueryEmpty(context, qEntityFilter(entity, EntityType.BODY)))
+            {
+                vertices = evaluateQuery(context, qOwnedByBody(entity, EntityType.VERTEX));
+            }
+            else if (!isQueryEmpty(context, qEntityFilter(entity, EntityType.VERTEX)))
+            {
+                vertices = [entity];
+            }
+            else
+            {
+                vertices = evaluateQuery(context, qAdjacent(entity, AdjacencyType.VERTEX, EntityType.VERTEX));
+            }
+            if (size(vertices) == 0)
+            {
+                distance = qvxWithinDistance(context, entity, refPoints, refGeometry);
+            }
+            else
+            {
+                for (var vertex in vertices)
+                {
+                    const d = qvxWithinDistance(context, vertex, refPoints, refGeometry);
+                    if (distance == undefined || d > distance)
+                    {
+                        distance = d;
+                    }
+                }
+            }
+        }
+        else
+        {
+            distance = qvxWithinDistance(context, entity, refPoints, refGeometry);
+        }
+        if (distance <= limit)
+        {
+            hits = append(hits, entity);
         }
     }
     return qUnion(hits);
@@ -665,6 +818,10 @@ export function qvxFilterMatches(context is Context, flt is map, current is Quer
     if (flt.fltType == FilterType.DISTANCE)
     {
         return qvxDistanceMatches(context, flt, current);
+    }
+    if (flt.fltType == FilterType.WITHIN)
+    {
+        return qvxWithinMatches(context, flt, current);
     }
     if (flt.fltType == FilterType.ADJACENT)
     {

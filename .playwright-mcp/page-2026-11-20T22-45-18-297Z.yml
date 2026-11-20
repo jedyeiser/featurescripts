@@ -1,0 +1,10 @@
+- generic [ref=e4]:
+  - generic [ref=e15]:
+    - generic [ref=e20]:
+      - textbox "Email" [active] [ref=e21]
+      - button "Continue" [disabled]
+    - generic [ref=e22]:
+      - link "Onshape Terms & Privacy Policy" [ref=e23] [cursor=pointer]:
+        - /url: https://www.onshape.com/en/legal
+      - generic [ref=e24]: Don't have an account? Sign up
+  - iframe [ref=e26]

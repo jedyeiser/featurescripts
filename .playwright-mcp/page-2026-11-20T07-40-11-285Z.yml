@@ -1,0 +1,429 @@
+- generic [active] [ref=f4e1]:
+  - generic [ref=f4e3]:
+    - navigation [ref=f4e4]:
+      - generic [ref=f4e5]:
+        - link [ref=f4e8] [cursor=pointer]:
+          - /url: /documents
+          - img "The Onshape logo." [ref=f4e9]
+        - generic [ref=f4e11] [cursor=pointer]
+      - generic [ref=f4e14]:
+        - generic [ref=f4e16]:
+          - generic [ref=f4e17]: RD 21PIR 28 (K034_V04) MK221-2 177
+          - generic [ref=f4e18]: Main
+        - generic [ref=f4e20] [cursor=pointer]
+        - link "PIR (K034_SZ04) - Pain is Real" [ref=f4e24] [cursor=pointer]:
+          - /url: /documents?nodeId=a3af1a66a567373e422231a6&resourceType=folder
+      - generic [ref=f4e28]:
+        - generic [ref=f4e36] [cursor=pointer]
+        - button "Notifications" [ref=f4e41] [cursor=pointer]:
+          - generic "9+ unread notifications" [ref=f4e49]: 9+
+        - link "Navigates you to Onshape app store in a new window." [ref=f4e52] [cursor=pointer]
+        - link "Navigates you to Onshape Learning Center in a new window." [ref=f4e57] [cursor=pointer]
+        - button "Share" [ref=f4e61] [cursor=pointer]
+        - generic "Help menu" [ref=f4e63] [cursor=pointer]
+        - button "Jed Yeiser" [ref=f4e67] [cursor=pointer]
+    - generic [ref=f4e77]:
+      - generic [ref=f4e79]:
+        - generic [ref=f4e80]:
+          - generic [ref=f4e81]:
+            - generic [ref=f4e82] [cursor=pointer]
+            - generic [ref=f4e85] [cursor=pointer]
+            - generic [ref=f4e88] [cursor=pointer]
+            - generic [ref=f4e91] [cursor=pointer]
+            - generic [ref=f4e94] [cursor=pointer]
+            - generic [ref=f4e97] [cursor=pointer]
+            - generic [ref=f4e100] [cursor=pointer]
+            - generic [ref=f4e103] [cursor=pointer]
+          - generic [ref=f4e107] [cursor=pointer]
+        - generic [ref=f4e111] [cursor=pointer]
+      - generic [ref=f4e118]:
+        - generic [ref=f4e125]:
+          - generic [ref=f4e137]:
+            - generic [ref=f4e138]: Sketch
+            - generic [ref=f4e150]:
+              - generic [ref=f4e151] [cursor=pointer]
+              - generic [ref=f4e155] [cursor=pointer]
+              - generic [ref=f4e159] [cursor=pointer]
+              - generic [ref=f4e163] [cursor=pointer]
+              - generic [ref=f4e168]:
+                - generic [ref=f4e169] [cursor=pointer]
+                - generic [ref=f4e173] [cursor=pointer]
+            - generic [ref=f4e179]:
+              - generic [ref=f4e181]:
+                - generic [ref=f4e182] [cursor=pointer]
+                - generic [ref=f4e186] [cursor=pointer]
+              - generic [ref=f4e189] [cursor=pointer]
+              - generic [ref=f4e194]:
+                - generic [ref=f4e195] [cursor=pointer]
+                - generic [ref=f4e199] [cursor=pointer]
+              - generic [ref=f4e202] [cursor=pointer]
+              - generic [ref=f4e206] [cursor=pointer]
+              - generic [ref=f4e210] [cursor=pointer]
+              - generic [ref=f4e214] [cursor=pointer]
+            - generic [ref=f4e221]:
+              - generic [ref=f4e223]:
+                - generic [ref=f4e224] [cursor=pointer]
+                - generic [ref=f4e228] [cursor=pointer]
+              - generic [ref=f4e231] [cursor=pointer]
+            - generic [ref=f4e238]:
+              - generic [ref=f4e239] [cursor=pointer]
+              - generic [ref=f4e243] [cursor=pointer]
+              - generic [ref=f4e248]:
+                - generic [ref=f4e249] [cursor=pointer]
+                - generic [ref=f4e253] [cursor=pointer]
+              - generic [ref=f4e256] [cursor=pointer]
+            - generic [ref=f4e263]:
+              - generic [ref=f4e264] [cursor=pointer]
+              - generic [ref=f4e268] [cursor=pointer]
+              - generic [ref=f4e272] [cursor=pointer]
+              - generic [ref=f4e276] [cursor=pointer]
+            - generic [ref=f4e284]:
+              - generic [ref=f4e285] [cursor=pointer]
+              - generic [ref=f4e289] [cursor=pointer]
+            - generic [ref=f4e296]:
+              - generic [ref=f4e297] [cursor=pointer]
+              - generic [ref=f4e300] [cursor=pointer]
+          - button "Search tools… alt/⌥ c" [ref=f4e304] [cursor=pointer]:
+            - text: Search tools…
+            - generic [ref=f4e305]:
+              - generic [ref=f4e306]: alt/⌥
+              - generic [ref=f4e307]: c
+        - generic [ref=f4e309]:
+          - generic [ref=f4e311]:
+            - generic [ref=f4e314]:
+              - generic [ref=f4e316]:
+                - generic [ref=f4e317]:
+                  - generic [ref=f4e319]:
+                    - button [ref=f4e321] [cursor=pointer]
+                    - textbox "Filter by name or type" [ref=f4e326]
+                  - generic [ref=f4e327]:
+                    - generic [ref=f4e328]: Features (14)
+                    - button [disabled] [ref=f4e329]
+                    - button [disabled] [ref=f4e332]
+                    - button [ref=f4e335] [cursor=pointer]
+                - generic [ref=f4e339]:
+                  - generic [ref=f4e340]:
+                    - generic [ref=f4e342]:
+                      - generic [ref=f4e343] [cursor=pointer]
+                      - generic [ref=f4e346]: Default geometry
+                    - generic [ref=f4e348]: Origin
+                    - generic [ref=f4e358]: Top
+                    - generic [ref=f4e368]: Front
+                    - generic [ref=f4e378]: Right
+                    - generic [ref=f4e389]:
+                      - generic [ref=f4e391] [cursor=pointer]
+                      - generic [ref=f4e394]: Parts_Derive
+                    - generic [ref=f4e399]: Mirror 1
+                    - generic [ref=f4e407]: Split 1
+                    - generic [ref=f4e416]:
+                      - generic [ref=f4e418] [cursor=pointer]
+                      - generic [ref=f4e421]: Derive_Targ_EI
+                    - generic [ref=f4e426]: "#Baseline"
+                    - generic [ref=f4e434]: "#EI_Bodies"
+                    - generic [ref=f4e442]: Intersection curve 1
+                    - generic [ref=f4e450]: EI_Path
+                    - generic [ref=f4e462]: EI and Cross Section 1
+                    - generic [ref=f4e474]: Simple Body Rename 1
+                  - list
+              - generic [ref=f4e494]:
+                - generic [ref=f4e496]:
+                  - generic [ref=f4e498] [cursor=pointer]
+                  - generic [ref=f4e501]: Parts (16)
+                - generic [ref=f4e505]: RD K034_SZ04 177 STK L
+                - generic [ref=f4e517]: RD K034_SZ04 177 STK R
+                - generic [ref=f4e529]: Part 7
+                - generic [ref=f4e541]: Long_Beech
+                - generic [ref=f4e553]: RD K034_SZ04 177 BLG_3D
+                - generic [ref=f4e565]: RD K034_SZ04 177 UG_3D
+                - generic [ref=f4e577]: RD K034_SZ04 177 Spitze-Mat_3D
+                - generic [ref=f4e589]: RD K034_SZ04 177 Ende-Mat_3D
+                - generic [ref=f4e601]: RD K034_SZ04 177 OFL_3D
+                - generic [ref=f4e613]: RD K034_SZ04 177 OG_3D
+                - generic [ref=f4e625]: RD K034_SZ04 177 SW_L
+                - generic [ref=f4e637]: RD K034_SZ04 177 SW_R
+                - generic [ref=f4e649]: RD K034_SZ04 177_SP_Einlager_3D
+                - generic [ref=f4e661]: RD K034_SZ04 177_ED_Einlager_3D
+                - generic [ref=f4e673]: RD K034_SZ04 177 Spitzegummi_3D
+                - generic [ref=f4e685]: RD K034_SZ04 177 Endegummi_3D
+                - generic [ref=f4e698]:
+                  - generic [ref=f4e700] [cursor=pointer]
+                  - generic [ref=f4e703]: Composite parts (1)
+                - generic [ref=f4e708]:
+                  - generic [ref=f4e710] [cursor=pointer]
+                  - generic [ref=f4e713]: Curves (10)
+            - generic [ref=f4e718]:
+              - generic [ref=f4e720] [cursor=pointer]
+              - generic [ref=f4e724]:
+                - button [ref=f4e846] [cursor=pointer]
+                - generic [ref=f4e739] [cursor=pointer]
+              - generic [ref=f4e744]:
+                - generic [ref=f4e745] [cursor=pointer]
+                - generic [ref=f4e749] [cursor=pointer]
+                - generic [ref=f4e753] [cursor=pointer]
+                - generic [ref=f4e757] [cursor=pointer]
+                - generic [ref=f4e761] [cursor=pointer]
+                - generic [ref=f4e765] [cursor=pointer]
+                - generic [ref=f4e768] [cursor=pointer]
+          - generic [ref=f4e850]:
+            - dialog [ref=f4e851]:
+              - generic [ref=f4e852]: EI and Cross Section 1
+            - generic [ref=f4e863]:
+              - list [ref=f4e864]:
+                - generic [ref=f4e865]:
+                  - generic [ref=f4e866]:
+                    - generic [ref=f4e873]:
+                      - generic [ref=f4e874]: Wire to cross section along
+                      - list [ref=f4e876]:
+                        - listitem [ref=f4e877]:
+                          - generic [ref=f4e878]: EI_Path
+                          - generic [ref=f4e880] [cursor=pointer]: ×
+                    - generic [ref=f4e887]:
+                      - generic [ref=f4e888]: Analysis name
+                      - textbox [ref=f4e890]: RD K034_SZ04 177_EI_ANALYSIS
+                    - generic [ref=f4e897]:
+                      - generic [ref=f4e898]: FCP (Front Contact Point)
+                      - list [ref=f4e900]:
+                        - listitem [ref=f4e901]:
+                          - generic [ref=f4e902]: SPA
+                          - generic [ref=f4e904] [cursor=pointer]: ×
+                    - generic [ref=f4e918]:
+                      - generic [ref=f4e919]: ACP (Aft Contact Point)
+                      - list [ref=f4e921]:
+                        - listitem [ref=f4e922]:
+                          - generic [ref=f4e923]: EDA
+                          - generic [ref=f4e925] [cursor=pointer]: ×
+                    - generic [ref=f4e939]:
+                      - generic [ref=f4e940]: Cross section bodies
+                      - list [ref=f4e942]:
+                        - listitem [ref=f4e943]:
+                          - generic [ref=f4e944]: RD K034_SZ04 177 STK L
+                          - generic [ref=f4e946] [cursor=pointer]: ×
+                        - listitem [ref=f4e947]:
+                          - generic [ref=f4e948]: RD K034_SZ04 177 STK R
+                          - generic [ref=f4e950] [cursor=pointer]: ×
+                        - listitem [ref=f4e951]:
+                          - generic [ref=f4e952]: Part 7
+                          - generic [ref=f4e954] [cursor=pointer]: ×
+                        - listitem [ref=f4e955]:
+                          - generic [ref=f4e956]: Long_Beech
+                          - generic [ref=f4e958] [cursor=pointer]: ×
+                        - listitem [ref=f4e959]:
+                          - generic [ref=f4e960]: RD K034_SZ04 177 BLG_3D
+                          - generic [ref=f4e962] [cursor=pointer]: ×
+                        - listitem [ref=f4e963]:
+                          - generic [ref=f4e964]: RD K034_SZ04 177 UG_3D
+                          - generic [ref=f4e966] [cursor=pointer]: ×
+                        - listitem [ref=f4e967]:
+                          - generic [ref=f4e968]: RD K034_SZ04 177 Spitze-Mat_3D
+                          - generic [ref=f4e970] [cursor=pointer]: ×
+                        - listitem [ref=f4e971]:
+                          - generic [ref=f4e972]: RD K034_SZ04 177 Ende-Mat_3D
+                          - generic [ref=f4e974] [cursor=pointer]: ×
+                        - listitem [ref=f4e975]:
+                          - generic [ref=f4e976]: RD K034_SZ04 177 OFL_3D
+                          - generic [ref=f4e978] [cursor=pointer]: ×
+                        - listitem [ref=f4e979]:
+                          - generic [ref=f4e980]: RD K034_SZ04 177 OG_3D
+                          - generic [ref=f4e982] [cursor=pointer]: ×
+                        - listitem [ref=f4e983]:
+                          - generic [ref=f4e984]: RD K034_SZ04 177 SW_L
+                          - generic [ref=f4e986] [cursor=pointer]: ×
+                        - listitem [ref=f4e987]:
+                          - generic [ref=f4e988]: RD K034_SZ04 177 SW_R
+                          - generic [ref=f4e990] [cursor=pointer]: ×
+                        - listitem [ref=f4e991]:
+                          - generic [ref=f4e992]: RD K034_SZ04 177_SP_Einlager_3D
+                          - generic [ref=f4e994] [cursor=pointer]: ×
+                        - listitem [ref=f4e995]:
+                          - generic [ref=f4e996]: RD K034_SZ04 177_ED_Einlager_3D
+                          - generic [ref=f4e998] [cursor=pointer]: ×
+                        - listitem [ref=f4e999]:
+                          - generic [ref=f4e1000]: RD K034_SZ04 177 Spitzegummi_3D
+                          - generic [ref=f4e1002] [cursor=pointer]: ×
+                        - listitem [ref=f4e1003]:
+                          - generic [ref=f4e1004]: RD K034_SZ04 177 Endegummi_3D
+                          - generic [ref=f4e1006] [cursor=pointer]: ×
+                    - generic [ref=f4e1015]:
+                      - generic [ref=f4e1016]: Material library
+                      - generic [ref=f4e1017] [cursor=pointer]: kaitai_ski_snowboard_materials.csv
+                    - button "Refresh CSV data" [ref=f4e1025] [cursor=pointer]
+                    - generic [ref=f4e1029]:
+                      - generic [ref=f4e1030]: Number of cross sections
+                      - textbox [ref=f4e1032]: "35"
+                  - generic [ref=f4e1034]:
+                    - generic [ref=f4e1035]:
+                      - generic [ref=f4e1037] [cursor=pointer]
+                      - generic [ref=f4e1041] [cursor=pointer]: Bodies & Materials
+                    - generic [ref=f4e1050]:
+                      - generic [ref=f4e1051]:
+                        - generic [ref=f4e1052]: Bodies
+                        - button "CLEAR" [ref=f4e1053] [cursor=pointer]
+                      - list [ref=f4e1054]:
+                        - listitem [ref=f4e1055]:
+                          - generic [ref=f4e1056]:
+                            - generic [ref=f4e1057] [cursor=pointer]
+                            - generic [ref=f4e1061] [cursor=pointer]: "RD K034_SZ04 177 STK L (CDW: Steel Edge)"
+                            - generic [ref=f4e1062] [cursor=pointer]: ×
+                          - generic [ref=f4e1068]:
+                            - generic [ref=f4e1069]: Body name
+                            - textbox [disabled] [ref=f4e1070]: RD K034_SZ04 177 STK L
+                        - listitem [ref=f4e1071]:
+                          - generic [ref=f4e1072]:
+                            - generic [ref=f4e1073] [cursor=pointer]
+                            - generic [ref=f4e1077] [cursor=pointer]: "RD K034_SZ04 177 STK R (CDW: Steel Edge)"
+                            - generic [ref=f4e1078] [cursor=pointer]: ×
+                          - generic [ref=f4e1084]:
+                            - generic [ref=f4e1085]: Body name
+                            - textbox [disabled] [ref=f4e1086]: RD K034_SZ04 177 STK R
+                        - listitem [ref=f4e1087]:
+                          - generic [ref=f4e1088]:
+                            - generic [ref=f4e1089] [cursor=pointer]
+                            - generic [ref=f4e1093] [cursor=pointer]: Part 7 (Poplar - Light)
+                            - generic [ref=f4e1094] [cursor=pointer]: ×
+                          - generic [ref=f4e1100]:
+                            - generic [ref=f4e1101]: Body name
+                            - textbox [disabled] [ref=f4e1102]: Part 7
+                        - listitem [ref=f4e1103]:
+                          - generic [ref=f4e1104]:
+                            - generic [ref=f4e1105] [cursor=pointer]
+                            - generic [ref=f4e1109] [cursor=pointer]: Long_Beech (European Beech)
+                            - generic [ref=f4e1110] [cursor=pointer]: ×
+                          - generic [ref=f4e1116]:
+                            - generic [ref=f4e1117]: Body name
+                            - textbox [disabled] [ref=f4e1118]: Long_Beech
+                        - listitem [ref=f4e1119]:
+                          - generic [ref=f4e1120]:
+                            - generic [ref=f4e1121] [cursor=pointer]
+                            - generic [ref=f4e1125] [cursor=pointer]: "RD K034_SZ04 177 BLG_3D (CPS: P-Tex 2100)"
+                            - generic [ref=f4e1126] [cursor=pointer]: ×
+                          - generic [ref=f4e1132]:
+                            - generic [ref=f4e1133]: Body name
+                            - textbox [disabled] [ref=f4e1134]: RD K034_SZ04 177 BLG_3D
+                        - listitem [ref=f4e1135]:
+                          - generic [ref=f4e1136]:
+                            - generic [ref=f4e1137] [cursor=pointer]
+                            - generic [ref=f4e1141] [cursor=pointer]: "RD K034_SZ04 177 UG_3D (HongTex: EC-DBL-635)"
+                            - generic [ref=f4e1142] [cursor=pointer]: ×
+                          - generic [ref=f4e1148]:
+                            - generic [ref=f4e1149]: Body name
+                            - textbox [disabled] [ref=f4e1150]: RD K034_SZ04 177 UG_3D
+                        - listitem [ref=f4e1151]:
+                          - generic [ref=f4e1152]:
+                            - generic [ref=f4e1153] [cursor=pointer]
+                            - generic [ref=f4e1157] [cursor=pointer]: "RD K034_SZ04 177 Spitze-Mat_3D (Chomarat: RUBAN 7018 F)"
+                            - generic [ref=f4e1158] [cursor=pointer]: ×
+                          - generic [ref=f4e1164]:
+                            - generic [ref=f4e1165]: Body name
+                            - textbox [disabled] [ref=f4e1166]: RD K034_SZ04 177 Spitze-Mat_3D
+                        - listitem [ref=f4e1167]:
+                          - generic [ref=f4e1168]:
+                            - generic [ref=f4e1169] [cursor=pointer]
+                            - generic [ref=f4e1173] [cursor=pointer]: "RD K034_SZ04 177 Ende-Mat_3D (Chomarat: RUBAN 7018 F)"
+                            - generic [ref=f4e1174] [cursor=pointer]: ×
+                          - generic [ref=f4e1180]:
+                            - generic [ref=f4e1181]: Body name
+                            - textbox [disabled] [ref=f4e1182]: RD K034_SZ04 177 Ende-Mat_3D
+                        - listitem [ref=f4e1183]:
+                          - generic [ref=f4e1184]:
+                            - generic [ref=f4e1185] [cursor=pointer]
+                            - generic [ref=f4e1189] [cursor=pointer]: "RD K034_SZ04 177 OFL_3D (Isosport: ICP 5275)"
+                            - generic [ref=f4e1190] [cursor=pointer]: ×
+                          - generic [ref=f4e1196]:
+                            - generic [ref=f4e1197]: Body name
+                            - textbox [disabled] [ref=f4e1198]: RD K034_SZ04 177 OFL_3D
+                        - listitem [ref=f4e1199]:
+                          - generic [ref=f4e1200]:
+                            - generic [ref=f4e1201] [cursor=pointer]
+                            - generic [ref=f4e1205] [cursor=pointer]: "RD K034_SZ04 177 OG_3D (HongTex: EC-DBL-800-30M)"
+                            - generic [ref=f4e1206] [cursor=pointer]: ×
+                          - generic [ref=f4e1212]:
+                            - generic [ref=f4e1213]: Body name
+                            - textbox [disabled] [ref=f4e1214]: RD K034_SZ04 177 OG_3D
+                        - listitem [ref=f4e1215]:
+                          - generic [ref=f4e1216]:
+                            - generic [ref=f4e1217] [cursor=pointer]
+                            - generic [ref=f4e1221] [cursor=pointer]: "RD K034_SZ04 177 SW_L (IMS Plast: CPAN 125 GT2 ABS)"
+                            - generic [ref=f4e1222] [cursor=pointer]: ×
+                          - generic [ref=f4e1228]:
+                            - generic [ref=f4e1229]: Body name
+                            - textbox [disabled] [ref=f4e1230]: RD K034_SZ04 177 SW_L
+                        - listitem [ref=f4e1231]:
+                          - generic [ref=f4e1232]:
+                            - generic [ref=f4e1233] [cursor=pointer]
+                            - generic [ref=f4e1237] [cursor=pointer]: "RD K034_SZ04 177 SW_R (IMS Plast: CPAN 125 GT2 ABS)"
+                            - generic [ref=f4e1238] [cursor=pointer]: ×
+                          - generic [ref=f4e1244]:
+                            - generic [ref=f4e1245]: Body name
+                            - textbox [disabled] [ref=f4e1246]: RD K034_SZ04 177 SW_R
+                        - listitem [ref=f4e1247]:
+                          - generic [ref=f4e1248]:
+                            - generic [ref=f4e1249] [cursor=pointer]
+                            - generic [ref=f4e1253] [cursor=pointer]: "RD K034_SZ04 177_SP_Einlager_3D (CPS: TP455 - 3.0 mm)"
+                            - generic [ref=f4e1254] [cursor=pointer]: ×
+                          - generic [ref=f4e1257]:
+                            - generic [ref=f4e1260]:
+                              - generic [ref=f4e1261]: Body name
+                              - textbox [disabled] [ref=f4e1262]: RD K034_SZ04 177_SP_Einlager_3D
+                            - generic [ref=f4e1268]:
+                              - generic [ref=f4e1269]: Ignore (no stiffness contribution)
+                              - button "Select box focus" [ref=f4e1274] [cursor=pointer]
+                        - listitem [ref=f4e1275]:
+                          - generic [ref=f4e1276]:
+                            - generic [ref=f4e1277] [cursor=pointer]
+                            - generic [ref=f4e1281] [cursor=pointer]: "RD K034_SZ04 177_ED_Einlager_3D (CPS: TP455 - 3.0 mm)"
+                            - generic [ref=f4e1282] [cursor=pointer]: ×
+                          - generic [ref=f4e1285]:
+                            - generic [ref=f4e1288]:
+                              - generic [ref=f4e1289]: Body name
+                              - textbox [disabled] [ref=f4e1290]: RD K034_SZ04 177_ED_Einlager_3D
+                            - generic [ref=f4e1296]:
+                              - generic [ref=f4e1297]: Ignore (no stiffness contribution)
+                              - button "Select box focus" [ref=f4e1302] [cursor=pointer]
+                        - listitem [ref=f4e1303]:
+                          - generic [ref=f4e1304]:
+                            - generic [ref=f4e1305] [cursor=pointer]
+                            - generic [ref=f4e1309] [cursor=pointer]: "RD K034_SZ04 177 Spitzegummi_3D (Semperit: Haberkorn Rubber)"
+                            - generic [ref=f4e1310] [cursor=pointer]: ×
+                          - generic [ref=f4e1316]:
+                            - generic [ref=f4e1317]: Body name
+                            - textbox [disabled] [ref=f4e1318]: RD K034_SZ04 177 Spitzegummi_3D
+                        - listitem [ref=f4e1319]:
+                          - generic [ref=f4e1320]:
+                            - generic [ref=f4e1321] [cursor=pointer]
+                            - generic [ref=f4e1325] [cursor=pointer]: RD K034_SZ04 177 Endegummi_3D (Not assigned)
+                            - generic [ref=f4e1326] [cursor=pointer]: ×
+                          - generic [ref=f4e1329]:
+                            - generic [ref=f4e1332]:
+                              - generic [ref=f4e1333]: Body name
+                              - textbox [disabled] [ref=f4e1334]: RD K034_SZ04 177 Endegummi_3D
+                            - generic [ref=f4e1340]:
+                              - generic [ref=f4e1341]: Ignore (no stiffness contribution)
+                              - button "Select box focus" [ref=f4e1346] [cursor=pointer]
+                      - button "Add Body" [ref=f4e1347] [cursor=pointer]
+                  - generic [ref=f4e1351]:
+                    - generic [ref=f4e1353] [cursor=pointer]
+                    - generic [ref=f4e1357] [cursor=pointer]: Output Options
+                  - generic [ref=f4e1360]:
+                    - generic [ref=f4e1362] [cursor=pointer]
+                    - generic [ref=f4e1369] [cursor=pointer]:
+                      - checkbox "Debug"
+                      - generic [ref=f4e1371]: Debug
+              - generic [ref=f4e1373]:
+                - generic [ref=f4e1378] [cursor=pointer]
+                - button "Final" [ref=f4e1379] [cursor=pointer]
+        - generic [ref=f4e772]:
+          - img [ref=f4e775] [cursor=pointer]
+          - generic [ref=f4e778]:
+            - generic [ref=f4e779] [cursor=pointer]: Setup
+            - generic [ref=f4e785] [cursor=pointer]: Design Master
+            - generic [ref=f4e791] [cursor=pointer]: RD K034 177 VOLUME PRIMITIVE Drawing 1
+            - generic [ref=f4e797] [cursor=pointer]: Parts
+            - generic [ref=f4e803] [cursor=pointer]: Part Drawings
+            - generic [ref=f4e809]: 3D_Ski
+            - generic [ref=f4e815] [cursor=pointer]: Tooling
+            - generic [ref=f4e821] [cursor=pointer]: BeamSimulator
+            - generic [ref=f4e831] [cursor=pointer]: RD K034 177 Aufbau
+            - generic [ref=f4e837] [cursor=pointer]: RD K034 177 Aufbau
+  - alert [ref=f4e1383]:
+    - generic [ref=f4e1388]: Repaired or adjusted 4 body section(s) (duplicate edges, micron gaps from the cut, or a station plane shifted to intersect). See the console.
+    - button "Close" [ref=f4e1390] [cursor=pointer]: ×

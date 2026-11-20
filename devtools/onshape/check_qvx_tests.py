@@ -19,7 +19,7 @@ BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 
 EXPECT = {"t1": 6, "t2": 8, "t3": 4, "t4": 10, "t5": 2, "t6": 2, "t7": 3, "t8": 1, "t9": 13, "t10": 7, "t11": 6, "t12": 1, "t13": 5,
           "t14": 1, "t15": 1, "t16": 0, "t17": 1, "t18": 3, "t19": 2, "t20": 8, "t21": 6,
-          "t22": 1, "t23": 3, "t24": 5, "t25": 1, "t26": 3, "t27": 10, "t28": 5, "t29": 6, "t30": 6, "t31": 5, "t32": 1, "t33": 0,
+          "t22": 1, "t23": 2, "t24": 5, "t25": 1, "t26": 3, "t27": 11, "t28": 5, "t29": 6, "t30": 6, "t31": 5, "t32": 1, "t33": 0,
           "t34": 6, "t35": 2, "t36": 2, "t37": 0, "t38": 16}
 SCRIPT = '''function(context is Context, queries) {
   var out = {};
@@ -37,7 +37,7 @@ raw = c.post(f"{BASE}/featurescript", json_data={"script": SCRIPT})["result"]["v
 got = {m.group(1): int(m.group(2)) for m in re.finditer(r"(\w+) : (-?\d+)", raw)}
 
 fails = 0
-print("solid faces in fixture: %s (expect 16)" % got.get("solidFaces"))
+print("solid faces in fixture: %s (expect 24: 16 + the 8 of the L-shape)" % got.get("solidFaces"))
 for name, st in status.items():
     if st != "OK":
         print("STATUS %-8s %s" % (st, name))
