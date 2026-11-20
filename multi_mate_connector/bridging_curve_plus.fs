@@ -4,6 +4,8 @@ import(path : "onshape/std/path.fs", version : "3095.0");
 import(path : "onshape/std/bridgingCurve.fs", version : "3095.0");
 // IMPORT: mc_core.fs (same document: references, paths, arc length)
 import(path : "0a18eeece6adacc759621422", version : "2095707b9424d45d3bf94814");
+// IMPORT: bridging_curve_plus_icon.svg (feature icon)
+IconNamespace::import(path : "9a0cb4233794456e403f1496", version : "014d2f7de0958ebca210756e");
 
 /**
  * Bridging curve +.
@@ -32,7 +34,7 @@ export enum BcpMatch
     CURVATURE
 }
 
-annotation { "Feature Type Name" : "Bridging curve +",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Bridging curve +",
         "Feature Type Description" : "Draws a smooth curve between two sides, matching position, tangent or curvature like Bridging curve, but you only need to pick the curves or wires. It joins the nearest pair of wire ends and always blends: the tangent continues the way each wire is already heading, never back into it. Sides can also be vertices or mate connectors." }
 export const bridgingCurvePlus = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
