@@ -117,7 +117,12 @@ ARC = sketch("F4 arc sketch", [{"btType": "BTMSketchCurveSegment-155", "entityId
                                 "geometry": {"btType": "BTCurveGeometryCircle-115", "radius": 0.025, "xCenter": 0.025, "yCenter": 0.1,
                                              "xDir": 1.0, "yDir": 0.0, "clockwise": False}}])
 
-SOLID_FACES = "qBodyType(qEverything(EntityType.FACE), BodyType.SOLID)"
+LPTS = [(300, -50), (380, -50), (380, 0), (340, 0), (340, 50), (300, 50)]
+L_SK = sketch("F5 L-shape (sketch)", [seg("l%d" % i, LPTS[i][0] / 1000, LPTS[i][1] / 1000, LPTS[(i + 1) % 6][0] / 1000, LPTS[(i + 1) % 6][1] / 1000) for i in range(6)])
+LSHAPE = extrude("F5 L-shaped prism 20 high (one concave edge at (340,0))", L_SK, "20 mm")
+L_FACES = 'qCreatedBy(makeId("%s"), EntityType.FACE)' % LSHAPE
+# the original 16-face fixture only: the L-shape is used by the face convexity tests
+SOLID_FACES = "qSubtraction(qBodyType(qEverything(EntityType.FACE), BodyType.SOLID), %s)" % L_FACES
 ARC_EDGES = 'qCreatedBy(makeId("%s"), EntityType.EDGE)' % ARC
 
 
@@ -148,7 +153,12 @@ def _defaults():
             q("fltPosVertex"), num("fltPosRadius", "0 mm"), q("fltPosDirection"),
             en("fltGeometryType", "GeometryType", "CYLINDER", NS), en("fltEntityType", "EntityType", "FACE", NS),
             en("fltBodyType", "BodyTypeOptions", "SOLID", NS), en("fltSizeType", "SizeComparisonType", "LARGEST", NS), q("fltSizeReference"),
-            b("fltSizeAllowEqual", False), en("fltConvexity", "EdgeConvexityType", "CONVEX", NS), en("fltEdgeTopology", "EdgeTopology", "ONE_SIDED", NS), flist("fltModifiedBy", []), q("fltSelection")]
+            b("fltSizeAllowEqual", False), en("fltConvexity", "EdgeConvexityType", "CONVEX", NS), en("fltEdgeTopology", "EdgeTopology", "ONE_SIDED", NS), flist("fltModifiedBy", []),
+            q("fltDistRef"), en("fltDistMode", "DistanceMode", "CLOSEST", NS), {"btType": "BTMParameterQuantity-147", "parameterId": "fltDistCount", "expression": "1", "isInteger": True},
+            num("fltDistFrom", "0 mm"), num("fltDistTo", "0 mm"), num("fltDistValue", "0 mm"),
+            q("fltAdjRef"), en("fltAdjKind", "AdjacencyKind", "EDGE", NS), {"btType": "BTMParameterQuantity-147", "parameterId": "fltAdjSteps", "expression": "1", "isInteger": True}, b("fltAdjIncludeRef", False),
+            q("fltAxisRef"), num("fltAxisTol", "0 mm"), num("fltAxisAngleTol", "0 deg"), en("fltFaceConvexity", "FaceConvexity", "CONVEX", NS),
+            q("fltSelection")]
 
 
 def item(params):
@@ -211,3 +221,51 @@ qvx("t19", "Position coincides with ANY of two planes (B top, cylinder top) -> 2
      en("fltPosType", "PositionalDirectionalType", "COINCIDES_WITH_PLANE", NS), q("fltPosPlane", top(B), top(CYL))])
 qvx("t20", "Combine ANY: keep direction parallel Z, keep geometry CYLINDER -> 8", SOLID_FACES, direction(Z_REF), geometry("CYLINDER"), combine="ANY")
 qvx("t21", "Combine ANY, then reject CYLINDER -> 6", SOLID_FACES, direction(Z_REF), geometry("CYLINDER"), geometry("CYLINDER", mode="REJECT"), combine="ANY")
+
+def flt(kind, **kw):
+    return [en("fltMode", "FilterMode", kw.pop("mode", "KEEP"), NS), en("fltType", "FilterType", kind, NS)] + list(kw.values())
+
+
+def dist(ref, how, mode="KEEP", count=None, value=None, value2=None):
+    p = [en("fltMode", "FilterMode", mode, NS), en("fltType", "FilterType", "DISTANCE", NS), q("fltDistRef", ref), en("fltDistMode", "DistanceMode", how, NS)]
+    if count is not None:
+        p.append({"btType": "BTMParameterQuantity-147", "parameterId": "fltDistCount", "expression": str(count), "isInteger": True})
+    if how == "BETWEEN_DISTANCES":
+        p += [num("fltDistFrom", value), num("fltDistTo", value2)]
+    elif value is not None:
+        p.append(num("fltDistValue", value))
+    return p
+
+
+def adjacent(ref, kind="EDGE", steps=1, include=False):
+    return [en("fltMode", "FilterMode", "KEEP", NS), en("fltType", "FilterType", "ADJACENT", NS), q("fltAdjRef", ref), en("fltAdjKind", "AdjacencyKind", kind, NS),
+            {"btType": "BTMParameterQuantity-147", "parameterId": "fltAdjSteps", "expression": str(steps), "isInteger": True}, b("fltAdjIncludeRef", include)]
+
+
+def coaxial(ref):
+    return [en("fltMode", "FilterMode", "KEEP", NS), en("fltType", "FilterType", "COAXIAL", NS), q("fltAxisRef", ref), num("fltAxisTol", "0 mm"), num("fltAxisAngleTol", "0 deg")]
+
+
+def face_convexity(kind):
+    return [en("fltMode", "FilterMode", "KEEP", NS), en("fltType", "FilterType", "FACE_CONVEXITY", NS), en("fltFaceConvexity", "FaceConvexity", kind, NS)]
+
+
+# Distances from B's +X face (x = 120): A's -X face is 150 away, A's -Y and +Y faces sqrt(90^2+10^2) = 90.55, the cylinder's 3 faces 70,
+# B's -X face 20, B's other four faces touch it (0).
+qvx("t22", "Distance furthest 1 from B +X face -> 1 (A's -X face, 150 mm)", SOLID_FACES, dist(X_REF, "FURTHEST", count=1))
+qvx("t23", "Distance furthest 2 from B +X face -> 3 (A's -X, then A's -Y and +Y tied at 90.55)", SOLID_FACES, dist(X_REF, "FURTHEST", count=2))
+qvx("t24", "Distance nearer than 25 mm from B +X face -> 5 (B's other five faces)", SOLID_FACES, dist(X_REF, "NEARER_THAN", value="25 mm"))
+qvx("t25", "Distance farther than 100 mm from B +X face -> 1 (A's -X)", SOLID_FACES, dist(X_REF, "FARTHER_THAN", value="100 mm"))
+qvx("t26", "Distance between 60 and 80 mm from B +X face -> 3 (the cylinder's faces at 70)", SOLID_FACES, dist(X_REF, "BETWEEN_DISTANCES", value="60 mm", value2="80 mm"))
+qvx("t27", "Reject distance nearer than 25 mm from B +X face -> 10 (16 - 5 - the face itself = 10)", SOLID_FACES, dist(X_REF, "NEARER_THAN", mode="REJECT", value="25 mm"))
+qvx("t28", "Adjacent (share an edge) to A's top face -> 5 (-X, +X, -Y, +Y, fillet)", SOLID_FACES, adjacent(top(A)))
+qvx("t29", "Adjacent to A's top face, include the reference -> 6", SOLID_FACES, adjacent(top(A), include=True))
+qvx("t30", "Adjacent to A's top face, 2 steps -> 6 (the five plus A's bottom)", SOLID_FACES, adjacent(top(A), steps=2))
+qvx("t31", "Adjacent (share a vertex) to A's top face -> 5", SOLID_FACES, adjacent(top(A), kind="VERTEX"))
+qvx("t32", "Coaxial with the cylinder's top circular edge -> 1 (its side face)", SOLID_FACES, coaxial('qContainsPoint(qEverything(EntityType.EDGE), vector(210, 0, 30) * millimeter)'))
+qvx("t33", "Coaxial with the fillet face -> 0 (nothing else shares its axis)", SOLID_FACES, coaxial(face_at(FIL, 28.5355, 18.5355, 10)))
+qvx("t34", "Face convexity CONVEX on the L-shape -> 6 (all but the two faces at the concave edge)", L_FACES, face_convexity("CONVEX"))
+qvx("t35", "Face convexity HAS_CONCAVE on the L-shape -> 2", L_FACES, face_convexity("HAS_CONCAVE"))
+qvx("t36", "Face convexity MIXED on the L-shape -> 2", L_FACES, face_convexity("MIXED"))
+qvx("t37", "Face convexity CONCAVE on the L-shape -> 0", L_FACES, face_convexity("CONCAVE"))
+qvx("t38", "Face convexity CONVEX on the 16-face fixture -> 16 (every sharp edge is convex)", SOLID_FACES, face_convexity("CONVEX"))

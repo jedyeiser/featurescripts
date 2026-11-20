@@ -809,6 +809,40 @@ export const queryVariable = defineFeature(function(context is Context, id is Id
                 const evaluatedEntities = evaluateQuery(context, query);
                 if (size(evaluatedEntities) > 0)
                 {
+                    // Last writer wins: a saved name must label only the entities this definition resolves to.
+                    // Attributes are sticky (they survive redefinition of the variable and follow copies,
+                    // splits and mirrors of the tagged entity), so strip this name from every entity that
+                    // still carries it before tagging. Without this, a name saved earlier, or inherited
+                    // from an ancestor wire, loads back in a derived studio as extra entities.
+                    const staleCarriers = evaluateQuery(context, qHasAttribute(qUnion([
+                            qEverything(EntityType.BODY),
+                            qEverything(EntityType.FACE),
+                            qEverything(EntityType.EDGE),
+                            qEverything(EntityType.VERTEX)]), QUERY_VARIABLE_ATTRIBUTE_NAME));
+                    for (var carrier in staleCarriers)
+                    {
+                        const carrierNames = getAttribute(context, {
+                            "entity" : carrier,
+                            "name" : QUERY_VARIABLE_ATTRIBUTE_NAME
+                        });
+                        if (carrierNames is array && indexOf(carrierNames, definition.name) != -1)
+                        {
+                            var keptNames = [];
+                            for (var carrierName in carrierNames)
+                            {
+                                if (carrierName != definition.name)
+                                {
+                                    keptNames = append(keptNames, carrierName);
+                                }
+                            }
+                            setAttribute(context, {
+                                    "entities" : carrier,
+                                    "name" : QUERY_VARIABLE_ATTRIBUTE_NAME,
+                                    "attribute" : size(keptNames) == 0 ? undefined : keptNames
+                                });
+                        }
+                    }
+
                     // For each entity, append this QV name to the list of QV names
                     for (var entity in evaluatedEntities)
                     {

@@ -66,6 +66,9 @@ export enum FilterType
     FACE_CONVEXITY
 }
 
+/** A length bound whose minimum is zero (std NONNEGATIVE_LENGTH_BOUNDS starts at 0.01 mm). */
+const QVX_ZERO_OK_LENGTH_BOUNDS = { (meter) : [0, 0.001, 500], (millimeter) : 1.0 } as LengthBoundSpec;
+
 /**
  * How the Distance filter uses the distance from the reference.
  */
@@ -273,15 +276,15 @@ export predicate filterPredicate(flt is map)
         else if (flt.fltDistMode == DistanceMode.BETWEEN_DISTANCES)
         {
             annotation { "Name" : "From distance", "Default" : 0 * meter }
-            isLength(flt.fltDistFrom, NONNEGATIVE_LENGTH_BOUNDS);
+            isLength(flt.fltDistFrom, QVX_ZERO_OK_LENGTH_BOUNDS);
 
             annotation { "Name" : "To distance", "Default" : 0 * meter }
-            isLength(flt.fltDistTo, NONNEGATIVE_LENGTH_BOUNDS);
+            isLength(flt.fltDistTo, QVX_ZERO_OK_LENGTH_BOUNDS);
         }
         else
         {
             annotation { "Name" : "Distance", "Default" : 0 * meter }
-            isLength(flt.fltDistValue, NONNEGATIVE_LENGTH_BOUNDS);
+            isLength(flt.fltDistValue, QVX_ZERO_OK_LENGTH_BOUNDS);
         }
     }
     else if (flt.fltType == FilterType.ADJACENT)
@@ -304,7 +307,7 @@ export predicate filterPredicate(flt is map)
         flt.fltAxisRef is Query;
 
         annotation { "Name" : "Distance tolerance", "Description" : "How far an entity's axis may sit off the reference axis.", "Default" : 0 * meter }
-        isLength(flt.fltAxisTol, NONNEGATIVE_LENGTH_BOUNDS);
+        isLength(flt.fltAxisTol, QVX_ZERO_OK_LENGTH_BOUNDS);
 
         annotation { "Name" : "Angle tolerance", "Default" : 0 * degree }
         isAngle(flt.fltAxisAngleTol, ANGLE_STRICT_180_BOUNDS);
