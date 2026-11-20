@@ -135,15 +135,26 @@ MC = post({"btType": "BTMFeature-134", "featureType": "mateConnectorPlus", "name
     num("modOffsetX", "0 mm"), num("modOffsetY", "0 mm"), num("modOffsetZ", "0 mm"), num("modRotX", "0 deg"), num("modRotY", "0 deg"), num("modRotZ", "0 deg")]})
 
 
-def bcp(name, start, end, start_match="TANGENCY", end_match="TANGENCY"):
+def bcp(name, start, end, start_match="TANGENCY", end_match="TANGENCY", edit=None, start_reverse=False):
+    """edit: None, or {"startMagnitude": 2, "endMagnitude": 0.5, ...} (the Edit control points group)."""
     p = [q("startSide", start), en("startMatch", "BcpMatch", start_match, NS_B)]
     if start_match != "POSITION":
-        p += [b("startReverse", False), num("startMagnitude", "1")]
+        p.append(b("startReverse", start_reverse))
     p += [q("endSide", end), en("endMatch", "BcpMatch", end_match, NS_B)]
     if end_match != "POSITION":
-        p += [b("endReverse", False), num("endMagnitude", "1")]
+        p.append(b("endReverse", False))
+    if start_match != "POSITION" or end_match != "POSITION":
+        p.append(b("editControlPoints", bool(edit)))
+        if edit:
+            if start_match != "POSITION":
+                p.append(num("startMagnitude", str(edit.get("startMagnitude", 1))))
+                if start_match == "CURVATURE":
+                    p.append(num("startCurvatureOffset", str(edit.get("startCurvatureOffset", 1))))
+            if end_match != "POSITION":
+                p.append(num("endMagnitude", str(edit.get("endMagnitude", 1))))
+                if end_match == "CURVATURE":
+                    p.append(num("endCurvatureOffset", str(edit.get("endCurvatureOffset", 1))))
     return post({"btType": "BTMFeature-134", "featureType": "bridgingCurvePlus", "name": name, "namespace": NS_B, "parameters": p})
-
 
 bcp("B1 A to B, tangent both -> S curve (100,0)-(200,50), heading +X at both ends", edges_of(A), edges_of(B))
 bcp("B2 A to Brev (drawn the other way), tangent both -> (100,0)-(200,100)", edges_of(A), edges_of(BREV))
@@ -154,3 +165,6 @@ bcp("B6 mate connector to B, tangent both -> from (100,300) heading +X", 'qCreat
 bcp("B7 A to W3 (3-edge wire), tangent both -> nearest end (400,0)", edges_of(A), edges_of(W3))
 bcp("B8 A to SP (B-spline), tangent both -> nearest end (400,200)", edges_of(A), edges_of(SP).replace('makeId("%s")' % SP, 'makeId("%s")' % SP))
 bcp("B9 vertex to B, tangent -> ERROR (a vertex has no tangent)", 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % VTX, edges_of(B))
+bcp("B10 A to B, tangent both, Edit control points: magnitudes 2 and 0.5 -> same ends and headings as B1, a different shape", edges_of(A), edges_of(B), edit={"startMagnitude": 2, "endMagnitude": 0.5})
+bcp("B11 A to B, start tangent reversed -> starts heading -X (a deliberate loop)", edges_of(A), edges_of(B), start_reverse=True)
+bcp("B12 A to B, curvature both, curvature offsets 0.5 -> degree 5, same ends", edges_of(A), edges_of(B), "CURVATURE", "CURVATURE", edit={"startCurvatureOffset": 0.5, "endCurvatureOffset": 0.5})

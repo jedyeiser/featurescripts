@@ -79,5 +79,35 @@ check("M4 toward the reference point: every Z has +Y", all(z[1] > 0.99 for z in 
 check("M5 flip: every Z opposite to M1", len(zs("M5")) == len(zs("M1")) and all(abs(a[1] + b[1] - 0) < 1e-3 and a[1] * b[1] < 0 for a, b in zip(zs("M5"), zs("M1"))))
 check("M6 fixed direction: every Z = (0,0,1)", all(abs(z[2] - 1) < 1e-3 for z in zs("M6")), str(zs("M6")))
 check("M7 reversed: first connector at x = 390", near(xs("M7"), [390, 295, 200, 105, 10]), str(xs("M7")))
+import math
+
+
+def unit(z):
+    return abs(math.sqrt(sum(a * a for a in z)) - 1) < 1e-3
+
+
+def radial(case, cx, cy):
+    out = []
+    for r in result.get(case, []):
+        dx, dy = r[0] - cx, r[1] - cy
+        n = math.hypot(dx, dy)
+        out.append((dx / n, dy / n))
+    return out
+
+
+rz = zs("M8")
+check("M8 cylinder: every Z radial (parallel to the radius), Z.z = 0",
+      len(rz) == 5 and all(abs(abs(z[0] * u[0] + z[1] * u[1]) - 1) < 1e-3 and abs(z[2]) < 1e-3 for z, u in zip(rz, radial("M8", 1000, 0))), str(rz))
+check("M8 no sign jumps", all(d > 0 for d in dots("M8")))
+rz = zs("M9")
+check("M9 cone: Z = 0.857 radial + 0.514 up (either sign)",
+      len(rz) == 5 and all(abs(abs(z[0] * u[0] * 0.857 + z[1] * u[1] * 0.857 + z[2] * 0.514) - 1) < 0.01 for z, u in zip(rz, radial("M9", 2000, 0))), str(rz))
+check("M9 no sign jumps", all(d > 0 for d in dots("M9")))
+rz = zs("M10")
+check("M10 extruded B-spline wall: unit Z, Z.z = 0", len(rz) == 5 and all(unit(z) and abs(z[2]) < 1e-3 for z in rz), str(rz))
+check("M10 no sign jumps", all(d > 0 for d in dots("M10")))
+rz = zs("M11")
+check("M11 lofted B-spline surface: unit Z", len(rz) == 5 and all(unit(z) for z in rz), str(rz))
+check("M11 no sign jumps", all(d > 0 for d in dots("M11")))
 print("%d failure(s)" % fails)
 sys.exit(1 if fails else 0)

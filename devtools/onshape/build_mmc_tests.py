@@ -75,6 +75,11 @@ def seg(eid, x0, y0, x1, y1):
             "geometry": {"btType": "BTCurveGeometryLine-117", "pntX": x0, "pntY": y0, "dirX": (x1 - x0) / L, "dirY": (y1 - y0) / L}}
 
 
+def arc(eid, cx, cy, r, a0, a1):
+    return {"btType": "BTMSketchCurveSegment-155", "entityId": eid, "startPointId": eid + ".start", "endPointId": eid + ".end",
+            "startParam": a0, "endParam": a1, "isConstruction": False,
+            "geometry": {"btType": "BTCurveGeometryCircle-115", "radius": r, "xCenter": cx, "yCenter": cy, "xDir": 1.0, "yDir": 0.0, "clockwise": False}}
+
 def point(eid, x, y):
     return {"btType": "BTMSketchPoint-158", "entityId": eid, "isConstruction": False, "x": x, "y": y}
 
@@ -106,11 +111,26 @@ REF = 'qCreatedBy(makeId("%s"), EntityType.VERTEX)' % REF_SK
 TOP = 'qCreatedBy(makeId("Top"), EntityType.FACE)'
 
 
-def mmc(name, count=5, spacing="INCLUDE_ENDS", correction="CONSISTENT", source="SURFACE", reverse=False, flip=False):
-    params = [q("curves", CURVE), num("count", str(count), True), en("spacingMode", "MmcSpacing", spacing, NS), b("reverseCurve", reverse),
+
+# ---- developable and B-spline surfaces (shared fixtures, see mc_surface_fixtures.py) ----
+from devtools.onshape import mc_surface_fixtures as fx  # noqa: E402
+
+SPECS = {x.get("featureType"): x for x in c.get(f"{BASE}/featurespecs")["featureSpecs"]}
+
+
+def sketch_on(plane, name, entities):
+    return post({"btType": "BTMSketch-151", "featureType": "newSketch", "name": name,
+                 "parameters": [q("sketchPlane", 'qCreatedBy(makeId("%s"), EntityType.FACE)' % plane)], "entities": entities, "constraints": []})
+
+
+SURF = fx.build({"post": post, "sketch": sketch, "sketch_on": sketch_on, "q": q, "en": en, "num": num, "seg": seg, "arc": arc,
+                 "point": point, "mm": mm, "SPECS": SPECS})
+
+def mmc(name, count=5, spacing="INCLUDE_ENDS", correction="CONSISTENT", source="SURFACE", reverse=False, flip=False, curve=None, faces=None):
+    params = [q("curves", curve or CURVE), num("count", str(count), True), en("spacingMode", "MmcSpacing", spacing, NS), b("reverseCurve", reverse),
               en("normalSource", "MmcNormalSource", source, NS)]
     if source == "SURFACE":
-        params += [q("normalFaces", WALLS), en("normalCorrection", "MmcNormalCorrection", correction, NS)]
+        params += [q("normalFaces", faces or WALLS), en("normalCorrection", "MmcNormalCorrection", correction, NS)]
         if correction == "TOWARD_POINT":
             params.append(q("referencePoint", REF))
     else:
@@ -126,3 +146,13 @@ mmc("M4 5 toward a reference point at y = 500 -> every Z has +Y", correction="TO
 mmc("M5 5 consistent, Flip -> every Z opposite to M1", flip=True)
 mmc("M6 5 fixed direction (Top normal) -> every Z = (0,0,1)", source="DIRECTION")
 mmc("M7 5 consistent, reverse curve -> first connector at x = 390", reverse=True)
+
+CYL_CURVE = sketch("CYLCURVE arc centre (1000,0) r 120", [arc("a", *mm(1000, 0, 120), 0.0, math.pi / 2)])
+CONE_CURVE = sketch("CONECURVE arc centre (2000,0) r 110", [arc("a", *mm(2000, 0, 110), 0.0, math.pi / 2)])
+SPEX_CURVE = sketch("SPEXCURVE line (3000,-10)-(3150,-10)", [seg("l", *mm(3000, -10, 3150, -10))])
+LOFT_CURVE = sketch("LOFTCURVE line (4000,-15)-(4150,-15)", [seg("l", *mm(4000, -15, 4150, -15))])
+e = lambda sk: 'qCreatedBy(makeId("%s"), EntityType.EDGE)' % sk
+mmc("M8 cylinder (developable): 5 on a concentric arc -> every Z radial, Z.z = 0", curve=e(CYL_CURVE), faces=SURF["CYL"])
+mmc("M9 cone (developable): 5 on a concentric arc -> Z = outward-up cone normal (0.857 radial, 0.514 up)", curve=e(CONE_CURVE), faces=SURF["CONE"])
+mmc("M10 extruded B-spline wall (developable): 5 along a line -> every Z horizontal, no sign jumps", curve=e(SPEX_CURVE), faces=SURF["SPEX"])
+mmc("M11 lofted B-spline surface: 5 along a line -> unit Z, no sign jumps", curve=e(LOFT_CURVE), faces=SURF["LOFT"])

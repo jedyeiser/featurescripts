@@ -121,6 +121,28 @@ O_MC = post({"btType": "BTMFeature-134", "featureType": "mateConnector", "name":
     en("entityInferenceType", "EntityInferenceType", "POINT") | {"namespace": ""}, b("allowOwnerEntity", True), b("requireOwnerPart", False)]})
 
 
+
+# ---- developable and B-spline surfaces (shared fixtures, see mc_surface_fixtures.py) ----
+from devtools.onshape import mc_surface_fixtures as fx  # noqa: E402
+
+SPECS = {x.get("featureType"): x for x in c.get(f"{BASE}/featurespecs")["featureSpecs"]}
+
+
+def sketch_on(plane, name, entities):
+    return post({"btType": "BTMSketch-151", "featureType": "newSketch", "name": name,
+                 "parameters": [q("sketchPlane", 'qCreatedBy(makeId("%s"), EntityType.FACE)' % plane)], "entities": entities, "constraints": []})
+
+
+SURF = fx.build({"post": post, "sketch": sketch, "sketch_on": sketch_on, "q": q, "en": en, "num": num, "seg": seg, "arc": arc,
+                 "point": point, "mm": mm, "SPECS": SPECS})
+SURF_PTS = sketch("Surface test points PC (1084.85,84.85) PK (2077.78,77.78) PS (3075,-20) PL (4075,-20)",
+                  [point("c", *mm(1084.85, 84.85)), point("k", *mm(2077.78, 77.78)), point("s", *mm(3075, -20)), point("l", *mm(4075, -20))])
+
+
+def spt(name):
+    pos = {"PC": (1084.85, 84.85), "PK": (2077.78, 77.78), "PS": (3075, -20), "PL": (4075, -20)}[name]
+    return 'qContainsPoint(qCreatedBy(makeId("%s"), EntityType.VERTEX), vector(%s, %s, 0) * millimeter)' % (SURF_PTS, pos[0], pos[1])
+
 def pt(name):
     pos = {"P": (100, 80), "Q": (300, 30), "R": (556.57, 56.57), "O": (0, 0)}[name]
     return 'qContainsPoint(qCreatedBy(makeId("%s"), EntityType.VERTEX), vector(%s, %s, 0) * millimeter)' % (PTS_SK, pos[0], pos[1])
@@ -160,7 +182,7 @@ def mcp(name, origin, z=None, x=None, mode="NEW", move=(0, 0, 0), rot=(0, 0, 0),
             out += [num(prefix + "VecX", str(spec[1])), num(prefix + "VecY", str(spec[2])), num(prefix + "VecZ", str(spec[3]))]
         else:
             out.append(q(prefix + "Geometry", spec[1]))
-            out.append(q(prefix + "Hint"))
+            out.append(q(prefix + "Hint", spec[2]) if len(spec) > 2 else q(prefix + "Hint"))
         return out
 
     p += axis("z", z or ("WORLD", "Z_AXIS"), "McpAxisType") + [b("zFlip", False)]
@@ -186,3 +208,10 @@ mcp("C12 point P, Z world Z, X vector (0,0,1) -> ERROR (X parallel to Z)", ("POI
 mcp("C13 build at P, side 20 -> 1 surface body, 3 faces of 400 mm2", ("POINT", pt("P")), mode="BUILD", extra=[num("buildLength", "20 mm")])
 mcp("C14 transform BOX from O to the frame at P -> box at (100,80,0)-(110,90,10)", ("POINT", pt("P")), mode="TRANSFORM",
     extra=[q("fromConnector", 'qCreatedBy(makeId("%s"), EntityType.BODY)' % O_MC), q("transformBodies", 'qCreatedBy(makeId("%s"), EntityType.BODY)' % BOX)])
+
+mcp("C15 cylinder face nearest PC, Z = face normal -> (1070.71,70.71,0), Z radial", ("FACE", SURF["CYL"], spt("PC")), z=("NORMAL", SURF["CYL"]))
+mcp("C16 cone face nearest PK, Z = face normal -> (2070.71,70.71,0), Z = 0.857 radial + 0.514 up", ("FACE", SURF["CONE"], spt("PK")), z=("NORMAL", SURF["CONE"]))
+mcp("C17 B-spline wall nearest PS, Z = face normal -> unit Z, horizontal", ("FACE", SURF["SPEX"], spt("PS")), z=("NORMAL", SURF["SPEX"]))
+mcp("C18 lofted B-spline surface nearest PL, Z = face normal -> unit Z", ("FACE", SURF["LOFT"], spt("PL")), z=("NORMAL", SURF["LOFT"]))
+mcp("C19 lofted surface nearest PL, Z = tangent with direction hint Top normal -> unit Z square to C18's", ("FACE", SURF["LOFT"], spt("PL")),
+    z=("TANGENT", SURF["LOFT"], 'qCreatedBy(makeId("Top"), EntityType.FACE)'))
