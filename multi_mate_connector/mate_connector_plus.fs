@@ -103,12 +103,6 @@ export enum McpWorldAxis
     annotation { "Name" : "Z" }
     Z_AXIS
 }
-    X_AXIS,
-    annotation { "Name" : "Y" }
-    Y_AXIS,
-    annotation { "Name" : "Z" }
-    Z_AXIS
-}
 
 const MCP_EDGE_DISTANCE_BOUNDS = { (meter) : [0, 0.01, 500], (centimeter) : 1.0, (millimeter) : 10.0, (inch) : 0.4 } as LengthBoundSpec;
 const MCP_OFFSET_BOUNDS = { (meter) : [-500, 0, 500], (centimeter) : 0.0, (millimeter) : 0.0, (inch) : 0.0 } as LengthBoundSpec;
