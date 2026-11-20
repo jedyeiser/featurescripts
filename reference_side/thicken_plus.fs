@@ -30,6 +30,19 @@ IconNamespace::import(path : "b485aa90a94179256b9b5aca", version : "95d6a7e02818
  * through the boolean, so it still resolves when the bodies merge into a part.
  */
 
+/** Which cap faces Thicken+ deletes after the thicken, leaving an open sheet (the periphery surface). */
+export enum ThickenPlusDeleteCaps
+{
+    annotation { "Name" : "None" }
+    NONE,
+    annotation { "Name" : "Toward reference" }
+    TOWARD,
+    annotation { "Name" : "Away from reference" }
+    AWAY,
+    annotation { "Name" : "Both" }
+    BOTH
+}
+
 /** Face samples per parameter direction for the curvature check. */
 const CURVATURE_SAMPLES = 9;
 
@@ -67,6 +80,10 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
         {
             annotation { "Name" : "Output name", "Description" : "Optional. Names the new bodies; leave empty for the default names." }
             definition.outputName is string;
+
+            annotation { "Name" : "Delete caps", "Default" : ThickenPlusDeleteCaps.NONE,
+                        "Description" : "Delete the cap face(s) after the thicken. The result is an open sheet: with both caps gone, the periphery (side faces) of the input, usable for trimming." }
+            definition.deleteCaps is ThickenPlusDeleteCaps;
         }
 
         booleanStepScopePredicate(definition);
@@ -189,6 +206,32 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
 
         processNewBodyIfNeeded(context, id, definition, thickenAll);
 
+        // Delete the chosen caps (New only). leaveOpen: the solid becomes an open sheet, no healing. The tracked cap
+        // queries resolve to nothing afterwards, so the published towardFaces / awayFaces are empty for a deleted cap.
+        if (definition.operationType == NewBodyOperationType.NEW && definition.deleteCaps != ThickenPlusDeleteCaps.NONE)
+        {
+            var capFaces = [];
+            if (definition.deleteCaps == ThickenPlusDeleteCaps.TOWARD || definition.deleteCaps == ThickenPlusDeleteCaps.BOTH)
+            {
+                capFaces = append(capFaces, qEntityFilter(outputs.toward, EntityType.FACE));
+            }
+            if (definition.deleteCaps == ThickenPlusDeleteCaps.AWAY || definition.deleteCaps == ThickenPlusDeleteCaps.BOTH)
+            {
+                capFaces = append(capFaces, qEntityFilter(outputs.away, EntityType.FACE));
+            }
+            const capQuery = qUnion(capFaces);
+            if (isQueryEmpty(context, capQuery))
+            {
+                throw regenError("The cap faces to delete could not be found.", ["deleteCaps"]);
+            }
+            opDeleteFace(context, id + "deleteCaps", {
+                        "deleteFaces" : capQuery,
+                        "includeFillet" : false,
+                        "capVoid" : false,
+                        "leaveOpen" : true
+                    });
+        }
+
         // Only new bodies: with Add / Remove / Intersect the result is a part the user already has.
         if (definition.operationType == NewBodyOperationType.NEW && definition.outputName != "")
         {
@@ -214,6 +257,7 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
         "swapSides" : false,
         "keepTools" : false,
         "outputName" : "",
+        "deleteCaps" : ThickenPlusDeleteCaps.NONE,
         "checkCurvature" : true,
         "debugPrint" : false
     });
