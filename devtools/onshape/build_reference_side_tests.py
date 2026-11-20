@@ -1,4 +1,4 @@
-"""Build the Reference_Side test cases as real features in the "Reference side tests" Part Studio (upsert by
+﻿"""Build the Reference_Side test cases as real features in the "Reference side tests" Part Studio (upsert by
 name). Replaces the old reference_side_tests.fs harness: every fixture and every case is a feature in the tree,
 named with its expected result. Checked by check_reference_side_tests.py.
 
@@ -350,6 +350,18 @@ thicken("T6 Thicken+ 5 mm up from the cube top, Add into the cube -> 1 part, vol
     q("sideReference", ref_front("T6 reference point (10600, 0, 100)", x0, 100)),
     num("thicknessToward", "5 mm"), num("thicknessAway", "0 mm"),
     b("defaultScope", False), q("booleanScope", body(t))])
+
+# Delete caps (2026-11-20): one 100 x 100 sheet at z 50, reference above, 5 toward + 3 away -> solid z 47..55
+for n, (caps, want) in enumerate([("TOWARD", "5 faces, area 13200, no face at z 55"), ("AWAY", "5 faces, area 13200, no face at z 47"),
+                                  ("BOTH", "4 side faces only, area 3200")]):
+    tag = "TD%d" % (1 + n)
+    x0 = 20000 + 400 * n
+    top = sheet("%s sheet z 50, x %d..%d" % (tag, x0 - 50, x0 + 50), [(x0 - 50, 50), (x0 + 50, 50)])
+    thicken("%s Thicken+ delete caps %s, 5 toward 3 away -> open sheet: %s" % (tag, caps, want), [
+        en("operationType", "NewBodyOperationType", "NEW", NS["thicken_plus"]), q("entities", body(top)),
+        q("sideReference", ref_front("%s reference point (%d, 0, 100)" % (tag, x0), x0, 100)),
+        num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"),
+        en("deleteCaps", "ThickenPlusDeleteCaps", caps, NS["thicken_plus"])])
 
 
 # ============================================================================

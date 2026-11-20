@@ -10,185 +10,239 @@ IconNamespace::import(path : "9a0cb4233794456e403f1496", version : "014d2f7de095
 /**
  * Bridging curve +.
  *
- * Works like Onshape's Bridging curve (a curve between two sides that matches position, tangent or curvature at each end,
- * built with the same control-point solver, with the same highlighted result, control-point display and draggable
- * manipulators), with two improvements:
+ * Onshape's Bridging curve, unchanged in what you can pick (vertices, mate connectors, interior positions on edges, faces as
+ * tangency references, tangency angles, G0 to G3, magnitudes and offsets), plus a "Choose ends" option for sides that are
+ * open curves or wires:
  *
- *  1. Pick just curves. A side may be edges, a whole wire, a vertex or a mate connector. When a side is edges or a wire the
- *     curve is joined to the END of that wire, and the ends are chosen as the pair that is nearest each other (a wire has
- *     two ends, so there are up to four pairs). The edges of a side must form one chain.
- *  2. The tangent always blends. At the end of a wire the tangent is the direction the wire is already heading as it leaves
- *     the end (outward along the wire), so the bridge continues the wire; it is never reversed into it. The std feature
- *     picks the direction from an end-to-end guess in its dialog only. A mate connector uses its Z axis, turned to point
- *     toward the other side. "Reverse" turns a tangent around on purpose.
+ *  - As selected: exactly the standard Bridging curve.
+ *  - Nearest pair of wire ends: a side may be edges or a whole wire; the bridge joins the pair of open ends (one per side)
+ *    that are nearest each other.
+ *  - Ends nearest an attractor point: the bridge joins, on each open side, the end nearest the attractor point (a vertex,
+ *    sketch point or mate connector). Put the point near the two ends you want bridged.
  *
- * Curvature continuity uses the curvature of the wire's end edge (a line gives zero curvature, so it behaves as tangent).
- *
- * Edit control points: a magnitude (how far the bridge follows the tangent) and, for curvature, a curvature offset, per
- * side. Each has a draggable manipulator on the control polygon; dragging a magnitude through zero reverses the tangent.
+ * In the last two modes the feature picks the end vertex and passes the end edge and vertex to the standard Bridging curve,
+ * so the curve is built by the same solver. It also points each tangent OUT of its wire (the bridge continues the wire, whichever
+ * way the wire was drawn); "Opposite direction" reverses that on purpose. A mate connector's Z axis is turned toward the other
+ * side. A side that is a vertex or mate connector is used as is. Interior edge positions are not offered in these two modes.
  */
 
-export enum BcpMatch
+export enum BcpEndChoice
 {
-    annotation { "Name" : "Position (G0)" }
-    POSITION,
-    annotation { "Name" : "Tangent (G1)" }
-    TANGENCY,
-    annotation { "Name" : "Curvature (G2)" }
-    CURVATURE
+    annotation { "Name" : "As selected (standard)" }
+    STANDARD,
+    annotation { "Name" : "Nearest pair of wire ends" }
+    NEAREST_PAIR,
+    annotation { "Name" : "Ends nearest an attractor point" }
+    ATTRACTOR
 }
 
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Bridging curve +",
-        "Feature Type Description" : "Draws a smooth curve between two sides, matching position, tangent or curvature like Bridging curve, but you only need to pick the curves or wires. It joins the nearest pair of wire ends and always blends: the tangent continues the way each wire is already heading, never back into it. Sides can also be vertices or mate connectors. Edit control points shows draggable manipulators for the magnitude and curvature of each end.",
+        "Feature Type Description" : "Bridging curve with a choice of which wire ends to bridge. As selected works exactly like Bridging curve (vertices, mate connectors, interior edge positions, faces for tangency, angles, G0 to G3). Nearest pair of wire ends and Ends nearest an attractor point let you pick whole curves or wires and choose the open ends by distance, and always make the bridge continue each wire outward.",
+        "Editing Logic Function" : "bridgingCurvePlusEditingLogic",
         "Manipulator Change Function" : "bridgingCurvePlusManipulator",
         "UIHint" : UIHint.NO_PREVIEW_PROVIDED }
 export const bridgingCurvePlus = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Start", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR,
-                    "Description" : "A curve or wire (the bridge joins one of its ends), a vertex or a mate connector. Edges must form one chain." }
-        definition.startSide is Query;
+        annotation { "Name" : "Choose ends", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : BcpEndChoice.STANDARD,
+                    "Description" : "As selected: like Bridging curve. Nearest pair: for curves or wires, join the nearest open ends. Attractor: on each curve or wire, join the end nearest the attractor point." }
+        definition.endChoice is BcpEndChoice;
 
-        annotation { "Name" : "Match", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : BcpMatch.TANGENCY,
-                    "Description" : "Position: the bridge only meets the end. Tangent: it leaves the end along the curve's direction. Curvature: it also matches the end's curvature." }
-        definition.startMatch is BcpMatch;
-
-        if (definition.startMatch != BcpMatch.POSITION)
+        if (definition.endChoice == BcpEndChoice.ATTRACTOR)
         {
-            annotation { "Name" : "Reverse tangent", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false,
-                        "Description" : "Turn the start tangent around. The default always continues the curve; reversing makes a loop or cusp on purpose." }
-            definition.startReverse is boolean;
+            annotation { "Name" : "Attractor point", "Description" : "A vertex, sketch point or mate connector. Each open curve or wire is joined at the end nearest this point.",
+                        "Filter" : EntityType.VERTEX || BodyType.MATE_CONNECTOR, "MaxNumberOfPicks" : 1 }
+            definition.attractor is Query;
         }
 
-        annotation { "Name" : "End", "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE) || EntityType.VERTEX || BodyType.MATE_CONNECTOR,
-                    "Description" : "A curve or wire (the bridge joins one of its ends), a vertex or a mate connector. Edges must form one chain." }
-        definition.endSide is Query;
+        annotation { "Name" : "Preselection", "UIHint" : UIHint.ALWAYS_HIDDEN, "Filter" : EntityType.EDGE || EntityType.VERTEX || (EntityType.FACE && ConstructionObject.NO) || BodyType.MATE_CONNECTOR }
+        definition.preselectedEntities is Query;
 
-        annotation { "Name" : "Match", "Column Name" : "Second match", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : BcpMatch.TANGENCY,
-                    "Description" : "Position: the bridge only meets the end. Tangent: it arrives along the curve's direction. Curvature: it also matches the end's curvature." }
-        definition.endMatch is BcpMatch;
+        annotation { "Name" : "Start", "Filter" : EntityType.EDGE || EntityType.VERTEX || (EntityType.FACE && ConstructionObject.NO) || BodyType.MATE_CONNECTOR || (EntityType.BODY && BodyType.WIRE),
+                    "Description" : "Vertex, edge, face or mate connector. With Choose ends set to nearest pair or attractor: the curves or wire (edges must form one chain)." }
+        definition.side1 is Query;
 
-        if (definition.endMatch != BcpMatch.POSITION)
+        annotation { "Name" : "Match", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Default" : BridgingCurveMatchType.TANGENCY }
+        definition.match1 is BridgingCurveMatchType;
+
+        if (definition.match1 != BridgingCurveMatchType.POSITION)
         {
-            annotation { "Name" : "Reverse tangent", "Column Name" : "Second reverse", "UIHint" : UIHint.OPPOSITE_DIRECTION, "Default" : false,
-                        "Description" : "Turn the end tangent around. The default always continues the curve; reversing makes a loop or cusp on purpose." }
-            definition.endReverse is boolean;
+            annotation { "Name" : "Opposite direction", "UIHint" : UIHint.OPPOSITE_DIRECTION }
+            definition.flip1 is boolean;
         }
 
-        if (definition.startMatch != BcpMatch.POSITION || definition.endMatch != BcpMatch.POSITION)
-        {
-            annotation { "Name" : "Edit control points", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Default" : false,
-                        "Description" : "Show the control points and draggable manipulators for each end's magnitude (and curvature offset)." }
-            definition.editControlPoints is boolean;
+        annotation { "Name" : "End", "Filter" : EntityType.EDGE || EntityType.VERTEX || (EntityType.FACE && ConstructionObject.NO) || BodyType.MATE_CONNECTOR || (EntityType.BODY && BodyType.WIRE),
+                    "Description" : "Vertex, edge, face or mate connector. With Choose ends set to nearest pair or attractor: the curves or wire (edges must form one chain)." }
+        definition.side2 is Query;
 
-            if (definition.editControlPoints)
+        annotation { "Name" : "Match", "Column Name" : "Second match", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE, "Default" : BridgingCurveMatchType.TANGENCY }
+        definition.match2 is BridgingCurveMatchType;
+
+        if (definition.match2 != BridgingCurveMatchType.POSITION)
+        {
+            annotation { "Name" : "Opposite direction", "UIHint" : UIHint.OPPOSITE_DIRECTION }
+            definition.flip2 is boolean;
+        }
+
+        if (definition.match1 != BridgingCurveMatchType.POSITION || definition.match2 != BridgingCurveMatchType.POSITION)
+        {
+            if (definition.match1 != BridgingCurveMatchType.G3 && definition.match2 != BridgingCurveMatchType.G3)
             {
-                annotation { "Group Name" : "Edit control points", "Collapsed By Default" : false, "Driving Parameter" : "editControlPoints" }
+                annotation { "Name" : "Method", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE], "Default" : BridgingCurveMethod.CONTROL_POINTS }
+                definition.method is BridgingCurveMethod;
+            }
+            if (methodIsControlPointsPlus(definition))
+            {
+                annotation { "Name" : "Edit control points", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE }
+                definition.editControlPoints is boolean;
+                if (definition.editControlPoints)
                 {
-                    if (definition.startMatch != BcpMatch.POSITION)
+                    annotation { "Group Name" : "Edit control points", "Collapsed By Default" : false, "Driving Parameter" : "editControlPoints" }
                     {
-                        annotation { "Name" : "Start magnitude", "Description" : "How far the bridge follows the start tangent before turning, relative to the default (1)." }
-                        isReal(definition.startMagnitude, POSITIVE_REAL_BOUNDS);
-
-                        if (definition.startMatch == BcpMatch.CURVATURE)
+                        if (definition.match1 != BridgingCurveMatchType.POSITION)
                         {
-                            annotation { "Name" : "Start curvature offset", "Description" : "Moves the start's curvature control point along the tangent, relative to the default (1)." }
-                            isReal(definition.startCurvatureOffset, CLAMP_MAGNITUDE_REAL_BOUNDS);
+                            annotation { "Name" : "Start magnitude" }
+                            isReal(definition.side1Magnitude, POSITIVE_REAL_BOUNDS);
+                            if (definition.match1 == BridgingCurveMatchType.CURVATURE || definition.match1 == BridgingCurveMatchType.G3)
+                            {
+                                annotation { "Name" : "Start curvature offset" }
+                                isReal(definition.side1CurvatureOffset, CLAMP_MAGNITUDE_REAL_BOUNDS);
+                            }
+                            if (definition.match1 == BridgingCurveMatchType.G3)
+                            {
+                                annotation { "Name" : "Start flow offset" }
+                                isReal(definition.side1G3Offset, CLAMP_MAGNITUDE_REAL_BOUNDS);
+                            }
+                        }
+                        if (definition.match2 != BridgingCurveMatchType.POSITION)
+                        {
+                            annotation { "Name" : "End magnitude" }
+                            isReal(definition.side2Magnitude, POSITIVE_REAL_BOUNDS);
+                            if (definition.match2 == BridgingCurveMatchType.CURVATURE || definition.match2 == BridgingCurveMatchType.G3)
+                            {
+                                annotation { "Name" : "End curvature offset" }
+                                isReal(definition.side2CurvatureOffset, CLAMP_MAGNITUDE_REAL_BOUNDS);
+                            }
+                            if (definition.match2 == BridgingCurveMatchType.G3)
+                            {
+                                annotation { "Name" : "End flow offset" }
+                                isReal(definition.side2G3Offset, CLAMP_MAGNITUDE_REAL_BOUNDS);
+                            }
                         }
                     }
-                    if (definition.endMatch != BcpMatch.POSITION)
-                    {
-                        annotation { "Name" : "End magnitude", "Description" : "How far the bridge follows the end tangent before turning, relative to the default (1)." }
-                        isReal(definition.endMagnitude, POSITIVE_REAL_BOUNDS);
+                }
+            }
+            else
+            {
+                annotation { "Name" : "Magnitude" }
+                isReal(definition.magnitude, POSITIVE_REAL_BOUNDS);
 
-                        if (definition.endMatch == BcpMatch.CURVATURE)
-                        {
-                            annotation { "Name" : "End curvature offset", "Description" : "Moves the end's curvature control point along the tangent, relative to the default (1)." }
-                            isReal(definition.endCurvatureOffset, CLAMP_MAGNITUDE_REAL_BOUNDS);
-                        }
+                if (definition.match1 != BridgingCurveMatchType.POSITION && definition.match2 != BridgingCurveMatchType.POSITION)
+                {
+                    annotation { "Name" : "Bias" }
+                    isReal(definition.bias, BIAS_BOUNDS);
+                }
+            }
+        }
+
+        annotation { "Name" : "side1HasVertex", "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.side1HasVertex is boolean;
+        annotation { "Name" : "side2HasVertex", "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.side2HasVertex is boolean;
+
+        if (definition.endChoice == BcpEndChoice.STANDARD && (!definition.side1HasVertex || !definition.side2HasVertex))
+        {
+            annotation { "Name" : "Edit edge positions", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE }
+            definition.editEdgePositions is boolean;
+            if (definition.editEdgePositions)
+            {
+                annotation { "Group Name" : "Edge positions", "Collapsed By Default" : false, "Driving Parameter" : "editEdgePositions" }
+                {
+                    if (!definition.side1HasVertex)
+                    {
+                        annotation { "Name" : "Start edge position" }
+                        isReal(definition.startEdgeParameter, EDGE_PARAMETER_BOUNDS);
+                    }
+                    if (!definition.side2HasVertex)
+                    {
+                        annotation { "Name" : "End edge position" }
+                        isReal(definition.endEdgeParameter, EDGE_PARAMETER_BOUNDS);
+                    }
+                }
+            }
+        }
+
+        annotation { "Name" : "side1HasFace", "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.side1HasFace is boolean;
+        annotation { "Name" : "side2HasFace", "UIHint" : UIHint.ALWAYS_HIDDEN }
+        definition.side2HasFace is boolean;
+
+        if ((definition.side1HasFace || definition.side2HasFace) && (definition.match1 != BridgingCurveMatchType.POSITION || definition.match2 != BridgingCurveMatchType.POSITION))
+        {
+            annotation { "Name" : "Edit tangency angles", "UIHint" : UIHint.REMEMBER_PREVIOUS_VALUE }
+            definition.editTangencyAngles is boolean;
+            if (definition.editTangencyAngles)
+            {
+                annotation { "Group Name" : "Edit angles", "Collapsed By Default" : false, "Driving Parameter" : "editTangencyAngles" }
+                {
+                    if (definition.match1 != BridgingCurveMatchType.POSITION && definition.side1HasFace)
+                    {
+                        annotation { "Name" : "Start angle" }
+                        isAngle(definition.startAngle, ANGLE_180_MINUS_180_BOUNDS);
+                    }
+                    if (definition.match2 != BridgingCurveMatchType.POSITION && definition.side2HasFace)
+                    {
+                        annotation { "Name" : "End angle" }
+                        isAngle(definition.endAngle, ANGLE_180_MINUS_180_BOUNDS);
                     }
                 }
             }
         }
     }
     {
-        const solved = bcpSolve(context, definition, true);
-        if (definition.editControlPoints == true && (definition.startMatch != BcpMatch.POSITION || definition.endMatch != BcpMatch.POSITION))
+        var passed = definition;
+        if (definition.endChoice != BcpEndChoice.STANDARD)
         {
-            bcpAddManipulators(context, id, solved.controlPoints, 1, solved.start.degree, definition.startReverse == true);
-            bcpAddManipulators(context, id, solved.controlPoints, 2, solved.end.degree, definition.endReverse == true);
-            bcpShowControlPoints(context, id, solved.controlPoints);
+            passed = bcpResolve(context, definition).definition;
         }
 
-        opCreateBSplineCurve(context, id + "bridge", {
-                    "bSplineCurve" : bSplineCurve({ "degree" : size(solved.controlPoints) - 1, "isPeriodic" : false, "controlPoints" : solved.controlPoints })
-                });
-        bcpShowWire(context, id, qCreatedBy(id, EntityType.BODY));
+        // The standard feature builds the curve (and shows its own errors on side1 / side2 / the matching parameters).
+        bridgingCurve(context, id + "bridge", passed);
+        bcpShowWire(context, id, qCreatedBy(id + "bridge", EntityType.BODY));
+    }, {
+            "endChoice" : BcpEndChoice.STANDARD,
+            "match1" : BridgingCurveMatchType.TANGENCY,
+            "match2" : BridgingCurveMatchType.TANGENCY,
+            "flip1" : false,
+            "flip2" : false,
+            "method" : BridgingCurveMethod.CONTROL_POINTS,
+            "preselectedEntities" : qNothing(),
+            "side1HasVertex" : false,
+            "side2HasVertex" : false,
+            "side1HasFace" : true,
+            "side2HasFace" : true,
+            "editEdgePositions" : false,
+            "editTangencyAngles" : false
+        });
 
-        reportFeatureInfo(context, id, "Bridged " ~ roundToPrecision(solved.distance / millimeter, 3) ~ " mm between the nearest ends"
-            ~ " (degree " ~ (size(solved.controlPoints) - 1) ~ ").");
-    }, { "startMatch" : BcpMatch.TANGENCY, "endMatch" : BcpMatch.TANGENCY, "startReverse" : false, "endReverse" : false, "editControlPoints" : false,
-         "startMagnitude" : 1, "endMagnitude" : 1, "startCurvatureOffset" : 1, "endCurvatureOffset" : 1 });
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Solving
-// ---------------------------------------------------------------------------------------------------------------------
-
-/**
- * Pick the nearest pair of ends, build the two sides' data and solve for the control points.
- * `useScales` false leaves the magnitudes and curvature offsets at their defaults (1): the manipulators are measured
- * against those defaults.
- * @returns {{ @field start {BridgingSideData} @field end {BridgingSideData} @field controlPoints {array} @field distance {ValueWithUnits} }}
- */
-function bcpSolve(context is Context, definition is map, useScales is boolean) returns map
+/** Same rule as std's methodIsControlPoints (which is not exported). */
+predicate methodIsControlPointsPlus(definition is map)
 {
-    const starts = bcpEnds(context, definition.startSide, "startSide");
-    const ends = bcpEnds(context, definition.endSide, "endSide");
-
-    // The nearest pair of ends.
-    var start = starts[0];
-    var end = ends[0];
-    var best = norm(start.point - end.point);
-    for (var a in starts)
-    {
-        for (var b in ends)
-        {
-            const d = norm(a.point - b.point);
-            if (d < best)
-            {
-                best = d;
-                start = a;
-                end = b;
-            }
-        }
-    }
-    if (best < TOLERANCE.zeroLength * meter)
-    {
-        throw regenError("The two ends are at the same point, so there is nothing to bridge");
-    }
-
-    // A mate connector's Z axis has no inherent sense: point it toward the other side, so the bridge blends.
-    if (start.mateConnector)
-    {
-        start.tangent = dot(start.tangent, end.point - start.point) < 0 * meter ? -start.tangent : start.tangent;
-    }
-    if (end.mateConnector)
-    {
-        end.tangent = dot(end.tangent, start.point - end.point) < 0 * meter ? -end.tangent : end.tangent;
-    }
-
-    const side1 = bcpSideData(start, definition.startMatch, definition.startReverse, useScales ? definition.startMagnitude : undefined,
-            useScales ? definition.startCurvatureOffset : undefined, "startMagnitude", "Start");
-    const side2 = bcpSideData(end, definition.endMatch, definition.endReverse, useScales ? definition.endMagnitude : undefined,
-            useScales ? definition.endCurvatureOffset : undefined, "endMagnitude", "End");
-    return { "start" : side1, "end" : side2, "controlPoints" : computeBridgingControlPoints(context, side1, side2), "distance" : best };
+    definition.method == BridgingCurveMethod.CONTROL_POINTS
+        || definition.match1 == BridgingCurveMatchType.G3
+        || definition.match2 == BridgingCurveMatchType.G3;
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Choosing the ends
+// ---------------------------------------------------------------------------------------------------------------------
+
 /**
- * The ends a side offers, each as { point, tangent (outward continuation, or undefined), frame (curvature there, or
- * undefined), mateConnector }. A wire offers its two ends; a vertex or mate connector offers itself.
+ * What a side offers: { kind : "wire" | "vertex" | "mate connector", ends : array, faces : Query }.
+ * Each end is { point, and for a wire: outward (the direction leaving the wire), edge (the end edge), vertex (its end vertex);
+ * for a mate connector: zAxis }. A vertex or mate connector offers just itself; a wire offers its two ends.
  */
-function bcpEnds(context is Context, side is Query, field is string) returns array
+function bcpSideInfo(context is Context, side is Query, field is string) returns map
 {
     if (isQueryEmpty(context, side))
     {
@@ -198,166 +252,169 @@ function bcpEnds(context is Context, side is Query, field is string) returns arr
     if (!isQueryEmpty(context, mc))
     {
         const cs = evMateConnector(context, { "mateConnector" : qNthElement(mc, 0) });
-        return [{ "point" : cs.origin, "tangent" : cs.zAxis, "frame" : undefined, "mateConnector" : true }];
+        return { "kind" : "mate connector", "ends" : [{ "point" : cs.origin, "zAxis" : cs.zAxis }], "faces" : qNothing() };
     }
     const vertices = qEntityFilter(side, EntityType.VERTEX);
-    if (!isQueryEmpty(context, vertices) && isQueryEmpty(context, mcEdgesOf(context, side)))
+    if (!isQueryEmpty(context, vertices))
     {
-        return [{ "point" : evVertexPoint(context, { "vertex" : qNthElement(vertices, 0) }), "tangent" : undefined, "frame" : undefined, "mateConnector" : false }];
+        return { "kind" : "vertex", "ends" : [{ "point" : evVertexPoint(context, { "vertex" : qNthElement(vertices, 0) }) }], "faces" : qNothing() };
     }
-
-    const path = mcPath(context, mcEdgesOf(context, side), field);
+    const edges = mcEdgesOf(context, side);
+    if (isQueryEmpty(context, edges))
+    {
+        throw regenError("Select curves, a wire, a vertex or a mate connector for this side", [field]);
+    }
+    const path = mcPath(context, edges, field);
     if (path.closed)
     {
         throw regenError("A closed curve has no ends to bridge from", [field]);
     }
     const lines = evPathTangentLines(context, path, [0, 1]).tangentLines;
     const lastIndex = size(path.edges) - 1;
-    // The parameter of the path's first and last point on their own edges (an edge may run against the path).
-    const startFrame = evEdgeCurvature(context, { "edge" : path.edges[0], "parameter" : path.flipped[0] ? 1 : 0 });
-    const endFrame = evEdgeCurvature(context, { "edge" : path.edges[lastIndex], "parameter" : path.flipped[lastIndex] ? 0 : 1 });
-    return [
-            { "point" : lines[0].origin, "tangent" : -normalize(lines[0].direction), "frame" : startFrame, "mateConnector" : false },
-            { "point" : lines[1].origin, "tangent" : normalize(lines[1].direction), "frame" : endFrame, "mateConnector" : false }
-        ];
+    return { "kind" : "wire", "faces" : qEntityFilter(side, EntityType.FACE),
+            "ends" : [
+                    bcpWireEnd(path.edges[0], lines[0].origin, -normalize(lines[0].direction)),
+                    bcpWireEnd(path.edges[lastIndex], lines[1].origin, normalize(lines[1].direction))
+                ] };
 }
 
-/** The solver's description of one side. */
-function bcpSideData(end is map, match is BcpMatch, reverse, magnitude, curvatureOffset, scaleName is string, label is string) returns BridgingSideData
+function bcpWireEnd(edge is Query, point is Vector, outward is Vector) returns map
 {
-    var data = { "position" : end.point, "speedScaleName" : scaleName };
-    data.degree = match == BcpMatch.POSITION ? 0 : (match == BcpMatch.TANGENCY ? 1 : 2);
-    if (data.degree >= 1)
+    return { "point" : point, "outward" : outward, "edge" : edge, "vertex" : qClosestTo(qAdjacent(edge, AdjacencyType.VERTEX, EntityType.VERTEX), point) };
+}
+
+/** The end of `ends` nearest `target`. */
+function bcpNearestEnd(ends is array, target is Vector) returns map
+{
+    var best = ends[0];
+    var bestDistance = norm(best.point - target);
+    for (var candidate in ends)
     {
-        if (end.tangent == undefined)
+        const d = norm(candidate.point - target);
+        if (d < bestDistance)
         {
-            throw regenError(label ~ ": a vertex has no tangent. Use Position, or pick a curve or mate connector.");
+            best = candidate;
+            bestDistance = d;
         }
-        data.tangent = reverse == true ? -end.tangent : end.tangent;
-        data.speedScale = magnitude == undefined ? 1 : magnitude;
     }
-    if (data.degree >= 2)
+    return best;
+}
+
+/**
+ * Turn the sides into what the standard Bridging curve wants: for each open wire side the chosen end edge and end vertex
+ * (plus any face picked for tangency), with "Opposite direction" adjusted so the tangent leaves the wire.
+ * @returns {{ @field definition {map} }}
+ */
+function bcpResolve(context is Context, definition is map) returns map
+{
+    const info = [bcpSideInfo(context, definition.side1, "side1"), bcpSideInfo(context, definition.side2, "side2")];
+
+    var picked = [info[0].ends[0], info[1].ends[0]];
+    if (definition.endChoice == BcpEndChoice.ATTRACTOR)
     {
-        if (end.frame == undefined)
+        if (isQueryEmpty(context, definition.attractor))
         {
-            throw regenError(label ~ ": curvature needs a curve. A mate connector or vertex has none, so use Tangent or Position.");
+            throw regenError("Select the attractor point", ["attractor"]);
         }
-        data.curvature = end.frame.curvature;
-        data.curvatureDirection = curvatureFrameNormal(end.frame);
-        data.curvatureOffsetScale = curvatureOffset == undefined ? 1 : curvatureOffset;
+        const target = mcPointOf(context, definition.attractor, "attractor");
+        picked = [bcpNearestEnd(info[0].ends, target), bcpNearestEnd(info[1].ends, target)];
     }
-    return data as BridgingSideData;
+    else
+    {
+        var bestDistance = undefined;
+        for (var a in info[0].ends)
+        {
+            for (var b in info[1].ends)
+            {
+                const d = norm(a.point - b.point);
+                if (bestDistance == undefined || d < bestDistance)
+                {
+                    bestDistance = d;
+                    picked = [a, b];
+                }
+            }
+        }
+    }
+
+    var out = definition;
+    out.editEdgePositions = false;
+    for (var i = 0; i < 2; i += 1)
+    {
+        const n = i + 1;
+        const here = picked[i];
+        const there = picked[1 - i];
+        const faces = info[i].kind == "wire" ? info[i].faces : qEntityFilter(definition["side" ~ n], EntityType.FACE);
+        var autoFlip = false;
+        if (definition["match" ~ n] != BridgingCurveMatchType.POSITION)
+        {
+            if (info[i].kind == "wire" && isQueryEmpty(context, faces))
+            {
+                // std's tangent follows the edge's own direction; reverse it when that points into the wire.
+                const parameter = evDistance(context, { "side0" : here.edge, "side1" : here.point }).sides[0].parameter;
+                const native = evEdgeTangentLine(context, { "edge" : here.edge, "parameter" : parameter }).direction;
+                autoFlip = dot(native, here.outward) < 0;
+            }
+            else if (info[i].kind == "mate connector")
+            {
+                autoFlip = dot(here.zAxis, there.point - here.point) < 0 * meter;
+            }
+        }
+        if (info[i].kind == "wire")
+        {
+            out["side" ~ n] = qUnion([here.edge, here.vertex, faces]);
+        }
+        out["flip" ~ n] = definition["flip" ~ n] != autoFlip;
+        out["side" ~ n ~ "HasVertex"] = true;
+        out["side" ~ n ~ "HasFace"] = !isQueryEmpty(context, faces);
+    }
+    return { "definition" : out };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
-// Manipulators and visualization (the same as Bridging curve)
+// Editing logic and manipulators: the standard ones, on the resolved sides
 // ---------------------------------------------------------------------------------------------------------------------
 
-function bcpMagnitudeKey(side is number) returns string
+/**
+ * @internal
+ * The editing logic of Bridging curve +: the standard Bridging curve's.
+ */
+export function bridgingCurvePlusEditingLogic(context is Context, id is Id, oldDefinition is map, definition is map,
+    isCreating is boolean, specifiedParameters is map, hiddenBodies is Query) returns map
 {
-    return (side == 1 ? "Start" : "End") ~ " magnitude";
-}
-
-function bcpCurvatureKey(side is number) returns string
-{
-    return (side == 1 ? "Start" : "End") ~ " curvature offset";
-}
-
-/** The control point of the curvature manipulator with zero offset: the third point's projection along the tangent. */
-function bcpCurvatureBase(direction is Vector, controlPoints is array) returns Vector
-{
-    return controlPoints[2] - direction * dot(controlPoints[2] - controlPoints[1], direction);
-}
-
-function bcpAddManipulators(context is Context, id is Id, controlPoints is array, side is number, degree is number, flip is boolean)
-{
-    if (degree == 0)
-    {
-        return;
-    }
-    const points = side == 2 ? reverse(controlPoints) : controlPoints;
-    const direction = normalize(points[1] - points[0]);
-    const sign = flip ? -1 : 1;
-    addManipulators(context, id, {
-                (bcpMagnitudeKey(side)) : linearManipulator({
-                            "base" : points[0],
-                            "direction" : direction * sign,
-                            "offset" : norm(points[1] - points[0]) * sign,
-                            "primaryParameterId" : (side == 1 ? "startMagnitude" : "endMagnitude")
-                        })
-            });
-    if (degree == 1)
-    {
-        return;
-    }
-    const base = bcpCurvatureBase(direction, points);
-    addManipulators(context, id, {
-                (bcpCurvatureKey(side)) : linearManipulator({
-                            "base" : base,
-                            "direction" : direction,
-                            "offset" : dot(direction, points[2] - base),
-                            "style" : ManipulatorStyleEnum.SECONDARY,
-                            "primaryParameterId" : (side == 1 ? "startCurvatureOffset" : "endCurvatureOffset")
-                        })
-            });
+    return bridgingCurveEditingLogic(context, id, oldDefinition, definition, isCreating, specifiedParameters, hiddenBodies);
 }
 
 /**
  * @internal
- * The manipulator change function of Bridging curve +: turns a drag into a magnitude (a drag through zero reverses the
- * tangent) or a curvature offset.
+ * The manipulator change function of Bridging curve +: runs the standard one on the resolved sides and copies the
+ * manipulated values back (the automatic flip is taken out of "Opposite direction" again).
  */
 export function bridgingCurvePlusManipulator(context is Context, definition is map, newManipulators is map) returns map
 {
-    // A curvature offset is measured with the magnitudes as they are; a magnitude is measured against the default one.
-    const curvatureMoved = newManipulators[bcpCurvatureKey(1)] is map || newManipulators[bcpCurvatureKey(2)] is map;
-    var controlPoints = bcpSolve(context, definition, curvatureMoved).controlPoints;
-    for (var side in [1, 2])
+    var resolved = definition;
+    if (definition.endChoice != BcpEndChoice.STANDARD)
     {
-        if (side == 2)
+        resolved = bcpResolve(context, definition).definition;
+    }
+    const changed = bridgingCurveManipulator(context, resolved, newManipulators);
+    for (var key in ["side1Magnitude", "side2Magnitude", "side1CurvatureOffset", "side2CurvatureOffset", "side1G3Offset", "side2G3Offset",
+            "startEdgeParameter", "endEdgeParameter", "startAngle", "endAngle"])
+    {
+        if (changed[key] != undefined)
         {
-            controlPoints = reverse(controlPoints);
+            definition[key] = changed[key];
         }
-        const name = side == 1 ? "start" : "end";
-
-        const magnitude = newManipulators[bcpMagnitudeKey(side)];
-        if (magnitude is map)
+    }
+    for (var n in [1, 2])
+    {
+        const key = "flip" ~ n;
+        if (changed[key] != resolved[key])
         {
-            definition[name ~ "Magnitude"] = abs(magnitude.offset) / norm(controlPoints[1] - controlPoints[0]);
-            definition[name ~ "Reverse"] = magnitude.offset < 0 * meter;
-        }
-        const curvature = newManipulators[bcpCurvatureKey(side)];
-        if (curvature is map)
-        {
-            const direction = normalize(controlPoints[1] - controlPoints[0]);
-            definition[name ~ "CurvatureOffset"] = curvature.offset / dot(direction, controlPoints[2] - bcpCurvatureBase(direction, controlPoints));
+            // the manipulator reversed the direction: reverse the user's choice too
+            definition[key] = !(definition[key] == true);
         }
     }
     return definition;
-}
-
-/** Show the control polygon (magenta points and lines) while the dialog is open. */
-function bcpShowControlPoints(context is Context, id is Id, controlPoints is array)
-{
-    if (!isTopLevelId(id))
-    {
-        return;
-    }
-    const controlId = id + "controlPoints";
-    startFeature(context, controlId, {});
-    try
-    {
-        opPoint(context, controlId + 0 + "point", { "point" : controlPoints[0] });
-        for (var i = 1; i < size(controlPoints); i += 1)
-        {
-            opPoint(context, controlId + i + "point", { "point" : controlPoints[i] });
-            opFitSpline(context, controlId + i + "line", { "points" : [controlPoints[i - 1], controlPoints[i]] });
-        }
-        const edges = qCreatedBy(controlId, EntityType.EDGE);
-        const vertices = qCreatedBy(controlId, EntityType.VERTEX)->qBodyType(BodyType.POINT);
-        addDebugEntities(context, qUnion([vertices, edges]), DebugColor.MAGENTA);
-    }
-    abortFeature(context, controlId);
 }
 
 /** Highlight the result curve in magenta while the dialog is open. */

@@ -1,4 +1,4 @@
-"""Check the Reference_Side test cases in the "Reference side tests" Part Studio (built by
+﻿"""Check the Reference_Side test cases in the "Reference side tests" Part Studio (built by
 build_reference_side_tests.py): every case is measured through the eval API and printed PASS / FAIL, and every
 feature's status is checked (T4 must fail: that is its case).
 
@@ -316,6 +316,26 @@ case("T6 ", r'''
         return [count(cube) == 1 && abs(v - 1018000 * millimeter ^ 3) < 0.01 * millimeter ^ 3 && size(toward) == 1 && near(z, mm(55), mm(0.0001)),
             count(cube) ~ " part, volume " ~ roundToPrecision(v / millimeter ^ 3, 3) ~ " (1018000), towardFaces " ~ size(toward) ~ " at z " ~ fmt(z) ~ " (1 at 55)"];''',
      CUBE="T6 cube")
+
+for n, (caps, nfaces, area, zgone) in enumerate([("TOWARD", 5, 13200, 55), ("AWAY", 5, 13200, 47), ("BOTH", 4, 3200, None)]):
+    case("TD%d " % (1 + n), r'''
+        const sheets = evaluateQuery(context, qBodyType(created(SELF), BodyType.SHEET));
+        const solids = evaluateQuery(context, qBodyType(created(SELF), BodyType.SOLID));
+        const faces = evaluateQuery(context, qOwnedByBody(created(SELF), EntityType.FACE));
+        const area = size(faces) > 0 ? evArea(context, { "entities" : qUnion(faces) }) : 0 * meter ^ 2;
+        var gone = true;
+        for (var f in faces)
+        {
+            const z = centroid(f)[2];
+            gone = gone && (%s);
+        }
+        const out = embedded(SELF);
+        const tw = count(out.query.towardFaces.value);
+        const aw = count(out.query.awayFaces.value);
+        return [size(sheets) == 1 && size(solids) == 0 && size(faces) == %d && abs(area - %d * millimeter ^ 2) < 0.01 * millimeter ^ 2 && gone,
+            size(sheets) ~ " sheet, " ~ size(solids) ~ " solid, " ~ size(faces) ~ " faces (%d), area " ~ roundToPrecision(area / millimeter ^ 2, 3) ~ " (%d), cap check " ~ gone
+            ~ ", towardFaces " ~ tw ~ ", awayFaces " ~ aw ~ " (deleted caps resolve to 0)"];''' % (
+        ("!near(z, mm(%d), mm(0.0001))" % zgone) if zgone else "true", nfaces, area, nfaces, area))
 
 for n, toward in enumerate([True, False]):
     case("R%d " % (n + 1), r'''
