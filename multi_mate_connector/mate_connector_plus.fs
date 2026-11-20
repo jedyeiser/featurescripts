@@ -5,6 +5,10 @@ import(path : "onshape/std/path.fs", version : "3095.0");
 import(path : "0a18eeece6adacc759621422", version : "2095707b9424d45d3bf94814");
 // IMPORT: mate_connector_plus_icon.svg (feature icon)
 IconNamespace::import(path : "c77b15e39da290cd4c47d86e", version : "8cd6167f6128c77d55b6e4d4");
+// IMPORT: axis icons for the world-axis enum (mc_axis_*_icon.svg)
+AxisXIcon::import(path : "925f9c89d6597a23cfa0cea1", version : "cd690c3bdfd63382cd62114e");
+AxisYIcon::import(path : "4cd9efaad3878eeeb973ca74", version : "25c34e814bdf8fef7c2446d8");
+AxisZIcon::import(path : "d0899e1720e812dd3565cb74", version : "c517ad1110be3db5d1e791a9");
 
 /**
  * Mate connector +.
@@ -96,11 +100,11 @@ export enum McpXAxisType
 
 export enum McpWorldAxis
 {
-    annotation { "Name" : "X" }
+    annotation { "Name" : "X", "Icon" : AxisXIcon::BLOB_DATA }
     X_AXIS,
-    annotation { "Name" : "Y" }
+    annotation { "Name" : "Y", "Icon" : AxisYIcon::BLOB_DATA }
     Y_AXIS,
-    annotation { "Name" : "Z" }
+    annotation { "Name" : "Z", "Icon" : AxisZIcon::BLOB_DATA }
     Z_AXIS
 }
 
