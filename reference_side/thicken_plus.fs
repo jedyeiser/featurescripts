@@ -660,7 +660,7 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
         }
         const isDrafted = !isQueryEmpty(context, group.drafted) && evDistance(context, { "side0" : ps[im], "side1" : group.drafted }).distance < 1e-6 * meter;
         edges = append(edges, {
-                    "ps" : ps, "ns" : ns, "ts" : ts, "cs" : cs, "closed" : closed,
+                    "edge" : edge, "ps" : ps, "ns" : ns, "ts" : ts, "cs" : cs, "closed" : closed,
                     "kT" : isDrafted ? draft.kToward : 0, "kA" : isDrafted ? draft.kAway : 0
                 });
     }
@@ -736,11 +736,25 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
             const nb = evFaceTangentPlane(context, { "face" : bigFaceList[db.sides[1].index], "parameter" : db.sides[1].parameter }).normal * towardSign;
             return { "p" : db.sides[1].point, "n" : nb, "c" : normalize(conormal - nb * dot(conormal, nb)) };
         };
-    // an extension that comes back onto the face is a concave corner (or a smooth edge with another draft)
-    const checkOutside = function(p is Vector)
+    // An extension past the end of edge `index` that comes back onto the face is a concave corner, or runs along an edge
+    // with another draft (marked). Along the outline of a neighbour with the same draft it is fine: a bend of the outline,
+    // as at the fold between two faces, whose wall the neighbour's own wall continues.
+    const checkOutside = function(p is Vector, index is number)
         {
             if (evDistance(context, { "side0" : p, "side1" : seedFaces }).distance < 1e-6 * meter)
             {
+                var neighbours = [];
+                for (var j = 0; j < nE; j += 1)
+                {
+                    if (j != index && edges[j].kT == edges[index].kT && edges[j].kA == edges[index].kA)
+                    {
+                        neighbours = append(neighbours, edges[j].edge);
+                    }
+                }
+                if (size(neighbours) > 0 && evDistance(context, { "side0" : p, "side1" : qUnion(neighbours) }).distance < 1e-6 * meter)
+                {
+                    return;
+                }
                 addDebugPoint(context, p, DebugColor.RED);
                 throw regenError("The draft cannot be built at a concave corner, or where an outline edge continues smoothly into an edge with a different draft (marked): draft the whole smooth chain together, and leave concave corners undrafted by drafting only convex ones.",
                     ["draftAngle"]);
@@ -766,7 +780,7 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
             for (var j = DRAFT_EXTENSION_STEPS; j >= 1; j -= 1)
             {
                 const t = onBig(e.ps[0] - e.ts[0] * (reach * j / DRAFT_EXTENSION_STEPS), e.cs[0]);
-                checkOutside(t.p);
+                checkOutside(t.p, i);
                 pts = append(pts, t.p);
                 nrm = append(nrm, t.n);
                 con = append(con, t.c);
@@ -783,7 +797,7 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
             for (var j = 1; j <= DRAFT_EXTENSION_STEPS; j += 1)
             {
                 const t = onBig(e.ps[DRAFT_SAMPLES] + e.ts[DRAFT_SAMPLES] * (reach * j / DRAFT_EXTENSION_STEPS), e.cs[DRAFT_SAMPLES]);
-                checkOutside(t.p);
+                checkOutside(t.p, i);
                 pts = append(pts, t.p);
                 nrm = append(nrm, t.n);
                 con = append(con, t.c);

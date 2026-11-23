@@ -408,6 +408,24 @@ thicken("DR11 Thicken+ draft +10 deg with Delete caps BOTH -> 1 sheet of 4 walls
     num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), num("draftAngle", "10 deg"),
     en("deleteCaps", "ThickenPlusDeleteCaps", "BOTH", NS["thicken_plus"])])
 
+# DR12: one sheet of two faces folded at x0 (a face SET, outline of six edges, the fold edge between the faces has no wall)
+x0 = 21000 + 400 * 11
+fold = sheet("DR12 sheet z 50 folded at x %d" % x0, [(x0 - 50, 50), (x0, 50), (x0 + 50, 40)])
+thicken("DR12 Thicken+ folded two-face sheet, draft +10 deg -> 1 solid, 2 toward faces, 2 away faces", [
+    en("operationType", "NewBodyOperationType", "NEW", NS["thicken_plus"]), q("entities", body(fold)),
+    q("sideReference", ref_front("DR12 reference point (%d, 0, 100)" % x0, x0, 100)),
+    num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), num("draftAngle", "10 deg")])
+
+# DR13: draft with Add: 60 x 60 sheet on a cube's top, 5 mm up with +10 deg, merged into the cube
+x0 = 21000 + 400 * 12
+dcube = cube("DR13 cube at x %d" % x0, x0, 0)
+dsheet = sheet("DR13 sheet on the cube top, z 50, x %d..%d" % (x0 - 30, x0 + 30), [(x0 - 30, 50), (x0 + 30, 50)], 60)
+thicken("DR13 Thicken+ 5 mm up from the cube top, draft +10 deg, Add into the cube -> 1 part", [
+    en("operationType", "NewBodyOperationType", "ADD", NS["thicken_plus"]), q("entities", body(dsheet)),
+    q("sideReference", ref_front("DR13 reference point (%d, 0, 100)" % x0, x0, 100)),
+    num("thicknessToward", "5 mm"), num("thicknessAway", "0 mm"), num("draftAngle", "10 deg"),
+    b("defaultScope", False), q("booleanScope", body(dcube))])
+
 x0 = 10600
 t = cube("T6 cube at x 10600", x0, 0)
 top = sheet("T6 sheet on the cube's top, z 50, x 10570..10630", [(x0 - 30, 50), (x0 + 30, 50)], 60)

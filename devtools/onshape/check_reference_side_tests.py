@@ -401,6 +401,37 @@ case("DR9 ", r'''
         return [n == 1 && faces == 3 && abs(v - vol * millimeter ^ 3) < 6 * millimeter ^ 3,
             n ~ " solid (1), faces " ~ faces ~ " (3), volume " ~ roundToPrecision(v / millimeter ^ 3, 3) ~ " (" ~ roundToPrecision(vol, 3) ~ ", a cone frustum)"];''')
 
+case("DR12 ", r'''
+        const result = qBodyType(created(SELF), BodyType.SOLID);
+        const n = count(result);
+        const v = n == 1 ? evVolume(context, { "entities" : result }) : 0 * meter ^ 3;
+        const out = embedded(SELF);
+        const tw = count(out.query.towardFaces.value);
+        const aw = count(out.query.awayFaces.value);
+        const sd = count(out.query.sideFaces.value);
+        // two 50 x 100 faces (the second 0.5 deg-ish folded down 10 mm over 50 -> 11.3 deg): about 100 x ~100.5 x 8, grown by the draft
+        const ok = n == 1 && tw == 2 && aw == 2 && v > 79500 * millimeter ^ 3 && v < 84000 * millimeter ^ 3;
+        return [ok, n ~ " solid (1), towardFaces " ~ tw ~ " (2), awayFaces " ~ aw ~ " (2), sideFaces " ~ sd ~ ", volume " ~ roundToPrecision(v / millimeter ^ 3, 1) ~ " (79500..84000)"];''')
+
+case("DR13 ", r'''
+        const cube = created(@CUBE@);
+        const v = count(cube) == 1 ? evVolume(context, { "entities" : cube }) : 0 * meter ^ 3;
+        var vol = 1000000;
+        const k = ''' + repr(k10) + r''';
+        const steps = 4000;
+        for (var i = 0; i < steps; i += 1)
+        {
+            const h = 5 * (i + 0.5) / steps;
+            const s = 60 + 2 * h * k;
+            vol += s * s * 5 / steps;
+        }
+        const out = embedded(SELF);
+        const toward = evaluateQuery(context, out.query.towardFaces.value);
+        const z = size(toward) == 1 ? centroid(toward[0])[2] : 0 * meter;
+        return [count(cube) == 1 && abs(v - vol * millimeter ^ 3) < 0.5 * millimeter ^ 3 && size(toward) == 1 && near(z, mm(55), mm(0.001)),
+            count(cube) ~ " part (1), volume " ~ roundToPrecision(v / millimeter ^ 3, 3) ~ " (" ~ roundToPrecision(vol, 3) ~ "), towardFaces " ~ size(toward) ~ " (1) at z " ~ fmt(z) ~ " (55)"];''',
+     CUBE="DR13 cube")
+
 case("DR11 ", r'''
         const sheets = evaluateQuery(context, qBodyType(created(SELF), BodyType.SHEET));
         const solids = evaluateQuery(context, qBodyType(created(SELF), BodyType.SOLID));
