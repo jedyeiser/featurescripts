@@ -6,28 +6,31 @@ import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
 IconNamespace::import(path : "86f42fa364d0d4d039b50d83", version : "8c0a8d77d66f6fd1e6c8c691");
 
 /**
- * Patch+: replace the part of a surface inside a footprint with its own offset, joined to the rest by walls.
+ * Patch+: replace the part of a surface inside a footprint with its own offset (or another surface), joined to the rest by walls.
  *
- * "Push or pull a region": the footprint curves are projected onto the faces; the faces inside the outline are removed
- * and replaced by the same faces offset by a distance (+ outward along the face normal, - inward), and walls connect
- * the outline on the faces to the offset surface. The walls run normal to the faces, or along the projection direction,
- * and may lean by a draft angle (positive: the wall opens toward the offset surface).
+ * "Push or pull a region". The footprint is one of: curves (one closed outline), faces (their outline, every loop: islands and
+ * holes), or a tool (its intersection with the faces). The faces inside the outline are replaced by the same faces offset
+ * (+ along the face normal, or toward the Side reference), by a Replacement surface, or by the faces moved along the
+ * projection direction; walls connect the outline on the faces to the new surface, normal to the faces or along the projection
+ * direction, optionally leaning by a draft angle.
  *
- * Works on a sheet body (the result is the patched sheet, the original body keeps its identity) and on a solid (a
- * positive offset adds the plug of material, a negative offset subtracts it, the original solid keeps its identity).
+ * Works on a sheet (the result is the patched sheet; the original body keeps its identity) and on a solid (a positive
+ * offset adds the plug of material, a negative one subtracts it; the original solid keeps its identity).
  *
- * How it is built (spikes: docs/research/patch_plus_spike*.fs.txt, 2026-11-23): the footprint is imprinted on a COPY of
- * the faces (opSplitFace, native projection), the face bounded only by imprint edges is the region; one ruled wall per
- * outline edge (a lofted pair of curves running well past the base and the offset surface on both sides), joined into
- * one closed tube with mitred corners; the tube is cut by the base and by the offset surface and the middle piece is
- * the wall; the offset surface and the base are cut by the tube. Sheet: knit the outside of the base, the wall and the
- * offset region (base first, so it keeps its identity). Solid: knit base patch + wall + offset region into a closed
- * shell, enclose it into a plug, add or subtract the plug.
+ * Build (spikes: docs/research/patch_plus_spike*.fs.txt):
+ *  1. The footprint is imprinted on a COPY of the faces (opSplitFace); the region is found by a flood from the imprint
+ *     (curves, tool) or by rays against the footprint faces (faces).
+ *  2. One ruled wall per outline edge (a loft of two curves running well past the base and the new surface), joined into
+ *     a tube with mitred corners; the tube is cut by the base and by the new surface, and those are cut by the tube.
+ *  3. Sheet: knit the outside of the base, the wall and the new region. Solid: knit base patch + wall + new region into
+ *     a closed shell, enclose it into a plug, add or subtract it.
  *
- * Limits (v1): faces of ONE body, one closed footprint loop strictly inside the faces; the offset is along the face
- * normal (no arbitrary replacement surface yet).
+ * A footprint that runs off the picked faces (faces input only) takes a separate straight path (the region is moved rigidly,
+ * extruded on a solid): no draft, no replacement, a planar region or Walls along the projection direction.
+ *
+ * Pick stability: users pick on the result, keyed to the op ids and the union order below. Never rename an op id or reorder
+ * the tools of the ordinary path.
  */
-
 /** How the footprint curves are projected onto the faces. */
 export enum PatchPlusProjection
 {
@@ -74,12 +77,12 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Name" : "Footprint faces",
                     "Filter" : EntityType.FACE || (BodyType.SHEET && EntityType.BODY),
-                    "Description" : "Instead of curves: faces (or a sheet body) whose outline is projected onto the faces. Every loop counts: several islands, and the holes of a face (the region is the face itself, a ring where it has a hole). Pick curves OR faces. A footprint that runs off the edge of the picked faces is built as a straight move of the region (Walls along the projection direction, or a planar region; no draft, no replacement surface)." }
+                    "Description" : "Instead of curves: faces (or a sheet body) whose outline is projected onto the faces. Islands and holes both count. May run off the edge of the picked faces (then: straight walls only, see the feature description)." }
         definition.footprintFaces is Query;
 
         annotation { "Name" : "Footprint tool",
                     "Filter" : EntityType.FACE || EntityType.BODY && (BodyType.SHEET || BodyType.SOLID),
-                    "Description" : "Instead of curves or faces: surfaces or a solid whose INTERSECTION with the picked faces is the footprint (a closed loop on them, e.g. a cylinder through a face, or a surface that cuts a dome). Nothing is projected. The loop must close inside the picked faces." }
+                    "Description" : "Instead of curves or faces: surfaces or a solid that cut the picked faces; the intersection (one closed loop inside them) is the footprint. Nothing is projected, so Projection is not used." }
         definition.footprintTool is Query;
 
         annotation { "Name" : "Projection" }
@@ -100,23 +103,23 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         definition.replacement is Query;
 
         annotation { "Name" : "Offset",
-                    "Description" : "How far the new surface is from the faces. Direction of a POSITIVE offset: toward the Side reference if there is one; otherwise along the face normal (outward on a solid; Flip reverses it). With a Replacement surface: + moves it further from the faces, - closer, and the Side reference and Flip are ignored. With Walls = along the projection direction the surface is moved by this distance along that direction instead of being offset." }
+                    "Description" : "How far the new surface is from the faces. A positive offset goes toward the Side reference, else along the face normal (Flip reverses it); with a Replacement surface, + is further from the faces. The arrow shows the direction." }
         isLength(definition.offset, ZERO_DEFAULT_LENGTH_BOUNDS);
 
         annotation { "Name" : "Side reference", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR,
                     "MaxNumberOfPicks" : 1,
-                    "Description" : "Optional. A positive offset moves toward this geometry (best a mate connector or vertex clearly to one side of the faces; an error if it lies in the plane of the faces at the region). Empty: along the face normal. Ignored with a Replacement surface." }
+                    "Description" : "Optional. A positive offset moves toward this (a mate connector or vertex clearly to one side of the faces). Ignored with a Replacement surface." }
         definition.sideReference is Query;
 
         annotation { "Name" : "Flip offset direction", "UIHint" : UIHint.OPPOSITE_DIRECTION,
-                    "Description" : "Reverse the face normal as the direction of a positive offset. Used only without a Side reference and without a Replacement surface; the arrow in the graphics area shows the direction." }
+                    "Description" : "Reverse the direction of a positive offset. Only without a Side reference and a Replacement surface." }
         definition.flipOffset is boolean;
 
         annotation { "Name" : "Walls" }
         definition.walls is PatchPlusWalls;
 
         annotation { "Name" : "Draft angle",
-                    "Description" : "Positive: the wall is WIDER toward the new surface (the region grows as you move toward it); negative: NARROWER toward it, the usual release draft for a boss or a pocket. The new surface is the offset surface, the replacement surface, or the side the offset moves to (see the arrow). 0 = straight walls." }
+                    "Description" : "Positive: the wall is wider toward the new surface; negative: narrower (the usual release draft). 0 = straight walls." }
         isAngle(definition.draft, PATCH_DRAFT_BOUNDS);
     }
     {
@@ -142,6 +145,10 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             throw regenError("Pick faces of ONE sheet or solid body.", ["baseFaces"]);
         }
         const owner = owners[0];
+        if (size(evaluateQuery(context, baseFaces)) > PATCH_FLOOD_LIMIT)
+        {
+            throw regenError("Too many faces picked (more than " ~ PATCH_FLOOD_LIMIT ~ "): pick only the faces around the footprint.", ["baseFaces"]);
+        }
         const isSolid = !isQueryEmpty(context, qBodyType(owner, BodyType.SOLID));
         const footprintFaces = qUnion([qEntityFilter(definition.footprintFaces, EntityType.FACE),
                     qOwnedByBody(qEntityFilter(definition.footprintFaces, EntityType.BODY), EntityType.FACE)]);
@@ -191,7 +198,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                         best = piece;
                     }
                 }
-                return best;
+                return best == undefined ? qNothing() : best;
             };
         const dropAllBut = function(dropId is Id, pieces is Query, keep is Query)
             {
@@ -206,8 +213,8 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 return size(evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(bodies, EntityType.EDGE), EdgeTopology.ONE_SIDED)));
             };
 
-        // a point well inside a face (away from its boundary) and the parameter there: the centroid's nearest point, or the best of
-        // a coarse grid when that is close to the boundary (a ring's centroid lies in its hole)
+        // a point well inside a face (away from its boundary), its parameter and normal: the centroid's nearest point, or the
+        // best of a coarse grid when that is close to the boundary (a ring's centroid lies in its hole)
         const interiorPoint = function(face is Query) returns map
             {
                 const faceEdges = qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE);
@@ -218,28 +225,31 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 var bestMargin = evDistance(context, { "side0" : best.point, "side1" : faceEdges }).distance;
                 if (bestMargin < 0.05 * scale)
                 {
+                    var grid = [];
                     for (var i = 1; i <= 5; i += 1)
                     {
                         for (var j = 1; j <= 5; j += 1)
                         {
-                            const prm = vector(i / 6, j / 6);
-                            const origin = evFaceTangentPlane(context, { "face" : face, "parameter" : prm }).origin;
-                            if (evDistance(context, { "side0" : origin, "side1" : face }).distance < 1e-6 * meter)
+                            grid = append(grid, vector(i / 6, j / 6));
+                        }
+                    }
+                    const planes = evFaceTangentPlanes(context, { "face" : face, "parameters" : grid, "returnUndefinedOutsideFace" : true });
+                    for (var k = 0; k < size(grid); k += 1)
+                    {
+                        if (planes[k] != undefined)
+                        {
+                            const margin = evDistance(context, { "side0" : planes[k].origin, "side1" : faceEdges }).distance;
+                            if (margin > bestMargin)
                             {
-                                const margin = evDistance(context, { "side0" : origin, "side1" : faceEdges }).distance;
-                                if (margin > bestMargin)
-                                {
-                                    bestMargin = margin;
-                                    best = { "point" : origin, "parameter" : prm };
-                                }
+                                bestMargin = margin;
+                                best = { "point" : planes[k].origin, "parameter" : grid[k] };
                             }
                         }
                     }
                 }
                 best.normal = evFaceTangentPlane(context, { "face" : face, "parameter" : best.parameter }).normal;
                 return best;
-            };
-        // the largest face of a body (the one to probe a piece with)
+            };        // the largest face of a body (the one to probe a piece with)
         const largestFaceOf = function(body is Query) returns Query
             {
                 var largest = undefined;
@@ -332,85 +342,98 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 }
             }
             else
-            {                const sideFaces = evaluateQuery(context, qAdjacent(imprintList[0], AdjacencyType.EDGE, EntityType.FACE));
+            {
+                const sideFaces = evaluateQuery(context, qAdjacent(imprintList[0], AdjacencyType.EDGE, EntityType.FACE));
                 if (size(sideFaces) < 2)
                 {
                     stage = ""; throw regenError("The footprint does not enclose a region inside the faces: it must be one closed outline that lies inside them.", ["footprint"]);
                 }
-                var floodFaces = [[sideFaces[0]], [sideFaces[1]]];
-                var floodQueue = [[sideFaces[0]], [sideFaces[1]]];
-                var floodSeen = [{}, {}];
-                var floodState = ["open", "open"];
+                // One flood per side of an imprint edge. A flood's state: "open" (still walking), "closed" (ran out of faces
+                // inside the outline: the inside) or "boundary" (met a free edge of the surface: the outside).
+                const floodStep = function(flood is map) returns map
+                    {
+                        if (size(flood.queue) == 0)
+                        {
+                            flood.state = "closed";
+                            return flood;
+                        }
+                        const current = flood.queue[0];
+                        flood.queue = subArray(flood.queue, 1);
+                        // the face's edges that are not the outline: a free one means the outside; the others lead to neighbours
+                        const crossable = qSubtraction(qAdjacent(current, AdjacencyType.EDGE, EntityType.EDGE), imprintEdges);
+                        if (!isQueryEmpty(context, qEdgeTopologyFilter(crossable, EdgeTopology.ONE_SIDED)))
+                        {
+                            flood.state = "boundary";
+                            return flood;
+                        }
+                        for (var other in evaluateQuery(context, qSubtraction(qAdjacent(crossable, AdjacencyType.EDGE, EntityType.FACE), current)))
+                        {
+                            const key = transientQueriesToStrings(other);
+                            if (flood.seen[key] == undefined)
+                            {
+                                flood.seen[key] = true;
+                                flood.faces = append(flood.faces, other);
+                                flood.queue = append(flood.queue, other);
+                            }
+                        }
+                        return flood;
+                    };
+                var floods = [];
                 for (var s = 0; s < 2; s += 1)
                 {
-                    var seen0 = floodSeen[s];
+                    var seen0 = {};
                     seen0[transientQueriesToStrings(sideFaces[s])] = true;
-                    floodSeen[s] = seen0;
+                    floods = append(floods, { "faces" : [sideFaces[s]], "queue" : [sideFaces[s]], "seen" : seen0, "state" : "open" });
                 }
+                // both sides grow together, so the inside (the small one) finishes first and the rest of the surface is not walked
                 var floodSteps = 0;
-                while (floodSteps < PATCH_FLOOD_LIMIT && floodState[0] != "closed" && floodState[1] != "closed" && (floodState[0] == "open" || floodState[1] == "open"))
+                while (floodSteps < PATCH_FLOOD_LIMIT && floods[0].state != "closed" && floods[1].state != "closed"
+                       && (floods[0].state == "open" || floods[1].state == "open"))
                 {
                     floodSteps += 1;
                     for (var s = 0; s < 2; s += 1)
                     {
-                        if (floodState[s] != "open")
+                        if (floods[s].state == "open")
                         {
-                            continue;
-                        }
-                        if (size(floodQueue[s]) == 0)
-                        {
-                            floodState[s] = "closed";
-                            continue;
-                        }
-                        const current = floodQueue[s][0];
-                        floodQueue[s] = subArray(floodQueue[s], 1);
-                        for (var edgeOfFace in evaluateQuery(context, qAdjacent(current, AdjacencyType.EDGE, EntityType.EDGE)))
-                        {
-                            if (!isQueryEmpty(context, qIntersection([edgeOfFace, imprintEdges])))
-                            {
-                                continue;       // the outline: the region stops here
-                            }
-                            const across = evaluateQuery(context, qSubtraction(qAdjacent(edgeOfFace, AdjacencyType.EDGE, EntityType.FACE), current));
-                            if (size(across) == 0)
-                            {
-                                floodState[s] = "boundary";     // a free edge of the surface: this side is the outside
-                                break;
-                            }
-                            var seen = floodSeen[s];
-                            for (var other in across)
-                            {
-                                const key = transientQueriesToStrings(other);
-                                if (seen[key] == undefined)
-                                {
-                                    seen[key] = true;
-                                    floodFaces[s] = append(floodFaces[s], other);
-                                    floodQueue[s] = append(floodQueue[s], other);
-                                }
-                            }
-                            floodSeen[s] = seen;
+                            floods[s] = floodStep(floods[s]);
                         }
                     }
                 }
-                var insideSide = -1;
-                if (floodState[0] == "closed")
-                {
-                    insideSide = 0;
-                }
-                else if (floodState[1] == "closed")
-                {
-                    insideSide = 1;
-                }
+                const insideSide = floods[0].state == "closed" ? 0 : (floods[1].state == "closed" ? 1 : -1);
                 if (insideSide < 0)
                 {
-                    stage = ""; throw regenError("The footprint does not enclose a region inside the faces: its outline must close up and stay inside the surface (it reaches the edge of the picked faces, which the curves input does not support: use Footprint faces, or the surface is too large to follow). Keep the footprint inside the picked faces and check the projection direction.", ["footprint"]);
+                    stage = ""; throw regenError("The footprint does not enclose a region inside the faces: its outline must close up and stay inside the surface (a footprint reaching the edge of the picked faces needs Footprint faces; or the surface is too large to follow). Check the projection direction.", ["footprint"]);
                 }
-                regionFaces = floodFaces[insideSide];
+                regionFaces = floods[insideSide].faces;
             }
             const region = qUnion(regionFaces);
             const regionList = evaluateQuery(context, region);
             const underRegion = function(p is Vector) returns boolean
                 {
                     return evDistance(context, { "side0" : p, "side1" : region }).distance < 1e-5 * meter;
+                };
+            // the pieces (bodies) whose interior lies under the region (faces input: classified, not nearest)
+            const piecesUnderRegion = function(pieces is Query) returns Query
+                {
+                    var keep = [];
+                    for (var piece in evaluateQuery(context, pieces))
+                    {
+                        if (underRegion(interiorPoint(largestFaceOf(piece)).point))
+                        {
+                            keep = append(keep, piece);
+                        }
+                    }
+                    return qUnion(keep);
+                };
+            // cut a body by each tube body in turn (several loops = several tubes). The first cut keeps the op id `baseName` of the
+            // one-loop build (picks on the result are keyed to it), later ones get the index. `followed` tracks the pieces.
+            const splitByTubes = function(baseName is string, first is Query, followed is Query, tubeList is array)
+                {
+                    for (var tk = 0; tk < size(tubeList); tk += 1)
+                    {
+                        opSplitPart(context, id + (tk == 0 ? baseName : baseName ~ tk),
+                                { "targets" : tk == 0 ? first : qBodyType(followed, BodyType.SHEET), "tool" : tubeList[tk], "keepTools" : true });
+                    }
                 };
             const centroid = evApproximateCentroid(context, { "entities" : region });
             const dIn = evDistance(context, { "side0" : centroid, "side1" : region });
@@ -619,10 +642,37 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 var us = [];
                 var cs = [];
                 var ts = [];
+                // the region face under each sample and the face normal there: one evFaceTangentPlanes call per face, not per sample
+                var hits = [];
                 for (var i = 0; i <= PATCH_SAMPLES; i += 1)
                 {
-                    const dd = evDistance(context, { "side0" : lines[i].origin, "side1" : region });
-                    var nrm = evFaceTangentPlane(context, { "face" : regionList[dd.sides[1].index], "parameter" : dd.sides[1].parameter }).normal * side;
+                    hits = append(hits, evDistance(context, { "side0" : lines[i].origin, "side1" : region }).sides[1]);
+                }
+                var faceNormals = makeArray(PATCH_SAMPLES + 1);
+                for (var fi = 0; fi < size(regionList); fi += 1)
+                {
+                    var onFace = [];
+                    var onFaceParameters = [];
+                    for (var i = 0; i <= PATCH_SAMPLES; i += 1)
+                    {
+                        if (hits[i].index == fi)
+                        {
+                            onFace = append(onFace, i);
+                            onFaceParameters = append(onFaceParameters, hits[i].parameter);
+                        }
+                    }
+                    if (size(onFace) > 0)
+                    {
+                        const planes = evFaceTangentPlanes(context, { "face" : regionList[fi], "parameters" : onFaceParameters });
+                        for (var n = 0; n < size(onFace); n += 1)
+                        {
+                            faceNormals[onFace[n]] = planes[n].normal;
+                        }
+                    }
+                }
+                for (var i = 0; i <= PATCH_SAMPLES; i += 1)
+                {
+                    var nrm = faceNormals[i] * side;
                     ps = append(ps, lines[i].origin);
                     ts = append(ts, lines[i].direction);
                     // the wall's base direction at this point: the normal toward the offset, or the projection direction
@@ -718,7 +768,6 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             // With a replacement surface the walls must reach it everywhere along the outline: measure the distance by rays
             // along the wall direction, and run the walls 1.5 x past the farthest hit (on both sides of the faces).
             var wallReach = reach;
-            var firstHitDistance = abs(offset);
             if (hasReplacement)
             {
                 stage = "measuring the distance to the replacement surface";
@@ -745,16 +794,13 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                             stage = ""; throw regenError("The replacement surface does not cover the whole outline along the wall direction (marked): it must lie in front of (or behind) every part of the footprint.", ["replacement"]);
                         }
                         farthest = max(farthest, hitDistance);
-                        if (i == 0 && k == 0)
-                        {
-                            firstHitDistance = hitDistance;
-                        }
                     }
                 }
                 wallReach = 1.5 * (farthest + abs(offset)) + 5 * millimeter;
             }
             stage = "building the walls";
             var walls = [];
+            var wires = [];
             for (var i = 0; i < nE; i += 1)
             {
                 const e = edges[i];
@@ -774,9 +820,11 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 opFitSpline(context, wid + "hi", { "points" : hi });
                 opLoft(context, wid + "loft", { "profileSubqueries" : [qCreatedBy(wid + "lo", EntityType.EDGE), qCreatedBy(wid + "hi", EntityType.EDGE)],
                             "bodyType" : ToolBodyType.SURFACE });
-                opDeleteBodies(context, wid + "delcurves", { "entities" : qUnion([qCreatedBy(wid + "lo", EntityType.BODY), qCreatedBy(wid + "hi", EntityType.BODY)]) });
+                wires = append(wires, qCreatedBy(wid + "lo", EntityType.BODY));
+                wires = append(wires, qCreatedBy(wid + "hi", EntityType.BODY));
                 walls = append(walls, qCreatedBy(wid + "loft", EntityType.BODY));
             }
+            opDeleteBodies(context, id + "delcurves", { "entities" : qUnion(wires) });
             var tubeBodies = qUnion(walls);
             if (nE > 1)
             {
@@ -850,10 +898,6 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             stage = "cutting the walls to the base and the offset surface";
             opSplitPart(context, id + "tubeByBase", { "targets" : tube, "tool" : baseSurface, "keepTools" : true });
             opSplitPart(context, id + "tubeByOffset", { "targets" : tube, "tool" : replacement, "keepTools" : true });
-            const firstEdge = edges[0];
-            // u points toward the offset side: half the way to the offset surface (its distance along u is |offset| / |u . n|, or |offset| when the faces are moved along u)
-            const wallProbe = hasReplacement ? firstEdge.ps[0] + firstEdge.us[0] * ((firstHitDistance + offset) / 2)
-                : firstEdge.ps[0] + firstEdge.us[0] * (abs(offset) / 2 / (moveAlongDirection ? 1 : abs(dot(firstEdge.us[0], toward))));
             const wallPieces = qBodyType(tube, BodyType.SHEET);
             if (isQueryEmpty(context, wallPieces))
             {
@@ -877,15 +921,15 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             const replTracked = tracked(replacement);
             // one cut per tube body (several loops = several tubes); the first keeps the op id of the one-loop build
             const tubeList = evaluateQuery(context, tubeFull);
-            for (var tk = 0; tk < size(tubeList); tk += 1)
-            {
-                opSplitPart(context, id + (tk == 0 ? "offsetByTube" : "offsetByTube" ~ tk), { "targets" : tk == 0 ? replacement : qBodyType(replTracked, BodyType.SHEET),
-                            "tool" : tubeList[tk], "keepTools" : true });
-            }
-            var replInside = undefined;
+            splitByTubes("offsetByTube", replacement, replTracked, tubeList);
+            var replInside = qNothing();
             if (!hasFootprintFaces)
             {
                 replInside = nearest(qBodyType(replTracked, BodyType.SHEET), replacementPoint);
+                if (isQueryEmpty(context, replInside))
+                {
+                    stage = ""; throw regenError("The new surface does not lie over the region: check the offset and the projection direction.", ["offset"]);
+                }
             }
             else
             {
@@ -916,32 +960,12 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 // ---- 7a. sheet: cut the hole in the base, knit [outside of the base first, wall, offset region] ----
                 stage = "cutting the hole in the sheet";
                 const baseTracked = tracked(owner);
-                for (var tk = 0; tk < size(tubeList); tk += 1)
-                {
-                    opSplitPart(context, id + (tk == 0 ? "baseByTube" : "baseByTube" ~ tk), { "targets" : tk == 0 ? owner : qBodyType(baseTracked, BodyType.SHEET),
-                                "tool" : tubeList[tk], "keepTools" : true });
-                }
+                splitByTubes("baseByTube", owner, baseTracked, tubeList);
                 const pieces = qBodyType(baseTracked, BodyType.SHEET);
-                var inside = undefined;
-                if (!hasFootprintFaces)
+                const inside = hasFootprintFaces ? piecesUnderRegion(pieces) : nearest(pieces, pIn);
+                if (isQueryEmpty(context, inside))
                 {
-                    inside = nearest(pieces, pIn);
-                }
-                else
-                {
-                    var insideList = [];
-                    for (var basePiece in evaluateQuery(context, pieces))
-                    {
-                        if (underRegion(interiorPoint(largestFaceOf(basePiece)).point))
-                        {
-                            insideList = append(insideList, basePiece);
-                        }
-                    }
-                    if (size(insideList) == 0)
-                    {
-                        stage = ""; throw regenError("No part of the sheet lies under the footprint region.", ["footprintFaces"]);
-                    }
-                    inside = qUnion(insideList);
+                    stage = ""; throw regenError("No part of the sheet lies under the footprint region.", ["footprint"]);
                 }
                 const outside = qSubtraction(pieces, inside);
                 if (isQueryEmpty(context, outside))
@@ -965,32 +989,12 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 // ---- 7b. solid: patch + wall + offset region -> closed shell -> plug; add or subtract ----
                 stage = "cutting the base surface to the outline";
                 const surfTracked = tracked(baseSurface);
-                for (var tk = 0; tk < size(tubeList); tk += 1)
-                {
-                    opSplitPart(context, id + (tk == 0 ? "surfByTube" : "surfByTube" ~ tk), { "targets" : tk == 0 ? baseSurface : qBodyType(surfTracked, BodyType.SHEET),
-                                "tool" : tubeList[tk], "keepTools" : true });
-                }
+                splitByTubes("surfByTube", baseSurface, surfTracked, tubeList);
                 const pieces = qBodyType(surfTracked, BodyType.SHEET);
-                var patch = undefined;
-                if (!hasFootprintFaces)
+                const patch = hasFootprintFaces ? piecesUnderRegion(pieces) : nearest(pieces, pIn);
+                if (isQueryEmpty(context, patch))
                 {
-                    patch = nearest(pieces, pIn);
-                }
-                else
-                {
-                    var patchKeep = [];
-                    for (var surfPiece in evaluateQuery(context, pieces))
-                    {
-                        if (underRegion(interiorPoint(largestFaceOf(surfPiece)).point))
-                        {
-                            patchKeep = append(patchKeep, surfPiece);
-                        }
-                    }
-                    if (size(patchKeep) == 0)
-                    {
-                        stage = ""; throw regenError("No part of the base surface lies under the footprint region.", ["footprintFaces"]);
-                    }
-                    patch = qUnion(patchKeep);
+                    stage = ""; throw regenError("No part of the base surface lies under the footprint region.", ["footprint"]);
                 }
                 dropAllBut(id + "dropSurf", pieces, patch);
                 stage = "closing the plug";
@@ -1035,12 +1039,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                         {
                             if (evDistance(context, { "side0" : mid, "side1" : shellPieces[p] }).distance < 1e-5 * meter)
                             {
-                                var known = false;
-                                for (var q in attached)
-                                {
-                                    known = known || q == p;
-                                }
-                                if (!known)
+                                if (!isIn(p, attached))
                                 {
                                     attached = append(attached, p);
                                 }
@@ -1061,19 +1060,18 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                         var sharing = false;
                         for (var p1 in attachedTo[w1])
                         {
-                            for (var p2 in attachedTo[w2])
-                            {
-                                sharing = sharing || p1 == p2;
-                            }
+                            sharing = sharing || isIn(p1, attachedTo[w2]);
                         }
                         if (sharing && lensOf[w2] != lensOf[w1])
                         {
-                            const from = lensOf[w2];
+                            // merge into the SMALLER label: wall 0 keeps label 0, so the main lens keeps the op ids "shell" / "enclose"
+                            const keepLabel = min(lensOf[w1], lensOf[w2]);
+                            const dropLabel = max(lensOf[w1], lensOf[w2]);
                             for (var w3 = 0; w3 < nW; w3 += 1)
                             {
-                                if (lensOf[w3] == from)
+                                if (lensOf[w3] == dropLabel)
                                 {
-                                    lensOf[w3] = lensOf[w1];
+                                    lensOf[w3] = keepLabel;
                                 }
                             }
                         }
@@ -1091,12 +1089,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                             lensWalls = append(lensWalls, wallParts[w]);
                             for (var p in attachedTo[w])
                             {
-                                var have = false;
-                                for (var q in lensPieces)
-                                {
-                                    have = have || q == p;
-                                }
-                                if (!have)
+                                if (!isIn(p, lensPieces))
                                 {
                                     lensPieces = append(lensPieces, p);
                                 }
