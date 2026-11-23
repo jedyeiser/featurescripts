@@ -1,0 +1,245 @@
+function(context is Context, queries)
+{
+    var out = [];
+    const mm = function(x) returns ValueWithUnits { return x * millimeter; };
+    const f1 = function(v) returns string { return "" ~ roundToPrecision(v, 3); };
+    const tTop = mm(5);
+    const tBot = mm(3);
+    const N = 16;
+    const ext = mm(60);
+    const EXT_STEPS = 4;
+    const extendBy = mm(15);
+    const R = 100;
+
+    // seed sheet for each kind: a big patch trimmed by planes; returns [ref point, keep point, planes]
+    const seedFor = function(kind is string, base is Id) returns map
+        {
+            if (kind == "cylcut")
+            {
+                var pts = [];
+                for (var i = 0; i <= 8; i += 1)
+                {
+                    const s = (i / 8 - 0.5) * 160;
+                    const a = s / R;
+                    pts = append(pts, vector(mm(R * sin(a * radian)), mm(-50), mm(R * (1 - cos(a * radian)))));
+                }
+                opFitSpline(context, base + "fit", { "points" : pts });
+                opExtrude(context, base + "ext", { "bodyType" : ToolBodyType.SURFACE, "entities" : qCreatedBy(base + "fit", EntityType.EDGE),
+                            "direction" : vector(0, 1, 0), "endBound" : BoundingType.BLIND, "endDepth" : mm(100) });
+                opDeleteBodies(context, base + "delfit", { "entities" : qCreatedBy(base + "fit", EntityType.BODY) });
+                return { "ref" : vector(0, 0, 500) * millimeter, "keep" : vector(0, 0, 0) * millimeter,
+                        "planes" : [plane(vector(45, 0, 0) * millimeter, normalize(vector(1, 0.35, 0))),
+                                plane(vector(-40, 0, 0) * millimeter, normalize(vector(-1, -0.25, 0))),
+                                plane(vector(0, 22, 0) * millimeter, normalize(vector(0.15, 1, 0)))] };
+            }
+            // sphere: a four-sided patch around the +x equator point, doubly curved
+            opSphere(context, base + "sph", { "radius" : mm(150), "center" : vector(0, 0, 0) * millimeter });
+            opExtractSurface(context, base + "exs", { "faces" : qOwnedByBody(qCreatedBy(base + "sph", EntityType.BODY), EntityType.FACE) });
+            opDeleteBodies(context, base + "delsph", { "entities" : qCreatedBy(base + "sph", EntityType.BODY) });
+            return { "ref" : vector(0, 0, 0) * millimeter, "keep" : vector(150, 0, 0) * millimeter,
+                    "planes" : [plane(vector(135, 0, 0) * millimeter, vector(-1, 0, 0)),
+                            plane(vector(0, 25, 0) * millimeter, vector(0, 1, 0)),
+                            plane(vector(0, -25, 0) * millimeter, vector(0, -1, 0)),
+                            plane(vector(0, 0, 30) * millimeter, vector(0, 0, 1)),
+                            plane(vector(0, 0, -30) * millimeter, vector(0, 0, -1))] };
+        };
+
+    const run = function(kind is string, angleDeg is number) returns array
+        {
+            var rep = [];
+            const k = tan(angleDeg * degree);
+            const base = newId() + (kind ~ "_" ~ roundToPrecision(angleDeg, 0));
+            const everything = qEverything(EntityType.BODY);
+            if (!isQueryEmpty(context, everything))
+            {
+                opDeleteBodies(context, base + "clear", { "entities" : everything });
+            }
+
+            const setup = seedFor(kind, base + "s");
+            // trim the big sheet to the seed face with the planes, keeping the piece nearest the keep point
+            for (var i = 0; i < size(setup.planes); i += 1)
+            {
+                const sheets = qBodyType(qEverything(EntityType.BODY), BodyType.SHEET);
+                println("trim split " ~ i ~ ", sheets " ~ size(evaluateQuery(context, sheets)));
+                opSplitPart(context, base + ("trim" ~ i), { "targets" : sheets, "tool" : setup.planes[i], "keepTools" : false });
+                var best = undefined;
+                var bestD = inf * meter;
+                for (var piece in evaluateQuery(context, sheets))
+                {
+                    const d = evDistance(context, { "side0" : setup.keep, "side1" : piece }).distance;
+                    if (d < bestD)
+                    {
+                        bestD = d;
+                        best = piece;
+                    }
+                }
+                opDeleteBodies(context, base + ("dropTrim" ~ i), { "entities" : qSubtraction(sheets, best) });
+            }
+            const seedBody = qUnion(evaluateQuery(context, qBodyType(qEverything(EntityType.BODY), BodyType.SHEET)));
+            const seedFace = qOwnedByBody(seedBody, EntityType.FACE);
+            const nSeedEdges = size(evaluateQuery(context, qOwnedByBody(seedBody, EntityType.EDGE)));
+
+            // the point on the seed nearest its centroid, and which normal side faces the reference
+            const centroid = evApproximateCentroid(context, { "entities" : seedFace });
+            const dm = evDistance(context, { "side0" : centroid, "side1" : seedFace });
+            const mid = dm.sides[1].point;
+            const midNormal = evFaceTangentPlane(context, { "face" : seedFace, "parameter" : dm.sides[1].parameter }).normal;
+            const s = dot(midNormal, setup.ref - mid) >= 0 * meter ? 1 : -1;
+
+            // extended copy of the seed: the slab must be larger than the seed by more than the draft shifts the walls
+            // two extended copies: a small one for the slab, a big one the wall extensions are projected onto
+            const extendedFace = function(tag is string, dist is ValueWithUnits) returns Query
+                {
+                    opExtractSurface(context, base + ("extract" ~ tag), { "faces" : seedFace });
+                    const body = qCreatedBy(base + ("extract" ~ tag), EntityType.BODY);
+                    opExtendSheetBody(context, base + ("extend" ~ tag), {
+                                "entities" : qEdgeTopologyFilter(qOwnedByBody(body, EntityType.EDGE), EdgeTopology.LAMINAR),
+                                "tangentPropagation" : false, "endCondition" : ExtendEndType.EXTEND_BLIND, "extendDistance" : dist,
+                                "extensionShape" : ExtendSheetShapeType.LINEAR });
+                    return qOwnedByBody(body, EntityType.FACE);
+                };
+            const extFace = extendedFace("S", extendBy);
+            const bigFace = extendedFace("B", mm(120));
+            const de = evDistance(context, { "side0" : mid, "side1" : extFace });
+            const extNormal = evFaceTangentPlane(context, { "face" : extFace, "parameter" : de.sides[1].parameter }).normal;
+            const se = dot(extNormal, setup.ref - mid) >= 0 * meter ? 1 : -1;
+            const db0 = evDistance(context, { "side0" : mid, "side1" : bigFace });
+            const sb = dot(evFaceTangentPlane(context, { "face" : bigFace, "parameter" : db0.sides[1].parameter }).normal, setup.ref - mid) >= 0 * meter ? 1 : -1;
+            rep = append(rep, kind ~ " angle " ~ angleDeg ~ ": seed edges " ~ nSeedEdges ~ ", extended face area " ~ f1(evArea(context, { "entities" : extFace }) / millimeter ^ 2)
+                ~ " vs seed " ~ f1(evArea(context, { "entities" : seedFace }) / millimeter ^ 2) ~ " mm2");
+            opThicken(context, base + "slab", {
+                        "entities" : extFace,
+                        "thickness1" : se > 0 ? tTop : tBot,
+                        "thickness2" : se > 0 ? tBot : tTop,
+                        "keepTools" : false
+                    });
+
+            var edgeIndex = 0;
+            for (var edge in evaluateQuery(context, qOwnedByBody(seedBody, EntityType.EDGE)))
+            {
+                println("edge " ~ edgeIndex ~ " length " ~ f1(evLength(context, { "entities" : edge }) / millimeter));
+                var ps = [];
+                var ns = [];
+                var cs = [];
+                var ts = [];
+                for (var i = 0; i <= N; i += 1)
+                {
+                    const lines = evEdgeTangentLines(context, { "edge" : edge, "parameters" : [i / N] });
+                    const p = lines[0].origin;
+                    const tang = lines[0].direction;
+                    const dd = evDistance(context, { "side0" : p, "side1" : seedFace });
+                    const nn = evFaceTangentPlane(context, { "face" : seedFace, "parameter" : dd.sides[1].parameter }).normal * s;
+                    var cc = normalize(cross(tang, nn));
+                    const dPlus = evDistance(context, { "side0" : p + cc * mm(0.5), "side1" : seedFace }).distance;
+                    const dMinus = evDistance(context, { "side0" : p - cc * mm(0.5), "side1" : seedFace }).distance;
+                    if (dPlus < dMinus)
+                    {
+                        cc = -cc;
+                    }
+                    ps = append(ps, p);
+                    ns = append(ns, nn);
+                    cs = append(cs, cc);
+                    ts = append(ts, tang);
+                }
+                // extension past both ends: points along the end tangent, projected onto the big extended face so the wall
+                // follows the surface; the wall must reach past the slab outline, so the reach (ext) exceeds the slab margin
+                const forward = normalize(ps[N] - ps[0]);
+                const t0 = dot(ts[0], forward) >= 0 ? ts[0] : -ts[0];
+                const t1 = dot(ts[N], forward) >= 0 ? ts[N] : -ts[N];
+                const onBig = function(q is Vector, cRef is Vector) returns map
+                    {
+                        const dq = evDistance(context, { "side0" : q, "side1" : bigFace });
+                        const nq = evFaceTangentPlane(context, { "face" : bigFace, "parameter" : dq.sides[1].parameter }).normal * sb;
+                        return { "p" : dq.sides[1].point, "n" : nq, "c" : normalize(cRef - nq * dot(cRef, nq)) };
+                    };
+                var allP = [];
+                var allN = [];
+                var allC = [];
+                for (var j = EXT_STEPS; j >= 1; j -= 1)
+                {
+                    const e = onBig(ps[0] - t0 * (ext * j / EXT_STEPS), cs[0]);
+                    allP = append(allP, e.p);
+                    allN = append(allN, e.n);
+                    allC = append(allC, e.c);
+                }
+                for (var i = 0; i <= N; i += 1)
+                {
+                    allP = append(allP, ps[i]);
+                    allN = append(allN, ns[i]);
+                    allC = append(allC, cs[i]);
+                }
+                for (var j = 1; j <= EXT_STEPS; j += 1)
+                {
+                    const e = onBig(ps[N] + t1 * (ext * j / EXT_STEPS), cs[N]);
+                    allP = append(allP, e.p);
+                    allN = append(allN, e.n);
+                    allC = append(allC, e.c);
+                }
+
+                const hLo = -2 * tBot;
+                const hHi = 2 * tTop;
+                var lo = [];
+                var hi = [];
+                for (var i = 0; i < size(allP); i += 1)
+                {
+                    lo = append(lo, allP[i] + allN[i] * hLo + allC[i] * (hLo * k));
+                    hi = append(hi, allP[i] + allN[i] * hHi + allC[i] * (hHi * k));
+                }
+                const wid = base + ("wall" ~ edgeIndex);
+                opFitSpline(context, wid + "lo", { "points" : lo });
+                opFitSpline(context, wid + "hi", { "points" : hi });
+                opLoft(context, wid + "loft", {
+                            "profileSubqueries" : [qCreatedBy(wid + "lo", EntityType.EDGE), qCreatedBy(wid + "hi", EntityType.EDGE)],
+                            "bodyType" : ToolBodyType.SURFACE
+                        });
+                const wall = qBodyType(qCreatedBy(wid + "loft", EntityType.BODY), BodyType.SHEET);
+                const solids = qBodyType(qEverything(EntityType.BODY), BodyType.SOLID);
+                println("wall split " ~ edgeIndex ~ ", solids " ~ size(evaluateQuery(context, solids)) ~ ", wall bodies " ~ size(evaluateQuery(context, wall)));
+                opSplitPart(context, wid + "split", { "targets" : solids, "tool" : wall, "keepTools" : false });
+                const solidsAfter = qBodyType(qEverything(EntityType.BODY), BodyType.SOLID);
+                const keep = qContainsPoint(solidsAfter, mid);
+                const drop = qSubtraction(solidsAfter, keep);
+                if (!isQueryEmpty(context, drop))
+                {
+                    opDeleteBodies(context, wid + "drop", { "entities" : drop });
+                }
+                edgeIndex += 1;
+            }
+
+            const result = qBodyType(qEverything(EntityType.BODY), BodyType.SOLID);
+            const nSolids = size(evaluateQuery(context, result));
+            rep = append(rep, "  solids " ~ nSolids);
+            if (nSolids == 1)
+            {
+                const v = evVolume(context, { "entities" : result });
+                const faces = evaluateQuery(context, qOwnedByBody(result, EntityType.FACE));
+                var wallAngles = "";
+                var capArea = "";
+                for (var face in faces)
+                {
+                    const fp = evFaceTangentPlane(context, { "face" : face, "parameter" : vector(0.5, 0.5) });
+                    const dseed = evDistance(context, { "side0" : fp.origin, "side1" : seedFace });
+                    const sn = evFaceTangentPlane(context, { "face" : seedFace, "parameter" : dseed.sides[1].parameter }).normal;
+                    const ang = acos(clamp(abs(dot(fp.normal, sn)), 0, 1)) / degree;
+                    if (ang > 45)
+                    {
+                        wallAngles ~= f1(ang) ~ " ";
+                    }
+                    else
+                    {
+                        capArea ~= f1(evArea(context, { "entities" : face }) / millimeter ^ 2) ~ " ";
+                    }
+                }
+                rep = append(rep, "  volume " ~ f1(v / millimeter ^ 3) ~ " mm3, faces " ~ size(faces) ~ " (expect " ~ (nSeedEdges + 2) ~ "), wall angles to seed normal: " ~ wallAngles
+                    ~ "(expect " ~ f1(90 - abs(angleDeg)) ~ " or so), cap areas " ~ capArea);
+            }
+            return rep;
+        };
+
+    for (var c in [["cylcut", 0], ["cylcut", 10], ["cylcut", -10], ["sphere", 0], ["sphere", 10], ["sphere", -10]])
+    {
+        const r = try silent(run(c[0], c[1]));
+        out = r == undefined ? append(out, c[0] ~ " angle " ~ c[1] ~ ": FAILED (error)") : concatenateArrays([out, r]);
+    }
+    return out;
+}

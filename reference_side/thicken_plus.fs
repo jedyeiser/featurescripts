@@ -43,8 +43,38 @@ export enum ThickenPlusDeleteCaps
     BOTH
 }
 
+/** Where the draft angle is measured from: the surface whose outline does not move. */
+export enum ThickenPlusDraftNeutral
+{
+    annotation { "Name" : "Input face" }
+    SEED,
+    annotation { "Name" : "Toward reference cap" }
+    TOP,
+    annotation { "Name" : "Away from reference cap" }
+    BOTTOM
+}
+
+/** Which of the boundary edges (one-sided for the thickened faces) get the draft. */
+export enum ThickenPlusDraftEdges
+{
+    annotation { "Name" : "All boundary edges" }
+    ALL,
+    annotation { "Name" : "Only selected edges" }
+    SELECTED,
+    annotation { "Name" : "All except selected edges" }
+    ALL_EXCEPT
+}
+
+const THICKEN_DRAFT_BOUNDS = { (degree) : [-89, 0, 89], (radian) : 0 } as AngleBoundSpec;
+
 /** Face samples per parameter direction for the curvature check. */
 const CURVATURE_SAMPLES = 9;
+
+/** Samples along each boundary edge for the draft walls, and extension steps past an unlinked end. */
+const DRAFT_SAMPLES = 20;
+const DRAFT_EXTENSION_STEPS = 4;
+/** Two boundary edges meeting at a vertex are one smooth chain when their tangents agree within about 3 degrees. */
+const DRAFT_TANGENT_COS = 0.9986;
 
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Thicken+",
         "Feature Type Description" : "Thicken surfaces toward and away from a reference, instead of along whichever way their normals point. Otherwise std Thicken, boolean included.",
@@ -88,6 +118,40 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
 
         booleanStepScopePredicate(definition);
 
+        annotation { "Group Name" : "Draft and side faces", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Draft angle",
+                        "Description" : "Positive: the walls widen going toward the reference (the part releases toward it). Measured from the surface normal at the boundary. 0 = no draft." }
+            isAngle(definition.draftAngle, THICKEN_DRAFT_BOUNDS);
+
+            annotation { "Name" : "Same angle away from reference", "Default" : true,
+                        "Description" : "One continuous wall through the neutral surface. Off: give the away side its own angle (same sign convention), which kinks the wall at the neutral surface." }
+            definition.shareDraftAngle is boolean;
+
+            if (!definition.shareDraftAngle)
+            {
+                annotation { "Name" : "Draft angle away from reference" }
+                isAngle(definition.draftAngleAway, THICKEN_DRAFT_BOUNDS);
+            }
+
+            annotation { "Name" : "Neutral surface", "Description" : "The outline that stays where it is; the walls tilt about it." }
+            definition.draftNeutral is ThickenPlusDraftNeutral;
+
+            annotation { "Name" : "Edges to draft" }
+            definition.draftEdgeMode is ThickenPlusDraftEdges;
+
+            if (definition.draftEdgeMode != ThickenPlusDraftEdges.ALL)
+            {
+                annotation { "Name" : "Edges", "Filter" : EntityType.EDGE && ConstructionObject.NO,
+                            "Description" : "Edges on the outline of the thickened faces: one-sided with respect to them (an edge shared by two selected faces has no wall)." }
+                definition.draftEdges is Query;
+            }
+
+            annotation { "Name" : "Side face offset",
+                        "Description" : "Move the side faces (all of them, drafted or not) outward (+) or inward (-) by this much, measured at the neutral surface: the same thicken, but the part comes out a little larger or smaller than the face. 0 = off." }
+            isLength(definition.sideOffset, ZERO_DEFAULT_LENGTH_BOUNDS);
+        }
+
         annotation { "Group Name" : "Advanced", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Check curvature", "Default" : true,
@@ -106,6 +170,19 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
         if (toward + away <= 0 * meter)
         {
             throw regenError("Both thicknesses are zero.", ["thicknessToward"]);
+        }
+
+        // Draft: tan of the angle on the toward side and on the away side (the away side's own angle only when not shared).
+        const kToward = tan(definition.draftAngle);
+        const kAway = definition.shareDraftAngle ? kToward : tan(definition.draftAngleAway);
+        // A side face offset takes the same built walls (a constant added to the draft's shift), also without an angle.
+        const offsetting = abs(definition.sideOffset) > 1e-9 * meter;
+        const angled = abs(kToward) > 1e-9 || abs(kAway) > 1e-9;
+        const drafting = angled || offsetting;
+        // the edge selection only picks which walls tilt: with no angle it has nothing to pick
+        if (angled && definition.draftEdgeMode != ThickenPlusDraftEdges.ALL && isQueryEmpty(context, definition.draftEdges))
+        {
+            throw regenError("Select the edges to draft (or the edges to leave undrafted).", ["draftEdges"]);
         }
 
         // One group per owner body: each is thickened on its own side.
@@ -131,17 +208,48 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
                         ["sideReference"]);
                 }
             }
+            // the boundary of the face set: edges with exactly one of its faces (topologically one-sided for this feature)
+            const oneSided = drafting ? oneSidedEdges(context, groupFaces) : qNothing();
+            var drafted = oneSided;
+            if (definition.draftEdgeMode == ThickenPlusDraftEdges.SELECTED)
+            {
+                drafted = qIntersection([oneSided, definition.draftEdges]);
+            }
+            else if (definition.draftEdgeMode == ThickenPlusDraftEdges.ALL_EXCEPT)
+            {
+                drafted = qSubtraction(oneSided, definition.draftEdges);
+            }
             groups = append(groups, {
                         "faces" : groupFaces,
                         "alongNormal" : alongNormal,
                         // opThicken: thickness1 along the normal, thickness2 against it
                         "thickness1" : alongNormal > 0 ? toward : away,
-                        "thickness2" : alongNormal > 0 ? away : toward
+                        "thickness2" : alongNormal > 0 ? away : toward,
+                        "toward" : toward,
+                        "away" : away,
+                        "oneSided" : oneSided,
+                        "drafted" : drafted
                     });
             if (definition.debugPrint)
             {
                 println("[thicken+] surface " ~ (i + 1) ~ ": toward the reference is " ~ (alongNormal > 0 ? "along" : "against")
                     ~ " its normal; " ~ fmtMM(toward, 4) ~ " mm toward, " ~ fmtMM(away, 4) ~ " mm away.");
+            }
+        }
+
+        // Every selected edge must be on the outline of some group's faces.
+        if (angled && definition.draftEdgeMode != ThickenPlusDraftEdges.ALL)
+        {
+            var outlines = [];
+            for (var group in groups)
+            {
+                outlines = append(outlines, group.oneSided);
+            }
+            const stray = qSubtraction(definition.draftEdges, qUnion(outlines));
+            if (!isQueryEmpty(context, stray))
+            {
+                throw regenError("These edges are not one-sided for the thickened faces (shared by two of them, or not on them at all): only outline edges can be drafted.",
+                    ["draftEdges"], stray);
             }
         }
 
@@ -153,23 +261,42 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
             }
         }
 
-        // std Thicken, per group, then its boolean step unchanged.
+        // std Thicken, per group (or the drafted build), then its boolean step unchanged. Returns per group the Toward
+        // and Away cap faces of a drafted build (undefined for a plain thicken, whose caps are read from opThicken).
         const remainingTransform = getRemainderPatternTransform(context, { "references" : definition.entities });
-        const thickenAll = function(opId is Id)
+        const draftSettings = {
+                "kToward" : kToward,
+                "kAway" : kAway,
+                "neutral" : definition.draftNeutral,
+                "offset" : definition.sideOffset,
+                "keepTools" : definition.keepTools,
+                "debug" : definition.debugPrint
+            };
+        const thickenAll = function(opId is Id) returns array
             {
+                var caps = [];
                 for (var i = 0; i < size(groups); i += 1)
                 {
                     const groupId = opId + ("thicken" ~ i);
-                    opThicken(context, groupId, {
-                                "entities" : groups[i].faces,
-                                "thickness1" : groups[i].thickness1,
-                                "thickness2" : groups[i].thickness2,
-                                "keepTools" : definition.keepTools
-                            });
+                    if (drafting)
+                    {
+                        caps = append(caps, draftThicken(context, groupId, groups[i], draftSettings));
+                    }
+                    else
+                    {
+                        opThicken(context, groupId, {
+                                    "entities" : groups[i].faces,
+                                    "thickness1" : groups[i].thickness1,
+                                    "thickness2" : groups[i].thickness2,
+                                    "keepTools" : definition.keepTools
+                                });
+                        caps = append(caps, undefined);
+                    }
                     transformResultIfNecessary(context, groupId, remainingTransform);
                 }
+                return caps;
             };
-        thickenAll(id);
+        const built = thickenAll(id);
 
         // Name the faces before the boolean, tracked through it. opThicken makes its START cap on the thickness1 side
         // (along the normal) and its END cap on the thickness2 side, also when that thickness is 0 (the cap then sits
@@ -186,11 +313,24 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
         for (var i = 0; i < size(groups); i += 1)
         {
             const thickenId = id + ("thicken" ~ i);
-            const startCap = frozen(qCapEntity(thickenId, CapType.START, EntityType.FACE));
-            const endCap = frozen(qCapEntity(thickenId, CapType.END, EntityType.FACE));
-            towardFaces = append(towardFaces, groups[i].alongNormal > 0 ? startCap : endCap);
-            awayFaces = append(awayFaces, groups[i].alongNormal > 0 ? endCap : startCap);
-            sideFaces = append(sideFaces, frozen(qSubtraction(qOwnedByBody(qCreatedBy(thickenId, EntityType.BODY), EntityType.FACE), qUnion([startCap, endCap]))));
+            var towardCap = qNothing();
+            var awayCap = qNothing();
+            if (built[i] != undefined)
+            {
+                // drafted build: the caps were tracked through the splits
+                towardCap = frozen(built[i].toward);
+                awayCap = frozen(built[i].away);
+            }
+            else
+            {
+                const startCap = frozen(qCapEntity(thickenId, CapType.START, EntityType.FACE));
+                const endCap = frozen(qCapEntity(thickenId, CapType.END, EntityType.FACE));
+                towardCap = groups[i].alongNormal > 0 ? startCap : endCap;
+                awayCap = groups[i].alongNormal > 0 ? endCap : startCap;
+            }
+            towardFaces = append(towardFaces, towardCap);
+            awayFaces = append(awayFaces, awayCap);
+            sideFaces = append(sideFaces, frozen(qSubtraction(qOwnedByBody(qCreatedBy(thickenId, EntityType.BODY), EntityType.FACE), qUnion([towardCap, awayCap]))));
         }
         const tracked = function(q is Query) returns Query
             {
@@ -258,6 +398,13 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
         "keepTools" : false,
         "outputName" : "",
         "deleteCaps" : ThickenPlusDeleteCaps.NONE,
+        "draftAngle" : 0 * degree,
+        "shareDraftAngle" : true,
+        "draftAngleAway" : 0 * degree,
+        "draftNeutral" : ThickenPlusDraftNeutral.SEED,
+        "draftEdgeMode" : ThickenPlusDraftEdges.ALL,
+        "draftEdges" : qNothing(),
+        "sideOffset" : 0 * meter,
         "checkCurvature" : true,
         "debugPrint" : false
     });
@@ -331,4 +478,402 @@ function checkCurvature(context is Context, id is Id, group is map, index is num
             ~ (tightest.alongNormal < inf * meter ? fmtMM(tightest.alongNormal, 3) ~ " mm" : "none")
             ~ ", against it " ~ (tightest.againstNormal < inf * meter ? fmtMM(tightest.againstNormal, 3) ~ " mm" : "none") ~ ".");
     }
+}
+
+/**
+ * The edges on the outline of a face set: those with exactly one of the faces on them. For a face in the middle of a
+ * part these are all its edges (two-sided in the part, but one-sided for this feature); between two selected faces an
+ * edge is not on the outline and has no wall.
+ */
+function oneSidedEdges(context is Context, faces is Query) returns Query
+{
+    var outline = [];
+    for (var edge in evaluateQuery(context, qAdjacent(faces, AdjacencyType.EDGE, EntityType.EDGE)))
+    {
+        if (size(evaluateQuery(context, qIntersection([qAdjacent(edge, AdjacencyType.EDGE, EntityType.FACE), faces]))) == 1)
+        {
+            outline = append(outline, edge);
+        }
+    }
+    return qUnion(outline);
+}
+
+/**
+ * The drafted thicken of one group of faces. Every connected piece of the faces is copied as a sheet and built by
+ * draftSheet; the input surfaces go with keepTools off, as with opThicken. Returns the Toward and Away cap queries
+ * (tracked through the splits).
+ */
+function draftThicken(context is Context, groupId is Id, group is map, draft is map) returns map
+{
+    opExtractSurface(context, groupId + "seed", { "faces" : group.faces, "tangentPropagation" : false });
+    const seedBodies = qCreatedBy(groupId + "seed", EntityType.BODY);
+    const seeds = evaluateQuery(context, seedBodies);
+    if (size(seeds) == 0)
+    {
+        throw regenError("The faces could not be copied for the draft.", ["entities"]);
+    }
+    var toward = [];
+    var away = [];
+    for (var s = 0; s < size(seeds); s += 1)
+    {
+        const caps = draftSheet(context, groupId + ("sheet" ~ s), seeds[s], group, draft);
+        toward = append(toward, caps.toward);
+        away = append(away, caps.away);
+    }
+    opDeleteBodies(context, groupId + "deleteSeeds", { "entities" : seedBodies });
+    if (!draft.keepTools)
+    {
+        // like opThicken: a sheet body goes when all its faces were thickened
+        var spent = [];
+        for (var sheet in evaluateQuery(context, qBodyType(qOwnerBody(group.faces), BodyType.SHEET)))
+        {
+            if (isQueryEmpty(context, qSubtraction(qOwnedByBody(sheet, EntityType.FACE), group.faces)))
+            {
+                spent = append(spent, sheet);
+            }
+        }
+        if (size(spent) > 0)
+        {
+            opDeleteBodies(context, groupId + "deleteInputs", { "entities" : qUnion(spent) });
+        }
+    }
+    return { "toward" : qUnion(toward), "away" : qUnion(away) };
+}
+
+/**
+ * One connected sheet of the seed faces, thickened with drafted walls.
+ *
+ * The slab is the std thicken of a copy of the seed grown by a margin on every side. Each outline edge gets a ruled
+ * wall: at signed height h from the neutral surface (along the normal toward the reference) the outline moves outward
+ * along the surface conormal by h * tan(angle), so the wall tilts about the neutral surface; with two angles the wall
+ * kinks there. The walls are lofts between sampled copies of the outline, overextended in height past the slab and, at
+ * ends that do not continue smoothly into another outline edge, along the surface past the corner (points projected
+ * onto a second, bigger copy of the seed) so they cross the whole slab. The slab is split by the walls of one smooth
+ * chain at a time and the piece holding the seed is kept: this is right where the outline is convex, and a concave
+ * corner (or an edge that continues smoothly into an edge with another draft) is reported instead.
+ */
+function draftSheet(context is Context, id is Id, seed is Query, group is map, draft is map) returns map
+{
+    const T = group.toward;
+    const A = group.away;
+    const total = T + A;
+    const kMax = max(abs(draft.kToward), abs(draft.kAway));
+    // the slab outgrows the walls' shift on every side; the walls reach past its outline by a multiple of that margin
+    const margin = 2 * total * kMax + 2 * abs(draft.offset) + 1 * millimeter;
+    const reach = 8 * margin + 5 * millimeter;
+    const mm = millimeter;
+
+    const seedFaces = qOwnedByBody(seed, EntityType.FACE);
+    const seedFaceList = evaluateQuery(context, seedFaces);
+    const modelFaceList = evaluateQuery(context, group.faces);
+    const centroid = evApproximateCentroid(context, { "entities" : seedFaces });
+    const dm = evDistance(context, { "side0" : centroid, "side1" : seedFaces });
+    const mid = dm.sides[1].point;
+    const seedNormalMid = evFaceTangentPlane(context, { "face" : seedFaceList[dm.sides[1].index], "parameter" : dm.sides[1].parameter }).normal;
+    const dmm = evDistance(context, { "side0" : mid, "side1" : group.faces });
+    const modelNormalMid = evFaceTangentPlane(context, { "face" : modelFaceList[dmm.sides[1].index], "parameter" : dmm.sides[1].parameter }).normal;
+    // a seed normal times this points toward the reference
+    const towardSign = (dot(seedNormalMid, modelNormalMid) >= 0 ? 1 : -1) * group.alongNormal;
+
+    // a copy of the seed grown by dist on every outline edge
+    const grownCopy = function(tag is string, dist is ValueWithUnits) returns Query
+        {
+            opExtractSurface(context, id + ("copy" ~ tag), { "faces" : seedFaces, "tangentPropagation" : false });
+            const copy = qCreatedBy(id + ("copy" ~ tag), EntityType.BODY);
+            opExtendSheetBody(context, id + ("extend" ~ tag), {
+                        "entities" : qEdgeTopologyFilter(qOwnedByBody(copy, EntityType.EDGE), EdgeTopology.LAMINAR),
+                        "tangentPropagation" : false,
+                        "endCondition" : ExtendEndType.EXTEND_BLIND,
+                        "extendDistance" : dist,
+                        "extensionShape" : ExtendSheetShapeType.LINEAR
+                    });
+            return copy;
+        };
+    const smallCopy = grownCopy("S", margin);
+    const bigCopy = grownCopy("B", 1.5 * reach);
+    const smallFaces = qOwnedByBody(smallCopy, EntityType.FACE);
+    const bigFaces = qOwnedByBody(bigCopy, EntityType.FACE);
+    const bigFaceList = evaluateQuery(context, bigFaces);
+
+    // the slab: opThicken of the small copy; START is its thickness1 side, along that copy's normal
+    const dSmall = evDistance(context, { "side0" : mid, "side1" : smallFaces });
+    const smallNormalMid = evFaceTangentPlane(context, { "face" : evaluateQuery(context, smallFaces)[dSmall.sides[1].index], "parameter" : dSmall.sides[1].parameter }).normal;
+    const alongSmall = (dot(smallNormalMid, modelNormalMid) >= 0 ? 1 : -1) * group.alongNormal;
+    opThicken(context, id + "slab", {
+                "entities" : smallFaces,
+                "thickness1" : alongSmall > 0 ? T : A,
+                "thickness2" : alongSmall > 0 ? A : T,
+                "keepTools" : false
+            });
+    const tracked = function(q is Query) returns Query
+        {
+            return qUnion([q, startTracking(context, q)]);
+        };
+    const slab = tracked(qCreatedBy(id + "slab", EntityType.BODY));
+    const startCap = tracked(qUnion(evaluateQuery(context, qCapEntity(id + "slab", CapType.START, EntityType.FACE))));
+    const endCap = tracked(qUnion(evaluateQuery(context, qCapEntity(id + "slab", CapType.END, EntityType.FACE))));
+
+    // heights from the seed along the toward normal: the neutral surface, and the walls' extent (past the slab)
+    const hN = draft.neutral == ThickenPlusDraftNeutral.TOP ? T : (draft.neutral == ThickenPlusDraftNeutral.BOTTOM ? -A : 0 * meter);
+    const hHi = T + 0.5 * total + 1 * mm;
+    const hLo = -(A + 0.5 * total + 1 * mm);
+    // a point strictly inside the slab above the seed, to tell the piece to keep
+    const pin = mid + seedNormalMid * towardSign * ((T - A) / 2);
+
+    // ---- the outline edges, sampled ----
+    var edges = [];
+    for (var edge in evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(seed, EntityType.EDGE), EdgeTopology.LAMINAR)))
+    {
+        var params = [];
+        for (var i = 0; i <= DRAFT_SAMPLES; i += 1)
+        {
+            params = append(params, i / DRAFT_SAMPLES);
+        }
+        const lines = evEdgeTangentLines(context, { "edge" : edge, "parameters" : params });
+        var ps = [];
+        var ns = [];
+        var ts = [];
+        for (var i = 0; i <= DRAFT_SAMPLES; i += 1)
+        {
+            const dd = evDistance(context, { "side0" : lines[i].origin, "side1" : seedFaces });
+            ps = append(ps, lines[i].origin);
+            ns = append(ns, evFaceTangentPlane(context, { "face" : seedFaceList[dd.sides[1].index], "parameter" : dd.sides[1].parameter }).normal * towardSign);
+            ts = append(ts, lines[i].direction);
+        }
+        const closed = norm(ps[DRAFT_SAMPLES] - ps[0]) < 1e-6 * meter;
+        if (closed)
+        {
+            ps[DRAFT_SAMPLES] = ps[0];
+        }
+        // the outward conormal: along tangent x normal, turned round when a step that way stays on the face
+        const im = floor(DRAFT_SAMPLES / 2);
+        const guess = normalize(cross(ts[im], ns[im]));
+        const stepOut = evDistance(context, { "side0" : ps[im] + guess * 0.5 * mm, "side1" : seedFaces }).distance;
+        const stepIn = evDistance(context, { "side0" : ps[im] - guess * 0.5 * mm, "side1" : seedFaces }).distance;
+        var cs = [];
+        for (var i = 0; i <= DRAFT_SAMPLES; i += 1)
+        {
+            cs = append(cs, normalize(cross(ts[i], ns[i])) * (stepOut < stepIn ? -1 : 1));
+        }
+        const isDrafted = !isQueryEmpty(context, group.drafted) && evDistance(context, { "side0" : ps[im], "side1" : group.drafted }).distance < 1e-6 * meter;
+        edges = append(edges, {
+                    "ps" : ps, "ns" : ns, "ts" : ts, "cs" : cs, "closed" : closed,
+                    "kT" : isDrafted ? draft.kToward : 0, "kA" : isDrafted ? draft.kAway : 0
+                });
+    }
+    const nE = size(edges);
+    if (nE == 0)
+    {
+        throw regenError("The faces have no outline edge to build a draft on.", ["entities"]);
+    }
+
+    // ---- smooth chains: edges that meet tangentially with the same draft share one cutter and are not extended there ----
+    var label = [];
+    var startLinked = [];
+    var endLinked = [];
+    for (var i = 0; i < nE; i += 1)
+    {
+        label = append(label, i);
+        startLinked = append(startLinked, edges[i].closed);
+        endLinked = append(endLinked, edges[i].closed);
+    }
+    for (var i = 0; i < nE; i += 1)
+    {
+        if (edges[i].closed)
+        {
+            continue;
+        }
+        for (var a = 0; a < 2; a += 1)
+        {
+            const pa = a == 0 ? edges[i].ps[0] : edges[i].ps[DRAFT_SAMPLES];
+            const ua = a == 0 ? -edges[i].ts[0] : edges[i].ts[DRAFT_SAMPLES];
+            var partners = [];
+            for (var j = 0; j < nE; j += 1)
+            {
+                if (j == i || edges[j].closed)
+                {
+                    continue;
+                }
+                for (var b = 0; b < 2; b += 1)
+                {
+                    if (norm(pa - (b == 0 ? edges[j].ps[0] : edges[j].ps[DRAFT_SAMPLES])) < 1e-6 * meter)
+                    {
+                        partners = append(partners, { "j" : j, "u" : b == 0 ? -edges[j].ts[0] : edges[j].ts[DRAFT_SAMPLES] });
+                    }
+                }
+            }
+            if (size(partners) == 1 && dot(ua, partners[0].u) < -DRAFT_TANGENT_COS
+                && edges[partners[0].j].kT == edges[i].kT && edges[partners[0].j].kA == edges[i].kA)
+            {
+                if (a == 0)
+                {
+                    startLinked[i] = true;
+                }
+                else
+                {
+                    endLinked[i] = true;
+                }
+                const from = label[partners[0].j];
+                const to = label[i];
+                for (var k = 0; k < nE; k += 1)
+                {
+                    if (label[k] == from)
+                    {
+                        label[k] = to;
+                    }
+                }
+            }
+        }
+    }
+
+    // a point of the big copy near q, with its toward normal and a conormal carried over from the edge's end
+    const onBig = function(q is Vector, conormal is Vector) returns map
+        {
+            const db = evDistance(context, { "side0" : q, "side1" : bigFaces });
+            const nb = evFaceTangentPlane(context, { "face" : bigFaceList[db.sides[1].index], "parameter" : db.sides[1].parameter }).normal * towardSign;
+            return { "p" : db.sides[1].point, "n" : nb, "c" : normalize(conormal - nb * dot(conormal, nb)) };
+        };
+    // an extension that comes back onto the face is a concave corner (or a smooth edge with another draft)
+    const checkOutside = function(p is Vector)
+        {
+            if (evDistance(context, { "side0" : p, "side1" : seedFaces }).distance < 1e-6 * meter)
+            {
+                addDebugPoint(context, p, DebugColor.RED);
+                throw regenError("The draft cannot be built at a concave corner, or where an outline edge continues smoothly into an edge with a different draft (marked): draft the whole smooth chain together, and leave concave corners undrafted by drafting only convex ones.",
+                    ["draftAngle"]);
+            }
+        };
+
+    // ---- one ruled wall per edge (two with separate angles), grouped by chain ----
+    var toolsByChain = [];
+    for (var i = 0; i < nE; i += 1)
+    {
+        toolsByChain = append(toolsByChain, []);
+    }
+    for (var i = 0; i < nE; i += 1)
+    {
+        const e = edges[i];
+        var pts = [];
+        var nrm = [];
+        var con = [];
+        if (!startLinked[i])
+        {
+            for (var j = DRAFT_EXTENSION_STEPS; j >= 1; j -= 1)
+            {
+                const t = onBig(e.ps[0] - e.ts[0] * (reach * j / DRAFT_EXTENSION_STEPS), e.cs[0]);
+                checkOutside(t.p);
+                pts = append(pts, t.p);
+                nrm = append(nrm, t.n);
+                con = append(con, t.c);
+            }
+        }
+        for (var k = 0; k <= DRAFT_SAMPLES; k += 1)
+        {
+            pts = append(pts, e.ps[k]);
+            nrm = append(nrm, e.ns[k]);
+            con = append(con, e.cs[k]);
+        }
+        if (!endLinked[i])
+        {
+            for (var j = 1; j <= DRAFT_EXTENSION_STEPS; j += 1)
+            {
+                const t = onBig(e.ps[DRAFT_SAMPLES] + e.ts[DRAFT_SAMPLES] * (reach * j / DRAFT_EXTENSION_STEPS), e.cs[DRAFT_SAMPLES]);
+                checkOutside(t.p);
+                pts = append(pts, t.p);
+                nrm = append(nrm, t.n);
+                con = append(con, t.c);
+            }
+        }
+
+        const wid = id + ("wall" ~ i);
+        const levels = e.kT != e.kA ? [hLo, hN, hHi] : [hLo, hHi];
+        var curves = [];
+        for (var l = 0; l < size(levels); l += 1)
+        {
+            const shift = draft.offset + (levels[l] >= hN ? (levels[l] - hN) * e.kT : (levels[l] - hN) * e.kA);
+            var through = [];
+            for (var k = 0; k < size(pts); k += 1)
+            {
+                through = append(through, pts[k] + nrm[k] * levels[l] + con[k] * shift);
+            }
+            opFitSpline(context, wid + ("curve" ~ l), { "points" : through });
+            curves = append(curves, qCreatedBy(wid + ("curve" ~ l), EntityType.EDGE));
+        }
+        for (var l = 0; l < size(levels) - 1; l += 1)
+        {
+            opLoft(context, wid + ("loft" ~ l), {
+                        "profileSubqueries" : [curves[l], curves[l + 1]],
+                        "bodyType" : ToolBodyType.SURFACE
+                    });
+            toolsByChain[label[i]] = append(toolsByChain[label[i]], qBodyType(qCreatedBy(wid + ("loft" ~ l), EntityType.BODY), BodyType.SHEET));
+        }
+        var wires = [];
+        for (var l = 0; l < size(levels); l += 1)
+        {
+            wires = append(wires, qCreatedBy(wid + ("curve" ~ l), EntityType.BODY));
+        }
+        opDeleteBodies(context, wid + "deleteCurves", { "entities" : qUnion(wires) });
+        if (draft.debug)
+        {
+            println("[thicken+] draft: edge " ~ i ~ " of " ~ nE ~ " chain " ~ label[i] ~ (e.closed ? " closed" : "") ~ ", tan angle toward "
+                ~ roundToPrecision(e.kT, 4) ~ " away " ~ roundToPrecision(e.kA, 4) ~ ", " ~ size(levels) - 1 ~ " wall(s)");
+        }
+    }
+
+    // ---- split the slab by each chain's cutter, keeping the piece that holds the seed ----
+    for (var c = 0; c < nE; c += 1)
+    {
+        if (size(toolsByChain[c]) == 0)
+        {
+            continue;
+        }
+        opSplitPart(context, id + ("split" ~ c), {
+                    "targets" : qBodyType(slab, BodyType.SOLID),
+                    "tool" : qUnion(toolsByChain[c]),
+                    "keepTools" : false
+                });
+        const pieces = qBodyType(slab, BodyType.SOLID);
+        if (isQueryEmpty(context, pieces))
+        {
+            throw regenError("The draft split lost the thickened body.", ["draftAngle"]);
+        }
+        const dropped = qSubtraction(pieces, qContainsPoint(pieces, pin));
+        if (!isQueryEmpty(context, dropped))
+        {
+            opDeleteBodies(context, id + ("drop" ~ c), { "entities" : dropped });
+        }
+    }
+
+    // ---- check: one solid, with the walls enclosing the face outline ----
+    const result = qBodyType(slab, BodyType.SOLID);
+    if (size(evaluateQuery(context, result)) != 1)
+    {
+        throw regenError("The draft cut the thickened body into pieces; reduce the angle or the thickness.", ["draftAngle"]);
+    }
+    const h0 = (T - A) / 2;
+    for (var e in edges)
+    {
+        for (var k in [floor(DRAFT_SAMPLES / 4), floor(DRAFT_SAMPLES / 2), floor(3 * DRAFT_SAMPLES / 4)])
+        {
+            const shift0 = draft.offset + (h0 >= hN ? (h0 - hN) * e.kT : (h0 - hN) * e.kA);
+            const probe = e.ps[k] + e.ns[k] * h0 + e.cs[k] * (shift0 - 0.25 * mm);
+            if (isQueryEmpty(context, qContainsPoint(result, probe)))
+            {
+                addDebugPoint(context, probe, DebugColor.RED);
+                throw regenError("The drafted walls do not enclose the face here (marked): the outline is concave, or the walls cross each other. Try a smaller angle.",
+                    ["draftAngle"]);
+            }
+        }
+    }
+
+    opDeleteBodies(context, id + "deleteBig", { "entities" : bigCopy });
+    const leftover = qCreatedBy(id + "copyS", EntityType.BODY);
+    if (!isQueryEmpty(context, leftover))
+    {
+        opDeleteBodies(context, id + "deleteSmall", { "entities" : leftover });
+    }
+    return {
+            "toward" : alongSmall > 0 ? startCap : endCap,
+            "away" : alongSmall > 0 ? endCap : startCap
+        };
 }
