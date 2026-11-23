@@ -452,7 +452,7 @@ PP_SOLID_SRC = r'''
             n ~ " solid (1), volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (" ~ roundToPrecision(want, 2) ~ "), helper bodies left " ~ helpers ~ " (0)"];'''
 k10 = math.tan(math.radians(10))
 for tag, area, sign, k in [("PP1", "PI * 400", 1, 0), ("PP2", "PI * 400", -1, 0), ("PP4", "PI * (20 + delta) * (20 + delta)", 1, k10),
-                           ("PP5", "2700", 1, 0), ("PP6", "2700 + 240 * delta + 4 * delta * delta", 1, k10), ("PP7", "PI * 400", 1, 0)]:
+                           ("PP5", "2700", 1, 0), ("PP6", "2700 + 240 * delta + 4 * delta * delta", 1, k10), ("PP7", "PI * 400", 1, 0), ("PP8", "PI * 400", 1, 0)]:
     src = PP_SOLID_SRC.replace("__K__", repr(k)).replace("__DEPTH__", "10").replace("__AREA__", area).replace("__SIGN__", str(sign))
     case(tag + " ", src, CUBE="%s cube" % tag)
 
@@ -766,7 +766,7 @@ for tag, vol, x_range, keys in (
         return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (%d), x " ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0]) ~ ", z "
             ~ fmt(bb.minCorner[2]) ~ ".." ~ fmt(bb.maxCorner[2]) ~ "; " ~ keys];""" % (key_src, vol, xr, vol))
 
-EXPECTED_ERRORS = ["IM2 Patch+", "T4 Thicken+", "DR10 Thicken+", "RF4 Patch+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
+EXPECTED_ERRORS = ["IM2 Patch+", "T4 Thicken+", "DR10 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
 
 
 def strings(result):

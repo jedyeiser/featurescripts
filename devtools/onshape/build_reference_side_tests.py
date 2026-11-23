@@ -449,7 +449,12 @@ PP_CASES = [
     ("PP6", "solid", "L", "concave L outline, boss +10, draft +10 deg (mitred corners)", [num("draft", "10 deg")]),
     ("PP7", "solid", "circle", "circle r 20, boss +10, projected and walled along -z (flipped Top plane normal)",
      [en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]), q("projectionDirection", TOP),
-      b("flipDirection", True), en("walls", "PatchPlusWalls", "PROJECTION", NS["patch_plus"])]),
+      en("walls", "PatchPlusWalls", "PROJECTION", NS["patch_plus"])]),
+    # the same with the direction NOT flipped: +z points away from the base, the footprint (z 100) lies "behind" it. The result must be
+    # identical (the projection direction has no sign), which is why Flip direction can go.
+    ("PP8", "solid", "circle", "circle r 20, boss +10, projection direction +z (away from the base), walls along it",
+     [en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]), q("projectionDirection", TOP),
+      en("walls", "PatchPlusWalls", "PROJECTION", NS["patch_plus"])]),
 ]
 for n, (tag, base_kind, foot_kind, title, extra) in enumerate(PP_CASES):
     x0 = 23000 + 400 * n
@@ -475,7 +480,7 @@ RP_CASES = [
     ("RP3", "solid", 40, 40, "0 mm", []),
     ("RP4", "sheet", 65, 65, "0 mm", []),
     ("RP5", "solid", 70, 70, "0 mm", [num("draft", "10 deg"), en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]),
-                                       q("projectionDirection", TOP), b("flipDirection", True), en("walls", "PatchPlusWalls", "PROJECTION", NS["patch_plus"])]),
+                                       q("projectionDirection", TOP), en("walls", "PatchPlusWalls", "PROJECTION", NS["patch_plus"])]),
     ("RP6", "solid", 70 - 50 * TILT, 70 + 50 * TILT, "0 mm", []),
     # the plate crosses the face along a diameter of the circle: half the wall above the face, half below
     ("RP7", "sheet", 50 - 50 * TILT, 50 + 50 * TILT, "0 mm", []),
@@ -494,15 +499,15 @@ for n, (tag, base_kind, z0, z1, off, extra) in enumerate(RP_CASES):
     patch("%s Patch+ replacement plate (z %.0f..%.0f), offset %s" % (tag, z0, z1, off), [
         q("baseFaces", base_q), q("footprint", edges(fp)), q("replacement", body(plate)), num("offset", off)] + extra)
 
-# Patch+ offset direction (2026-11-23): positive = toward the side reference; the flip reverses the face normal without one.
+# Patch+ offset direction (2026-11-23): positive = along the face normal (outward on a solid); Flip reverses it. These sheets have
+# their normal pointing DOWN, so without Flip a positive offset goes down.
 RF_CASES = [
-    # tag, base, reference z (None: no reference), flip, title
-    ("RF1", "sheet", 100, False, "side reference above the sheet: + offset goes up (z 50..60)"),
-    ("RF2", "sheet", 0, False, "side reference below the sheet: + offset goes down (z 40..50)"),
-    ("RF3", "solid", None, True, "no reference, Flip on a solid: + offset goes inward (pocket 10)"),
-    ("RF4", "sheet", 50, False, "side reference IN the plane of the sheet -> ERROR"),
+    # tag, base, flip, title
+    ("RF1", "sheet", True, "Flip on a sheet: + offset goes up (z 50..60)"),
+    ("RF2", "sheet", False, "no Flip on a sheet: + offset goes down (z 40..50)"),
+    ("RF3", "solid", True, "Flip on a solid: + offset goes inward (pocket 10)"),
 ]
-for n, (tag, base_kind, ref_z, flip, title) in enumerate(RF_CASES):
+for n, (tag, base_kind, flip, title) in enumerate(RF_CASES):
     x0 = 28000 + 400 * n
     fp = sketch("%s footprint circle r 20 at x %d z 100 (sketch)" % (tag, x0), plane_at("PP footprint plane z 100", "Top", 100), [circle("c", *mmv(x0, 0, 20))])
     if base_kind == "solid":
@@ -512,8 +517,6 @@ for n, (tag, base_kind, ref_z, flip, title) in enumerate(RF_CASES):
         bx = sheet("%s sheet z 50, x %d..%d" % (tag, x0 - 50, x0 + 50), [(x0 - 50, 50), (x0 + 50, 50)])
         base_q = body(bx)
     params = pp_params(base_q, edges(fp), [])
-    if ref_z is not None:
-        params.append(q("sideReference", ref_front("%s side reference (%d, 0, %d)" % (tag, x0, ref_z), x0, ref_z)))
     if flip:
         params.append(b("flipOffset", True))
     patch("%s Patch+ %s" % (tag, title), params)
@@ -555,7 +558,7 @@ for n, (tag, base_kind, title) in enumerate([
 # Footprint FACES combined with the other inputs (2026-11-23): a replacement plate, a side reference, a draft (also on the inner loop of a ring).
 for n, (tag, base_kind, title) in enumerate([
         ("FP6", "solid", "footprint faces (40 x 40) with a replacement plate at z 70 -> boss 20"),
-        ("FP7", "sheet", "footprint faces (40 x 40) on a sheet, side reference below: + offset goes down (z 40..50)"),
+        ("FP7", "sheet", "footprint faces (40 x 40) on a sheet, no Flip: + offset goes down (z 40..50)"),
         ("FP8", "solid", "footprint faces (40 x 40), boss +10, draft +10 deg"),
         ("FP9", "solid", "footprint ring (60 x 60, hole r 10), boss +10, draft +10 deg: the hole closes in as the outline grows")]):
     x0 = 31000 + 400 * n
@@ -579,8 +582,6 @@ for n, (tag, base_kind, title) in enumerate([
     if tag == "FP6":
         plate = sheet("FP6 plate z 70", [(x0 - 50, 70), (x0 + 50, 70)])
         params = [q("baseFaces", base_q)] + fq + [q("replacement", body(plate)), num("offset", "0 mm")]
-    if tag == "FP7":
-        params.append(q("sideReference", ref_front("FP7 side reference (%d, 0, 0)" % x0, x0, 0)))
     if tag in ("FP8", "FP9"):
         params.append(num("draft", "10 deg"))
     patch("%s Patch+ %s" % (tag, title), params)
