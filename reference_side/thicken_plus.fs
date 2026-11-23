@@ -2,6 +2,9 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // The boolean step's enums (NewBodyOperationType) are parameter types here, so they must be exported (as std Thicken does).
 export import(path : "onshape/std/tool.fs", version : "3083.0");
+// opExtendSheetBody's enums (the drafted build grows copies of the faces); not part of common.fs
+import(path : "onshape/std/extendendtype.gen.fs", version : "3083.0");
+import(path : "onshape/std/extendsheetshapetype.gen.fs", version : "3083.0");
 
 // IMPORT: reference_side_utils.fs
 import(path : "9aebe5ead538258b285aec19", version : "51d2aab9634029141009803d");
@@ -750,6 +753,8 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
     {
         toolsByChain = append(toolsByChain, []);
     }
+    // the wall faces, tracked: tracking a cap through the splits also picks up the faces the walls cut, which are not caps
+    var wallFaces = [];
     for (var i = 0; i < nE; i += 1)
     {
         const e = edges[i];
@@ -806,6 +811,7 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
                         "bodyType" : ToolBodyType.SURFACE
                     });
             toolsByChain[label[i]] = append(toolsByChain[label[i]], qBodyType(qCreatedBy(wid + ("loft" ~ l), EntityType.BODY), BodyType.SHEET));
+            wallFaces = append(wallFaces, tracked(qUnion(evaluateQuery(context, qOwnedByBody(qCreatedBy(wid + ("loft" ~ l), EntityType.BODY), EntityType.FACE)))));
         }
         var wires = [];
         for (var l = 0; l < size(levels); l += 1)
@@ -872,8 +878,9 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
     {
         opDeleteBodies(context, id + "deleteSmall", { "entities" : leftover });
     }
+    const walls = qUnion(wallFaces);
     return {
-            "toward" : alongSmall > 0 ? startCap : endCap,
-            "away" : alongSmall > 0 ? endCap : startCap
+            "toward" : qSubtraction(alongSmall > 0 ? startCap : endCap, walls),
+            "away" : qSubtraction(alongSmall > 0 ? endCap : startCap, walls)
         };
 }

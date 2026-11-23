@@ -1,10 +1,11 @@
-﻿"""Check the Reference_Side test cases in the "Reference side tests" Part Studio (built by
+"""Check the Reference_Side test cases in the "Reference side tests" Part Studio (built by
 build_reference_side_tests.py): every case is measured through the eval API and printed PASS / FAIL, and every
 feature's status is checked (T4 must fail: that is its case).
 
 usage (repo root): PYTHONPATH=. python devtools/onshape/check_reference_side_tests.py
 """
 import json
+import math
 import re
 import sys
 
@@ -337,6 +338,74 @@ for n, (caps, nfaces, area, zgone) in enumerate([("TOWARD", 5, 13200, 55), ("AWA
             ~ ", towardFaces " ~ tw ~ ", awayFaces " ~ aw ~ " (deleted caps resolve to 0)"];''' % (
         ("!near(z, mm(%d), mm(0.0001))" % zgone) if zgone else "true", nfaces, area, nfaces, area))
 
+# Draft and side face offset (2026-11-23). Volumes are integrated here: at height h from the input face (toward is +) an
+# outline wall sits shift(h) = offset + (h - hN) * tan(angle of its side) outward of the face outline, hN the neutral
+# height (0 input face, +5 toward cap, -3 away cap); undrafted edges only carry the offset.
+DR_SQUARE_SRC = r'''
+        const result = qBodyType(created(SELF), BodyType.SOLID);
+        const n = count(result);
+        const v = n == 1 ? evVolume(context, { "entities" : result }) : 0 * meter ^ 3;
+        const faces = n == 1 ? count(qOwnedByBody(result, EntityType.FACE)) : 0;
+        var vol = 0;
+        const steps = 4000;
+        for (var i = 0; i < steps; i += 1)
+        {
+            const h = -3 + 8 * (i + 0.5) / steps;
+            const shift = (__OFF__) + (h >= (__HN__) ? (h - (__HN__)) * (__KT__) : (h - (__HN__)) * (__KA__));
+            const sx = 100 + 2 * (__XD__ ? shift : (__OFF__));
+            const sy = 100 + 2 * (__YD__ ? shift : (__OFF__));
+            vol += sx * sy * 8 / steps;
+        }
+        const out = embedded(SELF);
+        const tw = evaluateQuery(context, out.query.towardFaces.value);
+        const aw = evaluateQuery(context, out.query.awayFaces.value);
+        const zt = size(tw) == 1 ? centroid(tw[0])[2] : 0 * meter;
+        const za = size(aw) == 1 ? centroid(aw[0])[2] : 0 * meter;
+        var ok = n == 1 && faces == 6 && abs(v - vol * millimeter ^ 3) < 0.5 * millimeter ^ 3 && near(zt, mm(55), mm(0.001)) && near(za, mm(47), mm(0.001));
+        var extra = "";
+        __SHEETCHECK__
+        return [ok, n ~ " solid (1), faces " ~ faces ~ " (6), volume " ~ roundToPrecision(v / millimeter ^ 3, 3) ~ " (" ~ roundToPrecision(vol, 3) ~ "), toward cap z " ~ fmt(zt)
+            ~ " (55), away cap z " ~ fmt(za) ~ " (47)" ~ extra];'''
+SHEET_CHECK = r'''
+        const gone = isQueryEmpty(context, created(@SHEET@));
+        const goneRef = isQueryEmpty(context, created(@T1SHEET@));
+        ok = ok && gone == goneRef;
+        extra = ", input sheet deleted " ~ gone ~ " (as for plain T1: " ~ goneRef ~ ")";'''
+k10, k5, kn10, kn5 = (math.tan(math.radians(d)) for d in (10, 5, -10, -5))
+for tag, kT, kA, hN, off, xd, yd in [
+        ("DR1", k10, k10, 0, 0, True, True), ("DR2", kn10, kn10, 5, 0, True, True), ("DR3", k10, k10, -3, 0, True, True),
+        ("DR4", k10, kn5, 0, 0, True, True), ("DR5", k10, k10, 0, 0, True, False), ("DR6", k10, k10, 0, 0, True, False),
+        ("DR7", 0, 0, 0, 2, True, True), ("DR8", k5, k5, 0, -2, True, True)]:
+    sheet_src = SHEET_CHECK if tag == "DR1" else ""
+    src = DR_SQUARE_SRC
+    for key, value in {"__KT__": repr(kT), "__KA__": repr(kA), "__HN__": repr(hN), "__OFF__": repr(off), "__XD__": "true" if xd else "false",
+                       "__YD__": "true" if yd else "false", "__SHEETCHECK__": sheet_src}.items():
+        src = src.replace(key, value)
+    names = {"SHEET": "DR1 sheet z 50", "T1SHEET": "T1 top sheet z 50"} if tag == "DR1" else {}
+    case(tag + " ", src, **names)
+
+case("DR9 ", r'''
+        const result = qBodyType(created(SELF), BodyType.SOLID);
+        const n = count(result);
+        const v = n == 1 ? evVolume(context, { "entities" : result }) : 0 * meter ^ 3;
+        const faces = n == 1 ? count(qOwnedByBody(result, EntityType.FACE)) : 0;
+        var vol = 0;
+        const steps = 4000;
+        for (var i = 0; i < steps; i += 1)
+        {
+            const h = -3 + 8 * (i + 0.5) / steps;
+            const r = 40 + h * ''' + repr(k10) + r''';
+            vol += PI * r * r * 8 / steps;
+        }
+        return [n == 1 && faces == 3 && abs(v - vol * millimeter ^ 3) < 2 * millimeter ^ 3,
+            n ~ " solid (1), faces " ~ faces ~ " (3), volume " ~ roundToPrecision(v / millimeter ^ 3, 3) ~ " (" ~ roundToPrecision(vol, 3) ~ ", a cone frustum)"];''')
+
+case("DR11 ", r'''
+        const sheets = evaluateQuery(context, qBodyType(created(SELF), BodyType.SHEET));
+        const solids = evaluateQuery(context, qBodyType(created(SELF), BodyType.SOLID));
+        const faces = count(qOwnedByBody(created(SELF), EntityType.FACE));
+        return [size(sheets) == 1 && size(solids) == 0 && faces == 4, size(sheets) ~ " sheet (1), " ~ size(solids) ~ " solid (0), faces " ~ faces ~ " (4 drafted walls)"];''')
+
 for n, toward in enumerate([True, False]):
     case("R%d " % (n + 1), r'''
         const normalZ = function(b) { return evFaceTangentPlane(context, { "face" : evaluateQuery(context, qOwnedByBody(b, EntityType.FACE))[0], "parameter" : vector(0.5, 0.5) }).normal[2]; };
@@ -491,7 +560,7 @@ for tag, vol, x_range, keys in (
         return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (%d), x " ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0]) ~ ", z "
             ~ fmt(bb.minCorner[2]) ~ ".." ~ fmt(bb.maxCorner[2]) ~ "; " ~ keys];""" % (key_src, vol, xr, vol))
 
-EXPECTED_ERRORS = ["T4 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
+EXPECTED_ERRORS = ["T4 Thicken+", "DR10 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
 
 
 def strings(result):
