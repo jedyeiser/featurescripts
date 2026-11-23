@@ -76,8 +76,8 @@ const CURVATURE_SAMPLES = 9;
 /** Samples along each boundary edge for the draft walls, and extension steps past an unlinked end. */
 const DRAFT_SAMPLES = 20;
 const DRAFT_EXTENSION_STEPS = 4;
-/** Two boundary edges meeting at a vertex are one smooth chain when their tangents agree within about 3 degrees. */
-const DRAFT_TANGENT_COS = 0.9986;
+/** Two boundary edges meeting at a vertex are one chain (one cutter, no extension) when their tangents agree within 15 degrees. */
+const DRAFT_TANGENT_COS = 0.966;
 
 annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Thicken+",
         "Feature Type Description" : "Thicken surfaces toward and away from a reference, instead of along whichever way their normals point. Otherwise std Thicken, boolean included.",
@@ -613,8 +613,6 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
             return qUnion([q, startTracking(context, q)]);
         };
     const slab = tracked(qCreatedBy(id + "slab", EntityType.BODY));
-    const startCap = tracked(qUnion(evaluateQuery(context, qCapEntity(id + "slab", CapType.START, EntityType.FACE))));
-    const endCap = tracked(qUnion(evaluateQuery(context, qCapEntity(id + "slab", CapType.END, EntityType.FACE))));
 
     // heights from the seed along the toward normal: the neutral surface, and the walls' extent (past the slab)
     const hN = draft.neutral == ThickenPlusDraftNeutral.TOP ? T : (draft.neutral == ThickenPlusDraftNeutral.BOTTOM ? -A : 0 * meter);
@@ -701,9 +699,14 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
                 {
                     if (norm(pa - (b == 0 ? edges[j].ps[0] : edges[j].ps[DRAFT_SAMPLES])) < 1e-6 * meter)
                     {
-                        partners = append(partners, { "j" : j, "u" : b == 0 ? -edges[j].ts[0] : edges[j].ts[DRAFT_SAMPLES] });
+                        partners = append(partners, { "j" : j, "b" : b, "u" : b == 0 ? -edges[j].ts[0] : edges[j].ts[DRAFT_SAMPLES] });
                     }
                 }
+            }
+            if (draft.debug)
+            {
+                println("[thicken+] draft: edge " ~ i ~ " end " ~ a ~ ": " ~ size(partners) ~ " partner(s)"
+                    ~ (size(partners) == 1 ? ", tangent dot " ~ roundToPrecision(dot(ua, partners[0].u), 4) ~ ", same draft " ~ (edges[partners[0].j].kT == edges[i].kT && edges[partners[0].j].kA == edges[i].kA) : ""));
             }
             if (size(partners) == 1 && dot(ua, partners[0].u) < -DRAFT_TANGENT_COS
                 && edges[partners[0].j].kT == edges[i].kT && edges[partners[0].j].kA == edges[i].kA)
@@ -716,6 +719,21 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
                 {
                     endLinked[i] = true;
                 }
+                // A bend (the faces fold, or the outline turns a little): both walls share one end curve, on the mitre of
+                // the two normals and of the two conormals, so the chain's cutter is continuous through the bend.
+                const pj = partners[0].j;
+                const ia = a == 0 ? 0 : DRAFT_SAMPLES;
+                const ib = partners[0].b == 0 ? 0 : DRAFT_SAMPLES;
+                const nm = normalize(edges[i].ns[ia] + edges[pj].ns[ib]);
+                const cm = normalize(edges[i].cs[ia] + edges[pj].cs[ib]);
+                var ei = edges[i];
+                ei.ns[ia] = nm / dot(nm, edges[i].ns[ia]);
+                ei.cs[ia] = cm / dot(cm, edges[i].cs[ia]);
+                edges[i] = ei;
+                var ej = edges[pj];
+                ej.ns[ib] = nm / dot(nm, edges[pj].ns[ib]);
+                ej.cs[ib] = cm / dot(cm, edges[pj].cs[ib]);
+                edges[pj] = ej;
                 const from = label[partners[0].j];
                 const to = label[i];
                 for (var k = 0; k < nE; k += 1)
@@ -767,8 +785,6 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
     {
         toolsByChain = append(toolsByChain, []);
     }
-    // the wall faces, tracked: tracking a cap through the splits also picks up the faces the walls cut, which are not caps
-    var wallFaces = [];
     for (var i = 0; i < nE; i += 1)
     {
         const e = edges[i];
@@ -826,7 +842,6 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
                         "bodyType" : ToolBodyType.SURFACE
                     });
             halves = append(halves, qBodyType(qCreatedBy(wid + ("loft" ~ l), EntityType.BODY), BodyType.SHEET));
-            wallFaces = append(wallFaces, tracked(qUnion(evaluateQuery(context, qOwnedByBody(qCreatedBy(wid + ("loft" ~ l), EntityType.BODY), EntityType.FACE)))));
         }
         if (size(halves) > 1)
         {
@@ -857,9 +872,17 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
         {
             continue;
         }
+        // a chain of several walls cuts as one surface: joined into one sheet (the union keeps one sheet's identity, so follow them)
+        var cutter = qUnion(toolsByChain[c]);
+        if (size(toolsByChain[c]) > 1)
+        {
+            const followedWalls = tracked(cutter);
+            opBoolean(context, id + ("join" ~ c), { "tools" : cutter, "operationType" : BooleanOperationType.UNION });
+            cutter = qBodyType(followedWalls, BodyType.SHEET);
+        }
         opSplitPart(context, id + ("split" ~ c), {
                     "targets" : qBodyType(slab, BodyType.SOLID),
-                    "tool" : qUnion(toolsByChain[c]),
+                    "tool" : cutter,
                     "keepTools" : false
                 });
         const pieces = qBodyType(slab, BodyType.SOLID);
@@ -896,15 +919,45 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
         }
     }
 
+    // ---- the caps: faces lying on the offset surfaces. Tracking a cap through the splits and joins also picks up the faces
+    // the walls cut, so the caps are read from the geometry: all of a cap's points sit at the signed distance +toward
+    // (Toward cap) or -away (Away cap) from the grown seed, along the toward normal; a wall's points do not.
+    var towardCaps = [];
+    var awayCaps = [];
+    for (var face in evaluateQuery(context, qOwnedByBody(result, EntityType.FACE)))
+    {
+        var towardHits = 0;
+        var awayHits = 0;
+        for (var prm in [vector(0.5, 0.5), vector(0.3, 0.7), vector(0.7, 0.3)])
+        {
+            const p = evFaceTangentPlane(context, { "face" : face, "parameter" : prm }).origin;
+            const dc = evDistance(context, { "side0" : p, "side1" : bigFaces });
+            const nc = evFaceTangentPlane(context, { "face" : bigFaceList[dc.sides[1].index], "parameter" : dc.sides[1].parameter }).normal * towardSign;
+            const signed = dot(p - dc.sides[1].point, nc);
+            if (abs(signed - T) < 1e-5 * meter)
+            {
+                towardHits += 1;
+            }
+            if (abs(signed + A) < 1e-5 * meter)
+            {
+                awayHits += 1;
+            }
+        }
+        if (towardHits == 3)
+        {
+            towardCaps = append(towardCaps, face);
+        }
+        else if (awayHits == 3)
+        {
+            awayCaps = append(awayCaps, face);
+        }
+    }
+
     opDeleteBodies(context, id + "deleteBig", { "entities" : bigCopy });
     const leftover = qCreatedBy(id + "copyS", EntityType.BODY);
     if (!isQueryEmpty(context, leftover))
     {
         opDeleteBodies(context, id + "deleteSmall", { "entities" : leftover });
     }
-    const walls = qUnion(wallFaces);
-    return {
-            "toward" : qSubtraction(alongSmall > 0 ? startCap : endCap, walls),
-            "away" : qSubtraction(alongSmall > 0 ? endCap : startCap, walls)
-        };
+    return { "toward" : qUnion(towardCaps), "away" : qUnion(awayCaps) };
 }
