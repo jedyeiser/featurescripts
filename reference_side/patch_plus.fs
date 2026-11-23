@@ -145,14 +145,15 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             throw regenError("Pick faces of ONE sheet or solid body.", ["baseFaces"]);
         }
         const owner = owners[0];
-        if (size(evaluateQuery(context, baseFaces)) > PATCH_FLOOD_LIMIT)
-        {
-            throw regenError("Too many faces picked (more than " ~ PATCH_FLOOD_LIMIT ~ "): pick only the faces around the footprint.", ["baseFaces"]);
-        }
         const isSolid = !isQueryEmpty(context, qBodyType(owner, BodyType.SOLID));
         const footprintFaces = qUnion([qEntityFilter(definition.footprintFaces, EntityType.FACE),
                     qOwnedByBody(qEntityFilter(definition.footprintFaces, EntityType.BODY), EntityType.FACE)]);
         const hasFootprintFaces = !isQueryEmpty(context, footprintFaces);
+        // the faces input classifies every picked face: refuse an oversized pick before any kernel op
+        if (hasFootprintFaces && size(evaluateQuery(context, baseFaces)) > PATCH_FLOOD_LIMIT)
+        {
+            throw regenError("Too many faces picked for a footprint made of faces (more than " ~ PATCH_FLOOD_LIMIT ~ "): pick only the faces around the footprint.", ["baseFaces"]);
+        }
         const footprintCurves = qUnion([qEntityFilter(definition.footprint, EntityType.EDGE),
                     qOwnedByBody(qEntityFilter(definition.footprint, EntityType.BODY), EntityType.EDGE)]);
         const footprintTool = qUnion([qEntityFilter(definition.footprintTool, EntityType.FACE),
