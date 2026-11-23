@@ -31,7 +31,42 @@ export enum NoteShowMode
     BOTH
 }
 
-annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Feature tree note +",
+/** Same colors as DebugColor (std's enum cannot be used as a parameter type from here). */
+export enum NoteColor
+{
+    annotation { "Name" : "Red" }
+    RED,
+    annotation { "Name" : "Green" }
+    GREEN,
+    annotation { "Name" : "Blue" }
+    BLUE,
+    annotation { "Name" : "Cyan" }
+    CYAN,
+    annotation { "Name" : "Magenta" }
+    MAGENTA,
+    annotation { "Name" : "Yellow" }
+    YELLOW,
+    annotation { "Name" : "Black" }
+    BLACK,
+    annotation { "Name" : "Orange" }
+    ORANGE
+}
+
+function toDebugColor(c is NoteColor) returns DebugColor
+{
+    return {
+            NoteColor.RED : DebugColor.RED,
+            NoteColor.GREEN : DebugColor.GREEN,
+            NoteColor.BLUE : DebugColor.BLUE,
+            NoteColor.CYAN : DebugColor.CYAN,
+            NoteColor.MAGENTA : DebugColor.MAGENTA,
+            NoteColor.YELLOW : DebugColor.YELLOW,
+            NoteColor.BLACK : DebugColor.BLACK,
+            NoteColor.ORANGE : DebugColor.ORANGE
+        }[c];
+}
+
+annotation { "Icon": IconNamespace::BLOB_DATA, "Feature Type Name" : "Feature tree note +",
             "Feature Name Template" : "#subject",
             "UIHint" : UIHint.NO_PREVIEW_PROVIDED,
             "Tooltip Template" : "#subject: #description",
@@ -74,7 +109,7 @@ export const featureTreeNotePlus = defineFeature(function(context is Context, id
             if (item.show == NoteShowMode.COLOR || item.show == NoteShowMode.BOTH)
             {
                 annotation { "Name" : "Debug color", "UIHint" : [UIHint.SHOW_LABEL, UIHint.REMEMBER_PREVIOUS_VALUE] }
-                item.color is DebugColor;
+                item.color is NoteColor;
             }
         }
     }
@@ -95,7 +130,7 @@ export const featureTreeNotePlus = defineFeature(function(context is Context, id
             }
             if (item.show == NoteShowMode.COLOR || item.show == NoteShowMode.BOTH)
             {
-                addDebugEntities(context, item.query, item.color);
+                addDebugEntities(context, item.query, toDebugColor(item.color));
             }
             if (item.show == NoteShowMode.HIGHLIGHT || item.show == NoteShowMode.BOTH)
             {
