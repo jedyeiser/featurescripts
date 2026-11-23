@@ -84,8 +84,13 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             definition.flipDirection is boolean;
         }
 
+        annotation { "Name" : "Replacement surface",
+                    "Filter" : EntityType.FACE || (BodyType.SHEET && EntityType.BODY),
+                    "Description" : "Optional. A surface that goes where the region is: it can lie in front of or behind the faces, but must not cross them inside the footprint. Empty: the faces' own offset." }
+        definition.replacement is Query;
+
         annotation { "Name" : "Offset",
-                    "Description" : "Where the region goes: + outward along the face normal (a boss), - inward (a pocket). With Walls = along the projection direction the faces are moved by this distance along that direction instead of being offset." }
+                    "Description" : "No replacement surface: where the region goes, + outward along the face normal (a boss), - inward (a pocket). With a replacement surface: how much further from the faces (+) or closer (-) it sits. With Walls = along the projection direction the surface is moved by this distance along that direction instead of being offset." }
         isLength(definition.offset, ZERO_DEFAULT_LENGTH_BOUNDS);
 
         annotation { "Name" : "Walls" }
@@ -98,9 +103,12 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
     {
         verifyNoMesh(context, definition, "baseFaces");
         const offset = definition.offset;
-        if (abs(offset) < 1e-9 * meter)
+        const replacementFaces = qUnion([qEntityFilter(definition.replacement, EntityType.FACE),
+                    qOwnedByBody(qEntityFilter(definition.replacement, EntityType.BODY), EntityType.FACE)]);
+        const hasReplacement = !isQueryEmpty(context, replacementFaces);
+        if (!hasReplacement && abs(offset) < 1e-9 * meter)
         {
-            throw regenError("Set a non-zero offset: positive pushes the region out, negative pulls it in.", ["offset"]);
+            throw regenError("Set a non-zero offset (positive pushes the region out, negative pulls it in), or pick a replacement surface.", ["offset"]);
         }
         if (definition.walls == PatchPlusWalls.PROJECTION && definition.projection != PatchPlusProjection.DIRECTION)
         {
@@ -272,8 +280,32 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             const dIn = evDistance(context, { "side0" : centroid, "side1" : region });
             const pIn = dIn.sides[1].point;
             const regionNormal = evFaceTangentPlane(context, { "face" : regionList[dIn.sides[1].index], "parameter" : dIn.sides[1].parameter }).normal;
-            // the direction toward the offset surface at the region: the face normal times the offset's sign
-            const toward = regionNormal * (offset > 0 * meter ? 1 : -1);
+            // Which side of the faces the new surface is on (side = +1: along the face normal). Without a replacement surface
+            // it is the offset's sign; with one, a ray from the region along the normal (or the projection direction) finds it.
+            var side = offset > 0 * meter ? 1 : -1;
+            var replacementHit = undefined;
+            var hitDirection = regionNormal;
+            var replacementSign = 1;
+            if (hasReplacement)
+            {
+                stage = "locating the replacement surface";
+                const castDirection = definition.walls == PatchPlusWalls.PROJECTION ? projectionDirection : regionNormal;
+                const hitsFront = evRaycast(context, { "entities" : replacementFaces, "ray" : line(pIn, castDirection) });
+                const hitsBack = evRaycast(context, { "entities" : replacementFaces, "ray" : line(pIn, -castDirection) });
+                if (size(hitsFront) == 0 && size(hitsBack) == 0)
+                {
+                    stage = ""; throw regenError("The replacement surface is not in front of or behind the region along the " ~ (definition.walls == PatchPlusWalls.PROJECTION ? "projection direction" : "face normal") ~ ".", ["replacement"]);
+                }
+                const front = size(hitsFront) > 0 && (size(hitsBack) == 0 || hitsFront[0].distance <= hitsBack[0].distance);
+                replacementHit = front ? hitsFront[0] : hitsBack[0];
+                hitDirection = front ? castDirection : -castDirection;
+                side = dot(hitDirection, regionNormal) >= 0 ? 1 : -1;
+                // a positive offset moves the replacement FURTHER from the faces: along its own normal when that points away from them
+                const hitNormal = evFaceTangentPlane(context, { "face" : replacementHit.entity, "parameter" : replacementHit.parameter }).normal;
+                replacementSign = dot(hitNormal, hitDirection) >= 0 ? 1 : -1;
+            }
+            // the direction toward the new surface at the region
+            const toward = regionNormal * side;
             // walls along the projection direction: the faces are MOVED by the offset along that direction (exact, and
             // free of the kernel offset that fails on patchworks of small freeform faces); otherwise they are offset along the normal
             const moveAlongDirection = definition.walls == PatchPlusWalls.PROJECTION;
@@ -298,7 +330,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 for (var i = 0; i <= PATCH_SAMPLES; i += 1)
                 {
                     const dd = evDistance(context, { "side0" : lines[i].origin, "side1" : region });
-                    var nrm = evFaceTangentPlane(context, { "face" : regionList[dd.sides[1].index], "parameter" : dd.sides[1].parameter }).normal * (offset > 0 * meter ? 1 : -1);
+                    var nrm = evFaceTangentPlane(context, { "face" : regionList[dd.sides[1].index], "parameter" : dd.sides[1].parameter }).normal * side;
                     ps = append(ps, lines[i].origin);
                     ts = append(ts, lines[i].direction);
                     // the wall's base direction at this point: the normal toward the offset, or the projection direction
@@ -391,6 +423,37 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             }
 
             // ---- 4. the walls: one ruled sheet per edge, joined into one tube ----
+            // With a replacement surface the walls must reach it everywhere along the outline: measure the distance by rays
+            // along the wall direction, and run the walls 1.5 x past the farthest hit (on both sides of the faces).
+            var wallReach = reach;
+            var firstHitDistance = abs(offset);
+            if (hasReplacement)
+            {
+                stage = "measuring the distance to the replacement surface";
+                var farthest = replacementHit.distance;
+                for (var i = 0; i < nE; i += 1)
+                {
+                    for (var k = 0; k <= PATCH_SAMPLES; k += 4)
+                    {
+                        const hits = evRaycast(context, { "entities" : replacementFaces, "ray" : line(edges[i].ps[k], edges[i].us[k]) });
+                        if (size(hits) == 0)
+                        {
+                            addDebugPoint(context, edges[i].ps[k], DebugColor.RED);
+                            stage = ""; throw regenError("The replacement surface does not cover the whole outline along the wall direction (marked): it must lie in front of (or behind) every part of the footprint.", ["replacement"]);
+                        }
+                        farthest = max(farthest, hits[0].distance);
+                        if (i == 0 && k == 0)
+                        {
+                            firstHitDistance = hits[0].distance;
+                        }
+                    }
+                }
+                if (firstHitDistance + offset < 1e-6 * meter)
+                {
+                    stage = ""; throw regenError("The offset moves the replacement surface onto or through the faces.", ["offset"]);
+                }
+                wallReach = 1.5 * (farthest + abs(offset)) + 5 * millimeter;
+            }
             stage = "building the walls";
             var walls = [];
             for (var i = 0; i < nE; i += 1)
@@ -404,8 +467,8 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     const uk = e.us[k] + e.du[0] * (1 - s) + e.du[1] * s;
                     const ck = e.cs[k] + e.dc[0] * (1 - s) + e.dc[1] * s;
                     const d = uk * cos(theta * radian) + ck * sin(theta * radian);
-                    lo = append(lo, e.ps[k] - d * reach);
-                    hi = append(hi, e.ps[k] + d * reach);
+                    lo = append(lo, e.ps[k] - d * wallReach);
+                    hi = append(hi, e.ps[k] + d * wallReach);
                 }
                 const wid = id + ("wall" ~ i);
                 opFitSpline(context, wid + "lo", { "points" : lo });
@@ -427,12 +490,31 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             const tubeFull = qCreatedBy(id + "tubeCopy", EntityType.BODY);
             const tube = tracked(tubeBodies);
 
-            // ---- 5. the offset surface: the same faces, offset ----
-            stage = "offsetting the faces (if the kernel cannot offset this surface, set Walls to along the projection direction: the faces are moved instead)";
-            if (moveAlongDirection)
+            // ---- 5. the new surface: the replacement (offset), or the same faces offset ----
+            stage = hasReplacement ? "preparing the replacement surface (if the kernel cannot offset it, set Walls to along the projection direction: it is moved instead)"
+                : "offsetting the faces (if the kernel cannot offset this surface, set Walls to along the projection direction: the faces are moved instead)";
+            var replacementPoint = pIn;
+            if (hasReplacement)
+            {
+                const shifted = abs(offset) > 1e-9 * meter;
+                var extractDefinition = { "faces" : replacementFaces, "tangentPropagation" : false };
+                if (shifted && !moveAlongDirection)
+                {
+                    extractDefinition.offset = offset * replacementSign;
+                    extractDefinition.useFacesAroundToTrimOffset = false;
+                }
+                opExtractSurface(context, id + "offset", extractDefinition);
+                if (shifted && moveAlongDirection)
+                {
+                    opTransform(context, id + "offsetMove", { "bodies" : qCreatedBy(id + "offset", EntityType.BODY), "transform" : transform(uIn * offset) });
+                }
+                replacementPoint = replacementHit.intersection + hitDirection * offset;
+            }
+            else if (moveAlongDirection)
             {
                 opExtractSurface(context, id + "offset", { "faces" : baseFaces, "tangentPropagation" : false });
                 opTransform(context, id + "offsetMove", { "bodies" : qCreatedBy(id + "offset", EntityType.BODY), "transform" : transform(uIn * abs(offset)) });
+                replacementPoint = pIn + uIn * abs(offset);
             }
             else
             {
@@ -447,10 +529,9 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     }
                 }
                 opExtractSurface(context, id + "offset", { "faces" : qUnion(nearFaces), "offset" : offset, "tangentPropagation" : false, "useFacesAroundToTrimOffset" : false });
+                replacementPoint = pIn + regionNormal * offset;
             }
             const replacement = qCreatedBy(id + "offset", EntityType.BODY);
-            const replacementPoint = moveAlongDirection ? pIn + uIn * abs(offset) : pIn + regionNormal * offset;
-
             // the base's surface, to cut the tube: the sheet itself, or a copy of the PICKED faces of the solid (not all
             // its faces: the walls reach well past the surface and meet the solid's other faces, and cutting a large
             // multi-face shell with the tube fails with SPLIT_FAILED on a real part)
@@ -467,7 +548,8 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             opSplitPart(context, id + "tubeByOffset", { "targets" : tube, "tool" : replacement, "keepTools" : true });
             const firstEdge = edges[0];
             // u points toward the offset side: half the way to the offset surface (its distance along u is |offset| / |u . n|, or |offset| when the faces are moved along u)
-            const wallProbe = firstEdge.ps[0] + firstEdge.us[0] * (abs(offset) / 2 / (moveAlongDirection ? 1 : abs(dot(firstEdge.us[0], toward))));
+            const wallProbe = hasReplacement ? firstEdge.ps[0] + firstEdge.us[0] * ((firstHitDistance + offset) / 2)
+                : firstEdge.ps[0] + firstEdge.us[0] * (abs(offset) / 2 / (moveAlongDirection ? 1 : abs(dot(firstEdge.us[0], toward))));
             const wallPieces = qBodyType(tube, BodyType.SHEET);
             if (isQueryEmpty(context, wallPieces))
             {
@@ -531,8 +613,8 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 {
                     stage = ""; throw regenError("The plug could not be made into a solid.", ["offset"]);
                 }
-                stage = offset > 0 * meter ? "adding the plug to the solid" : "subtracting the plug from the solid";
-                if (offset > 0 * meter)
+                stage = side > 0 ? "adding the plug to the solid" : "subtracting the plug from the solid";
+                if (side > 0)
                 {
                     opBoolean(context, id + "apply", { "tools" : qUnion([owner, plug]), "operationType" : BooleanOperationType.UNION });
                 }
@@ -563,6 +645,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         "projection" : PatchPlusProjection.NORMAL,
         "flipDirection" : false,
         "offset" : 0 * meter,
+        "replacement" : qNothing(),
         "walls" : PatchPlusWalls.NORMAL,
         "draft" : 0 * degree,
         "projectionDirection" : qNothing()

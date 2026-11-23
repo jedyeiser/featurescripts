@@ -456,6 +456,25 @@ for tag, area, sign, k in [("PP1", "PI * 400", 1, 0), ("PP2", "PI * 400", -1, 0)
     src = PP_SOLID_SRC.replace("__K__", repr(k)).replace("__DEPTH__", "10").replace("__AREA__", area).replace("__SIGN__", str(sign))
     case(tag + " ", src, CUBE="%s cube" % tag)
 
+# Patch+ with a replacement surface: a plug of height DEPTH over the circle (r 20), walls straight or drafted.
+for tag, depth, sign, area in [("RP1", 20, 1, "PI * 400"), ("RP2", 25, 1, "PI * 400"), ("RP3", 10, -1, "PI * 400"),
+                               ("RP5", 20, 1, "PI * (20 + delta) * (20 + delta)"), ("RP6", 20, 1, "PI * 400")]:
+    k = k10 if tag == "RP5" else 0
+    src = PP_SOLID_SRC.replace("__K__", repr(k)).replace("__DEPTH__", str(depth)).replace("__AREA__", area).replace("__SIGN__", str(sign))
+    case(tag + " ", src, CUBE="%s cube" % tag)
+
+case("RP4 ", r'''
+        const sheet = created(@SHEET@);
+        const faces = qOwnedByBody(sheet, EntityType.FACE);
+        const area = count(sheet) >= 1 ? evArea(context, { "entities" : faces }) : 0 * meter ^ 2;
+        const bb = count(sheet) >= 1 ? evBox3d(context, { "topology" : sheet }) : undefined;
+        const zlo = bb == undefined ? 0 * meter : bb.minCorner[2];
+        const zhi = bb == undefined ? 0 * meter : bb.maxCorner[2];
+        const want = 10000 + 2 * PI * 20 * 15;
+        return [count(sheet) == 1 && abs(area - want * millimeter ^ 2) < 3 * millimeter ^ 2 && near(zlo, mm(50), mm(0.001)) && near(zhi, mm(65), mm(0.001)),
+            count(sheet) ~ " sheet (1), area " ~ roundToPrecision(area / millimeter ^ 2, 2) ~ " (" ~ roundToPrecision(want, 2) ~ "), z " ~ fmt(zlo) ~ ".." ~ fmt(zhi) ~ " (50..65)"];''',
+     SHEET="RP4 sheet")
+
 case("PP3 ", r'''
         const sheet = created(@SHEET@);
         const faces = qOwnedByBody(sheet, EntityType.FACE);

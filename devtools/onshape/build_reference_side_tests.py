@@ -466,6 +466,31 @@ for n, (tag, base_kind, foot_kind, title, extra) in enumerate(PP_CASES):
         base_q = body(bx)
     patch("%s Patch+ %s" % (tag, title), pp_params(base_q, edges(fp), extra))
 
+# Patch+ with a REPLACEMENT SURFACE (2026-11-23): a plate that does not touch the faces. Same box / sheet and circle footprint as PP.
+TILT = math.tan(math.radians(10))
+RP_CASES = [
+    # tag, base kind, plate z0 at x - 50, plate z1 at x + 50, offset, extra
+    ("RP1", "solid", 70, 70, "0 mm", []),
+    ("RP2", "solid", 70, 70, "5 mm", []),
+    ("RP3", "solid", 40, 40, "0 mm", []),
+    ("RP4", "sheet", 65, 65, "0 mm", []),
+    ("RP5", "solid", 70, 70, "0 mm", [num("draft", "10 deg"), en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]),
+                                       q("projectionDirection", TOP), b("flipDirection", True), en("walls", "PatchPlusWalls", "PROJECTION", NS["patch_plus"])]),
+    ("RP6", "solid", 70 - 50 * TILT, 70 + 50 * TILT, "0 mm", []),
+]
+for n, (tag, base_kind, z0, z1, off, extra) in enumerate(RP_CASES):
+    x0 = 25000 + 400 * n
+    fp = sketch("%s footprint circle r 20 at x %d z 100 (sketch)" % (tag, x0), plane_at("PP footprint plane z 100", "Top", 100), [circle("c", *mmv(x0, 0, 20))])
+    if base_kind == "solid":
+        bx = cube("%s cube at x %d" % (tag, x0), x0, 0)
+        base_q = face_at(bx, x0, 0, 50)
+    else:
+        bx = sheet("%s sheet z 50, x %d..%d" % (tag, x0 - 50, x0 + 50), [(x0 - 50, 50), (x0 + 50, 50)])
+        base_q = body(bx)
+    plate = sheet("%s plate z %.2f..%.2f, x %d..%d" % (tag, z0, z1, x0 - 50, x0 + 50), [(x0 - 50, z0), (x0 + 50, z1)])
+    patch("%s Patch+ replacement plate (z %.0f..%.0f), offset %s" % (tag, z0, z1, off), [
+        q("baseFaces", base_q), q("footprint", edges(fp)), q("replacement", body(plate)), num("offset", off)] + extra)
+
 x0 = 10600
 t = cube("T6 cube at x 10600", x0, 0)
 top = sheet("T6 sheet on the cube's top, z 50, x 10570..10630", [(x0 - 30, 50), (x0 + 30, 50)], 60)
