@@ -564,9 +564,11 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     {
                         stage = ""; throw regenError("The footprint region was not found on the sheet.", ["footprintFaces"]);
                     }
+                    // deleting the region can split the sheet into several bodies (a footprint across it): follow every piece
+                    const ownerFollowed = tracked(owner);
                     opDeleteFace(context, id + "cutRegion", { "deleteFaces" : qUnion(ownerRegion), "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
                     stage = "joining the pieces";
-                    const knitList = qUnion([owner, qCreatedBy(id + "straightWall", EntityType.BODY), qCreatedBy(id + "moved", EntityType.BODY)]);
+                    const knitList = qUnion([owner, qBodyType(ownerFollowed, BodyType.SHEET), qCreatedBy(id + "straightWall", EntityType.BODY), qCreatedBy(id + "moved", EntityType.BODY)]);
                     const followedStraight = tracked(knitList);
                     opBoolean(context, id + "knit", { "tools" : knitList, "operationType" : BooleanOperationType.UNION });
                     resultQuery = qBodyType(followedStraight, BodyType.SHEET);
