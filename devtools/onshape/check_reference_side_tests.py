@@ -526,6 +526,26 @@ case("PP2 ", r'''
         return [baseline == undefined || counts == baseline, "pick stability, faces created per internal operation: " ~ counts ~ (baseline == undefined ? "(no baseline yet)" : " (baseline " ~ baseline ~ ")")];''' % (
     json.dumps(PS_OPS).replace("[", "[").replace("]", "]"), "undefined" if PS_BASELINE is None else json.dumps(PS_BASELINE)))
 
+# Patch+ with footprint FACES: boss +10 over the footprint area (volume = 1e6 + area * 10); FP4 must fail; FP5 on a sheet.
+for tag, area in [("FP1", "1600"), ("FP2", "900 + 400"), ("FP3", "3600 - PI * 100")]:
+    src = PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "10").replace("__AREA__", area).replace("__SIGN__", "1")
+    case(tag + " ", src, CUBE="%s cube" % tag)
+
+case("FP5 ", r'''
+        const sheet = created(@SHEET@);
+        const faces = qOwnedByBody(sheet, EntityType.FACE);
+        const area = count(sheet) >= 1 ? evArea(context, { "entities" : faces }) : 0 * meter ^ 2;
+        const bb = count(sheet) >= 1 ? evBox3d(context, { "topology" : sheet }) : undefined;
+        const zlo = bb == undefined ? 0 * meter : bb.minCorner[2];
+        const zhi = bb == undefined ? 0 * meter : bb.maxCorner[2];
+        const want = 10000 + 4 * 40 * 10;
+        const high = near(zlo, mm(50), mm(0.001)) && near(zhi, mm(60), mm(0.001));
+        const low = near(zlo, mm(40), mm(0.001)) && near(zhi, mm(50), mm(0.001));
+        const naked = size(evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(sheet, EntityType.EDGE), EdgeTopology.ONE_SIDED)));
+        return [count(sheet) == 1 && abs(area - want * millimeter ^ 2) < 3 * millimeter ^ 2 && (high || low) && naked == 4,
+            count(sheet) ~ " sheet (1), area " ~ roundToPrecision(area / millimeter ^ 2, 2) ~ " (" ~ roundToPrecision(want, 2) ~ "), z " ~ fmt(zlo) ~ ".." ~ fmt(zhi) ~ " (50..60 or 40..50), naked edges " ~ naked ~ " (4)"];''',
+     SHEET="FP5 sheet")
+
 case("PP3 ", r'''
         const sheet = created(@SHEET@);
         const faces = qOwnedByBody(sheet, EntityType.FACE);
@@ -701,7 +721,7 @@ for tag, vol, x_range, keys in (
         return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (%d), x " ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0]) ~ ", z "
             ~ fmt(bb.minCorner[2]) ~ ".." ~ fmt(bb.maxCorner[2]) ~ "; " ~ keys];""" % (key_src, vol, xr, vol))
 
-EXPECTED_ERRORS = ["T4 Thicken+", "DR10 Thicken+", "RF4 Patch+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
+EXPECTED_ERRORS = ["T4 Thicken+", "DR10 Thicken+", "RF4 Patch+", "FP4 Patch+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
 
 
 def strings(result):

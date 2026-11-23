@@ -518,6 +518,39 @@ for n, (tag, base_kind, ref_z, flip, title) in enumerate(RF_CASES):
         params.append(b("flipOffset", True))
     patch("%s Patch+ %s" % (tag, title), params)
 
+# Patch+ with FOOTPRINT FACES (2026-11-23): the outline of the faces is projected; islands, holes; running off the base = error.
+FP_BASE_TOP = 50
+for n, (tag, base_kind, title) in enumerate([
+        ("FP1", "solid", "one 40 x 40 island, boss +10"),
+        ("FP2", "solid", "two islands (30 x 30 and 20 x 20) in one feature, boss +10"),
+        ("FP3", "solid", "a face with a hole (60 x 60, hole r 10): the ring is raised, the hole's island stays"),
+        ("FP4", "solid", "footprint 120 x 40 runs off the 100 wide face -> ERROR (not supported yet)"),
+        ("FP5", "sheet", "one 40 x 40 island on a sheet, +10")]):
+    x0 = 29000 + 400 * n
+    if base_kind == "solid":
+        bx = cube("%s cube at x %d" % (tag, x0), x0, 0)
+        base_q = face_at(bx, x0, 0, 50)
+    else:
+        bx = sheet("%s sheet z 50, x %d..%d" % (tag, x0 - 50, x0 + 50), [(x0 - 50, 50), (x0 + 50, 50)])
+        base_q = body(bx)
+    if tag in ("FP1", "FP5"):
+        fq = [q("footprintFaces", body(sheet("%s footprint sheet 40 x 40 at z 100" % tag, [(x0 - 20, 100), (x0 + 20, 100)], 40)))]
+    elif tag == "FP2":
+        fa = sheet("FP2 footprint sheet A 30 x 30 at z 100", [(x0 - 35, 100), (x0 - 5, 100)], 30)
+        fb = sheet("FP2 footprint sheet B 20 x 20 at z 100", [(x0 + 10, 100), (x0 + 30, 100)], 20)
+        fq = [q("footprintFaces", body(fa), body(fb))]
+    elif tag == "FP3":
+        slab = cube("FP3 footprint slab 60 x 60 at z 99..101", x0, 0, 99, 101, half=30)
+        hs = sketch("FP3 hole r 10 (sketch)", plane_at("FP3 slab mid plane z 100", "Top", 100), [circle("h", *mmv(x0, 0, 10))])
+        feature("FP3 footprint slab hole", "extrude", [
+            en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "REMOVE"),
+            q("entities", 'qSketchRegion(makeId("%s"))' % hs), en("endBound", "BoundingType", "BLIND"), num("depth", "4 mm"), b("symmetric", True),
+            b("defaultScope", False), q("booleanScope", body(slab))])
+        fq = [q("footprintFaces", face_at(slab, x0 + 20, 0, 101))]
+    else:
+        fq = [q("footprintFaces", body(sheet("FP4 footprint sheet 120 x 40 at z 100", [(x0 - 60, 100), (x0 + 60, 100)], 40)))]
+    patch("%s Patch+ %s" % (tag, title), [q("baseFaces", base_q)] + fq + [num("offset", "10 mm")])
+
 x0 = 10600
 t = cube("T6 cube at x 10600", x0, 0)
 top = sheet("T6 sheet on the cube's top, z 50, x 10570..10630", [(x0 - 30, 50), (x0 + 30, 50)], 60)

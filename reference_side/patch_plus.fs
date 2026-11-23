@@ -72,6 +72,11 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     "Description" : "Sketch curves or edges forming one closed outline. Projected onto the faces; the faces inside it are replaced." }
         definition.footprint is Query;
 
+        annotation { "Name" : "Footprint faces",
+                    "Filter" : EntityType.FACE || (BodyType.SHEET && EntityType.BODY),
+                    "Description" : "Instead of curves: faces (or a sheet body) whose outline is projected onto the faces. Every loop counts: several islands, and the holes of a face (the region is the face itself, a ring where it has a hole). Pick curves OR faces. The footprint must lie inside the picked faces: one that runs off their edge is not supported yet." }
+        definition.footprintFaces is Query;
+
         annotation { "Name" : "Projection" }
         definition.projection is PatchPlusProjection;
 
@@ -133,11 +138,20 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         }
         const owner = owners[0];
         const isSolid = !isQueryEmpty(context, qBodyType(owner, BodyType.SOLID));
-        const footEdges = qUnion([qEntityFilter(definition.footprint, EntityType.EDGE),
+        const footprintFaces = qUnion([qEntityFilter(definition.footprintFaces, EntityType.FACE),
+                    qOwnedByBody(qEntityFilter(definition.footprintFaces, EntityType.BODY), EntityType.FACE)]);
+        const hasFootprintFaces = !isQueryEmpty(context, footprintFaces);
+        const footprintCurves = qUnion([qEntityFilter(definition.footprint, EntityType.EDGE),
                     qOwnedByBody(qEntityFilter(definition.footprint, EntityType.BODY), EntityType.EDGE)]);
+        if (hasFootprintFaces && !isQueryEmpty(context, footprintCurves))
+        {
+            throw regenError("Pick the footprint as curves OR as faces, not both.", ["footprint", "footprintFaces"]);
+        }
+        // Faces: their outline (the edges with exactly one picked face: every loop, holes and islands included) is projected.
+        const footEdges = hasFootprintFaces ? outlineOfFaces(context, footprintFaces) : footprintCurves;
         if (isQueryEmpty(context, footEdges))
         {
-            throw regenError("Pick the footprint curves.", ["footprint"]);
+            throw regenError("Pick the footprint curves or the footprint faces.", ["footprint"]);
         }
         var projectionDirection = undefined;
         if (definition.projection == PatchPlusProjection.DIRECTION)
@@ -184,6 +198,56 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 return size(evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(bodies, EntityType.EDGE), EdgeTopology.ONE_SIDED)));
             };
 
+        // a point well inside a face (away from its boundary) and the parameter there: the centroid's nearest point, or the best of
+        // a coarse grid when that is close to the boundary (a ring's centroid lies in its hole)
+        const interiorPoint = function(face is Query) returns map
+            {
+                const faceEdges = qAdjacent(face, AdjacencyType.EDGE, EntityType.EDGE);
+                const scale = sqrt(evArea(context, { "entities" : face }));
+                const centre = evApproximateCentroid(context, { "entities" : face });
+                const dc = evDistance(context, { "side0" : centre, "side1" : face });
+                var best = { "point" : dc.sides[1].point, "parameter" : dc.sides[1].parameter };
+                var bestMargin = evDistance(context, { "side0" : best.point, "side1" : faceEdges }).distance;
+                if (bestMargin < 0.05 * scale)
+                {
+                    for (var i = 1; i <= 5; i += 1)
+                    {
+                        for (var j = 1; j <= 5; j += 1)
+                        {
+                            const prm = vector(i / 6, j / 6);
+                            const origin = evFaceTangentPlane(context, { "face" : face, "parameter" : prm }).origin;
+                            if (evDistance(context, { "side0" : origin, "side1" : face }).distance < 1e-6 * meter)
+                            {
+                                const margin = evDistance(context, { "side0" : origin, "side1" : faceEdges }).distance;
+                                if (margin > bestMargin)
+                                {
+                                    bestMargin = margin;
+                                    best = { "point" : origin, "parameter" : prm };
+                                }
+                            }
+                        }
+                    }
+                }
+                best.normal = evFaceTangentPlane(context, { "face" : face, "parameter" : best.parameter }).normal;
+                return best;
+            };
+        // the largest face of a body (the one to probe a piece with)
+        const largestFaceOf = function(body is Query) returns Query
+            {
+                var largest = undefined;
+                var largestArea = -1 * meter ^ 2;
+                for (var candidate in evaluateQuery(context, qOwnedByBody(body, EntityType.FACE)))
+                {
+                    const candidateArea = evArea(context, { "entities" : candidate });
+                    if (candidateArea > largestArea)
+                    {
+                        largestArea = candidateArea;
+                        largest = candidate;
+                    }
+                }
+                return largest;
+            };
+
         var stage = "reading the inputs";
         var resultQuery = qNothing();
         try
@@ -211,80 +275,130 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             {
                 stage = ""; throw regenError("The footprint does not land on the faces: check the projection direction, and that the footprint lies over them.", ["footprint"]);
             }
-            const sideFaces = evaluateQuery(context, qAdjacent(imprintList[0], AdjacencyType.EDGE, EntityType.FACE));
-            if (size(sideFaces) < 2)
+            var regionFaces = [];
+            if (hasFootprintFaces)
             {
-                stage = ""; throw regenError("The footprint does not enclose a region inside the faces: it must be one closed outline that lies inside them.", ["footprint"]);
-            }
-            var floodFaces = [[sideFaces[0]], [sideFaces[1]]];
-            var floodQueue = [[sideFaces[0]], [sideFaces[1]]];
-            var floodSeen = [{}, {}];
-            var floodState = ["open", "open"];
-            for (var s = 0; s < 2; s += 1)
-            {
-                var seen0 = floodSeen[s];
-                seen0[transientQueriesToStrings(sideFaces[s])] = true;
-                floodSeen[s] = seen0;
-            }
-            var floodSteps = 0;
-            while (floodSteps < PATCH_FLOOD_LIMIT && floodState[0] != "closed" && floodState[1] != "closed" && (floodState[0] == "open" || floodState[1] == "open"))
-            {
-                floodSteps += 1;
-                for (var s = 0; s < 2; s += 1)
+                // The region: every face of the imprinted copy that lies under the footprint faces, found by a ray from a point
+                // well inside it along the projection direction (or the face normal) in both senses. Works for holes, islands
+                // and any number of components, which a flood from one imprint edge cannot tell apart.
+                stage = "finding the region under the footprint faces";
+                const copyList = evaluateQuery(context, copyFaces);
+                if (size(copyList) > PATCH_FLOOD_LIMIT)
                 {
-                    if (floodState[s] != "open")
+                    stage = ""; throw regenError("Too many faces to classify (" ~ size(copyList) ~ " after the footprint is projected): pick fewer base faces.", ["baseFaces"]);
+                }
+                for (var copyFace in copyList)
+                {
+                    const probe = interiorPoint(copyFace);
+                    const rayDirection = projectionDirection != undefined ? projectionDirection : probe.normal;
+                    if (size(evRaycast(context, { "entities" : footprintFaces, "ray" : line(probe.point, rayDirection) })) > 0
+                        || size(evRaycast(context, { "entities" : footprintFaces, "ray" : line(probe.point, -rayDirection) })) > 0)
                     {
-                        continue;
-                    }
-                    if (size(floodQueue[s]) == 0)
-                    {
-                        floodState[s] = "closed";
-                        continue;
-                    }
-                    const current = floodQueue[s][0];
-                    floodQueue[s] = subArray(floodQueue[s], 1);
-                    for (var edgeOfFace in evaluateQuery(context, qAdjacent(current, AdjacencyType.EDGE, EntityType.EDGE)))
-                    {
-                        if (!isQueryEmpty(context, qIntersection([edgeOfFace, imprintEdges])))
-                        {
-                            continue;       // the outline: the region stops here
-                        }
-                        const across = evaluateQuery(context, qSubtraction(qAdjacent(edgeOfFace, AdjacencyType.EDGE, EntityType.FACE), current));
-                        if (size(across) == 0)
-                        {
-                            floodState[s] = "boundary";     // a free edge of the surface: this side is the outside
-                            break;
-                        }
-                        var seen = floodSeen[s];
-                        for (var other in across)
-                        {
-                            const key = transientQueriesToStrings(other);
-                            if (seen[key] == undefined)
-                            {
-                                seen[key] = true;
-                                floodFaces[s] = append(floodFaces[s], other);
-                                floodQueue[s] = append(floodQueue[s], other);
-                            }
-                        }
-                        floodSeen[s] = seen;
+                        regionFaces = append(regionFaces, copyFace);
                     }
                 }
+                if (size(regionFaces) == 0)
+                {
+                    stage = ""; throw regenError("The footprint faces do not lie over the picked faces: check the projection direction.", ["footprintFaces"]);
+                }
+                // a region boundary that is not an imprint edge is the edge of the picked faces: the footprint runs off them
+                const regionOnly = qUnion(regionFaces);
+                const runsOff = qSubtraction(outlineOfFaces(context, regionOnly), imprintEdges);
+                if (!isQueryEmpty(context, runsOff))
+                {
+                    var marked = 0;
+                    for (var offEdge in evaluateQuery(context, runsOff))
+                    {
+                        if (marked < 4)
+                        {
+                            addDebugPoint(context, evEdgeTangentLines(context, { "edge" : offEdge, "parameters" : [0.5] })[0].origin, DebugColor.RED);
+                            marked += 1;
+                        }
+                    }
+                    stage = ""; throw regenError("The footprint reaches the edge of the picked faces (marked). A footprint that runs off the edge of the surface is not supported yet: pick base faces that extend past the footprint all round, or shrink the footprint.", ["footprintFaces"]);
+                }
             }
-            var insideSide = -1;
-            if (floodState[0] == "closed")
-            {
-                insideSide = 0;
+            else
+            {                const sideFaces = evaluateQuery(context, qAdjacent(imprintList[0], AdjacencyType.EDGE, EntityType.FACE));
+                if (size(sideFaces) < 2)
+                {
+                    stage = ""; throw regenError("The footprint does not enclose a region inside the faces: it must be one closed outline that lies inside them.", ["footprint"]);
+                }
+                var floodFaces = [[sideFaces[0]], [sideFaces[1]]];
+                var floodQueue = [[sideFaces[0]], [sideFaces[1]]];
+                var floodSeen = [{}, {}];
+                var floodState = ["open", "open"];
+                for (var s = 0; s < 2; s += 1)
+                {
+                    var seen0 = floodSeen[s];
+                    seen0[transientQueriesToStrings(sideFaces[s])] = true;
+                    floodSeen[s] = seen0;
+                }
+                var floodSteps = 0;
+                while (floodSteps < PATCH_FLOOD_LIMIT && floodState[0] != "closed" && floodState[1] != "closed" && (floodState[0] == "open" || floodState[1] == "open"))
+                {
+                    floodSteps += 1;
+                    for (var s = 0; s < 2; s += 1)
+                    {
+                        if (floodState[s] != "open")
+                        {
+                            continue;
+                        }
+                        if (size(floodQueue[s]) == 0)
+                        {
+                            floodState[s] = "closed";
+                            continue;
+                        }
+                        const current = floodQueue[s][0];
+                        floodQueue[s] = subArray(floodQueue[s], 1);
+                        for (var edgeOfFace in evaluateQuery(context, qAdjacent(current, AdjacencyType.EDGE, EntityType.EDGE)))
+                        {
+                            if (!isQueryEmpty(context, qIntersection([edgeOfFace, imprintEdges])))
+                            {
+                                continue;       // the outline: the region stops here
+                            }
+                            const across = evaluateQuery(context, qSubtraction(qAdjacent(edgeOfFace, AdjacencyType.EDGE, EntityType.FACE), current));
+                            if (size(across) == 0)
+                            {
+                                floodState[s] = "boundary";     // a free edge of the surface: this side is the outside
+                                break;
+                            }
+                            var seen = floodSeen[s];
+                            for (var other in across)
+                            {
+                                const key = transientQueriesToStrings(other);
+                                if (seen[key] == undefined)
+                                {
+                                    seen[key] = true;
+                                    floodFaces[s] = append(floodFaces[s], other);
+                                    floodQueue[s] = append(floodQueue[s], other);
+                                }
+                            }
+                            floodSeen[s] = seen;
+                        }
+                    }
+                }
+                var insideSide = -1;
+                if (floodState[0] == "closed")
+                {
+                    insideSide = 0;
+                }
+                else if (floodState[1] == "closed")
+                {
+                    insideSide = 1;
+                }
+                if (insideSide < 0)
+                {
+                    stage = ""; throw regenError("The footprint does not enclose a region inside the faces: its outline must close up and stay inside the surface (it reaches the edge of the picked faces, which is not supported yet, or the surface is too large to follow). Keep the footprint inside the picked faces and check the projection direction.", ["footprint"]);
+                }
+                regionFaces = floodFaces[insideSide];
             }
-            else if (floodState[1] == "closed")
-            {
-                insideSide = 1;
-            }
-            if (insideSide < 0)
-            {
-                stage = ""; throw regenError("The footprint does not enclose a region inside the faces: its outline must close up and stay inside the surface (it reaches the edge of the surface, or the surface is too large to follow). Check the projection direction.", ["footprint"]);
-            }
-            const region = qUnion(floodFaces[insideSide]);
+            const region = qUnion(regionFaces);
             const regionList = evaluateQuery(context, region);
+            const underRegion = function(p is Vector) returns boolean
+                {
+                    return evDistance(context, { "side0" : p, "side1" : region }).distance < 1e-5 * meter;
+                };
             const centroid = evApproximateCentroid(context, { "entities" : region });
             const dIn = evDistance(context, { "side0" : centroid, "side1" : region });
             const pIn = dIn.sides[1].point;
@@ -375,6 +489,10 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             // ---- 2. the outline edges, sampled ----
             stage = "sampling the outline";
             const outlineEdges = evaluateQuery(context, qIntersection([qAdjacent(region, AdjacencyType.EDGE, EntityType.EDGE), imprintEdges]));
+            if (!hasFootprintFaces && size(outlineEdges) != size(imprintList))
+            {
+                stage = ""; throw regenError("The footprint curves must form ONE closed outline (some of the projected curves are not on the boundary of the region). Use Footprint faces for several islands or for holes.", ["footprint"]);
+            }
             var edges = [];
             for (var edge in outlineEdges)
             {
@@ -644,8 +762,40 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             dropAllBut(id + "dropWall", wallPieces, wall);
             stage = "cutting the offset surface to the outline (a creased or patchwork surface does not offset cleanly along its normals: set Walls to along the projection direction, which moves the faces instead)";
             const replTracked = tracked(replacement);
-            opSplitPart(context, id + "offsetByTube", { "targets" : replacement, "tool" : tubeFull, "keepTools" : true });
-            const replInside = nearest(qBodyType(replTracked, BodyType.SHEET), replacementPoint);
+            // one cut per tube body (several loops = several tubes); the first keeps the op id of the one-loop build
+            const tubeList = evaluateQuery(context, tubeFull);
+            for (var tk = 0; tk < size(tubeList); tk += 1)
+            {
+                opSplitPart(context, id + (tk == 0 ? "offsetByTube" : "offsetByTube" ~ tk), { "targets" : tk == 0 ? replacement : qBodyType(replTracked, BodyType.SHEET),
+                            "tool" : tubeList[tk], "keepTools" : true });
+            }
+            var replInside = undefined;
+            if (!hasFootprintFaces)
+            {
+                replInside = nearest(qBodyType(replTracked, BodyType.SHEET), replacementPoint);
+            }
+            else
+            {
+                // the pieces of the new surface that lie over the region: a ray from a point well inside the piece, along the
+                // wall direction (or the piece's normal), both ways, reaches the region within the walls' reach
+                var replKeep = [];
+                for (var replPiece in evaluateQuery(context, qBodyType(replTracked, BodyType.SHEET)))
+                {
+                    const replProbe = interiorPoint(largestFaceOf(replPiece));
+                    const replDirection = definition.walls == PatchPlusWalls.PROJECTION ? projectionDirection : replProbe.normal;
+                    const hitsAhead = evRaycast(context, { "entities" : region, "ray" : line(replProbe.point, replDirection) });
+                    const hitsBehind = evRaycast(context, { "entities" : region, "ray" : line(replProbe.point, -replDirection) });
+                    if ((size(hitsAhead) > 0 && hitsAhead[0].distance < 2 * wallReach) || (size(hitsBehind) > 0 && hitsBehind[0].distance < 2 * wallReach))
+                    {
+                        replKeep = append(replKeep, replPiece);
+                    }
+                }
+                if (size(replKeep) == 0)
+                {
+                    stage = ""; throw regenError("The new surface does not lie over the region: check the offset and the projection direction.", ["offset"]);
+                }
+                replInside = qUnion(replKeep);
+            }
             dropAllBut(id + "dropOffset", qBodyType(replTracked, BodyType.SHEET), replInside);
 
             if (!isSolid)
@@ -653,9 +803,33 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 // ---- 7a. sheet: cut the hole in the base, knit [outside of the base first, wall, offset region] ----
                 stage = "cutting the hole in the sheet";
                 const baseTracked = tracked(owner);
-                opSplitPart(context, id + "baseByTube", { "targets" : owner, "tool" : tubeFull, "keepTools" : true });
+                for (var tk = 0; tk < size(tubeList); tk += 1)
+                {
+                    opSplitPart(context, id + (tk == 0 ? "baseByTube" : "baseByTube" ~ tk), { "targets" : tk == 0 ? owner : qBodyType(baseTracked, BodyType.SHEET),
+                                "tool" : tubeList[tk], "keepTools" : true });
+                }
                 const pieces = qBodyType(baseTracked, BodyType.SHEET);
-                const inside = nearest(pieces, pIn);
+                var inside = undefined;
+                if (!hasFootprintFaces)
+                {
+                    inside = nearest(pieces, pIn);
+                }
+                else
+                {
+                    var insideList = [];
+                    for (var basePiece in evaluateQuery(context, pieces))
+                    {
+                        if (underRegion(interiorPoint(largestFaceOf(basePiece)).point))
+                        {
+                            insideList = append(insideList, basePiece);
+                        }
+                    }
+                    if (size(insideList) == 0)
+                    {
+                        stage = ""; throw regenError("No part of the sheet lies under the footprint region.", ["footprintFaces"]);
+                    }
+                    inside = qUnion(insideList);
+                }
                 const outside = qSubtraction(pieces, inside);
                 if (isQueryEmpty(context, outside))
                 {
@@ -678,15 +852,41 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 // ---- 7b. solid: patch + wall + offset region -> closed shell -> plug; add or subtract ----
                 stage = "cutting the base surface to the outline";
                 const surfTracked = tracked(baseSurface);
-                opSplitPart(context, id + "surfByTube", { "targets" : baseSurface, "tool" : tubeFull, "keepTools" : true });
+                for (var tk = 0; tk < size(tubeList); tk += 1)
+                {
+                    opSplitPart(context, id + (tk == 0 ? "surfByTube" : "surfByTube" ~ tk), { "targets" : tk == 0 ? baseSurface : qBodyType(surfTracked, BodyType.SHEET),
+                                "tool" : tubeList[tk], "keepTools" : true });
+                }
                 const pieces = qBodyType(surfTracked, BodyType.SHEET);
-                const patch = nearest(pieces, pIn);
+                var patch = undefined;
+                if (!hasFootprintFaces)
+                {
+                    patch = nearest(pieces, pIn);
+                }
+                else
+                {
+                    var patchKeep = [];
+                    for (var surfPiece in evaluateQuery(context, pieces))
+                    {
+                        if (underRegion(interiorPoint(largestFaceOf(surfPiece)).point))
+                        {
+                            patchKeep = append(patchKeep, surfPiece);
+                        }
+                    }
+                    if (size(patchKeep) == 0)
+                    {
+                        stage = ""; throw regenError("No part of the base surface lies under the footprint region.", ["footprintFaces"]);
+                    }
+                    patch = qUnion(patchKeep);
+                }
                 dropAllBut(id + "dropSurf", pieces, patch);
                 stage = "closing the plug";
                 // Where the new surface crosses the base patch inside the outline, the two sheets intersect each other and
                 // cannot be joined as they are (BOOLEAN_INVALID): cut each by a copy of the other, so they share the crossing curve.
-                var shellPieces = [patch, replInside];
-                var patchPieceCount = 1;
+                var patchList = evaluateQuery(context, patch);
+                var replList = evaluateQuery(context, replInside);
+                var shellPieces = concatenateArrays([patchList, replList]);
+                var patchPieceCount = size(patchList);
                 if (size(evCollision(context, { "tools" : patch, "targets" : replInside })) > 0)
                 {
                     stage = "cutting the base patch and the new surface at their crossing";
@@ -900,6 +1100,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         "flipDirection" : false,
         "offset" : 0 * meter,
         "replacement" : qNothing(),
+        "footprintFaces" : qNothing(),
         "sideReference" : qNothing(),
         "flipOffset" : false,
         "walls" : PatchPlusWalls.NORMAL,
@@ -915,4 +1116,21 @@ export function patchPlusManipulatorChange(context is Context, definition is map
         definition.flipOffset = newManipulators["offsetFlip"].flipped;
     }
     return definition;
+}
+
+/**
+ * The outline of a set of faces: the edges with exactly one of the faces on them, every loop (islands, and the inner loop of a
+ * face with a hole). An edge shared by two picked faces is not on it.
+ */
+function outlineOfFaces(context is Context, faces is Query) returns Query
+{
+    var outline = [];
+    for (var edge in evaluateQuery(context, qAdjacent(faces, AdjacencyType.EDGE, EntityType.EDGE)))
+    {
+        if (size(evaluateQuery(context, qIntersection([qAdjacent(edge, AdjacencyType.EDGE, EntityType.FACE), faces]))) == 1)
+        {
+            outline = append(outline, edge);
+        }
+    }
+    return qUnion(outline);
 }
