@@ -585,6 +585,28 @@ for n, (tag, base_kind, title) in enumerate([
         params.append(num("draft", "10 deg"))
     patch("%s Patch+ %s" % (tag, title), params)
 
+# Patch+ with a footprint TOOL (2026-11-23): the intersection of a cylinder with the base is the outline (a circle r 20).
+for n, (tag, base_kind, title) in enumerate([
+        ("IM1", "solid", "tool = cylinder r 20 through the top face, boss +10"),
+        ("IM2", "solid", "tool = a plane that cuts across the whole face -> ERROR (the loop must close)"),
+        ("IM3", "sheet", "tool = cylinder r 20 through a sheet, +10")]):
+    x0 = 33000 + 400 * n
+    if base_kind == "solid":
+        bx = cube("%s cube at x %d" % (tag, x0), x0, 0)
+        base_q = face_at(bx, x0, 0, 50)
+    else:
+        bx = sheet("%s sheet z 50, x %d..%d" % (tag, x0 - 50, x0 + 50), [(x0 - 50, 50), (x0 + 50, 50)])
+        base_q = body(bx)
+    if tag == "IM2":
+        tool = sheet("IM2 tool plane at x %d" % x0, [(x0, 0), (x0, 100)], 140)
+        tq = body(tool)
+    else:
+        csk = sketch("%s tool circle r 20 (sketch)" % tag, plane_at("%s tool plane z 0" % tag, "Top", 0), [circle("c", *mmv(x0, 0, 20))])
+        cyl = feature("%s tool cylinder z 0..70" % tag, "extrude", [
+            en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
+            q("entities", 'qSketchRegion(makeId("%s"))' % csk), en("endBound", "BoundingType", "BLIND"), num("depth", "70 mm")])
+        tq = body(cyl)
+    patch("%s Patch+ %s" % (tag, title), [q("baseFaces", base_q), q("footprintTool", tq), num("offset", "10 mm")])
 x0 = 10600
 t = cube("T6 cube at x 10600", x0, 0)
 top = sheet("T6 sheet on the cube's top, z 50, x 10570..10630", [(x0 - 30, 50), (x0 + 30, 50)], 60)

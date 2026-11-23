@@ -533,6 +533,20 @@ for tag, area in [("FP1", "1600"), ("FP2", "900 + 400"), ("FP3", "3600 - PI * 10
 
 # Footprint faces with a replacement plate (FP6), a drafted island (FP8) and a drafted ring (FP9; its hole closes in, so the area is
 # (60 + 2 d)^2 - pi (10 - d)^2 with d = t tan(10 deg)); FP7: a sheet with the side reference below.
+# Patch+ with a footprint TOOL: a cylinder r 20 through the top face (IM1, solid: boss +10 over the disc), a sheet (IM3), a plane that cuts across (IM2 must error).
+case("IM1 ", PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "10").replace("__AREA__", "PI * 400").replace("__SIGN__", "1"), CUBE="IM1 cube")
+case("IM3 ", r'''
+        const sheet = created(@SHEET@);
+        const area = count(sheet) >= 1 ? evArea(context, { "entities" : qOwnedByBody(sheet, EntityType.FACE) }) : 0 * meter ^ 2;
+        const bb = count(sheet) >= 1 ? evBox3d(context, { "topology" : sheet }) : undefined;
+        const zlo = bb == undefined ? 0 * meter : bb.minCorner[2];
+        const zhi = bb == undefined ? 0 * meter : bb.maxCorner[2];
+        const want = 10000 + 2 * PI * 20 * 10;
+        const high = near(zlo, mm(50), mm(0.001)) && near(zhi, mm(60), mm(0.001));
+        const low = near(zlo, mm(40), mm(0.001)) && near(zhi, mm(50), mm(0.001));
+        return [count(sheet) == 1 && abs(area - want * millimeter ^ 2) < 25 * millimeter ^ 2 && (high || low),
+            count(sheet) ~ " sheet (1), area " ~ roundToPrecision(area / millimeter ^ 2, 2) ~ " (" ~ roundToPrecision(want, 2) ~ "), z " ~ fmt(zlo) ~ ".." ~ fmt(zhi) ~ " (50..60 or 40..50)"];''',
+     SHEET="IM3 sheet")
 case("FP4 ", PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "10").replace("__AREA__", "100 * 40").replace("__SIGN__", "1"), CUBE="FP4 cube")
 case("FP10 ", r'''
         const sheet = created(@SHEET@);
@@ -752,7 +766,7 @@ for tag, vol, x_range, keys in (
         return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (%d), x " ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0]) ~ ", z "
             ~ fmt(bb.minCorner[2]) ~ ".." ~ fmt(bb.maxCorner[2]) ~ "; " ~ keys];""" % (key_src, vol, xr, vol))
 
-EXPECTED_ERRORS = ["T4 Thicken+", "DR10 Thicken+", "RF4 Patch+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
+EXPECTED_ERRORS = ["IM2 Patch+", "T4 Thicken+", "DR10 Thicken+", "RF4 Patch+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
 
 
 def strings(result):

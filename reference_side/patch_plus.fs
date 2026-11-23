@@ -77,6 +77,11 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     "Description" : "Instead of curves: faces (or a sheet body) whose outline is projected onto the faces. Every loop counts: several islands, and the holes of a face (the region is the face itself, a ring where it has a hole). Pick curves OR faces. A footprint that runs off the edge of the picked faces is built as a straight move of the region (Walls along the projection direction, or a planar region; no draft, no replacement surface)." }
         definition.footprintFaces is Query;
 
+        annotation { "Name" : "Footprint tool",
+                    "Filter" : EntityType.FACE || EntityType.BODY && (BodyType.SHEET || BodyType.SOLID),
+                    "Description" : "Instead of curves or faces: surfaces or a solid whose INTERSECTION with the picked faces is the footprint (a closed loop on them, e.g. a cylinder through a face, or a surface that cuts a dome). Nothing is projected. The loop must close inside the picked faces." }
+        definition.footprintTool is Query;
+
         annotation { "Name" : "Projection" }
         definition.projection is PatchPlusProjection;
 
@@ -143,15 +148,18 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         const hasFootprintFaces = !isQueryEmpty(context, footprintFaces);
         const footprintCurves = qUnion([qEntityFilter(definition.footprint, EntityType.EDGE),
                     qOwnedByBody(qEntityFilter(definition.footprint, EntityType.BODY), EntityType.EDGE)]);
-        if (hasFootprintFaces && !isQueryEmpty(context, footprintCurves))
+        const footprintTool = qUnion([qEntityFilter(definition.footprintTool, EntityType.FACE),
+                    qOwnedByBody(qEntityFilter(definition.footprintTool, EntityType.BODY), EntityType.FACE)]);
+        const hasFootprintTool = !isQueryEmpty(context, footprintTool);
+        if ((hasFootprintFaces ? 1 : 0) + (hasFootprintTool ? 1 : 0) + (isQueryEmpty(context, footprintCurves) ? 0 : 1) > 1)
         {
-            throw regenError("Pick the footprint as curves OR as faces, not both.", ["footprint", "footprintFaces"]);
+            throw regenError("Pick the footprint as curves, as faces OR as a tool, not several.", ["footprint", "footprintFaces", "footprintTool"]);
         }
         // Faces: their outline (the edges with exactly one picked face: every loop, holes and islands included) is projected.
         const footEdges = hasFootprintFaces ? outlineOfFaces(context, footprintFaces) : footprintCurves;
-        if (isQueryEmpty(context, footEdges))
+        if (isQueryEmpty(context, footEdges) && !hasFootprintTool)
         {
-            throw regenError("Pick the footprint curves or the footprint faces.", ["footprint"]);
+            throw regenError("Pick the footprint curves, the footprint faces or a footprint tool.", ["footprint"]);
         }
         var projectionDirection = undefined;
         if (definition.projection == PatchPlusProjection.DIRECTION)
@@ -258,7 +266,12 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             const copyFaces = qOwnedByBody(qCreatedBy(id + "copy", EntityType.BODY), EntityType.FACE);
             stage = "projecting the footprint onto the faces";
             var splitDefinition = { "faceTargets" : copyFaces, "edgeTools" : footEdges, "projectionType" : ProjectionType.NORMAL_TO_TARGET };
-            if (projectionDirection != undefined)
+            if (hasFootprintTool)
+            {
+                // the footprint is where the tool meets the faces: imprint that, nothing is projected
+                splitDefinition = { "faceTargets" : copyFaces, "faceTools" : footprintTool };
+            }
+            else if (projectionDirection != undefined)
             {
                 splitDefinition.projectionType = ProjectionType.DIRECTION;
                 splitDefinition.direction = projectionDirection;
@@ -1201,6 +1214,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         "offset" : 0 * meter,
         "replacement" : qNothing(),
         "footprintFaces" : qNothing(),
+        "footprintTool" : qNothing(),
         "footprint" : qNothing(),
         "sideReference" : qNothing(),
         "flipOffset" : false,
