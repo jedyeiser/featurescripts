@@ -40,6 +40,17 @@ export enum PatchPlusProjection
     DIRECTION
 }
 
+/** What the footprint is made of. */
+export enum PatchPlusFootprint
+{
+    annotation { "Name" : "Curves" }
+    CURVES,
+    annotation { "Name" : "Faces" }
+    FACES,
+    annotation { "Name" : "Tool (intersection)" }
+    TOOL
+}
+
 /** The direction the walls run. */
 export enum PatchPlusWalls
 {
@@ -70,31 +81,43 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     "Description" : "Faces of one sheet or solid body (or a sheet body). The footprint must lie inside them." }
         definition.baseFaces is Query;
 
-        annotation { "Name" : "Footprint curves",
-                    "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE),
-                    "Description" : "Sketch curves or edges forming one closed outline. Projected onto the faces; the faces inside it are replaced." }
-        definition.footprint is Query;
+        annotation { "Name" : "Footprint type" }
+        definition.footprintType is PatchPlusFootprint;
 
-        annotation { "Name" : "Footprint faces",
-                    "Filter" : EntityType.FACE || (BodyType.SHEET && EntityType.BODY),
-                    "Description" : "Instead of curves: faces (or a sheet body) whose outline is projected onto the faces. Islands and holes both count. May run off the edge of the picked faces (then: straight walls only, see the feature description)." }
-        definition.footprintFaces is Query;
-
-        annotation { "Name" : "Footprint tool",
-                    "Filter" : EntityType.FACE || EntityType.BODY && (BodyType.SHEET || BodyType.SOLID),
-                    "Description" : "Instead of curves or faces: surfaces or a solid that cut the picked faces; the intersection (one closed loop inside them) is the footprint. Nothing is projected, so Projection is not used." }
-        definition.footprintTool is Query;
-
-        annotation { "Name" : "Projection" }
-        definition.projection is PatchPlusProjection;
-
-        if (definition.projection == PatchPlusProjection.DIRECTION)
+        if (definition.footprintType == PatchPlusFootprint.CURVES)
         {
-            annotation { "Name" : "Projection direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1 }
-            definition.projectionDirection is Query;
-
+            annotation { "Name" : "Footprint curves",
+                        "Filter" : EntityType.EDGE || (EntityType.BODY && BodyType.WIRE),
+                        "Description" : "Sketch curves or edges forming one closed outline. Projected onto the faces; the faces inside it are replaced." }
+            definition.footprint is Query;
+        }
+        else if (definition.footprintType == PatchPlusFootprint.FACES)
+        {
+            annotation { "Name" : "Footprint faces",
+                        "Filter" : EntityType.FACE || (BodyType.SHEET && EntityType.BODY),
+                        "Description" : "Faces (or a sheet body) whose outline is projected onto the faces. Islands and holes both count. May run off the edge of the picked faces (then: straight walls only, see the feature description)." }
+            definition.footprintFaces is Query;
+        }
+        else
+        {
+            annotation { "Name" : "Footprint tool",
+                        "Filter" : EntityType.FACE || EntityType.BODY && (BodyType.SHEET || BodyType.SOLID),
+                        "Description" : "Surfaces or a solid that cut the picked faces; the intersection (one closed loop inside them) is the footprint. Nothing is projected." }
+            definition.footprintTool is Query;
         }
 
+        if (definition.footprintType != PatchPlusFootprint.TOOL)
+        {
+            annotation { "Name" : "Projection" }
+            definition.projection is PatchPlusProjection;
+
+            if (definition.projection == PatchPlusProjection.DIRECTION)
+            {
+                annotation { "Name" : "Projection direction", "Filter" : QueryFilterCompound.ALLOWS_DIRECTION, "MaxNumberOfPicks" : 1,
+                            "Description" : "A line: its sign does not matter." }
+                definition.projectionDirection is Query;
+            }
+        }
         annotation { "Name" : "Replacement surface",
                     "Filter" : EntityType.FACE || (BodyType.SHEET && EntityType.BODY),
                     "Description" : "Optional. A surface that goes where the region is: it can lie in front of or behind the faces, but must not cross them inside the footprint. Empty: the faces' own offset." }
@@ -118,6 +141,8 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
     {
         verifyNoMesh(context, definition, "baseFaces");
         const offset = definition.offset;
+        // a footprint tool projects nothing: the projection inputs are hidden and ignored
+        const projectionMode = definition.footprintType == PatchPlusFootprint.TOOL ? PatchPlusProjection.NORMAL : definition.projection;
         const replacementFaces = qUnion([qEntityFilter(definition.replacement, EntityType.FACE),
                     qOwnedByBody(qEntityFilter(definition.replacement, EntityType.BODY), EntityType.FACE)]);
         const hasReplacement = !isQueryEmpty(context, replacementFaces);
@@ -125,9 +150,11 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         {
             throw regenError("Set a non-zero offset (positive pushes the region out, negative pulls it in), or pick a replacement surface.", ["offset"]);
         }
-        if (definition.walls == PatchPlusWalls.PROJECTION && definition.projection != PatchPlusProjection.DIRECTION)
+        if (definition.walls == PatchPlusWalls.PROJECTION && projectionMode != PatchPlusProjection.DIRECTION)
         {
-            throw regenError("Walls along the projection direction need the projection set to \"Along a direction\".", ["walls"]);
+            throw regenError(definition.footprintType == PatchPlusFootprint.TOOL
+                    ? "Walls along the projection direction need a projected footprint (curves or faces with Projection set to \"Along a direction\"): a footprint tool projects nothing."
+                    : "Walls along the projection direction need the projection set to \"Along a direction\".", ["walls"]);
         }
 
         const baseFaces = qUnion([qEntityFilter(definition.baseFaces, EntityType.FACE),
@@ -139,7 +166,9 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         }
         const owner = owners[0];
         const isSolid = !isQueryEmpty(context, qBodyType(owner, BodyType.SOLID));
-        const footprintFaces = qUnion([qEntityFilter(definition.footprintFaces, EntityType.FACE),
+        // only the picked type counts: the other inputs are hidden and may hold stale picks
+        const footprintType = definition.footprintType;
+        const footprintFaces = footprintType != PatchPlusFootprint.FACES ? qNothing() : qUnion([qEntityFilter(definition.footprintFaces, EntityType.FACE),
                     qOwnedByBody(qEntityFilter(definition.footprintFaces, EntityType.BODY), EntityType.FACE)]);
         const hasFootprintFaces = !isQueryEmpty(context, footprintFaces);
         // the faces input classifies every picked face: refuse an oversized pick before any kernel op
@@ -147,23 +176,21 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         {
             throw regenError("Too many faces picked for a footprint made of faces (more than " ~ PATCH_FLOOD_LIMIT ~ "): pick only the faces around the footprint.", ["baseFaces"]);
         }
-        const footprintCurves = qUnion([qEntityFilter(definition.footprint, EntityType.EDGE),
+        const footprintCurves = footprintType != PatchPlusFootprint.CURVES ? qNothing() : qUnion([qEntityFilter(definition.footprint, EntityType.EDGE),
                     qOwnedByBody(qEntityFilter(definition.footprint, EntityType.BODY), EntityType.EDGE)]);
-        const footprintTool = qUnion([qEntityFilter(definition.footprintTool, EntityType.FACE),
+        const footprintTool = footprintType != PatchPlusFootprint.TOOL ? qNothing() : qUnion([qEntityFilter(definition.footprintTool, EntityType.FACE),
                     qOwnedByBody(qEntityFilter(definition.footprintTool, EntityType.BODY), EntityType.FACE)]);
         const hasFootprintTool = !isQueryEmpty(context, footprintTool);
-        if ((hasFootprintFaces ? 1 : 0) + (hasFootprintTool ? 1 : 0) + (isQueryEmpty(context, footprintCurves) ? 0 : 1) > 1)
-        {
-            throw regenError("Pick the footprint as curves, as faces OR as a tool, not several.", ["footprint", "footprintFaces", "footprintTool"]);
-        }
         // Faces: their outline (the edges with exactly one picked face: every loop, holes and islands included) is projected.
         const footEdges = hasFootprintFaces ? outlineOfFaces(context, footprintFaces) : footprintCurves;
         if (isQueryEmpty(context, footEdges) && !hasFootprintTool)
         {
-            throw regenError("Pick the footprint curves, the footprint faces or a footprint tool.", ["footprint"]);
+            throw regenError(footprintType == PatchPlusFootprint.CURVES ? "Pick the footprint curves."
+                    : (footprintType == PatchPlusFootprint.FACES ? "Pick the footprint faces (a closed shell has no outline)." : "Pick the footprint tool."),
+                    [footprintType == PatchPlusFootprint.CURVES ? "footprint" : (footprintType == PatchPlusFootprint.FACES ? "footprintFaces" : "footprintTool")]);
         }
         var projectionDirection = undefined;
-        if (definition.projection == PatchPlusProjection.DIRECTION)
+        if (projectionMode == PatchPlusProjection.DIRECTION)
         {
             if (isQueryEmpty(context, definition.projectionDirection))
             {
@@ -1173,6 +1200,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             throw regenError("Patch+ failed while " ~ stage ~ ": " ~ toString(error));
         }
     }, {
+        "footprintType" : PatchPlusFootprint.CURVES,
         "projection" : PatchPlusProjection.NORMAL,
         "offset" : 0 * meter,
         "replacement" : qNothing(),

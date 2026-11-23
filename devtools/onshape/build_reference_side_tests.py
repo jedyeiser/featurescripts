@@ -431,6 +431,12 @@ thicken("DR13 Thicken+ 5 mm up from the cube top, draft +10 deg, Add into the cu
 # Base: a 100 mm box (top face z 50) or a 100 x 100 sheet at z 50; footprints are sketches on the plane z 100.
 # ============================================================================
 def patch(name, params):
+    # the footprint type follows the footprint input a case uses (curves is the default)
+    ids = [p["parameterId"] for p in params]
+    if "footprintFaces" in ids:
+        params = params + [en("footprintType", "PatchPlusFootprint", "FACES", NS["patch_plus"])]
+    elif "footprintTool" in ids:
+        params = params + [en("footprintType", "PatchPlusFootprint", "TOOL", NS["patch_plus"])]
     return feature(name, "patchPlus", params, NS["patch_plus"])
 
 
