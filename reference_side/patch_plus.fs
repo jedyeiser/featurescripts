@@ -435,22 +435,29 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 {
                     for (var k = 0; k <= PATCH_SAMPLES; k += 4)
                     {
-                        const hits = evRaycast(context, { "entities" : replacementFaces, "ray" : line(edges[i].ps[k], edges[i].us[k]) });
-                        if (size(hits) == 0)
+                        // both ways along the wall: where the new surface crosses the faces it is behind them for part of the outline
+                        const hitsAhead = evRaycast(context, { "entities" : replacementFaces, "ray" : line(edges[i].ps[k], edges[i].us[k]) });
+                        const hitsBehind = evRaycast(context, { "entities" : replacementFaces, "ray" : line(edges[i].ps[k], -edges[i].us[k]) });
+                        var hitDistance = inf * meter;
+                        if (size(hitsAhead) > 0)
+                        {
+                            hitDistance = min(hitDistance, hitsAhead[0].distance);
+                        }
+                        if (size(hitsBehind) > 0)
+                        {
+                            hitDistance = min(hitDistance, hitsBehind[0].distance);
+                        }
+                        if (hitDistance == inf * meter)
                         {
                             addDebugPoint(context, edges[i].ps[k], DebugColor.RED);
                             stage = ""; throw regenError("The replacement surface does not cover the whole outline along the wall direction (marked): it must lie in front of (or behind) every part of the footprint.", ["replacement"]);
                         }
-                        farthest = max(farthest, hits[0].distance);
+                        farthest = max(farthest, hitDistance);
                         if (i == 0 && k == 0)
                         {
-                            firstHitDistance = hits[0].distance;
+                            firstHitDistance = hitDistance;
                         }
                     }
-                }
-                if (firstHitDistance + offset < 1e-6 * meter)
-                {
-                    stage = ""; throw regenError("The offset moves the replacement surface onto or through the faces.", ["offset"]);
                 }
                 wallReach = 1.5 * (farthest + abs(offset)) + 5 * millimeter;
             }
@@ -489,6 +496,11 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             opExtractSurface(context, id + "tubeCopy", { "faces" : qOwnedByBody(tubeBodies, EntityType.FACE) });
             const tubeFull = qCreatedBy(id + "tubeCopy", EntityType.BODY);
             const tube = tracked(tubeBodies);
+            // the tube's free rims (frozen now, then tracked through the cuts): a piece that touches one lies beyond the faces
+            // or beyond the new surface; the pieces that do not are the wall, however many the cuts make (several where the
+            // new surface crosses the faces along the outline)
+            const rimNow = qUnion(evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(tubeBodies, EntityType.EDGE), EdgeTopology.ONE_SIDED)));
+            const rimEdges = qUnion([rimNow, startTracking(context, rimNow)]);
 
             // ---- 5. the new surface: the replacement (offset), or the same faces offset ----
             stage = hasReplacement ? "preparing the replacement surface (if the kernel cannot offset it, set Walls to along the projection direction: it is moved instead)"
@@ -555,9 +567,20 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             {
                 stage = ""; throw regenError("The walls do not cross the faces and the offset surface: check the projection direction and the offset.", ["offset"]);
             }
-            const wall = nearest(wallPieces, wallProbe);
+            var wallParts = [];
+            for (var piece in evaluateQuery(context, wallPieces))
+            {
+                if (isQueryEmpty(context, qIntersection([qOwnedByBody(piece, EntityType.EDGE), rimEdges])))
+                {
+                    wallParts = append(wallParts, piece);
+                }
+            }
+            if (size(wallParts) == 0)
+            {
+                stage = ""; throw regenError("No part of the walls lies between the faces and the new surface: check the projection direction, the offset and the replacement surface.", ["offset"]);
+            }
+            const wall = qUnion(wallParts);
             dropAllBut(id + "dropWall", wallPieces, wall);
-
             stage = "cutting the offset surface to the outline (a creased or patchwork surface does not offset cleanly along its normals: set Walls to along the projection direction, which moves the faces instead)";
             const replTracked = tracked(replacement);
             opSplitPart(context, id + "offsetByTube", { "targets" : replacement, "tool" : tubeFull, "keepTools" : true });
@@ -609,18 +632,53 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 }
                 opEnclose(context, id + "enclose", { "entities" : shellBodies });
                 const plug = qBodyType(qCreatedBy(id + "enclose", EntityType.BODY), BodyType.SOLID);
-                if (isQueryEmpty(context, plug))
+                const plugList = evaluateQuery(context, plug);
+                if (size(plugList) == 0)
                 {
                     stage = ""; throw regenError("The plug could not be made into a solid.", ["offset"]);
                 }
-                stage = side > 0 ? "adding the plug to the solid" : "subtracting the plug from the solid";
-                if (side > 0)
+                // One plug normally. Where the new surface crosses the faces along the outline the shell encloses several
+                // lenses, some outside the solid (added) and some inside (subtracted): each by its side of the base surface.
+                var adds = [];
+                var subtracts = [];
+                if (size(plugList) == 1)
                 {
-                    opBoolean(context, id + "apply", { "tools" : qUnion([owner, plug]), "operationType" : BooleanOperationType.UNION });
+                    if (side > 0)
+                    {
+                        adds = plugList;
+                    }
+                    else
+                    {
+                        subtracts = plugList;
+                    }
                 }
                 else
                 {
-                    opBoolean(context, id + "apply", { "tools" : plug, "targets" : owner, "operationType" : BooleanOperationType.SUBTRACTION });
+                    const baseFaceList = evaluateQuery(context, qOwnedByBody(baseSurface, EntityType.FACE));
+                    for (var lens in plugList)
+                    {
+                        const lc = evApproximateCentroid(context, { "entities" : lens });
+                        const dl = evDistance(context, { "side0" : lc, "side1" : qOwnedByBody(baseSurface, EntityType.FACE) });
+                        const nl = evFaceTangentPlane(context, { "face" : baseFaceList[dl.sides[1].index], "parameter" : dl.sides[1].parameter }).normal;
+                        if (dot(lc - dl.sides[1].point, nl) >= 0 * meter)
+                        {
+                            adds = append(adds, lens);
+                        }
+                        else
+                        {
+                            subtracts = append(subtracts, lens);
+                        }
+                    }
+                }
+                stage = "adding the plug to the solid";
+                if (size(adds) > 0)
+                {
+                    opBoolean(context, id + "apply", { "tools" : qUnion(concatenateArrays([[owner], adds])), "operationType" : BooleanOperationType.UNION });
+                }
+                stage = "subtracting the plug from the solid";
+                if (size(subtracts) > 0)
+                {
+                    opBoolean(context, id + "applySub", { "tools" : qUnion(subtracts), "targets" : owner, "operationType" : BooleanOperationType.SUBTRACTION });
                 }
                 resultQuery = owner;
             }
