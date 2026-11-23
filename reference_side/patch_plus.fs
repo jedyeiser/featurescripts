@@ -1101,6 +1101,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         "offset" : 0 * meter,
         "replacement" : qNothing(),
         "footprintFaces" : qNothing(),
+        "footprint" : qNothing(),
         "sideReference" : qNothing(),
         "flipOffset" : false,
         "walls" : PatchPlusWalls.NORMAL,
