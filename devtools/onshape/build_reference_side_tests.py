@@ -1,4 +1,4 @@
-﻿"""Build the Reference_Side test cases as real features in the "Reference side tests" Part Studio (upsert by
+"""Build the Reference_Side test cases as real features in the "Reference side tests" Part Studio (upsert by
 name). Replaces the old reference_side_tests.fs harness: every fixture and every case is a feature in the tree,
 named with its expected result. Checked by check_reference_side_tests.py.
 
@@ -25,7 +25,7 @@ E = studios[STUDIO]
 BASE = f"/api/v10/partstudios/d/{D}/w/{W}/e/{E}"
 TABS = {e["name"]: e for e in ELEMENTS if e["elementType"] == "FEATURESTUDIO"}
 NS = {name: "e%s::m%s" % (TABS[name]["id"], TABS[name]["microversionId"])
-      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference", "move_face_plus", "enclose_plus", "join_profile_surfaces", "referenced_part", "jps_test_fixture"]}
+      for name in ["split_plus", "offset_plus", "mutual_trim_plus", "thicken_plus", "orient_to_reference", "move_face_plus", "enclose_plus", "join_profile_surfaces", "referenced_part", "jps_test_fixture", "patch_plus"]}
 
 STATE = {"features": None}
 
@@ -425,6 +425,46 @@ thicken("DR13 Thicken+ 5 mm up from the cube top, draft +10 deg, Add into the cu
     q("sideReference", ref_front("DR13 reference point (%d, 0, 100)" % x0, x0, 100)),
     num("thicknessToward", "5 mm"), num("thicknessAway", "0 mm"), num("draftAngle", "10 deg"),
     b("defaultScope", False), q("booleanScope", body(dcube))])
+
+# ============================================================================
+# Patch+ (2026-11-23): push / pull the part of a surface inside a footprint; closed-form volumes in the check script.
+# Base: a 100 mm box (top face z 50) or a 100 x 100 sheet at z 50; footprints are sketches on the plane z 100.
+# ============================================================================
+def patch(name, params):
+    return feature(name, "patchPlus", params, NS["patch_plus"])
+
+
+def pp_params(face_query, footprint, extra):
+    return [q("baseFaces", face_query), q("footprint", footprint), num("offset", "10 mm")] + extra
+
+
+L_SHAPE = [(-30, -30), (30, -30), (30, 0), (0, 0), (0, 30), (-30, 30)]
+PP_CASES = [
+    # tag, base kind, footprint kind, title, extra parameters
+    ("PP1", "solid", "circle", "circle r 20, boss +10, straight walls", []),
+    ("PP2", "solid", "circle", "circle r 20, pocket -10, straight walls", [num("offset", "-10 mm")]),
+    ("PP3", "sheet", "circle", "circle r 20 on a sheet, +10, straight walls", []),
+    ("PP4", "solid", "circle", "circle r 20, boss +10, draft +10 deg", [num("draft", "10 deg")]),
+    ("PP5", "solid", "L", "concave L outline, boss +10, straight walls", []),
+    ("PP6", "solid", "L", "concave L outline, boss +10, draft +10 deg (mitred corners)", [num("draft", "10 deg")]),
+    ("PP7", "solid", "circle", "circle r 20, boss +10, projected and walled along -z (flipped Top plane normal)",
+     [en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]), q("projectionDirection", TOP),
+      b("flipDirection", True), en("walls", "PatchPlusWalls", "PROJECTION", NS["patch_plus"])]),
+]
+for n, (tag, base_kind, foot_kind, title, extra) in enumerate(PP_CASES):
+    x0 = 23000 + 400 * n
+    if foot_kind == "circle":
+        fp = sketch("%s footprint circle r 20 at x %d z 100 (sketch)" % (tag, x0), plane_at("PP footprint plane z 100", "Top", 100), [circle("c", *mmv(x0, 0, 20))])
+    else:
+        fp = sketch("%s footprint L at x %d z 100 (sketch)" % (tag, x0), plane_at("PP footprint plane z 100", "Top", 100),
+                    polyline("r", [(x0 + px, py) for px, py in L_SHAPE], closed=True))
+    if base_kind == "solid":
+        bx = cube("%s cube at x %d" % (tag, x0), x0, 0)
+        base_q = face_at(bx, x0, 0, 50)
+    else:
+        bx = sheet("%s sheet z 50, x %d..%d" % (tag, x0 - 50, x0 + 50), [(x0 - 50, 50), (x0 + 50, 50)])
+        base_q = body(bx)
+    patch("%s Patch+ %s" % (tag, title), pp_params(base_q, edges(fp), extra))
 
 x0 = 10600
 t = cube("T6 cube at x 10600", x0, 0)

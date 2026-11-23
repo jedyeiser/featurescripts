@@ -432,6 +432,45 @@ case("DR13 ", r'''
             count(cube) ~ " part (1), volume " ~ roundToPrecision(v / millimeter ^ 3, 3) ~ " (" ~ roundToPrecision(vol, 3) ~ "), towardFaces " ~ size(toward) ~ " (1) at z " ~ fmt(z) ~ " (55)"];''',
      CUBE="DR13 cube")
 
+# Patch+ (2026-11-23). A region of 10 mm push or pull; k = tan(10 deg). Volumes of the box (1e6 mm3) plus the plug.
+PP_SOLID_SRC = r'''
+        const cube = created(@CUBE@);
+        const n = count(cube);
+        const v = n == 1 ? evVolume(context, { "entities" : cube }) : 0 * meter ^ 3;
+        const k = __K__;
+        var plug = 0;
+        const steps = 2000;
+        for (var i = 0; i < steps; i += 1)
+        {
+            const t = __DEPTH__ * (i + 0.5) / steps;
+            const delta = t * k;
+            plug += (__AREA__) * __DEPTH__ / steps;
+        }
+        const want = 1000000 + __SIGN__ * plug;
+        const helpers = count(created(SELF));
+        return [n == 1 && abs(v - want * millimeter ^ 3) < 80 * millimeter ^ 3 && helpers == 0,
+            n ~ " solid (1), volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (" ~ roundToPrecision(want, 2) ~ "), helper bodies left " ~ helpers ~ " (0)"];'''
+k10 = math.tan(math.radians(10))
+for tag, area, sign, k in [("PP1", "PI * 400", 1, 0), ("PP2", "PI * 400", -1, 0), ("PP4", "PI * (20 + delta) * (20 + delta)", 1, k10),
+                           ("PP5", "2700", 1, 0), ("PP6", "2700 + 240 * delta + 4 * delta * delta", 1, k10), ("PP7", "PI * 400", 1, 0)]:
+    src = PP_SOLID_SRC.replace("__K__", repr(k)).replace("__DEPTH__", "10").replace("__AREA__", area).replace("__SIGN__", str(sign))
+    case(tag + " ", src, CUBE="%s cube" % tag)
+
+case("PP3 ", r'''
+        const sheet = created(@SHEET@);
+        const faces = qOwnedByBody(sheet, EntityType.FACE);
+        const area = count(sheet) >= 1 ? evArea(context, { "entities" : faces }) : 0 * meter ^ 2;
+        const bb = count(sheet) >= 1 ? evBox3d(context, { "topology" : sheet }) : undefined;
+        const zlo = bb == undefined ? 0 * meter : bb.minCorner[2];
+        const zhi = bb == undefined ? 0 * meter : bb.maxCorner[2];
+        const want = 10000 + 2 * PI * 20 * 10;
+        const high = near(zlo, mm(50), mm(0.001)) && near(zhi, mm(60), mm(0.001));
+        const low = near(zlo, mm(40), mm(0.001)) && near(zhi, mm(50), mm(0.001));
+        const naked = size(evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(sheet, EntityType.EDGE), EdgeTopology.ONE_SIDED)));
+        return [count(sheet) == 1 && abs(area - want * millimeter ^ 2) < 2 * millimeter ^ 2 && (high || low) && naked == 4,
+            count(sheet) ~ " sheet (1), area " ~ roundToPrecision(area / millimeter ^ 2, 2) ~ " (" ~ roundToPrecision(want, 2) ~ "), z " ~ fmt(zlo) ~ ".." ~ fmt(zhi) ~ " (50..60 or 40..50), naked edges " ~ naked ~ " (4: the square's own outline)"];''',
+     SHEET="PP3 sheet")
+
 case("DR11 ", r'''
         const sheets = evaluateQuery(context, qBodyType(created(SELF), BodyType.SHEET));
         const solids = evaluateQuery(context, qBodyType(created(SELF), BodyType.SOLID));
@@ -624,7 +663,7 @@ def main():
 
     for prefix, body, names in CASES:
         cases = [(n, i) for n, i in by_name if n.startswith(prefix) and states.get(i, {}).get("featureStatus") != "ERROR"
-                 and any(k in n for k in ["Split+", "Offset+", "Mutual Trim+", "Thicken+", "Orient to reference", "Move face+", "Enclose+", "Join profile surfaces", "Referenced part"])]
+                 and any(k in n for k in ["Split+", "Offset+", "Mutual Trim+", "Thicken+", "Patch+", "Orient to reference", "Move face+", "Enclose+", "Join profile surfaces", "Referenced part"])]
         if len(cases) != 1:
             print("FAIL", prefix, "-- case feature not found")
             failed += 1

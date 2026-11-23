@@ -249,7 +249,9 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     c = normalize(c - us[i] * dot(c, us[i]));
                     cs = append(cs, c);
                 }
-                edges = append(edges, { "ps" : ps, "us" : us, "cs" : cs, "ts" : ts, "closed" : closed });
+                edges = append(edges, { "ps" : ps, "us" : us, "cs" : cs, "ts" : ts, "closed" : closed,
+                        // mitre corrections at the start and the end, blended along the edge when the walls are built
+                        "dc" : [vector(0, 0, 0), vector(0, 0, 0)], "du" : [vector(0, 0, 0), vector(0, 0, 0)] });
             }
             const nE = size(edges);
 
@@ -277,7 +279,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                         {
                             if (norm(pa - edges[j].ps[b == 0 ? 0 : PATCH_SAMPLES]) < PATCH_VERTEX_TOLERANCE)
                             {
-                                partner = { "j" : j, "ib" : b == 0 ? 0 : PATCH_SAMPLES };
+                                partner = { "j" : j, "b" : b, "ib" : b == 0 ? 0 : PATCH_SAMPLES };
                                 matches += 1;
                             }
                         }
@@ -295,15 +297,18 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                         addDebugPoint(context, pa, DebugColor.RED);
                         stage = ""; throw regenError("The corner at the marked point is too sharp for the wall draft: reduce the draft angle or round the corner.", ["draft"]);
                     }
-                    // the mitre conormal: its component along each edge's own conormal is 1
+                    // the mitre conormal: its component along each edge's own conormal is 1. Only the CORRECTION is stored
+                    // (cm - own conormal runs along the edge's own wall plane); the walls blend it linearly along the edge,
+                    // so the sampled curves stay monotone (moving just the last sample doubles the curve back at full reach).
                     const cm = (ci + cj) / along;
+                    const um = normalize(edges[i].us[ia] + edges[partner.j].us[partner.ib]);
                     var ei = edges[i];
-                    ei.cs[ia] = cm;
-                    ei.us[ia] = normalize(edges[i].us[ia] + edges[partner.j].us[partner.ib]);
+                    ei.dc[a] = cm - ci;
+                    ei.du[a] = um - edges[i].us[ia];
                     edges[i] = ei;
                     var ej = edges[partner.j];
-                    ej.cs[partner.ib] = cm;
-                    ej.us[partner.ib] = ei.us[ia];
+                    ej.dc[partner.b] = cm - cj;
+                    ej.du[partner.b] = um - edges[partner.j].us[partner.ib];
                     edges[partner.j] = ej;
                 }
             }
@@ -318,7 +323,10 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 var hi = [];
                 for (var k = 0; k <= PATCH_SAMPLES; k += 1)
                 {
-                    const d = e.us[k] * cos(theta * radian) + e.cs[k] * sin(theta * radian);
+                    const s = k / PATCH_SAMPLES;
+                    const uk = e.us[k] + e.du[0] * (1 - s) + e.du[1] * s;
+                    const ck = e.cs[k] + e.dc[0] * (1 - s) + e.dc[1] * s;
+                    const d = uk * cos(theta * radian) + ck * sin(theta * radian);
                     lo = append(lo, e.ps[k] - d * reach);
                     hi = append(hi, e.ps[k] + d * reach);
                 }
