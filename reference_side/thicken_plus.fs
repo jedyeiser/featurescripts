@@ -634,11 +634,38 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
         var ps = [];
         var ns = [];
         var ts = [];
+        // the seed face under each sample, then the face normals there: one evFaceTangentPlanes call per face, not per sample
+        var hits = [];
         for (var i = 0; i <= DRAFT_SAMPLES; i += 1)
         {
-            const dd = evDistance(context, { "side0" : lines[i].origin, "side1" : seedFaces });
+            hits = append(hits, evDistance(context, { "side0" : lines[i].origin, "side1" : seedFaces }).sides[1]);
+        }
+        var sampleNormals = makeArray(DRAFT_SAMPLES + 1);
+        for (var fi = 0; fi < size(seedFaceList); fi += 1)
+        {
+            var onFace = [];
+            var onFaceParameters = [];
+            for (var i = 0; i <= DRAFT_SAMPLES; i += 1)
+            {
+                if (hits[i].index == fi)
+                {
+                    onFace = append(onFace, i);
+                    onFaceParameters = append(onFaceParameters, hits[i].parameter);
+                }
+            }
+            if (size(onFace) > 0)
+            {
+                const planes = evFaceTangentPlanes(context, { "face" : seedFaceList[fi], "parameters" : onFaceParameters });
+                for (var n = 0; n < size(onFace); n += 1)
+                {
+                    sampleNormals[onFace[n]] = planes[n].normal;
+                }
+            }
+        }
+        for (var i = 0; i <= DRAFT_SAMPLES; i += 1)
+        {
             ps = append(ps, lines[i].origin);
-            ns = append(ns, evFaceTangentPlane(context, { "face" : seedFaceList[dd.sides[1].index], "parameter" : dd.sides[1].parameter }).normal * towardSign);
+            ns = append(ns, sampleNormals[i] * towardSign);
             ts = append(ts, lines[i].direction);
         }
         const closed = norm(ps[DRAFT_SAMPLES] - ps[0]) < 1e-6 * meter;
@@ -928,9 +955,10 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
     {
         var towardHits = 0;
         var awayHits = 0;
-        for (var prm in [vector(0.5, 0.5), vector(0.3, 0.7), vector(0.7, 0.3)])
+        const capProbes = evFaceTangentPlanes(context, { "face" : face, "parameters" : [vector(0.5, 0.5), vector(0.3, 0.7), vector(0.7, 0.3)] });
+        for (var probe in capProbes)
         {
-            const p = evFaceTangentPlane(context, { "face" : face, "parameter" : prm }).origin;
+            const p = probe.origin;
             const dc = evDistance(context, { "side0" : p, "side1" : bigFaces });
             const nc = evFaceTangentPlane(context, { "face" : bigFaceList[dc.sides[1].index], "parameter" : dc.sides[1].parameter }).normal * towardSign;
             const signed = dot(p - dc.sides[1].point, nc);
