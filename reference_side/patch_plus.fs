@@ -436,7 +436,17 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             }
             else
             {
-                opExtractSurface(context, id + "offset", { "faces" : baseFaces, "offset" : offset, "tangentPropagation" : false, "useFacesAroundToTrimOffset" : false });
+                // offset only the faces near the region (within the walls' reach), not the whole surface: a kernel offset of a
+                // large patchwork of small freeform faces fails, and the offset surface only has to cover the walls' crossing
+                var nearFaces = [];
+                for (var face in evaluateQuery(context, baseFaces))
+                {
+                    if (evDistance(context, { "side0" : face, "side1" : region }).distance < reach)
+                    {
+                        nearFaces = append(nearFaces, face);
+                    }
+                }
+                opExtractSurface(context, id + "offset", { "faces" : qUnion(nearFaces), "offset" : offset, "tangentPropagation" : false, "useFacesAroundToTrimOffset" : false });
             }
             const replacement = qCreatedBy(id + "offset", EntityType.BODY);
             const replacementPoint = moveAlongDirection ? pIn + uIn * abs(offset) : pIn + regionNormal * offset;
@@ -466,7 +476,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             const wall = nearest(wallPieces, wallProbe);
             dropAllBut(id + "dropWall", wallPieces, wall);
 
-            stage = "cutting the offset surface to the outline";
+            stage = "cutting the offset surface to the outline (a creased or patchwork surface does not offset cleanly along its normals: set Walls to along the projection direction, which moves the faces instead)";
             const replTracked = tracked(replacement);
             opSplitPart(context, id + "offsetByTube", { "targets" : replacement, "tool" : tubeFull, "keepTools" : true });
             const replInside = nearest(qBodyType(replTracked, BodyType.SHEET), replacementPoint);
