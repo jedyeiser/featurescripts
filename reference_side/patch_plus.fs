@@ -736,15 +736,17 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     if (size(lensTools) > 1)
                     {
                         const shellFollow = tracked(lensTools1);
-                        opBoolean(context, id + ("shell" ~ lens), { "tools" : lensTools1, "operationType" : BooleanOperationType.UNION });
+                        // (the first lens keeps the op ids "shell" / "enclose" of the one-plug build: picks made on the faces it creates stay valid)
+                        opBoolean(context, id + (lens == 0 ? "shell" : "shell" ~ lens), { "tools" : lensTools1, "operationType" : BooleanOperationType.UNION });
                         lensShell = qBodyType(shellFollow, BodyType.SHEET);
                     }
                     if (nakedCount(lensShell) != 0)
                     {
                         stage = ""; throw regenError("The patch, the walls and the new surface do not close into a solid plug (the walls do not meet the surfaces cleanly). Try another draft angle or offset.", ["offset"]);
                     }
-                    opEnclose(context, id + ("enclose" ~ lens), { "entities" : lensShell });
-                    plugList = concatenateArrays([plugList, evaluateQuery(context, qBodyType(qCreatedBy(id + ("enclose" ~ lens), EntityType.BODY), BodyType.SOLID))]);
+                    const encloseId = id + (lens == 0 ? "enclose" : "enclose" ~ lens);
+                    opEnclose(context, encloseId, { "entities" : lensShell });
+                    plugList = concatenateArrays([plugList, evaluateQuery(context, qBodyType(qCreatedBy(encloseId, EntityType.BODY), BodyType.SOLID))]);
                 }
                 if (size(plugList) == 0)
                 {
