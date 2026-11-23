@@ -1,0 +1,216 @@
+function(context is Context, queries)
+{
+    var out = [];
+    const mm = millimeter;
+    const R0 = 150;            // base sphere
+    const X0 = 135;            // imprint plane x
+    const r0 = sqrt(R0 * R0 - X0 * X0);
+    const alpha = atan2(r0, X0) / radian;   // polar angle of the outline, radians (a number)
+    const NS = 48;
+    const REACH = 60;
+
+    const tracked = function(q is Query) returns Query
+        {
+            return qUnion([q, startTracking(context, q)]);
+        };
+    const nearest = function(pieces is Query, point is Vector) returns Query
+        {
+            var best = undefined;
+            var bestD = inf * meter;
+            for (var piece in evaluateQuery(context, pieces))
+            {
+                const d = evDistance(context, { "side0" : point, "side1" : piece }).distance;
+                if (d < bestD)
+                {
+                    bestD = d;
+                    best = piece;
+                }
+            }
+            return best;
+        };
+    const dropAllBut = function(id is Id, pieces is Query, keep is Query)
+        {
+            const rest = qSubtraction(pieces, keep);
+            if (!isQueryEmpty(context, rest))
+            {
+                opDeleteBodies(context, id, { "entities" : rest });
+            }
+        };
+    const sphereSheet = function(id is Id, radius is number) returns Query
+        {
+            opSphere(context, id + "solid", { "radius" : radius * mm, "center" : vector(0, 0, 0) * mm });
+            opExtractSurface(context, id + "sheet", { "faces" : qOwnedByBody(qCreatedBy(id + "solid", EntityType.BODY), EntityType.FACE) });
+            opDeleteBodies(context, id + "delsolid", { "entities" : qCreatedBy(id + "solid", EntityType.BODY) });
+            return qCreatedBy(id + "sheet", EntityType.BODY);
+        };
+    // cap volume of a sphere radius S beyond the plane x = xc
+    const capVolume = function(S is number, xc is number) returns number
+        {
+            const h = S - xc;
+            return PI * h * h * (3 * S - h) / 3;
+        };
+
+    const run = function(kind is string, Rr is number, thetaDeg is number) returns array
+        {
+            var rep = [];
+            const th = thetaDeg * PI / 180;
+            const label = kind ~ " base, NORMAL walls, replacement sphere r " ~ Rr ~ ", draft " ~ thetaDeg ~ " deg" ~ (Rr > R0 ? " (boss)" : " (pocket)");
+            const all = qEverything(EntityType.BODY);
+            if (!isQueryEmpty(context, all))
+            {
+                opDeleteBodies(context, newId() + ("clear" ~ kind ~ Rr ~ thetaDeg), { "entities" : all });
+            }
+            const id = newId() + (kind ~ Rr ~ "d" ~ thetaDeg);
+
+            // ---- analytic: the wall line from the outline point in direction d at polar angle alpha + theta ----
+            const px = R0 * cos(alpha * radian);
+            const py = R0 * sin(alpha * radian);
+            const dx = cos((alpha + th) * radian);
+            const dy = sin((alpha + th) * radian);
+            const pd = px * dx + py * dy;
+            const tR = -pd + sqrt(pd * pd - R0 * R0 + Rr * Rr);
+            const xq = px + tR * dx;
+            const rhoq = py + tR * dy;
+            const frustum = PI / 3 * (xq - px) * (r0 * r0 + r0 * rhoq + rhoq * rhoq);
+            const plugSigned = frustum + capVolume(Rr, xq) - capVolume(R0, px);
+            const areaWant = 4 * PI * R0 * R0 - 2 * PI * R0 * R0 * (1 - cos(alpha * radian)) + 2 * PI * Rr * Rr * (1 - xq / Rr) + PI * (r0 + rhoq) * abs(tR);
+
+            // ---- base and imprint ----
+            opSphere(context, id + "solid", { "radius" : R0 * mm, "center" : vector(0, 0, 0) * mm });
+            var baseBody = qCreatedBy(id + "solid", EntityType.BODY);
+            if (kind == "sheet")
+            {
+                opExtractSurface(context, id + "sheet", { "faces" : qOwnedByBody(baseBody, EntityType.FACE) });
+                opDeleteBodies(context, id + "delsolid", { "entities" : baseBody });
+                baseBody = qCreatedBy(id + "sheet", EntityType.BODY);
+                setProperty(context, { "entities" : baseBody, "propertyType" : PropertyType.NAME, "value" : "BASE_ORIGINAL" });
+            }
+            opPlane(context, id + "plane", { "plane" : plane(vector(X0, 0, 0) * mm, vector(1, 0, 0)), "width" : 400 * mm, "height" : 400 * mm });
+            opSplitFace(context, id + "imprint", { "faceTargets" : qOwnedByBody(baseBody, EntityType.FACE), "planeTools" : qCreatedBy(id + "plane", EntityType.FACE) });
+            opDeleteBodies(context, id + "delplane", { "entities" : qCreatedBy(id + "plane", EntityType.BODY) });
+            const capFace = qContainsPoint(qOwnedByBody(baseBody, EntityType.FACE), vector(R0, 0, 0) * mm);
+            const outline = qAdjacent(capFace, AdjacencyType.EDGE, EntityType.EDGE);
+            const capFaces = evaluateQuery(context, capFace);
+
+            // ---- the walls: along the NORMAL at each outline point, leaning by theta toward the outward conormal ----
+            var params = [];
+            for (var i = 0; i <= NS; i += 1)
+            {
+                params = append(params, i / NS);
+            }
+            const lines = evEdgeTangentLines(context, { "edge" : outline, "parameters" : params });
+            var lo = [];
+            var hi = [];
+            for (var i = 0; i <= NS; i += 1)
+            {
+                const p = i == NS ? lines[0].origin : lines[i].origin;
+                const dd = evDistance(context, { "side0" : p, "side1" : capFace });
+                var nrm = evFaceTangentPlane(context, { "face" : capFaces[0], "parameter" : dd.sides[1].parameter }).normal;
+                if (dot(nrm, p) < 0 * meter)
+                {
+                    nrm = -nrm;
+                }
+                var cc = normalize(cross(lines[i == NS ? 0 : i].direction, nrm));
+                const stepOut = evDistance(context, { "side0" : p + cc * 0.5 * mm, "side1" : capFace }).distance;
+                const stepIn = evDistance(context, { "side0" : p - cc * 0.5 * mm, "side1" : capFace }).distance;
+                if (stepOut < stepIn)
+                {
+                    cc = -cc;
+                }
+                const d = nrm * cos(th * radian) + cc * sin(th * radian);
+                lo = append(lo, p + d * ((-REACH) * mm));
+                hi = append(hi, p + d * (REACH * mm));
+            }
+            opFitSpline(context, id + "lo", { "points" : lo });
+            opFitSpline(context, id + "hi", { "points" : hi });
+            opLoft(context, id + "tube", { "profileSubqueries" : [qCreatedBy(id + "lo", EntityType.EDGE), qCreatedBy(id + "hi", EntityType.EDGE)], "bodyType" : ToolBodyType.SURFACE });
+            opDeleteBodies(context, id + "delcurves", { "entities" : qUnion([qCreatedBy(id + "lo", EntityType.BODY), qCreatedBy(id + "hi", EntityType.BODY)]) });
+            const replacement = sphereSheet(id + "repl", Rr);
+            opExtractSurface(context, id + "tubeCopy", { "faces" : qOwnedByBody(qCreatedBy(id + "tube", EntityType.BODY), EntityType.FACE) });
+            const tubeFull = qCreatedBy(id + "tubeCopy", EntityType.BODY);
+            const tube = tracked(qCreatedBy(id + "tube", EntityType.BODY));
+
+            var baseSurface = baseBody;
+            if (kind == "solid")
+            {
+                opExtractSurface(context, id + "baseSurface", { "faces" : qOwnedByBody(baseBody, EntityType.FACE) });
+                baseSurface = qCreatedBy(id + "baseSurface", EntityType.BODY);
+            }
+
+            // ---- mutual trim ----
+            opSplitPart(context, id + "tubeByBase", { "targets" : tube, "tool" : baseSurface, "keepTools" : true });
+            opSplitPart(context, id + "tubeByRepl", { "targets" : tube, "tool" : replacement, "keepTools" : true });
+            const tMid = tR / 2;
+            const wallProbe = vector(px + tMid * dx, py + tMid * dy, 0) * mm;
+            const wallPieces = qBodyType(tube, BodyType.SHEET);
+            const nWall = size(evaluateQuery(context, wallPieces));
+            const wall = nearest(wallPieces, wallProbe);
+            dropAllBut(id + "dropWall", wallPieces, wall);
+            const replTracked = tracked(replacement);
+            opSplitPart(context, id + "replByTube", { "targets" : replacement, "tool" : tubeFull, "keepTools" : true });
+            const replInside = nearest(qBodyType(replTracked, BodyType.SHEET), vector(Rr, 0, 0) * mm);
+            dropAllBut(id + "dropRepl", qBodyType(replTracked, BodyType.SHEET), replInside);
+            rep = append(rep, "  tube pieces after the cuts " ~ nWall ~ " (3)");
+
+            if (kind == "sheet")
+            {
+                const baseTracked = tracked(baseBody);
+                opSplitPart(context, id + "baseByTube", { "targets" : baseBody, "tool" : tubeFull, "keepTools" : true });
+                const pieces = qBodyType(baseTracked, BodyType.SHEET);
+                const inside = nearest(pieces, vector(R0, 0, 0) * mm);
+                const outside = qSubtraction(pieces, inside);
+                opDeleteBodies(context, id + "dropInside", { "entities" : inside });
+                const followed = tracked(qUnion([outside, wall, replInside]));
+                opBoolean(context, id + "knit", { "tools" : qUnion([outside, wall, replInside]), "operationType" : BooleanOperationType.UNION });
+                const result = qBodyType(followed, BodyType.SHEET);
+                const nBodies = size(evaluateQuery(context, result));
+                const naked = size(evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(result, EntityType.EDGE), EdgeTopology.ONE_SIDED)));
+                const area = evArea(context, { "entities" : qOwnedByBody(result, EntityType.FACE) });
+                rep = append(rep, "  knit: sheets " ~ nBodies ~ " (1), naked edges " ~ naked ~ " (0), area " ~ roundToPrecision(area / mm ^ 2, 1) ~ " (" ~ roundToPrecision(areaWant, 1) ~ "), name "
+                    ~ (nBodies >= 1 ? getProperty(context, { "entity" : qNthElement(result, 0), "propertyType" : PropertyType.NAME }) : "none"));
+            }
+            else
+            {
+                const surfTracked = tracked(baseSurface);
+                opSplitPart(context, id + "surfByTube", { "targets" : baseSurface, "tool" : tubeFull, "keepTools" : true });
+                const pieces = qBodyType(surfTracked, BodyType.SHEET);
+                const patch = nearest(pieces, vector(R0, 0, 0) * mm);
+                dropAllBut(id + "dropSurf", pieces, patch);
+                const shell = tracked(qUnion([patch, wall, replInside]));
+                opBoolean(context, id + "shell", { "tools" : qUnion([patch, wall, replInside]), "operationType" : BooleanOperationType.UNION });
+                const shellBodies = qBodyType(shell, BodyType.SHEET);
+                const naked = size(evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(shellBodies, EntityType.EDGE), EdgeTopology.ONE_SIDED)));
+                opEnclose(context, id + "enclose", { "entities" : shellBodies });
+                const plugSolids = qBodyType(qCreatedBy(id + "enclose", EntityType.BODY), BodyType.SOLID);
+                const plugVol = size(evaluateQuery(context, plugSolids)) > 0 ? evVolume(context, { "entities" : plugSolids }) : 0 * meter ^ 3;
+                rep = append(rep, "  plug shell naked edges " ~ naked ~ " (0), plug volume " ~ roundToPrecision(plugVol / mm ^ 3, 1) ~ " (" ~ roundToPrecision(abs(plugSigned), 1) ~ ")");
+                const baseSolid = qBodyType(baseBody, BodyType.SOLID);
+                if (Rr > R0)
+                {
+                    opBoolean(context, id + "apply", { "tools" : qUnion([baseSolid, plugSolids]), "operationType" : BooleanOperationType.UNION });
+                }
+                else
+                {
+                    opBoolean(context, id + "apply", { "tools" : plugSolids, "targets" : baseSolid, "operationType" : BooleanOperationType.SUBTRACTION });
+                }
+                const finals = qBodyType(qEverything(EntityType.BODY), BodyType.SOLID);
+                var v = 0 * meter ^ 3;
+                for (var s in evaluateQuery(context, finals))
+                {
+                    v += evVolume(context, { "entities" : s });
+                }
+                const wantV = 4 / 3 * PI * R0 * R0 * R0 + plugSigned;
+                rep = append(rep, "  final solids " ~ size(evaluateQuery(context, finals)) ~ " (1), volume " ~ roundToPrecision(v / mm ^ 3, 1) ~ " (" ~ roundToPrecision(wantV, 1) ~ ")");
+            }
+            return concatenateArrays([[label], rep]);
+        };
+
+    for (var c in [["sheet", 160, 0], ["sheet", 140, 0], ["solid", 160, 0], ["solid", 140, 0],
+                ["sheet", 160, 10], ["sheet", 140, 10], ["solid", 160, 10], ["solid", 140, -10]])
+    {
+        const r = try silent(run(c[0], c[1], c[2]));
+        out = r == undefined ? append(out, c[0] ~ " " ~ c[1] ~ " draft " ~ c[2] ~ ": FAILED (error)") : concatenateArrays([out, r]);
+    }
+    return out;
+}
+

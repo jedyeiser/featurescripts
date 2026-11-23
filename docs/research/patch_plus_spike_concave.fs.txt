@@ -1,0 +1,218 @@
+function(context is Context, queries)
+{
+    var out = [];
+    const mm = millimeter;
+    const R0 = 150;
+    const NS = 24;
+    const REACH = 60;
+
+    const tracked = function(q is Query) returns Query
+        {
+            return qUnion([q, startTracking(context, q)]);
+        };
+    const nearest = function(pieces is Query, point is Vector) returns Query
+        {
+            var best = undefined;
+            var bestD = inf * meter;
+            for (var piece in evaluateQuery(context, pieces))
+            {
+                const d = evDistance(context, { "side0" : point, "side1" : piece }).distance;
+                if (d < bestD)
+                {
+                    bestD = d;
+                    best = piece;
+                }
+            }
+            return best;
+        };
+    const dropAllBut = function(id is Id, pieces is Query, keep is Query)
+        {
+            const rest = qSubtraction(pieces, keep);
+            if (!isQueryEmpty(context, rest))
+            {
+                opDeleteBodies(context, id, { "entities" : rest });
+            }
+        };
+    const nakedCount = function(bodies is Query) returns number
+        {
+            return size(evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(bodies, EntityType.EDGE), EdgeTopology.ONE_SIDED)));
+        };
+
+    const run = function(kind is string, Rr is number) returns array
+        {
+            var rep = [];
+            const label = kind ~ " base, concave L outline projected along -x, NORMAL walls, replacement sphere r " ~ Rr ~ (Rr > R0 ? " (boss)" : " (pocket)");
+            const all = qEverything(EntityType.BODY);
+            if (!isQueryEmpty(context, all))
+            {
+                opDeleteBodies(context, newId() + ("clear" ~ kind ~ Rr), { "entities" : all });
+            }
+            const id = newId() + (kind ~ Rr);
+
+            // ---- base ----
+            opSphere(context, id + "solid", { "radius" : R0 * mm, "center" : vector(0, 0, 0) * mm });
+            var baseBody = qCreatedBy(id + "solid", EntityType.BODY);
+            if (kind == "sheet")
+            {
+                opExtractSurface(context, id + "sheet", { "faces" : qOwnedByBody(baseBody, EntityType.FACE) });
+                opDeleteBodies(context, id + "delsolid", { "entities" : baseBody });
+                baseBody = qCreatedBy(id + "sheet", EntityType.BODY);
+                setProperty(context, { "entities" : baseBody, "propertyType" : PropertyType.NAME, "value" : "BASE_ORIGINAL" });
+            }
+
+            // ---- the footprint: an L (concave corner at (0, 0)) in the plane x = 200, projected along -x onto the base ----
+            const L = [[-40, -40], [40, -40], [40, 0], [0, 0], [0, 40], [-40, 40], [-40, -40]];
+            var pts = [];
+            for (var q in L)
+            {
+                pts = append(pts, vector(200, q[0], q[1]) * mm);
+            }
+            opPolyline(context, id + "poly", { "points" : pts });
+            opSplitFace(context, id + "imprint", { "faceTargets" : qOwnedByBody(baseBody, EntityType.FACE), "edgeTools" : qCreatedBy(id + "poly", EntityType.EDGE),
+                        "projectionType" : ProjectionType.DIRECTION, "direction" : vector(-1, 0, 0) });
+            opDeleteBodies(context, id + "delpoly", { "entities" : qCreatedBy(id + "poly", EntityType.BODY) });
+            const pIn = vector(sqrt(R0 * R0 - 800), -20, -20) * mm;     // inside the L, on the sphere
+            const region = qContainsPoint(qOwnedByBody(baseBody, EntityType.FACE), pIn);
+            const outlineEdges = evaluateQuery(context, qAdjacent(region, AdjacencyType.EDGE, EntityType.EDGE));
+            const regionArea = evArea(context, { "entities" : region });
+            var outlineLength = 0 * meter;
+            for (var e in outlineEdges)
+            {
+                outlineLength += evLength(context, { "entities" : e });
+            }
+            rep = append(rep, "  imprint: region faces " ~ size(evaluateQuery(context, region)) ~ " (1), outline edges " ~ size(outlineEdges) ~ " (6), region area " ~ roundToPrecision(regionArea / mm ^ 2, 1));
+            const regionFaces = evaluateQuery(context, region);
+
+            // ---- one radial wall per outline edge, joined into one closed tube ----
+            var walls = [];
+            var firstPoint = undefined;
+            var firstNormal = undefined;
+            for (var ei = 0; ei < size(outlineEdges); ei += 1)
+            {
+                var params = [];
+                for (var i = 0; i <= NS; i += 1)
+                {
+                    params = append(params, i / NS);
+                }
+                const lines = evEdgeTangentLines(context, { "edge" : outlineEdges[ei], "parameters" : params });
+                var lo = [];
+                var hi = [];
+                for (var i = 0; i <= NS; i += 1)
+                {
+                    const p = lines[i].origin;
+                    const dd = evDistance(context, { "side0" : p, "side1" : region });
+                    var nrm = evFaceTangentPlane(context, { "face" : regionFaces[0], "parameter" : dd.sides[1].parameter }).normal;
+                    if (dot(nrm, p) < 0 * meter)
+                    {
+                        nrm = -nrm;
+                    }
+                    if (firstPoint == undefined)
+                    {
+                        firstPoint = p;
+                        firstNormal = nrm;
+                    }
+                    lo = append(lo, p + nrm * ((-REACH) * mm));
+                    hi = append(hi, p + nrm * (REACH * mm));
+                }
+                const wid = id + ("wall" ~ ei);
+                opFitSpline(context, wid + "lo", { "points" : lo });
+                opFitSpline(context, wid + "hi", { "points" : hi });
+                opLoft(context, wid + "loft", { "profileSubqueries" : [qCreatedBy(wid + "lo", EntityType.EDGE), qCreatedBy(wid + "hi", EntityType.EDGE)], "bodyType" : ToolBodyType.SURFACE });
+                opDeleteBodies(context, wid + "delcurves", { "entities" : qUnion([qCreatedBy(wid + "lo", EntityType.BODY), qCreatedBy(wid + "hi", EntityType.BODY)]) });
+                walls = append(walls, qCreatedBy(wid + "loft", EntityType.BODY));
+            }
+            const tubeFollow = tracked(qUnion(walls));
+            opBoolean(context, id + "tubeJoin", { "tools" : qUnion(walls), "operationType" : BooleanOperationType.UNION });
+            const tubeBodies = qBodyType(tubeFollow, BodyType.SHEET);
+            rep = append(rep, "  joined tube: sheets " ~ size(evaluateQuery(context, tubeBodies)) ~ " (1), naked edges " ~ nakedCount(tubeBodies) ~ " (0 would be a closed tube without ends: the REACH ends are open, so expect the two rim loops)");
+            opExtractSurface(context, id + "tubeCopy", { "faces" : qOwnedByBody(tubeBodies, EntityType.FACE) });
+            const tubeFull = qCreatedBy(id + "tubeCopy", EntityType.BODY);
+            const tube = tracked(tubeBodies);
+
+            // ---- replacement: the concentric sphere ----
+            opSphere(context, id + "rsolid", { "radius" : Rr * mm, "center" : vector(0, 0, 0) * mm });
+            opExtractSurface(context, id + "rsheet", { "faces" : qOwnedByBody(qCreatedBy(id + "rsolid", EntityType.BODY), EntityType.FACE) });
+            opDeleteBodies(context, id + "delrsolid", { "entities" : qCreatedBy(id + "rsolid", EntityType.BODY) });
+            const replacement = qCreatedBy(id + "rsheet", EntityType.BODY);
+
+            var baseSurface = baseBody;
+            if (kind == "solid")
+            {
+                opExtractSurface(context, id + "baseSurface", { "faces" : qOwnedByBody(baseBody, EntityType.FACE) });
+                baseSurface = qCreatedBy(id + "baseSurface", EntityType.BODY);
+            }
+
+            // ---- mutual trim ----
+            opSplitPart(context, id + "tubeByBase", { "targets" : tube, "tool" : baseSurface, "keepTools" : true });
+            opSplitPart(context, id + "tubeByRepl", { "targets" : tube, "tool" : replacement, "keepTools" : true });
+            const wallProbe = firstPoint + firstNormal * ((Rr - R0) / 2 * mm);
+            const wallPieces = qBodyType(tube, BodyType.SHEET);
+            rep = append(rep, "  tube pieces after the cuts " ~ size(evaluateQuery(context, wallPieces)) ~ " (3)");
+            const wall = nearest(wallPieces, wallProbe);
+            dropAllBut(id + "dropWall", wallPieces, wall);
+            const replTracked = tracked(replacement);
+            opSplitPart(context, id + "replByTube", { "targets" : replacement, "tool" : tubeFull, "keepTools" : true });
+            const replInside = nearest(qBodyType(replTracked, BodyType.SHEET), pIn * (Rr / R0));
+            dropAllBut(id + "dropRepl", qBodyType(replTracked, BodyType.SHEET), replInside);
+
+            const Lm = outlineLength / mm;
+            const Am = regionArea / mm ^ 2;
+            const wallArea = Lm * abs(Rr * Rr - R0 * R0) / (2 * R0);
+            if (kind == "sheet")
+            {
+                const baseTracked = tracked(baseBody);
+                opSplitPart(context, id + "baseByTube", { "targets" : baseBody, "tool" : tubeFull, "keepTools" : true });
+                const pieces = qBodyType(baseTracked, BodyType.SHEET);
+                const inside = nearest(pieces, pIn);
+                const outside = qSubtraction(pieces, inside);
+                opDeleteBodies(context, id + "dropInside", { "entities" : inside });
+                const followed = tracked(qUnion([outside, wall, replInside]));
+                opBoolean(context, id + "knit", { "tools" : qUnion([outside, wall, replInside]), "operationType" : BooleanOperationType.UNION });
+                const result = qBodyType(followed, BodyType.SHEET);
+                const area = evArea(context, { "entities" : qOwnedByBody(result, EntityType.FACE) });
+                const want = 4 * PI * R0 * R0 - Am + Am * (Rr / R0) * (Rr / R0) + wallArea;
+                rep = append(rep, "  knit: sheets " ~ size(evaluateQuery(context, result)) ~ " (1), naked edges " ~ nakedCount(result) ~ " (0), area " ~ roundToPrecision(area / mm ^ 2, 1) ~ " (" ~ roundToPrecision(want, 1) ~ "), name "
+                    ~ getProperty(context, { "entity" : qNthElement(result, 0), "propertyType" : PropertyType.NAME }));
+            }
+            else
+            {
+                const surfTracked = tracked(baseSurface);
+                opSplitPart(context, id + "surfByTube", { "targets" : baseSurface, "tool" : tubeFull, "keepTools" : true });
+                const pieces = qBodyType(surfTracked, BodyType.SHEET);
+                const patch = nearest(pieces, pIn);
+                dropAllBut(id + "dropSurf", pieces, patch);
+                const shell = tracked(qUnion([patch, wall, replInside]));
+                opBoolean(context, id + "shell", { "tools" : qUnion([patch, wall, replInside]), "operationType" : BooleanOperationType.UNION });
+                const shellBodies = qBodyType(shell, BodyType.SHEET);
+                const naked = nakedCount(shellBodies);
+                opEnclose(context, id + "enclose", { "entities" : shellBodies });
+                const plugSolids = qBodyType(qCreatedBy(id + "enclose", EntityType.BODY), BodyType.SOLID);
+                const plugVol = size(evaluateQuery(context, plugSolids)) > 0 ? evVolume(context, { "entities" : plugSolids }) : 0 * meter ^ 3;
+                const plugSigned = Am * (Rr * Rr * Rr - R0 * R0 * R0) / (3 * R0 * R0);
+                rep = append(rep, "  plug shell naked edges " ~ naked ~ " (0), plug volume " ~ roundToPrecision(plugVol / mm ^ 3, 1) ~ " (" ~ roundToPrecision(abs(plugSigned), 1) ~ ")");
+                const baseSolid = qBodyType(baseBody, BodyType.SOLID);
+                if (Rr > R0)
+                {
+                    opBoolean(context, id + "apply", { "tools" : qUnion([baseSolid, plugSolids]), "operationType" : BooleanOperationType.UNION });
+                }
+                else
+                {
+                    opBoolean(context, id + "apply", { "tools" : plugSolids, "targets" : baseSolid, "operationType" : BooleanOperationType.SUBTRACTION });
+                }
+                const finals = qBodyType(qEverything(EntityType.BODY), BodyType.SOLID);
+                var v = 0 * meter ^ 3;
+                for (var s in evaluateQuery(context, finals))
+                {
+                    v += evVolume(context, { "entities" : s });
+                }
+                rep = append(rep, "  final solids " ~ size(evaluateQuery(context, finals)) ~ " (1), volume " ~ roundToPrecision(v / mm ^ 3, 1) ~ " (" ~ roundToPrecision(4 / 3 * PI * R0 * R0 * R0 + plugSigned, 1) ~ ")");
+            }
+            return concatenateArrays([[label], rep]);
+        };
+
+    for (var c in [["sheet", 160]])
+    {
+        out = concatenateArrays([out, run(c[0], c[1])]);
+    }
+    return out;
+}
