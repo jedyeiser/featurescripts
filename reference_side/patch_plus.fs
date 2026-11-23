@@ -625,6 +625,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 // Where the new surface crosses the base patch inside the outline, the two sheets intersect each other and
                 // cannot be joined as they are (BOOLEAN_INVALID): cut each by a copy of the other, so they share the crossing curve.
                 var shellPieces = [patch, replInside];
+                var patchPieceCount = 1;
                 if (size(evCollision(context, { "tools" : patch, "targets" : replInside })) > 0)
                 {
                     stage = "cutting the base patch and the new surface at their crossing";
@@ -637,7 +638,9 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                         opSplitPart(context, id + "patchByRepl", { "targets" : patch, "tool" : qCreatedBy(id + "crossRepl", EntityType.BODY), "keepTools" : true });
                         opSplitPart(context, id + "replByPatch", { "targets" : replInside, "tool" : qCreatedBy(id + "crossPatch", EntityType.BODY), "keepTools" : true });
                     }
-                    shellPieces = concatenateArrays([evaluateQuery(context, qBodyType(patchFollow, BodyType.SHEET)), evaluateQuery(context, qBodyType(replFollow, BodyType.SHEET))]);
+                    const patchPieceList = evaluateQuery(context, qBodyType(patchFollow, BodyType.SHEET));
+                    patchPieceCount = size(patchPieceList);
+                    shellPieces = concatenateArrays([patchPieceList, evaluateQuery(context, qBodyType(replFollow, BodyType.SHEET))]);
                     opDeleteBodies(context, id + "dropCross", { "entities" : qUnion([qCreatedBy(id + "crossPatch", EntityType.BODY), qCreatedBy(id + "crossRepl", EntityType.BODY)]) });
                     stage = "closing the plug";
                 }
@@ -705,13 +708,13 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 var plugList = [];
                 for (var lens = 0; lens < nW; lens += 1)
                 {
-                    var lensTools = [];
+                    var lensWalls = [];
                     var lensPieces = [];
                     for (var w = 0; w < nW; w += 1)
                     {
                         if (lensOf[w] == lens)
                         {
-                            lensTools = append(lensTools, wallParts[w]);
+                            lensWalls = append(lensWalls, wallParts[w]);
                             for (var p in attachedTo[w])
                             {
                                 var have = false;
@@ -722,9 +725,26 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                                 if (!have)
                                 {
                                     lensPieces = append(lensPieces, p);
-                                    lensTools = append(lensTools, shellPieces[p]);
                                 }
                             }
+                        }
+                    }
+                    // a union keeps the identity of its first tool: base patch pieces, then the walls, then the new surface's
+                    // pieces (the order of the one-plug build, so faces picked on the result keep resolving)
+                    var lensTools = [];
+                    for (var p in lensPieces)
+                    {
+                        if (p < patchPieceCount)
+                        {
+                            lensTools = append(lensTools, shellPieces[p]);
+                        }
+                    }
+                    lensTools = concatenateArrays([lensTools, lensWalls]);
+                    for (var p in lensPieces)
+                    {
+                        if (p >= patchPieceCount)
+                        {
+                            lensTools = append(lensTools, shellPieces[p]);
                         }
                     }
                     if (size(lensTools) == 0)
@@ -793,7 +813,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 stage = "subtracting the plug from the solid";
                 if (size(subtracts) > 0)
                 {
-                    opBoolean(context, id + "applySub", { "tools" : qUnion(subtracts), "targets" : owner, "operationType" : BooleanOperationType.SUBTRACTION });
+                    opBoolean(context, id + (size(adds) > 0 ? "applySub" : "apply"), { "tools" : qUnion(subtracts), "targets" : owner, "operationType" : BooleanOperationType.SUBTRACTION });
                 }
                 resultQuery = owner;
             }
