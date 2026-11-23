@@ -255,7 +255,7 @@
       "onshape_url": "https://k2-sports.onshape.com/documents/22764764a00a7f607dbc1c4d/w/3b5e11a121111a161684adee/e/e94b3282e4a5717b8a4b629a",
       "references": [],
       "last_pull": null,
-      "last_push": "2026-11-23T20:46:35.221013+00:00",
+      "last_push": "2026-11-23T20:47:18.799316+00:00",
       "document_id": "22764764a00a7f607dbc1c4d",
       "workspace_id": "3b5e11a121111a161684adee"
     },
@@ -390,6 +390,19 @@
       "last_push": "2026-11-20T23:34:29.354563+00:00",
       "document_id": "a9d184fc09755034a5c9bf65",
       "workspace_id": "3cd8b949b8523f5371f5b448"
+    },
+    {
+      "name": "feature_tree_note",
+      "description": "Feature tree note + (based on Jelte's Feature tree note; adds query variable display)",
+      "working_directory": "./feature_tree_note",
+      "onshape_url": "https://k2-sports.onshape.com/documents/4f69a6af0aa070d359c5ce7e/w/39f1325b55b61c98d7846254/e/eab5beb7c96b1a7fe165da9f",
+      "references": [
+        "Onshape Standard Library"
+      ],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "4f69a6af0aa070d359c5ce7e",
+      "workspace_id": "39f1325b55b61c98d7846254"
     }
   ],
   "sync_metadata": {}

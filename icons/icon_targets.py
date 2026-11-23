@@ -1,6 +1,7 @@
 """Which feature file gets which icon: (project dir, feature .fs basename, icon name in icons/final/<name>_icon.svg)."""
 
 TARGETS = [
+    ("feature_tree_note", "feature_tree_note", "feature_tree_note"),  # 2026-11-23 Jelte's icon
     ("reference_side", "split_plus", "split_plus"),
     ("reference_side", "mutual_trim_plus", "mutual_trim_plus"),
     ("reference_side", "offset_plus", "offset_plus"),
@@ -59,3 +60,4 @@ TARGETS = [
     ("curveMapping_public", "deformTag", "deform_tag"),  # 2026-11-11, grey From line, blue To curve, dashed links
     ("curveMapping_public", "bodyIdentity", "body_identity"),  # 2026-11-12, grey box with a blue anchor dot
 ]
+
