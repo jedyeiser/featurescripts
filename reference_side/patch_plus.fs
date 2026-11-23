@@ -128,7 +128,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         isLength(definition.offset, ZERO_DEFAULT_LENGTH_BOUNDS);
 
         annotation { "Name" : "Flip offset direction", "UIHint" : UIHint.OPPOSITE_DIRECTION,
-                    "Description" : "Reverse the direction of a positive offset: emboss <-> pocket. Not used with a Replacement surface." }
+                    "Description" : "Reverse the direction of a positive offset: emboss <-> pocket; with a Replacement surface, a positive offset moves it closer to the faces." }
         definition.flipOffset is boolean;
 
         annotation { "Name" : "Walls" }
@@ -463,7 +463,8 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             const regionNormal = evFaceTangentPlane(context, { "face" : regionList[dIn.sides[1].index], "parameter" : dIn.sides[1].parameter }).normal;
             // Which side of the faces the new surface is on (side = +1: along the face normal). A POSITIVE offset goes along the face
             // normal (outward on a solid: an emboss; a negative offset is a pocket); Flip reverses that. With a replacement surface
-            // the side is found by rays below (a ray from the region along the normal or the projection direction) and Flip does not apply.
+            // the side is found by rays below (a ray from the region along the normal or the projection direction); Flip then reverses
+            // the offset applied to the replacement (replacementOffset).
             const positiveSide = definition.flipOffset ? -1 : 1;
             var side = (offset > 0 * meter ? 1 : -1) * positiveSide;
             var replacementHit = undefined;
@@ -490,32 +491,19 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             // the direction toward the new surface at the region
             const toward = regionNormal * side;
 
-            // ---- the arrow: the direction of a POSITIVE offset, in every mode ----
-            // Flippable (no replacement surface): an interactive flip arrow. With a replacement surface a fixed arrow (visible
-            // while the dialog is open) from the faces toward it.
-            var positiveDirection = regionNormal * positiveSide;
+            // ---- the arrow: the direction of a POSITIVE offset, in every mode; clicking it flips the offset ----
+            // Unflipped, it is the face normal (the projection direction on its side when the faces move along it), or from the
+            // faces toward the replacement surface (positive = further from the faces).
+            var unflippedDirection = regionNormal;
             if (hasReplacement)
             {
-                positiveDirection = hitDirection;
+                unflippedDirection = hitDirection;
             }
             else if (definition.walls == PatchPlusWalls.PROJECTION)
             {
-                // the faces move along the projection direction: its sign that agrees with the positive side
-                positiveDirection = dot(projectionDirection, positiveDirection) >= 0 ? projectionDirection : -projectionDirection;
+                unflippedDirection = dot(projectionDirection, regionNormal) >= 0 ? projectionDirection : -projectionDirection;
             }
-            if (!hasReplacement)
-            {
-                // the unflipped direction is the face normal (or the projection direction on its side); flipped reverses it
-                const unflipped = definition.walls == PatchPlusWalls.PROJECTION ? (dot(projectionDirection, regionNormal) >= 0 ? projectionDirection : -projectionDirection) : regionNormal;
-                addManipulators(context, id, { "offsetFlip" : flipManipulator({ "base" : pIn, "direction" : unflipped, "flipped" : definition.flipOffset }) });
-            }
-            else
-            {
-                const regionBox = evBox3d(context, { "topology" : region });
-                const arrowLength = max(norm(regionBox.maxCorner - regionBox.minCorner) * 0.2, 2 * millimeter);
-                addDebugArrow(context, pIn, pIn + positiveDirection * arrowLength, arrowLength * 0.08, DebugColor.GREEN);
-            }
-            // walls along the projection direction: the faces are MOVED by the offset along that direction (exact, and
+            addManipulators(context, id, { "offsetFlip" : flipManipulator({ "base" : pIn, "direction" : unflippedDirection, "flipped" : definition.flipOffset }) });            // walls along the projection direction: the faces are MOVED by the offset along that direction (exact, and
             // free of the kernel offset that fails on patchworks of small freeform faces); otherwise they are offset along the normal
             const moveAlongDirection = definition.walls == PatchPlusWalls.PROJECTION;
             const uIn = moveAlongDirection ? (dot(projectionDirection, toward) >= 0 ? projectionDirection : -projectionDirection) : toward;
@@ -846,19 +834,21 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             var replacementPoint = pIn;
             if (hasReplacement)
             {
+                // + moves the replacement further from the faces; Flip reverses that (the one meaning of Flip in every mode)
+                const replacementOffset = definition.flipOffset ? -offset : offset;
                 const shifted = abs(offset) > 1e-9 * meter;
                 var extractDefinition = { "faces" : replacementFaces, "tangentPropagation" : false };
                 if (shifted && !moveAlongDirection)
                 {
-                    extractDefinition.offset = offset * replacementSign;
+                    extractDefinition.offset = replacementOffset * replacementSign;
                     extractDefinition.useFacesAroundToTrimOffset = false;
                 }
                 opExtractSurface(context, id + "offset", extractDefinition);
                 if (shifted && moveAlongDirection)
                 {
-                    opTransform(context, id + "offsetMove", { "bodies" : qCreatedBy(id + "offset", EntityType.BODY), "transform" : transform(uIn * offset) });
+                    opTransform(context, id + "offsetMove", { "bodies" : qCreatedBy(id + "offset", EntityType.BODY), "transform" : transform(uIn * replacementOffset) });
                 }
-                replacementPoint = replacementHit.intersection + hitDirection * offset;
+                replacementPoint = replacementHit.intersection + hitDirection * replacementOffset;
             }
             else if (moveAlongDirection)
             {

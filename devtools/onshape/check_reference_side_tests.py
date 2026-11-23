@@ -457,7 +457,7 @@ for tag, area, sign, k in [("PP1", "PI * 400", 1, 0), ("PP2", "PI * 400", -1, 0)
     case(tag + " ", src, CUBE="%s cube" % tag)
 
 # Patch+ with a replacement surface: a plug of height DEPTH over the circle (r 20), walls straight or drafted.
-for tag, depth, sign, area in [("RP1", 20, 1, "PI * 400"), ("RP2", 25, 1, "PI * 400"), ("RP3", 10, -1, "PI * 400"),
+for tag, depth, sign, area in [("RP1", 20, 1, "PI * 400"), ("RP2", 25, 1, "PI * 400"), ("RP3", 10, -1, "PI * 400"), ("RP9", 15, 1, "PI * 400"),
                                ("RP5", 20, 1, "PI * (20 + delta) * (20 + delta)"), ("RP6", 20, 1, "PI * 400")]:
     k = k10 if tag == "RP5" else 0
     src = PP_SOLID_SRC.replace("__K__", repr(k)).replace("__DEPTH__", str(depth)).replace("__AREA__", area).replace("__SIGN__", str(sign))
