@@ -494,6 +494,30 @@ for n, (tag, base_kind, z0, z1, off, extra) in enumerate(RP_CASES):
     patch("%s Patch+ replacement plate (z %.0f..%.0f), offset %s" % (tag, z0, z1, off), [
         q("baseFaces", base_q), q("footprint", edges(fp)), q("replacement", body(plate)), num("offset", off)] + extra)
 
+# Patch+ offset direction (2026-11-23): positive = toward the side reference; the flip reverses the face normal without one.
+RF_CASES = [
+    # tag, base, reference z (None: no reference), flip, title
+    ("RF1", "sheet", 100, False, "side reference above the sheet: + offset goes up (z 50..60)"),
+    ("RF2", "sheet", 0, False, "side reference below the sheet: + offset goes down (z 40..50)"),
+    ("RF3", "solid", None, True, "no reference, Flip on a solid: + offset goes inward (pocket 10)"),
+    ("RF4", "sheet", 50, False, "side reference IN the plane of the sheet -> ERROR"),
+]
+for n, (tag, base_kind, ref_z, flip, title) in enumerate(RF_CASES):
+    x0 = 28000 + 400 * n
+    fp = sketch("%s footprint circle r 20 at x %d z 100 (sketch)" % (tag, x0), plane_at("PP footprint plane z 100", "Top", 100), [circle("c", *mmv(x0, 0, 20))])
+    if base_kind == "solid":
+        bx = cube("%s cube at x %d" % (tag, x0), x0, 0)
+        base_q = face_at(bx, x0, 0, 50)
+    else:
+        bx = sheet("%s sheet z 50, x %d..%d" % (tag, x0 - 50, x0 + 50), [(x0 - 50, 50), (x0 + 50, 50)])
+        base_q = body(bx)
+    params = pp_params(base_q, edges(fp), [])
+    if ref_z is not None:
+        params.append(q("sideReference", ref_front("%s side reference (%d, 0, %d)" % (tag, x0, ref_z), x0, ref_z)))
+    if flip:
+        params.append(b("flipOffset", True))
+    patch("%s Patch+ %s" % (tag, title), params)
+
 x0 = 10600
 t = cube("T6 cube at x 10600", x0, 0)
 top = sheet("T6 sheet on the cube's top, z 50, x 10570..10630", [(x0 - 30, 50), (x0 + 30, 50)], 60)

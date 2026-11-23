@@ -106,7 +106,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         definition.walls is PatchPlusWalls;
 
         annotation { "Name" : "Draft angle",
-                    "Description" : "Positive: the wall opens (the region grows) toward the offset surface. 0 = straight walls." }
+                    "Description" : "Positive: the wall is WIDER toward the new surface (the region grows as you move toward it); negative: NARROWER toward it, the usual release draft for a boss or a pocket. The new surface is the offset surface, the replacement surface, or the side the offset moves to (see the arrow). 0 = straight walls." }
         isAngle(definition.draft, PATCH_DRAFT_BOUNDS);
     }
     {
@@ -317,11 +317,6 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 }
                 positiveSide = along > 0 ? 1 : -1;
             }
-            if (!hasReplacement && !hasReference)
-            {
-                // the arrow shows the direction of a positive offset (the face normal, or its reverse when flipped)
-                addManipulators(context, id, { "offsetFlip" : flipManipulator({ "base" : pIn, "direction" : regionNormal, "flipped" : definition.flipOffset }) });
-            }
             var side = (offset > 0 * meter ? 1 : -1) * positiveSide;
             var replacementHit = undefined;
             var hitDirection = regionNormal;
@@ -346,6 +341,32 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             }
             // the direction toward the new surface at the region
             const toward = regionNormal * side;
+
+            // ---- the arrow: the direction of a POSITIVE offset, in every mode ----
+            // Flippable (no side reference, no replacement surface): an interactive flip arrow. Otherwise a fixed arrow (visible
+            // while the dialog is open): toward the side reference, or from the faces toward the replacement surface.
+            var positiveDirection = regionNormal * positiveSide;
+            if (hasReplacement)
+            {
+                positiveDirection = hitDirection;
+            }
+            else if (definition.walls == PatchPlusWalls.PROJECTION)
+            {
+                // the faces move along the projection direction: its sign that agrees with the positive side
+                positiveDirection = dot(projectionDirection, positiveDirection) >= 0 ? projectionDirection : -projectionDirection;
+            }
+            if (!hasReplacement && !hasReference)
+            {
+                // the unflipped direction is the face normal (or the projection direction on its side); flipped reverses it
+                const unflipped = definition.walls == PatchPlusWalls.PROJECTION ? (dot(projectionDirection, regionNormal) >= 0 ? projectionDirection : -projectionDirection) : regionNormal;
+                addManipulators(context, id, { "offsetFlip" : flipManipulator({ "base" : pIn, "direction" : unflipped, "flipped" : definition.flipOffset }) });
+            }
+            else
+            {
+                const regionBox = evBox3d(context, { "topology" : region });
+                const arrowLength = max(norm(regionBox.maxCorner - regionBox.minCorner) * 0.2, 2 * millimeter);
+                addDebugArrow(context, pIn, pIn + positiveDirection * arrowLength, arrowLength * 0.08, DebugColor.GREEN);
+            }
             // walls along the projection direction: the faces are MOVED by the offset along that direction (exact, and
             // free of the kernel offset that fails on patchworks of small freeform faces); otherwise they are offset along the normal
             const moveAlongDirection = definition.walls == PatchPlusWalls.PROJECTION;

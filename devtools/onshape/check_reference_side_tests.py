@@ -496,6 +496,36 @@ case("RP8 ", r'''
             n ~ " solid (1), volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (1000000: the added lens equals the subtracted one), helper bodies left " ~ helpers ~ " (0)"];''',
      CUBE="RP8 cube")
 
+# Patch+ offset direction: toward the side reference (RF1 above the sheet, RF2 below), Flip on a solid without a reference (RF3);
+# RF4 (reference in the plane of the sheet) must fail.
+for tag, zlo, zhi in [("RF1", 50, 60), ("RF2", 40, 50)]:
+    case(tag + " ", r'''
+        const sheet = created(@SHEET@);
+        const faces = qOwnedByBody(sheet, EntityType.FACE);
+        const area = count(sheet) >= 1 ? evArea(context, { "entities" : faces }) : 0 * meter ^ 2;
+        const bb = count(sheet) >= 1 ? evBox3d(context, { "topology" : sheet }) : undefined;
+        const zlo = bb == undefined ? 0 * meter : bb.minCorner[2];
+        const zhi = bb == undefined ? 0 * meter : bb.maxCorner[2];
+        const want = 10000 + 2 * PI * 20 * 10;
+        return [count(sheet) == 1 && abs(area - want * millimeter ^ 2) < 2 * millimeter ^ 2 && near(zlo, mm(%d), mm(0.001)) && near(zhi, mm(%d), mm(0.001)),
+            count(sheet) ~ " sheet (1), area " ~ roundToPrecision(area / millimeter ^ 2, 2) ~ " (" ~ roundToPrecision(want, 2) ~ "), z " ~ fmt(zlo) ~ ".." ~ fmt(zhi) ~ " (%d..%d)"];''' % (zlo, zhi, zlo, zhi),
+         SHEET="%s sheet" % tag)
+case("RF3 ", PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "10").replace("__AREA__", "PI * 400").replace("__SIGN__", "-1"), CUBE="RF3 cube")
+
+# Pick stability: how many faces each internal operation of a Patch+ POCKET creates. A face a user picks on the result is keyed to
+# the operation that created it: renaming an op id or reordering a union changes these counts and breaks such picks silently.
+PS_OPS = ["copy", "imprint", "offset", "tubeCopy", "baseSurface", "shell", "enclose", "apply"]
+PS_BASELINE = "copy=0 imprint=0 offset=0 tubeCopy=0 baseSurface=0 shell=0 enclose=0 apply=2 "   # the first run, 2026-11-23: only apply creates faces that survive (wall + floor of the pocket); a rename of apply shows as apply=0
+case("PP2 ", r'''
+        var counts = "";
+        for (var op in %s)
+        {
+            counts ~= op ~ "=" ~ size(evaluateQuery(context, qCreatedBy(makeId(SELF) + op, EntityType.FACE))) ~ " ";
+        }
+        const baseline = %s;
+        return [baseline == undefined || counts == baseline, "pick stability, faces created per internal operation: " ~ counts ~ (baseline == undefined ? "(no baseline yet)" : " (baseline " ~ baseline ~ ")")];''' % (
+    json.dumps(PS_OPS).replace("[", "[").replace("]", "]"), "undefined" if PS_BASELINE is None else json.dumps(PS_BASELINE)))
+
 case("PP3 ", r'''
         const sheet = created(@SHEET@);
         const faces = qOwnedByBody(sheet, EntityType.FACE);
@@ -671,7 +701,7 @@ for tag, vol, x_range, keys in (
         return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (%d), x " ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0]) ~ ", z "
             ~ fmt(bb.minCorner[2]) ~ ".." ~ fmt(bb.maxCorner[2]) ~ "; " ~ keys];""" % (key_src, vol, xr, vol))
 
-EXPECTED_ERRORS = ["T4 Thicken+", "DR10 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
+EXPECTED_ERRORS = ["T4 Thicken+", "DR10 Thicken+", "RF4 Patch+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
 
 
 def strings(result):
