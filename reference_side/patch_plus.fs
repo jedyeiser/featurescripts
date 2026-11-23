@@ -547,13 +547,28 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     opExtrude(context, id + "straightWall", { "entities" : outlineQuery, "direction" : uIn, "endBound" : BoundingType.BLIND, "endDepth" : abs(offset),
                                 "bodyType" : ToolBodyType.SURFACE });
                     stage = "cutting the region out of the sheet";
-                    const copyBody = qOwnerBody(copyFaces);
-                    opDeleteFace(context, id + "cutRegion", { "deleteFaces" : region, "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
+                    // the sheet itself is cut (so that it stays the result body): the same footprint imprinted on it, its faces
+                    // under the region deleted
+                    var ownerSplit = splitDefinition;
+                    ownerSplit.faceTargets = qOwnedByBody(owner, EntityType.FACE);
+                    opSplitFace(context, id + "imprintOwner", ownerSplit);
+                    var ownerRegion = [];
+                    for (var ownerFace in evaluateQuery(context, qOwnedByBody(owner, EntityType.FACE)))
+                    {
+                        if (underRegion(interiorPoint(ownerFace).point))
+                        {
+                            ownerRegion = append(ownerRegion, ownerFace);
+                        }
+                    }
+                    if (size(ownerRegion) == 0)
+                    {
+                        stage = ""; throw regenError("The footprint region was not found on the sheet.", ["footprintFaces"]);
+                    }
+                    opDeleteFace(context, id + "cutRegion", { "deleteFaces" : qUnion(ownerRegion), "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
                     stage = "joining the pieces";
-                    const knitList = qUnion([copyBody, qCreatedBy(id + "straightWall", EntityType.BODY), qCreatedBy(id + "moved", EntityType.BODY)]);
+                    const knitList = qUnion([owner, qCreatedBy(id + "straightWall", EntityType.BODY), qCreatedBy(id + "moved", EntityType.BODY)]);
                     const followedStraight = tracked(knitList);
                     opBoolean(context, id + "knit", { "tools" : knitList, "operationType" : BooleanOperationType.UNION });
-                    opDeleteBodies(context, id + "dropOriginal", { "entities" : owner });
                     resultQuery = qBodyType(followedStraight, BodyType.SHEET);
                     if (size(evaluateQuery(context, resultQuery)) != 1)
                     {
