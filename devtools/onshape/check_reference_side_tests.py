@@ -475,6 +475,27 @@ case("RP4 ", r'''
             count(sheet) ~ " sheet (1), area " ~ roundToPrecision(area / millimeter ^ 2, 2) ~ " (" ~ roundToPrecision(want, 2) ~ "), z " ~ fmt(zlo) ~ ".." ~ fmt(zhi) ~ " (50..65)"];''',
      SHEET="RP4 sheet")
 
+# Patch+ with a plate that CROSSES the face along a diameter of the circle (tilted 10 deg through z 50):
+# sheet: area = 10000 - pi r^2 + pi r^2 / cos(10) + 4 r^2 tan(10); solid: the lens added equals the lens subtracted.
+case("RP7 ", r'''
+        const sheet = created(@SHEET@);
+        const faces = qOwnedByBody(sheet, EntityType.FACE);
+        const area = count(sheet) >= 1 ? evArea(context, { "entities" : faces }) : 0 * meter ^ 2;
+        const naked = size(evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(sheet, EntityType.EDGE), EdgeTopology.ONE_SIDED)));
+        const want = 10000 - PI * 400 + PI * 400 / cos(10 * degree) + 4 * 400 * tan(10 * degree);
+        return [count(sheet) == 1 && abs(area - want * millimeter ^ 2) < 6 * millimeter ^ 2 && naked == 4,
+            count(sheet) ~ " sheet (1), area " ~ roundToPrecision(area / millimeter ^ 2, 2) ~ " (" ~ roundToPrecision(want, 2) ~ "), naked edges " ~ naked ~ " (4: the square's own outline, so the wall closes)"];''',
+     SHEET="RP7 sheet")
+
+case("RP8 ", r'''
+        const cube = created(@CUBE@);
+        const n = count(cube);
+        const v = n == 1 ? evVolume(context, { "entities" : cube }) : 0 * meter ^ 3;
+        const helpers = count(created(SELF));
+        return [n == 1 && abs(v - 1000000 * millimeter ^ 3) < 120 * millimeter ^ 3 && helpers == 0,
+            n ~ " solid (1), volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (1000000: the added lens equals the subtracted one), helper bodies left " ~ helpers ~ " (0)"];''',
+     CUBE="RP8 cube")
+
 case("PP3 ", r'''
         const sheet = created(@SHEET@);
         const faces = qOwnedByBody(sheet, EntityType.FACE);

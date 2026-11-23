@@ -622,17 +622,130 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 const patch = nearest(pieces, pIn);
                 dropAllBut(id + "dropSurf", pieces, patch);
                 stage = "closing the plug";
-                const shellTools = qUnion([patch, wall, replInside]);
-                const shell = tracked(shellTools);
-                opBoolean(context, id + "shell", { "tools" : shellTools, "operationType" : BooleanOperationType.UNION });
-                const shellBodies = qBodyType(shell, BodyType.SHEET);
-                if (nakedCount(shellBodies) != 0)
+                // Where the new surface crosses the base patch inside the outline, the two sheets intersect each other and
+                // cannot be joined as they are (BOOLEAN_INVALID): cut each by a copy of the other, so they share the crossing curve.
+                var shellPieces = [patch, replInside];
+                if (size(evCollision(context, { "tools" : patch, "targets" : replInside })) > 0)
                 {
-                    stage = ""; throw regenError("The patch, the walls and the offset surface do not close into a solid plug (the walls do not meet the surfaces cleanly). Try another draft angle or offset.", ["offset"]);
+                    stage = "cutting the base patch and the new surface at their crossing";
+                    opExtractSurface(context, id + "crossPatch", { "faces" : qOwnedByBody(patch, EntityType.FACE), "tangentPropagation" : false });
+                    opExtractSurface(context, id + "crossRepl", { "faces" : qOwnedByBody(replInside, EntityType.FACE), "tangentPropagation" : false });
+                    const patchFollow = tracked(patch);
+                    const replFollow = tracked(replInside);
+                    try silent
+                    {
+                        opSplitPart(context, id + "patchByRepl", { "targets" : patch, "tool" : qCreatedBy(id + "crossRepl", EntityType.BODY), "keepTools" : true });
+                        opSplitPart(context, id + "replByPatch", { "targets" : replInside, "tool" : qCreatedBy(id + "crossPatch", EntityType.BODY), "keepTools" : true });
+                    }
+                    shellPieces = concatenateArrays([evaluateQuery(context, qBodyType(patchFollow, BodyType.SHEET)), evaluateQuery(context, qBodyType(replFollow, BodyType.SHEET))]);
+                    opDeleteBodies(context, id + "dropCross", { "entities" : qUnion([qCreatedBy(id + "crossPatch", EntityType.BODY), qCreatedBy(id + "crossRepl", EntityType.BODY)]) });
+                    stage = "closing the plug";
                 }
-                opEnclose(context, id + "enclose", { "entities" : shellBodies });
-                const plug = qBodyType(qCreatedBy(id + "enclose", EntityType.BODY), BodyType.SOLID);
-                const plugList = evaluateQuery(context, plug);
+                // The pieces form one closed shell per lens: where the new surface crosses the base there are several lenses
+                // that touch along the crossing curve (four sheets at one edge: not joinable as one body), so each wall part
+                // is grouped with the pieces its free edges lie on, walls sharing a piece are one lens, and each lens is
+                // closed and enclosed on its own.
+                const nW = size(wallParts);
+                const nP = size(shellPieces);
+                var attachedTo = [];
+                for (var w = 0; w < nW; w += 1)
+                {
+                    var attached = [];
+                    for (var freeEdge in evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(wallParts[w], EntityType.EDGE), EdgeTopology.ONE_SIDED)))
+                    {
+                        const mid = evEdgeTangentLines(context, { "edge" : freeEdge, "parameters" : [0.5] })[0].origin;
+                        for (var p = 0; p < nP; p += 1)
+                        {
+                            if (evDistance(context, { "side0" : mid, "side1" : shellPieces[p] }).distance < 1e-5 * meter)
+                            {
+                                var known = false;
+                                for (var q in attached)
+                                {
+                                    known = known || q == p;
+                                }
+                                if (!known)
+                                {
+                                    attached = append(attached, p);
+                                }
+                            }
+                        }
+                    }
+                    attachedTo = append(attachedTo, attached);
+                }
+                var lensOf = [];
+                for (var w = 0; w < nW; w += 1)
+                {
+                    lensOf = append(lensOf, w);
+                }
+                for (var w1 = 0; w1 < nW; w1 += 1)
+                {
+                    for (var w2 = w1 + 1; w2 < nW; w2 += 1)
+                    {
+                        var sharing = false;
+                        for (var p1 in attachedTo[w1])
+                        {
+                            for (var p2 in attachedTo[w2])
+                            {
+                                sharing = sharing || p1 == p2;
+                            }
+                        }
+                        if (sharing && lensOf[w2] != lensOf[w1])
+                        {
+                            const from = lensOf[w2];
+                            for (var w3 = 0; w3 < nW; w3 += 1)
+                            {
+                                if (lensOf[w3] == from)
+                                {
+                                    lensOf[w3] = lensOf[w1];
+                                }
+                            }
+                        }
+                    }
+                }
+                var plugList = [];
+                for (var lens = 0; lens < nW; lens += 1)
+                {
+                    var lensTools = [];
+                    var lensPieces = [];
+                    for (var w = 0; w < nW; w += 1)
+                    {
+                        if (lensOf[w] == lens)
+                        {
+                            lensTools = append(lensTools, wallParts[w]);
+                            for (var p in attachedTo[w])
+                            {
+                                var have = false;
+                                for (var q in lensPieces)
+                                {
+                                    have = have || q == p;
+                                }
+                                if (!have)
+                                {
+                                    lensPieces = append(lensPieces, p);
+                                    lensTools = append(lensTools, shellPieces[p]);
+                                }
+                            }
+                        }
+                    }
+                    if (size(lensTools) == 0)
+                    {
+                        continue;
+                    }
+                    const lensTools1 = qUnion(lensTools);
+                    var lensShell = lensTools1;
+                    if (size(lensTools) > 1)
+                    {
+                        const shellFollow = tracked(lensTools1);
+                        opBoolean(context, id + ("shell" ~ lens), { "tools" : lensTools1, "operationType" : BooleanOperationType.UNION });
+                        lensShell = qBodyType(shellFollow, BodyType.SHEET);
+                    }
+                    if (nakedCount(lensShell) != 0)
+                    {
+                        stage = ""; throw regenError("The patch, the walls and the new surface do not close into a solid plug (the walls do not meet the surfaces cleanly). Try another draft angle or offset.", ["offset"]);
+                    }
+                    opEnclose(context, id + ("enclose" ~ lens), { "entities" : lensShell });
+                    plugList = concatenateArrays([plugList, evaluateQuery(context, qBodyType(qCreatedBy(id + ("enclose" ~ lens), EntityType.BODY), BodyType.SOLID))]);
+                }
                 if (size(plugList) == 0)
                 {
                     stage = ""; throw regenError("The plug could not be made into a solid.", ["offset"]);
@@ -654,12 +767,12 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 }
                 else
                 {
-                    const baseFaceList = evaluateQuery(context, qOwnedByBody(baseSurface, EntityType.FACE));
+                    // by the side of the region faces (the imprinted copy: still there, outward like the solid's faces)
                     for (var lens in plugList)
                     {
                         const lc = evApproximateCentroid(context, { "entities" : lens });
-                        const dl = evDistance(context, { "side0" : lc, "side1" : qOwnedByBody(baseSurface, EntityType.FACE) });
-                        const nl = evFaceTangentPlane(context, { "face" : baseFaceList[dl.sides[1].index], "parameter" : dl.sides[1].parameter }).normal;
+                        const dl = evDistance(context, { "side0" : lc, "side1" : region });
+                        const nl = evFaceTangentPlane(context, { "face" : regionList[dl.sides[1].index], "parameter" : dl.sides[1].parameter }).normal;
                         if (dot(lc - dl.sides[1].point, nl) >= 0 * meter)
                         {
                             adds = append(adds, lens);

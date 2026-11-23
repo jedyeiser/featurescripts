@@ -477,6 +477,9 @@ RP_CASES = [
     ("RP5", "solid", 70, 70, "0 mm", [num("draft", "10 deg"), en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]),
                                        q("projectionDirection", TOP), b("flipDirection", True), en("walls", "PatchPlusWalls", "PROJECTION", NS["patch_plus"])]),
     ("RP6", "solid", 70 - 50 * TILT, 70 + 50 * TILT, "0 mm", []),
+    # the plate crosses the face along a diameter of the circle: half the wall above the face, half below
+    ("RP7", "sheet", 50 - 50 * TILT, 50 + 50 * TILT, "0 mm", []),
+    ("RP8", "solid", 50 - 50 * TILT, 50 + 50 * TILT, "0 mm", []),
 ]
 for n, (tag, base_kind, z0, z1, off, extra) in enumerate(RP_CASES):
     x0 = 25000 + 400 * n
