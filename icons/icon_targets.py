@@ -10,6 +10,7 @@ TARGETS = [
     ("reference_side", "enclose_plus", "enclose_plus"),  # 2026-09-27, wired by hand
     ("reference_side", "join_profile_surfaces", "join_profile_surfaces"),  # 2026-09-27, wired by hand
     ("reference_side", "referenced_part", "referenced_part"),  # 2026-09-28, wired by hand
+    ("reference_side", "patch_plus", "patch_plus"),  # 2026-11-23 (candidate A: a block standing on a surface)
     ("variable_tools", "extract_variables", "extract_variables"),
     ("curve_tools", "clean_wire", "clean_wire"),
     ("curve_tools", "map_curve", "map_curve"),

@@ -2,6 +2,8 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // enums used by opSplitFace: not part of common.fs (a missing std enum shows only as a generic REGEN_ERROR in the feature)
 import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
+// IMPORT: patch_plus_icon.svg (feature icon)
+IconNamespace::import(path : "86f42fa364d0d4d039b50d83", version : "8c0a8d77d66f6fd1e6c8c691");
 
 /**
  * Patch+: replace the part of a surface inside a footprint with its own offset, joined to the rest by walls.
@@ -53,7 +55,7 @@ const PATCH_VERTEX_TOLERANCE = 1e-6 * meter;
 /** A corner whose mitre would be longer than 1 / this is refused (very sharp corner with a draft). */
 const PATCH_MIN_MITRE_COS = 0.15;
 
-annotation { "Feature Type Name" : "Patch+",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Patch+",
         "Feature Type Description" : "Push or pull the part of a surface inside a footprint: the faces inside the outline are replaced by their own offset, joined to the rest by walls (normal or along a direction, with draft). Sheets and solids." }
 export const patchPlus = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
