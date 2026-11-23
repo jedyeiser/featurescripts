@@ -57,7 +57,7 @@ const PATCH_MIN_MITRE_COS = 0.15;
 /** The most faces the region search walks before giving up. */
 const PATCH_FLOOD_LIMIT = 600;
 
-annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Patch+",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "Patch+", "Manipulator Change Function" : "patchPlusManipulatorChange",
         "Feature Type Description" : "Push or pull the part of a surface inside a footprint: the faces inside the outline are replaced by their own offset, joined to the rest by walls (normal or along a direction, with draft). Sheets and solids." }
 export const patchPlus = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
@@ -90,8 +90,17 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         definition.replacement is Query;
 
         annotation { "Name" : "Offset",
-                    "Description" : "No replacement surface: where the region goes, + outward along the face normal (a boss), - inward (a pocket). With a replacement surface: how much further from the faces (+) or closer (-) it sits. With Walls = along the projection direction the surface is moved by this distance along that direction instead of being offset." }
+                    "Description" : "How far the new surface is from the faces. Direction of a POSITIVE offset: toward the Side reference if there is one; otherwise along the face normal (outward on a solid; Flip reverses it). With a Replacement surface: + moves it further from the faces, - closer, and the Side reference and Flip are ignored. With Walls = along the projection direction the surface is moved by this distance along that direction instead of being offset." }
         isLength(definition.offset, ZERO_DEFAULT_LENGTH_BOUNDS);
+
+        annotation { "Name" : "Side reference", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR,
+                    "MaxNumberOfPicks" : 1,
+                    "Description" : "Optional. A positive offset moves toward this geometry (best a mate connector or vertex clearly to one side of the faces; an error if it lies in the plane of the faces at the region). Empty: along the face normal. Ignored with a Replacement surface." }
+        definition.sideReference is Query;
+
+        annotation { "Name" : "Flip offset direction", "UIHint" : UIHint.OPPOSITE_DIRECTION,
+                    "Description" : "Reverse the face normal as the direction of a positive offset. Used only without a Side reference and without a Replacement surface; the arrow in the graphics area shows the direction." }
+        definition.flipOffset is boolean;
 
         annotation { "Name" : "Walls" }
         definition.walls is PatchPlusWalls;
@@ -282,7 +291,38 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             const regionNormal = evFaceTangentPlane(context, { "face" : regionList[dIn.sides[1].index], "parameter" : dIn.sides[1].parameter }).normal;
             // Which side of the faces the new surface is on (side = +1: along the face normal). Without a replacement surface
             // it is the offset's sign; with one, a ray from the region along the normal (or the projection direction) finds it.
-            var side = offset > 0 * meter ? 1 : -1;
+            // The direction of a POSITIVE offset, as +1 / -1 along the face normal: toward the side reference when there is one (an
+            // error if it lies in the plane of the faces: it then says nothing about the side), otherwise along the face normal
+            // (Flip reverses it). With a replacement surface the side is found by rays below and neither applies.
+            var positiveSide = definition.flipOffset ? -1 : 1;
+            const hasReference = !isQueryEmpty(context, definition.sideReference);
+            if (!hasReplacement && hasReference)
+            {
+                stage = "reading the side reference";
+                var referencePoint = undefined;
+                const referenceMate = qBodyType(definition.sideReference, BodyType.MATE_CONNECTOR);
+                if (!isQueryEmpty(context, referenceMate))
+                {
+                    referencePoint = evMateConnector(context, { "mateConnector" : referenceMate }).origin;
+                }
+                else
+                {
+                    referencePoint = evDistance(context, { "side0" : pIn, "side1" : definition.sideReference }).sides[1].point;
+                }
+                const along = dot(referencePoint - pIn, regionNormal);
+                if (abs(along) < 1e-5 * meter)
+                {
+                    addDebugPoint(context, referencePoint, DebugColor.RED);
+                    stage = ""; throw regenError("The side reference lies in the plane of the faces at the region (marked), so it does not say which side is positive: pick something clearly to one side of the faces.", ["sideReference"]);
+                }
+                positiveSide = along > 0 ? 1 : -1;
+            }
+            if (!hasReplacement && !hasReference)
+            {
+                // the arrow shows the direction of a positive offset (the face normal, or its reverse when flipped)
+                addManipulators(context, id, { "offsetFlip" : flipManipulator({ "base" : pIn, "direction" : regionNormal, "flipped" : definition.flipOffset }) });
+            }
+            var side = (offset > 0 * meter ? 1 : -1) * positiveSide;
             var replacementHit = undefined;
             var hitDirection = regionNormal;
             var replacementSign = 1;
@@ -540,8 +580,8 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                         nearFaces = append(nearFaces, face);
                     }
                 }
-                opExtractSurface(context, id + "offset", { "faces" : qUnion(nearFaces), "offset" : offset, "tangentPropagation" : false, "useFacesAroundToTrimOffset" : false });
-                replacementPoint = pIn + regionNormal * offset;
+                opExtractSurface(context, id + "offset", { "faces" : qUnion(nearFaces), "offset" : abs(offset) * side, "tangentPropagation" : false, "useFacesAroundToTrimOffset" : false });
+                replacementPoint = pIn + regionNormal * (abs(offset) * side);
             }
             const replacement = qCreatedBy(id + "offset", EntityType.BODY);
             // the base's surface, to cut the tube: the sheet itself, or a copy of the PICKED faces of the solid (not all
@@ -839,7 +879,19 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         "flipDirection" : false,
         "offset" : 0 * meter,
         "replacement" : qNothing(),
+        "sideReference" : qNothing(),
+        "flipOffset" : false,
         "walls" : PatchPlusWalls.NORMAL,
         "draft" : 0 * degree,
         "projectionDirection" : qNothing()
     });
+
+/** The flip arrow of a positive offset (shown without a side reference or a replacement surface). */
+export function patchPlusManipulatorChange(context is Context, definition is map, newManipulators is map) returns map
+{
+    if (newManipulators["offsetFlip"] is map)
+    {
+        definition.flipOffset = newManipulators["offsetFlip"].flipped;
+    }
+    return definition;
+}
