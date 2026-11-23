@@ -77,12 +77,16 @@ export const featureTreeNotePlus = defineFeature(function(context is Context, id
         annotation { "Name" : "Subject", "UIHint" : UIHint.VARIABLE_NAME, "MaxLength" : 256 }
         definition.subject is string;
 
-        annotation { "Name" : "Description (shows on hover)", "MaxLength" : 512 }
+        annotation { "Name" : "Description", "Description" : "Shows on hover", "MaxLength" : 512 }
         definition.description is string;
 
-        // A very large MaxLength gives a multi-line text box (as in Jelte's original).
-        annotation { "Name" : "More text here (multi-line)", "MaxLength" : 640000 }
+        // Large MaxLength as in Jelte's original (plain text box; multi-line is not confirmed).
+        annotation { "Name" : "Note", "MaxLength" : 640000 }
         definition.text is string;
+
+        annotation { "Name" : "Show note as info message",
+                    "Description" : "Reports the note through reportFeatureInfo so it shows in the dialog and the feature tree" }
+        definition.showNote is boolean;
 
         annotation { "Name" : "Reference geometry", "Filter" : AllowMeshGeometry.YES && AllowFlattenedGeometry.YES,
                     "UIHint" : UIHint.PREVENT_CREATING_NEW_MATE_CONNECTORS }
@@ -114,6 +118,15 @@ export const featureTreeNotePlus = defineFeature(function(context is Context, id
         }
     }
     {
+        if (definition.showNote)
+        {
+            var message = definition.text != "" ? definition.text : definition.description;
+            if (message != "")
+            {
+                reportFeatureInfo(context, id, definition.subject == "" ? message : definition.subject ~ ": " ~ message);
+            }
+        }
+
         // Reference geometry keeps Jelte's behavior: yellow debug color plus highlight.
         var highlight = [];
         if (size(evaluateQuery(context, definition.geometry)) > 0)
