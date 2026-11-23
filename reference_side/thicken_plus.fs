@@ -804,15 +804,25 @@ function draftSheet(context is Context, id is Id, seed is Query, group is map, d
             opFitSpline(context, wid + ("curve" ~ l), { "points" : through });
             curves = append(curves, qCreatedBy(wid + ("curve" ~ l), EntityType.EDGE));
         }
+        var halves = [];
         for (var l = 0; l < size(levels) - 1; l += 1)
         {
             opLoft(context, wid + ("loft" ~ l), {
                         "profileSubqueries" : [curves[l], curves[l + 1]],
                         "bodyType" : ToolBodyType.SURFACE
                     });
-            toolsByChain[label[i]] = append(toolsByChain[label[i]], qBodyType(qCreatedBy(wid + ("loft" ~ l), EntityType.BODY), BodyType.SHEET));
+            halves = append(halves, qBodyType(qCreatedBy(wid + ("loft" ~ l), EntityType.BODY), BodyType.SHEET));
             wallFaces = append(wallFaces, tracked(qUnion(evaluateQuery(context, qOwnedByBody(qCreatedBy(wid + ("loft" ~ l), EntityType.BODY), EntityType.FACE)))));
         }
+        if (size(halves) > 1)
+        {
+            // a kinked wall: the two halves share the kink curve; joined into one sheet they cut as one surface
+            // (the union keeps the identity of one half, so follow both through it)
+            const followed = tracked(qUnion(halves));
+            opBoolean(context, wid + "join", { "tools" : qUnion(halves), "operationType" : BooleanOperationType.UNION });
+            halves = [qBodyType(followed, BodyType.SHEET)];
+        }
+        toolsByChain[label[i]] = append(toolsByChain[label[i]], halves[0]);
         var wires = [];
         for (var l = 0; l < size(levels); l += 1)
         {
