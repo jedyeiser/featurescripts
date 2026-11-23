@@ -531,6 +531,37 @@ for tag, area in [("FP1", "1600"), ("FP2", "900 + 400"), ("FP3", "3600 - PI * 10
     src = PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "10").replace("__AREA__", area).replace("__SIGN__", "1")
     case(tag + " ", src, CUBE="%s cube" % tag)
 
+# Footprint faces with a replacement plate (FP6), a drafted island (FP8) and a drafted ring (FP9; its hole closes in, so the area is
+# (60 + 2 d)^2 - pi (10 - d)^2 with d = t tan(10 deg)); FP7: a sheet with the side reference below.
+case("FP4 ", PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "10").replace("__AREA__", "100 * 40").replace("__SIGN__", "1"), CUBE="FP4 cube")
+case("FP10 ", r'''
+        const sheet = created(@SHEET@);
+        const area = count(sheet) >= 1 ? evArea(context, { "entities" : qOwnedByBody(sheet, EntityType.FACE) }) : 0 * meter ^ 2;
+        const bb = count(sheet) >= 1 ? evBox3d(context, { "topology" : sheet }) : undefined;
+        const zlo = bb == undefined ? 0 * meter : bb.minCorner[2];
+        const zhi = bb == undefined ? 0 * meter : bb.maxCorner[2];
+        const want = 10000 + 2 * 100 * 10;
+        const high = near(zlo, mm(50), mm(0.001)) && near(zhi, mm(60), mm(0.001));
+        const low = near(zlo, mm(40), mm(0.001)) && near(zhi, mm(50), mm(0.001));
+        return [count(sheet) == 1 && abs(area - want * millimeter ^ 2) < 3 * millimeter ^ 2 && (high || low),
+            count(sheet) ~ " sheet (1), area " ~ roundToPrecision(area / millimeter ^ 2, 2) ~ " (" ~ roundToPrecision(want, 2) ~ "), z " ~ fmt(zlo) ~ ".." ~ fmt(zhi) ~ " (50..60 or 40..50)"];''',
+     SHEET="FP10 sheet")
+case("FP6 ", PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "20").replace("__AREA__", "1600").replace("__SIGN__", "1"), CUBE="FP6 cube")
+case("FP8 ", PP_SOLID_SRC.replace("__K__", repr(k10)).replace("__DEPTH__", "10").replace("__AREA__", "(40 + 2 * delta) * (40 + 2 * delta)").replace("__SIGN__", "1"), CUBE="FP8 cube")
+case("FP9 ", PP_SOLID_SRC.replace("__K__", repr(k10)).replace("__DEPTH__", "10").replace("__AREA__", "(60 + 2 * delta) * (60 + 2 * delta) - PI * (10 - delta) * (10 - delta)").replace("__SIGN__", "1"), CUBE="FP9 cube")
+case("FP7 ", r'''
+        const sheet = created(@SHEET@);
+        const faces = qOwnedByBody(sheet, EntityType.FACE);
+        const area = count(sheet) >= 1 ? evArea(context, { "entities" : faces }) : 0 * meter ^ 2;
+        const bb = count(sheet) >= 1 ? evBox3d(context, { "topology" : sheet }) : undefined;
+        const zlo = bb == undefined ? 0 * meter : bb.minCorner[2];
+        const zhi = bb == undefined ? 0 * meter : bb.maxCorner[2];
+        const want = 10000 + 4 * 40 * 10;
+        const naked = size(evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(sheet, EntityType.EDGE), EdgeTopology.ONE_SIDED)));
+        return [count(sheet) == 1 && abs(area - want * millimeter ^ 2) < 3 * millimeter ^ 2 && near(zlo, mm(40), mm(0.001)) && near(zhi, mm(50), mm(0.001)) && naked == 4,
+            count(sheet) ~ " sheet (1), area " ~ roundToPrecision(area / millimeter ^ 2, 2) ~ " (" ~ roundToPrecision(want, 2) ~ "), z " ~ fmt(zlo) ~ ".." ~ fmt(zhi) ~ " (40..50), naked edges " ~ naked ~ " (4)"];''',
+     SHEET="FP7 sheet")
+
 case("FP5 ", r'''
         const sheet = created(@SHEET@);
         const faces = qOwnedByBody(sheet, EntityType.FACE);
@@ -721,7 +752,7 @@ for tag, vol, x_range, keys in (
         return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (%d), x " ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0]) ~ ", z "
             ~ fmt(bb.minCorner[2]) ~ ".." ~ fmt(bb.maxCorner[2]) ~ "; " ~ keys];""" % (key_src, vol, xr, vol))
 
-EXPECTED_ERRORS = ["T4 Thicken+", "DR10 Thicken+", "RF4 Patch+", "FP4 Patch+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
+EXPECTED_ERRORS = ["T4 Thicken+", "DR10 Thicken+", "RF4 Patch+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
 
 
 def strings(result):

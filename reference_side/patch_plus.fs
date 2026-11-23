@@ -74,7 +74,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
 
         annotation { "Name" : "Footprint faces",
                     "Filter" : EntityType.FACE || (BodyType.SHEET && EntityType.BODY),
-                    "Description" : "Instead of curves: faces (or a sheet body) whose outline is projected onto the faces. Every loop counts: several islands, and the holes of a face (the region is the face itself, a ring where it has a hole). Pick curves OR faces. The footprint must lie inside the picked faces: one that runs off their edge is not supported yet." }
+                    "Description" : "Instead of curves: faces (or a sheet body) whose outline is projected onto the faces. Every loop counts: several islands, and the holes of a face (the region is the face itself, a ring where it has a hole). Pick curves OR faces. A footprint that runs off the edge of the picked faces is built as a straight move of the region (Walls along the projection direction, or a planar region; no draft, no replacement surface)." }
         definition.footprintFaces is Query;
 
         annotation { "Name" : "Projection" }
@@ -276,6 +276,8 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 stage = ""; throw regenError("The footprint does not land on the faces: check the projection direction, and that the footprint lies over them.", ["footprint"]);
             }
             var regionFaces = [];
+            var offEdge = false;      // the footprint runs off the picked faces: the straight path below builds it
+            var offEdgeMarks = [];
             if (hasFootprintFaces)
             {
                 // The region: every face of the imprinted copy that lies under the footprint faces, found by a ray from a point
@@ -306,16 +308,14 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 const runsOff = qSubtraction(outlineOfFaces(context, regionOnly), imprintEdges);
                 if (!isQueryEmpty(context, runsOff))
                 {
-                    var marked = 0;
-                    for (var offEdge in evaluateQuery(context, runsOff))
+                    offEdge = true;
+                    for (var offEdgeEdge in evaluateQuery(context, runsOff))
                     {
-                        if (marked < 4)
+                        if (size(offEdgeMarks) < 4)
                         {
-                            addDebugPoint(context, evEdgeTangentLines(context, { "edge" : offEdge, "parameters" : [0.5] })[0].origin, DebugColor.RED);
-                            marked += 1;
+                            offEdgeMarks = append(offEdgeMarks, evEdgeTangentLines(context, { "edge" : offEdgeEdge, "parameters" : [0.5] })[0].origin);
                         }
                     }
-                    stage = ""; throw regenError("The footprint reaches the edge of the picked faces (marked). A footprint that runs off the edge of the surface is not supported yet: pick base faces that extend past the footprint all round, or shrink the footprint.", ["footprintFaces"]);
                 }
             }
             else
@@ -389,7 +389,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 }
                 if (insideSide < 0)
                 {
-                    stage = ""; throw regenError("The footprint does not enclose a region inside the faces: its outline must close up and stay inside the surface (it reaches the edge of the picked faces, which is not supported yet, or the surface is too large to follow). Keep the footprint inside the picked faces and check the projection direction.", ["footprint"]);
+                    stage = ""; throw regenError("The footprint does not enclose a region inside the faces: its outline must close up and stay inside the surface (it reaches the edge of the picked faces, which the curves input does not support: use Footprint faces, or the surface is too large to follow). Keep the footprint inside the picked faces and check the projection direction.", ["footprint"]);
                 }
                 regionFaces = floodFaces[insideSide];
             }
@@ -485,6 +485,89 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             // free of the kernel offset that fails on patchworks of small freeform faces); otherwise they are offset along the normal
             const moveAlongDirection = definition.walls == PatchPlusWalls.PROJECTION;
             const uIn = moveAlongDirection ? (dot(projectionDirection, toward) >= 0 ? projectionDirection : -projectionDirection) : toward;
+
+            // ---- 1b. the footprint runs off the picked faces: a straight move of the region ----
+            if (offEdge)
+            {
+                for (var mark in offEdgeMarks)
+                {
+                    addDebugPoint(context, mark, DebugColor.CYAN);
+                }
+                stage = "";
+                if (hasReplacement)
+                {
+                    throw regenError("A footprint that runs off the edge of the picked faces (marked) cannot be combined with a replacement surface yet: keep the footprint inside the faces, or remove the replacement.", ["footprintFaces"]);
+                }
+                if (abs(theta) > 1e-9)
+                {
+                    throw regenError("A footprint that runs off the edge of the picked faces (marked) cannot be drafted yet: set the draft angle to 0, or keep the footprint inside the faces.", ["draft"]);
+                }
+                // the whole region moves rigidly by one vector: the same direction for every face, so it must be planar and parallel
+                // to the first one, unless the walls run along the projection direction (then the direction is the projection)
+                if (!moveAlongDirection)
+                {
+                    for (var regionFace in regionList)
+                    {
+                        const plane = try silent(evPlane(context, { "face" : regionFace }));
+                        const faceNormal = evFaceTangentPlane(context, { "face" : regionFace, "parameter" : vector(0.5, 0.5) }).normal;
+                        if (plane == undefined || dot(faceNormal, regionNormal) < 1 - 1e-6)
+                        {
+                            stage = ""; throw regenError("A footprint that runs off the edge of the picked faces (marked) needs a planar region, or Walls set to along the projection direction: the region is moved as a whole.", ["walls"]);
+                        }
+                    }
+                }
+                const shift = uIn * abs(offset);
+                if (isSolid)
+                {
+                    stage = "extruding the region";
+                    opExtrude(context, id + "boss", { "entities" : region, "direction" : uIn, "endBound" : BoundingType.BLIND, "endDepth" : abs(offset) });
+                    stage = side > 0 ? "adding the region to the solid" : "cutting the region from the solid";
+                    if (side > 0)
+                    {
+                        opBoolean(context, id + "apply", { "tools" : qUnion([owner, qCreatedBy(id + "boss", EntityType.BODY)]), "operationType" : BooleanOperationType.UNION });
+                    }
+                    else
+                    {
+                        opBoolean(context, id + "apply", { "tools" : qCreatedBy(id + "boss", EntityType.BODY), "targets" : owner, "operationType" : BooleanOperationType.SUBTRACTION });
+                    }
+                    resultQuery = owner;
+                }
+                else
+                {
+                    // a sheet: the faces outside the region + the region moved + the walls between them. All of the sheet must be picked.
+                    if (size(evaluateQuery(context, qOwnedByBody(owner, EntityType.FACE))) != size(evaluateQuery(context, baseFaces)))
+                    {
+                        stage = ""; throw regenError("A footprint that runs off the edge of a sheet (marked) needs all of the sheet's faces picked.", ["baseFaces"]);
+                    }
+                    stage = "moving the region";
+                    opExtractSurface(context, id + "moved", { "faces" : region, "tangentPropagation" : false });
+                    opTransform(context, id + "movedMove", { "bodies" : qCreatedBy(id + "moved", EntityType.BODY), "transform" : transform(shift) });
+                    stage = "building the walls";
+                    const outlineQuery = qIntersection([qAdjacent(region, AdjacencyType.EDGE, EntityType.EDGE), imprintEdges]);
+                    opExtrude(context, id + "straightWall", { "entities" : outlineQuery, "direction" : uIn, "endBound" : BoundingType.BLIND, "endDepth" : abs(offset),
+                                "bodyType" : ToolBodyType.SURFACE });
+                    stage = "cutting the region out of the sheet";
+                    const copyBody = qOwnerBody(copyFaces);
+                    opDeleteFace(context, id + "cutRegion", { "deleteFaces" : region, "includeFillet" : false, "capVoid" : false, "leaveOpen" : true });
+                    stage = "joining the pieces";
+                    const knitList = qUnion([copyBody, qCreatedBy(id + "straightWall", EntityType.BODY), qCreatedBy(id + "moved", EntityType.BODY)]);
+                    const followedStraight = tracked(knitList);
+                    opBoolean(context, id + "knit", { "tools" : knitList, "operationType" : BooleanOperationType.UNION });
+                    opDeleteBodies(context, id + "dropOriginal", { "entities" : owner });
+                    resultQuery = qBodyType(followedStraight, BodyType.SHEET);
+                    if (size(evaluateQuery(context, resultQuery)) != 1)
+                    {
+                        stage = ""; throw regenError("The moved region did not join the sheet into one body.", ["offset"]);
+                    }
+                }
+                stage = "cleaning up";
+                const strayBodies = qSubtraction(qCreatedBy(id, EntityType.BODY), resultQuery);
+                if (!isQueryEmpty(context, strayBodies))
+                {
+                    opDeleteBodies(context, id + "cleanup", { "entities" : strayBodies });
+                }
+                return;
+            }
 
             // ---- 2. the outline edges, sampled ----
             stage = "sampling the outline";

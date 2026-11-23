@@ -524,8 +524,9 @@ for n, (tag, base_kind, title) in enumerate([
         ("FP1", "solid", "one 40 x 40 island, boss +10"),
         ("FP2", "solid", "two islands (30 x 30 and 20 x 20) in one feature, boss +10"),
         ("FP3", "solid", "a face with a hole (60 x 60, hole r 10): the ring is raised, the hole's island stays"),
-        ("FP4", "solid", "footprint 120 x 40 runs off the 100 wide face -> ERROR (not supported yet)"),
-        ("FP5", "sheet", "one 40 x 40 island on a sheet, +10")]):
+        ("FP4", "solid", "footprint 120 x 40 runs off the 100 wide face: the region is the 100 x 40 strip, boss +10"),
+        ("FP5", "sheet", "one 40 x 40 island on a sheet, +10"),
+        ("FP10", "sheet", "footprint 120 x 40 runs off a 100 wide sheet, +10 (straight walls, free ends)")]):
     x0 = 29000 + 400 * n
     if base_kind == "solid":
         bx = cube("%s cube at x %d" % (tag, x0), x0, 0)
@@ -548,8 +549,41 @@ for n, (tag, base_kind, title) in enumerate([
             b("defaultScope", False), q("booleanScope", body(slab))])
         fq = [q("footprintFaces", face_at(slab, x0 + 20, 0, 101))]
     else:
-        fq = [q("footprintFaces", body(sheet("FP4 footprint sheet 120 x 40 at z 100", [(x0 - 60, 100), (x0 + 60, 100)], 40)))]
+        fq = [q("footprintFaces", body(sheet("%s footprint sheet 120 x 40 at z 100" % tag, [(x0 - 60, 100), (x0 + 60, 100)], 40)))]
     patch("%s Patch+ %s" % (tag, title), [q("baseFaces", base_q)] + fq + [num("offset", "10 mm")])
+
+# Footprint FACES combined with the other inputs (2026-11-23): a replacement plate, a side reference, a draft (also on the inner loop of a ring).
+for n, (tag, base_kind, title) in enumerate([
+        ("FP6", "solid", "footprint faces (40 x 40) with a replacement plate at z 70 -> boss 20"),
+        ("FP7", "sheet", "footprint faces (40 x 40) on a sheet, side reference below: + offset goes down (z 40..50)"),
+        ("FP8", "solid", "footprint faces (40 x 40), boss +10, draft +10 deg"),
+        ("FP9", "solid", "footprint ring (60 x 60, hole r 10), boss +10, draft +10 deg: the hole closes in as the outline grows")]):
+    x0 = 31000 + 400 * n
+    if base_kind == "solid":
+        bx = cube("%s cube at x %d" % (tag, x0), x0, 0)
+        base_q = face_at(bx, x0, 0, 50)
+    else:
+        bx = sheet("%s sheet z 50, x %d..%d" % (tag, x0 - 50, x0 + 50), [(x0 - 50, 50), (x0 + 50, 50)])
+        base_q = body(bx)
+    if tag == "FP9":
+        slab = cube("FP9 footprint slab 60 x 60 at z 99..101", x0, 0, 99, 101, half=30)
+        hs = sketch("FP9 hole r 10 (sketch)", plane_at("FP3 slab mid plane z 100", "Top", 100), [circle("h", *mmv(x0, 0, 10))])
+        feature("FP9 footprint slab hole", "extrude", [
+            en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "REMOVE"),
+            q("entities", 'qSketchRegion(makeId("%s"))' % hs), en("endBound", "BoundingType", "BLIND"), num("depth", "4 mm"), b("symmetric", True),
+            b("defaultScope", False), q("booleanScope", body(slab))])
+        fq = [q("footprintFaces", face_at(slab, x0 + 20, 0, 101))]
+    else:
+        fq = [q("footprintFaces", body(sheet("%s footprint sheet 40 x 40 at z 100" % tag, [(x0 - 20, 100), (x0 + 20, 100)], 40)))]
+    params = [q("baseFaces", base_q)] + fq + [num("offset", "10 mm")]
+    if tag == "FP6":
+        plate = sheet("FP6 plate z 70", [(x0 - 50, 70), (x0 + 50, 70)])
+        params = [q("baseFaces", base_q)] + fq + [q("replacement", body(plate)), num("offset", "0 mm")]
+    if tag == "FP7":
+        params.append(q("sideReference", ref_front("FP7 side reference (%d, 0, 0)" % x0, x0, 0)))
+    if tag in ("FP8", "FP9"):
+        params.append(num("draft", "10 deg"))
+    patch("%s Patch+ %s" % (tag, title), params)
 
 x0 = 10600
 t = cube("T6 cube at x 10600", x0, 0)
