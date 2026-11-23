@@ -74,7 +74,7 @@ annotation { "Icon": IconNamespace::BLOB_DATA, "Feature Type Name" : "Feature tr
 export const featureTreeNotePlus = defineFeature(function(context is Context, id is Id, definition is map)
     precondition
     {
-        annotation { "Name" : "Subject", "UIHint" : UIHint.VARIABLE_NAME, "MaxLength" : 256 }
+        annotation { "Name" : "Subject", "MaxLength" : 256 }
         definition.subject is string;
 
         annotation { "Name" : "Description", "Description" : "Shows on hover", "MaxLength" : 512 }
