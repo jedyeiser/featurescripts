@@ -356,11 +356,13 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             const replacement = qCreatedBy(id + "offset", EntityType.BODY);
             const replacementPoint = pIn + regionNormal * offset;
 
-            // the base's surface, to cut the tube: the sheet itself, or a copy of the solid's faces
+            // the base's surface, to cut the tube: the sheet itself, or a copy of the PICKED faces of the solid (not all
+            // its faces: the walls reach well past the surface and meet the solid's other faces, and cutting a large
+            // multi-face shell with the tube fails with SPLIT_FAILED on a real part)
             var baseSurface = owner;
             if (isSolid)
             {
-                opExtractSurface(context, id + "baseSurface", { "faces" : qOwnedByBody(owner, EntityType.FACE) });
+                opExtractSurface(context, id + "baseSurface", { "faces" : baseFaces, "tangentPropagation" : false });
                 baseSurface = qCreatedBy(id + "baseSurface", EntityType.BODY);
             }
 
