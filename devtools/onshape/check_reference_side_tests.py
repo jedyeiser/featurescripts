@@ -519,6 +519,23 @@ for tag, depth, sign in [("RC1", 10, 1), ("RC2", 10, -1), ("RC3", 10, -1), ("RC4
 # Patch+ direction reference: RD3 / RD5 / RD6 are pockets (the reference is below the top face); RD4 (reference in the plane) must fail.
 for tag in ["RD3", "RD5", "RD6"]:
     case(tag + " ", PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "10").replace("__AREA__", "PI * 400").replace("__SIGN__", "-1"), CUBE="%s cube" % tag)
+# Patch+ outputs for Extract variables (2026-11-23): newSurfaceFaces (area), wallFaces (area), regionArea, volumeChange. A circle r 20 footprint:
+# region 1256.64 mm2; straight walls of height h are 2 pi r h; FP4 / FP10 run off the base (a 100 x 40 strip, two 100 x 10 long walls).
+for tag, new_area, wall_area, volume in [("PP1", 1256.64, 1256.64, 12566.37), ("PP2", 1256.64, 1256.64, -12566.37), ("PP3", 1256.64, 1256.64, 0),
+                                          ("RP1", 1256.64, 2513.27, 25132.74), ("FP4", 4000, None, 40000), ("FP10", 4000, 2000, 0)]:
+    wall_ok = "true" if wall_area is None else "abs(wa - %g * sq) < 4 * sq" % wall_area
+    case(tag + " ", r'''
+        const out = embedded(SELF);
+        const nf = out.query.newSurfaceFaces.value;
+        const wf = out.query.wallFaces.value;
+        const sq = millimeter ^ 2;
+        const na = count(nf) > 0 ? evArea(context, { "entities" : nf }) : 0 * sq;
+        const wa = count(wf) > 0 ? evArea(context, { "entities" : wf }) : 0 * sq;
+        const ra = out.variable.regionArea.value;
+        const vc = out.variable.volumeChange.value;
+        return [abs(na - %g * sq) < 4 * sq && %s && abs(vc - (%g) * millimeter ^ 3) < 20 * millimeter ^ 3 && count(wf) >= 1,
+            "outputs: newSurfaceFaces " ~ count(nf) ~ " area " ~ roundToPrecision(na / sq, 2) ~ " (%g), wallFaces " ~ count(wf) ~ " area " ~ roundToPrecision(wa / sq, 2) ~ " (%s), regionArea "
+            ~ roundToPrecision(ra / sq, 2) ~ ", volumeChange " ~ roundToPrecision(vc / millimeter ^ 3, 2) ~ " (%g)"];''' % (new_area, wall_ok, volume, new_area, "any" if wall_area is None else "%g" % wall_area, volume))
 # Pick stability: how many faces each internal operation of a Patch+ POCKET creates. A face a user picks on the result is keyed to
 # the operation that created it: renaming an op id or reordering a union changes these counts and breaks such picks silently.
 PS_OPS = ["copy", "imprint", "offset", "tubeCopy", "baseSurface", "shell", "enclose", "apply"]
@@ -750,16 +767,29 @@ for tag, area, faces, absent in (("J1", 24000, 5, []), ("J2", 25000, 5, []), ("J
 # Join profile surfaces: trims and connections (2026-11-23). maxAngle: the largest turn of the normal across any joint of the result;
 # "smooth" means every joint is tangent (G1 or better), "folded" that a ruled strip leaves a visible corner. jump: the largest curvature
 # difference across a joint (G2 needs it ~0).
-for tag, faces, area, gap, angle_mode, jump_max, extra_src in (
-        ("JT1", 5, 21656.85, 28.28, "folded", None, ""),
-        ("JT2", 5, None, 28.28, "smooth", None, ""),
-        ("JT3", 5, None, 28.28, "smooth", 1.0, ""),
-        ("JT4", 9, None, 44.72, "smooth", None,
+for tag, faces, area, gap, end_gap, angle_mode, jump_max, extra_src in (
+        ("JT1", 5, 21656.85, 28.28, 28.28, "folded", None, ""),
+        ("JT2", 5, None, 28.28, 28.28, "smooth", None, ""),
+        ("JT3", 5, None, 28.28, 28.28, "smooth", 1.0, ""),
+        ("JT4", 9, None, 44.72, 44.72, "smooth", None,
          'const fi = count(out.query.startFilletInside.value); const fo = count(out.query.startFilletOutside.value); const cf = count(out.query.startConnectionFaces.value);\n'
-         '        extra = fi >= 1 && fo >= 1 && cf == 3; note = ", arcs " ~ fi ~ "/" ~ fo ~ " (>=1), startConnectionFaces " ~ cf ~ " (3)";'),
-        ("JT6", 5, 22472.14, 22.36, "folded", None, ""),
-        ("JT8", 3, None, 22.36, "smooth", None, "")):
-    gap_ok = "true" if gap is None else "near(out.variable.startGap.value, mm(%g), mm(0.05))" % gap
+         '        const efi = count(out.query.endFilletInside.value); const efo = count(out.query.endFilletOutside.value); const ecf = count(out.query.endConnectionFaces.value);\n'
+         '        const sff = count(out.query.startFilletFaces.value); const eff = count(out.query.endFilletFaces.value);\n'
+         '        extra = fi >= 1 && fo >= 1 && cf == 3 && efi >= 1 && efo >= 1 && ecf == 3 && sff == fi + fo && eff == efi + efo;\n'
+         '        note = ", start arcs " ~ fi ~ "/" ~ fo ~ ", startConnectionFaces " ~ cf ~ " (3), end arcs " ~ efi ~ "/" ~ efo ~ ", endConnectionFaces " ~ ecf ~ " (3), fillet faces " ~ sff ~ "/" ~ eff;'),
+        ("JT6", 5, 22472.14, 22.36, 22.36, "folded", None, ""),
+        ("JT8", 3, None, 22.36, None, "smooth", None, ""),
+        # a trim on a NON-PLANAR split (a cylinder r 300 axis along y, nearly vertical where it cuts the profiles): the split is offset as a surface
+        ("JT9", 3, None, 28.28, None, "folded", None, ""),
+        # different outside surfaces at the two ends (z 20 at the start, z 30 at the end) with trims: the end gap is sqrt(20^2 + 30^2)
+        ("JT10", 5, None, 28.28, 36.06, "folded", None, ""),
+        # fillets with an inside radius only: the outside joint stays a corner
+        ("JT11", 7, None, 44.72, 44.72, "folded", None,
+         'const fo = count(out.query.startFilletOutside.value); const fi = count(out.query.startFilletInside.value);\n        extra = fo == 0 && fi >= 1; note = ", arcs inside " ~ fi ~ " outside " ~ fo ~ " (>=1 / 0)";'),
+        # one split only, fillets and a straight section
+        ("JT12", 5, None, 44.72, None, "smooth", None, "")):
+    gap_ok = "true" if gap is None else "near(out.variable.startGap.value, mm(%g), mm(0.2))" % gap
+    end_ok = "true" if end_gap is None else "near(out.variable.endGap.value, mm(%g), mm(0.2))" % end_gap
     case(tag + " ", r'''
         const out = embedded(SELF);
         const bodies = evaluateQuery(context, out.query.output.value);
@@ -793,14 +823,22 @@ for tag, faces, area, gap, angle_mode, jump_max, extra_src in (
         const areaOk = %s;
         const angleOk = %s;
         const jumpOk = %s;
-        return [faces == %d && areaOk && angleOk && jumpOk && extra && %s,
+        return [faces == %d && areaOk && angleOk && jumpOk && extra && %s && %s,
             "faces " ~ faces ~ " (%d), area " ~ roundToPrecision(area / sq, 2) ~ " (%s), max joint angle " ~ roundToPrecision(maxAngle / degree, 3) ~ " deg (%s), max curvature jump "
-            ~ roundToPrecision(maxJump * meter, 3) ~ " /m (%s), startGap " ~ fmt(out.variable.startGap.value) ~ " (%g mm)" ~ note];''' % (
+            ~ roundToPrecision(maxJump * meter, 3) ~ " /m (%s), startGap " ~ fmt(out.variable.startGap.value) ~ " (%g mm), endGap " ~ fmt(out.variable.endGap.value) ~ " (%s)" ~ note];''' % (
         extra_src, "true" if area is None else "abs(area - %g * sq) < 0.5 * sq" % area,
         "maxAngle < 0.2 * degree" if angle_mode == "smooth" else "maxAngle > 10 * degree",
         "true" if jump_max is None else "maxJump * meter < %g" % jump_max,
-        faces, gap_ok, faces, "any" if area is None else "%g" % area, "< 0.2" if angle_mode == "smooth" else "> 10",
-        "any" if jump_max is None else "< %g" % jump_max, gap))
+        faces, gap_ok, end_ok, faces, "any" if area is None else "%g" % area, "< 0.2" if angle_mode == "smooth" else "> 10",
+        "any" if jump_max is None else "< %g" % jump_max, gap if gap is not None else 0, "any" if end_gap is None else "%g mm" % end_gap))
+
+# The old single start fillet (J4) publishes its faces as startFilletFaces; the new keys exist and are empty for the other cases.
+case("J4 ", r'''
+        const out = embedded(SELF);
+        const a = count(out.query.startFilletFaces.value);
+        const b = count(out.query.endFilletFaces.value);
+        const c = count(out.query.startFilletInside.value);
+        return [a >= 1 && b == 0 && c == 0, "startFilletFaces " ~ a ~ " (>=1), endFilletFaces " ~ b ~ " (0), startFilletInside " ~ c ~ " (0, the old fillet is not an arc of the new connection)"];''')
 # Referenced part (2026-09-28): volume, x range (or None), face counts per key.
 for tag, vol, x_range, keys in (
         ("P1", 100000, None, {"profileFaces": 1, "oppositeFaces": 1, "sideFaces": 0}),

@@ -2,6 +2,10 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // enums used by opSplitFace: not part of common.fs (a missing std enum shows only as a generic REGEN_ERROR in the feature)
 import(path : "onshape/std/projectiontype.gen.fs", version : "3083.0");
+// IMPORT: reference_side_utils.fs (settledOutputs)
+import(path : "9aebe5ead538258b285aec19", version : "51d2aab9634029141009803d");
+// IMPORT: Variable_tools V1 extract_outputs.fs (embedStandardOutputs)
+import(path : "a47f90bfa6b17a59e20cebd0/eb9b32c556ff036c3dd19f73/3cac74f0bc2b98272db13cd3", version : "cffacd73d80aa6dc1a2c4273");
 // IMPORT: patch_plus_icon.svg (feature icon)
 IconNamespace::import(path : "86f42fa364d0d4d039b50d83", version : "8c0a8d77d66f6fd1e6c8c691");
 
@@ -171,6 +175,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         }
         const owner = owners[0];
         const isSolid = !isQueryEmpty(context, qBodyType(owner, BodyType.SOLID));
+        const volumeBefore = isSolid ? evVolume(context, { "entities" : owner }) : 0 * meter ^ 3;
         // only the picked type counts: the other inputs are hidden and may hold stale picks
         const footprintType = definition.footprintType;
         const footprintFaces = footprintType != PatchPlusFootprint.FACES ? qNothing() : qUnion([qEntityFilter(definition.footprintFaces, EntityType.FACE),
@@ -295,6 +300,9 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
 
         var stage = "reading the inputs";
         var resultQuery = qNothing();
+        // the faces published for Extract variables (found while the feature runs, kept to its end)
+        var newFaces = qNothing();
+        var wallFaces = qNothing();
         try
         {
             // ---- 1. the footprint on a copy of the faces: the region and its outline ----
@@ -435,6 +443,8 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             }
             const region = qUnion(regionFaces);
             const regionList = evaluateQuery(context, region);
+            const regionArea = evArea(context, { "entities" : region });
+            const publishedInputs = qUnion([baseFaces, footprintCurves, footprintFaces, footprintTool, replacementFaces]);
             const underRegion = function(p is Vector) returns boolean
                 {
                     return evDistance(context, { "side0" : p, "side1" : region }).distance < 1e-5 * meter;
@@ -605,6 +615,8 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                         opBoolean(context, id + "apply", { "tools" : qCreatedBy(id + "boss", EntityType.BODY), "targets" : owner, "operationType" : BooleanOperationType.SUBTRACTION });
                     }
                     resultQuery = owner;
+                    newFaces = qIntersection([qCapEntity(id + "boss", CapType.END, EntityType.FACE), qOwnedByBody(owner, EntityType.FACE)]);
+                    wallFaces = qSubtraction(qIntersection([qCreatedBy(id + "boss", EntityType.FACE), qOwnedByBody(owner, EntityType.FACE)]), newFaces);
                 }
                 else
                 {
@@ -650,6 +662,8 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     {
                         stage = ""; throw regenError("The moved region did not join the sheet into one body.", ["offset"]);
                     }
+                    newFaces = qCreatedBy(id + "moved", EntityType.FACE);
+                    wallFaces = qCreatedBy(id + "straightWall", EntityType.FACE);
                 }
                 stage = "cleaning up";
                 const strayBodies = qSubtraction(qCreatedBy(id, EntityType.BODY), resultQuery);
@@ -657,6 +671,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 {
                     opDeleteBodies(context, id + "cleanup", { "entities" : strayBodies });
                 }
+                publishPatchOutputs(context, id, resultQuery, newFaces, wallFaces, regionArea, isSolid ? evVolume(context, { "entities" : owner }) - volumeBefore : 0 * meter ^ 3, publishedInputs);
                 return;
             }
 
@@ -993,6 +1008,9 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 replInside = qUnion(replKeep);
             }
             dropAllBut(id + "dropOffset", qBodyType(replTracked, BodyType.SHEET), replInside);
+            // the faces to publish: the new surface and the wall, followed through the knit / boolean that consumes their bodies
+            newFaces = frozenTracked(context, qOwnedByBody(replInside, EntityType.FACE));
+            wallFaces = frozenTracked(context, qOwnedByBody(wall, EntityType.FACE));
 
             if (!isSolid)
             {
@@ -1231,6 +1249,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             {
                 opDeleteBodies(context, id + "cleanup", { "entities" : leftovers });
             }
+            publishPatchOutputs(context, id, resultQuery, newFaces, wallFaces, regionArea, isSolid ? evVolume(context, { "entities" : owner }) - volumeBefore : 0 * meter ^ 3, publishedInputs);
         }
         catch (error)
         {
@@ -1280,4 +1299,34 @@ function outlineOfFaces(context is Context, faces is Query) returns Query
         }
     }
     return qUnion(outline);
+}
+
+/** The entities of a query now, followed through later edits (the published faces survive the knit / boolean that consumes their bodies). */
+function frozenTracked(context is Context, q is Query) returns Query
+{
+    return qUnion([qUnion(evaluateQuery(context, q)), startTracking(context, q)]);
+}
+
+/**
+ * Publishes the patched body for Extract variables: output (the sheet or solid), newSurfaceFaces (the faces of the replacement region),
+ * wallFaces (the walls that join it to the base), the variables regionArea (the footprint region on the faces) and volumeChange
+ * (a solid: positive for an emboss, negative for a pocket; 0 for a sheet), and what the feature consumed.
+ */
+function publishPatchOutputs(context is Context, id is Id, result is Query, newFaces is Query, wallFaces is Query, regionArea is ValueWithUnits,
+    volumeChange is ValueWithUnits, inputs is Query)
+{
+    const resultFaces = qOwnedByBody(result, EntityType.FACE);
+    embedStandardOutputs(context, id, settledOutputs(context, {
+                "output" : result,
+                "outputDescription" : "The patched body",
+                "inputs" : inputs,
+                "variables" : {
+                    "regionArea" : extractableVariable(regionArea, "The area of the region of the faces that was replaced."),
+                    "volumeChange" : extractableVariable(volumeChange, "The volume added (emboss) or removed (pocket) on a solid; 0 on a sheet.")
+                },
+                "queries" : {
+                    "newSurfaceFaces" : extractableQuery(qIntersection([newFaces, resultFaces]), "The faces of the new surface (the offset or replacement region).", DebugColor.GREEN),
+                    "wallFaces" : extractableQuery(qIntersection([wallFaces, resultFaces]), "The walls that join the new surface to the base.", DebugColor.BLUE)
+                }
+            }));
 }

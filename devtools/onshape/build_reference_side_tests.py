@@ -954,7 +954,34 @@ jt("JT5", 4, "trims 20 / 20, fillets r 100 / 100 do not fit -> ERROR (names the 
 jt("JT6", 5, "inside trim 10 only, ruled: strip 22.36 long", trims("start", "10 mm", "0 mm") + trims("end", "10 mm", "0 mm"))
 jt("JT7", 6, "negative trim -5 -> ERROR", trims("start", "-5 mm", "0 mm") + trims("end", "0 mm", "0 mm"))
 jt("JT8", 7, "start split only, inside trim 10, tangent (G1): 3 faces, smooth", trims("start", "10 mm", "0 mm") + conn("start", "TANGENT"), start_only=True)
-# Existing behaviour unchanged: no trims, default connection, the old start fillet checkbox (J4) stays as it is.
+# JT9: a trim on a NON-PLANAR split. The start split is the lateral face of a cylinder r 300 (axis along y) that cuts the flat profiles at
+# x0 - 50, almost vertically; the trim offsets that surface.
+x0 = 24400 + 400 * 8
+ins9 = sheet("JT9 inside profile z 0, x %d..%d" % (x0 - 100, x0 + 100), [(x0 - 100, 0), (x0 + 100, 0)])
+out9 = sheet("JT9 outside profile z 20", [(x0 - 100, 20), (x0 + 100, 20)])
+csk = sketch("JT9 split cylinder circle r 300 (sketch)", plane_at("JT9 split cylinder plane y 0", "Front", 0), [circle("c", *mmv(x0 - 350, 10, 300))])
+cyl9 = feature("JT9 split cylinder, along y", "extrude", [
+    en("bodyType", "ExtendedToolBodyType", "SOLID"), en("operationType", "NewBodyOperationType", "NEW"),
+    q("entities", 'qSketchRegion(makeId("%s"))' % csk), en("endBound", "BoundingType", "BLIND"), num("depth", "100 mm"), b("symmetric", True)])
+join("JT9 Join profile surfaces, trims 10 / 10 on a curved (cylinder) start split, ruled", join_params(
+    face_at(cyl9, x0 - 50, 0, 10), None, ref_front("JT9 inside point (%d, 0, -10)" % x0, x0, -10), ins9, "0 mm", outside=out9,
+    extra=trims("start", "10 mm", "10 mm") + conn("start", "RULED")))
+
+# JT10: different outside surfaces (z 20 at the start, z 30 at the end) with trims 10 / 10.
+x0 = 24400 + 400 * 9
+ins10 = sheet("JT10 inside profile z 0, x %d..%d" % (x0 - 100, x0 + 100), [(x0 - 100, 0), (x0 + 100, 0)])
+so10 = sheet("JT10 start outside profile z 20, x %d..%d" % (x0 - 100, x0), [(x0 - 100, 20), (x0, 20)])
+eo10 = sheet("JT10 end outside profile z 30, x %d..%d" % (x0, x0 + 100), [(x0, 30), (x0 + 100, 30)])
+join("JT10 Join profile surfaces, different outside surfaces, trims 10 / 10, ruled", join_params(
+    plane_at("JT10 start split x = %d" % (x0 - 50), "Right", x0 - 50), plane_at("JT10 end split x = %d" % (x0 + 50), "Right", x0 + 50),
+    ref_front("JT10 inside point (%d, 0, -10)" % x0, x0, -10), ins10, "0 mm", start_prof=so10, end_prof=eo10,
+    extra=both("RULED", "10 mm", "10 mm")))
+
+# JT11: fillets with an inside radius only. JT12: one split, fillets and a straight section.
+radii = lambda ri, ro: [num(s + "InsideRadius", ri) for s in ("start", "end")] + [num(s + "OutsideRadius", ro) for s in ("start", "end")]
+jt("JT11", 10, "trims 20 / 20, fillets: inside radius 20 only (the outside joint stays a corner)", both("FILLETS", "20 mm", "20 mm") + radii("20 mm", "0 mm"))
+jt("JT12", 11, "start split only, trims 20 / 20, fillets r 20 / 20 and a straight section",
+   trims("start", "20 mm", "20 mm") + conn("start", "FILLETS") + [num("startInsideRadius", "20 mm"), num("startOutsideRadius", "20 mm")], start_only=True)# Existing behaviour unchanged: no trims, default connection, the old start fillet checkbox (J4) stays as it is.
 print("studio", E)
 # ============================================================================
 # Referenced part (2026-09-28)
