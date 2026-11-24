@@ -536,6 +536,41 @@ for tag, new_area, wall_area, volume in [("PP1", 1256.64, 1256.64, 12566.37), ("
         return [abs(na - %g * sq) < 4 * sq && %s && abs(vc - (%g) * millimeter ^ 3) < 20 * millimeter ^ 3 && count(wf) >= 1,
             "outputs: newSurfaceFaces " ~ count(nf) ~ " area " ~ roundToPrecision(na / sq, 2) ~ " (%g), wallFaces " ~ count(wf) ~ " area " ~ roundToPrecision(wa / sq, 2) ~ " (%s), regionArea "
             ~ roundToPrecision(ra / sq, 2) ~ ", volumeChange " ~ roundToPrecision(vc / millimeter ^ 3, 2) ~ " (%g)"];''' % (new_area, wall_ok, volume, new_area, "any" if wall_area is None else "%g" % wall_area, volume))
+# Patch+ curves lying ON the face edges (K2 report): RE1 / RE2 a 57 wide sheet strip (area 480 x 57 + two end walls 57 x 5, moved up or down 5),
+# RE3 a block (volume 480 x 57 x 20 + 450 x 57 x 5).
+for tag in ["RE1", "RE2"]:
+    case(tag + " ", r'''
+        const sheet = created(@SHEET@);
+        const area = count(sheet) >= 1 ? evArea(context, { "entities" : qOwnedByBody(sheet, EntityType.FACE) }) : 0 * meter ^ 2;
+        const bb = count(sheet) >= 1 ? evBox3d(context, { "topology" : sheet }) : undefined;
+        const zlo = bb == undefined ? 0 * meter : bb.minCorner[2];
+        const zhi = bb == undefined ? 0 * meter : bb.maxCorner[2];
+        const want = 480 * 57 + 2 * 57 * 5;
+        const moved = (near(zlo, mm(50), mm(0.001)) && near(zhi, mm(55), mm(0.001))) || (near(zlo, mm(45), mm(0.001)) && near(zhi, mm(50), mm(0.001)));
+        return [count(sheet) == 1 && abs(area - want * millimeter ^ 2) < 6 * millimeter ^ 2 && moved,
+            count(sheet) ~ " sheet (1), area " ~ roundToPrecision(area / millimeter ^ 2, 2) ~ " (" ~ want ~ "), z " ~ fmt(zlo) ~ ".." ~ fmt(zhi) ~ " (50..55 or 45..50)"];''',
+         SHEET="%s strip" % tag)
+case("RE3 ", r'''
+        const bodies = evaluateQuery(context, created(@BLOCK@));
+        if (size(bodies) != 1) { return [false, size(bodies) ~ " bodies (1)"]; }
+        const v = evVolume(context, { "entities" : bodies[0] });
+        const want = 480 * 57 * 20 + 450 * 57 * 5;
+        return [abs(v - want * millimeter ^ 3) < 60 * millimeter ^ 3,
+            "volume " ~ roundToPrecision(v / millimeter ^ 3, 1) ~ " (" ~ want ~ ")"];''', BLOCK="RE3 block")
+# Patch+ brittle bits: PQ1 strip with a 0.1 mm sliver (area 480 x 57 + the walls round the 450 x 56.8 loop, 5 high), PQ2 only the top (boss 10 x 1600),
+# PQ3 U-shaped (area 2800, boss 10); PQ4 must fail.
+case("PQ1 ", r'''
+        const sheet = created(@SHEET@);
+        const area = count(sheet) >= 1 ? evArea(context, { "entities" : qOwnedByBody(sheet, EntityType.FACE) }) : 0 * meter ^ 2;
+        const bb = count(sheet) >= 1 ? evBox3d(context, { "topology" : sheet }) : undefined;
+        const zlo = bb == undefined ? 0 * meter : bb.minCorner[2];
+        const zhi = bb == undefined ? 0 * meter : bb.maxCorner[2];
+        const want = 480 * 57 + 2 * (450 + 56.8) * 5;
+        const moved = (near(zlo, mm(50), mm(0.001)) && near(zhi, mm(55), mm(0.001))) || (near(zlo, mm(45), mm(0.001)) && near(zhi, mm(50), mm(0.001)));
+        return [count(sheet) == 1 && abs(area - want * millimeter ^ 2) < 30 * millimeter ^ 2 && moved,
+            count(sheet) ~ " sheet (1), area " ~ roundToPrecision(area / millimeter ^ 2, 2) ~ " (" ~ roundToPrecision(want, 2) ~ "), z " ~ fmt(zlo) ~ ".." ~ fmt(zhi) ~ " (50..55 or 45..50)"];''', SHEET="PQ1 strip")
+case("PQ2 ", PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "10").replace("__AREA__", "1600").replace("__SIGN__", "1"), CUBE="PQ2 cube")
+case("PQ3 ", PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "10").replace("__AREA__", "2800").replace("__SIGN__", "1"), CUBE="PQ3 cube")
 # Pick stability: how many faces each internal operation of a Patch+ POCKET creates. A face a user picks on the result is keyed to
 # the operation that created it: renaming an op id or reordering a union changes these counts and breaks such picks silently.
 PS_OPS = ["copy", "imprint", "offset", "tubeCopy", "baseSurface", "shell", "enclose", "apply"]
@@ -866,7 +901,7 @@ for tag, vol, x_range, keys in (
         return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (%d), x " ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0]) ~ ", z "
             ~ fmt(bb.minCorner[2]) ~ ".." ~ fmt(bb.maxCorner[2]) ~ "; " ~ keys];""" % (key_src, vol, xr, vol))
 
-EXPECTED_ERRORS = ["RD4 Patch+", "RC7 Patch+", "JT5 Join", "JT7 Join", "IM2 Patch+", "T4 Thicken+", "DR10 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
+EXPECTED_ERRORS = ["PQ4 Patch+", "RD4 Patch+", "RC7 Patch+", "JT5 Join", "JT7 Join", "IM2 Patch+", "T4 Thicken+", "DR10 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
 
 
 def strings(result):

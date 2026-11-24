@@ -85,7 +85,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     "Description" : "Faces of one sheet or solid body (or a sheet body). The footprint must lie inside them." }
         definition.baseFaces is Query;
 
-        annotation { "Name" : "Footprint type" }
+        annotation { "Name" : "Footprint type", "UIHint" : [UIHint.SHOW_LABEL] }
         definition.footprintType is PatchPlusFootprint;
 
         if (definition.footprintType == PatchPlusFootprint.CURVES)
@@ -112,7 +112,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
 
         if (definition.footprintType != PatchPlusFootprint.TOOL)
         {
-            annotation { "Name" : "Projection" }
+            annotation { "Name" : "Projection", "UIHint" : [UIHint.SHOW_LABEL] }
             definition.projection is PatchPlusProjection;
 
             if (definition.projection == PatchPlusProjection.DIRECTION)
@@ -140,7 +140,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     "Description" : "Reverse the direction of a positive offset: emboss <-> pocket (away from the Direction reference when there is one). With a Replacement surface, a positive offset moves it closer to the faces." }
         definition.flipOffset is boolean;
 
-        annotation { "Name" : "Walls" }
+        annotation { "Name" : "Walls", "UIHint" : [UIHint.SHOW_LABEL] }
         definition.walls is PatchPlusWalls;
 
         annotation { "Name" : "Draft angle",
@@ -198,9 +198,19 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         // Curves that reach the edge of the picked faces (or run off them) cannot be told apart from their imprint: along an existing
         // face edge nothing is imprinted, so the outline has open ends and no side closes up. They are made into a surface (the
         // kernel fill of the closed loop) and handled as a footprint of faces, which classifies the region by rays.
-        if (!isQueryEmpty(context, footprintCurves) && curvesReachFaceEdge(context, footprintCurves, baseFaces, owner, projectionDirection))
+        if (!isQueryEmpty(context, footprintCurves))
         {
-            footprintFacesPicked = fillFootprint(context, id + "footprintFill", footprintCurves);
+            const edgeTest = curvesReachFaceEdge(context, footprintCurves, baseFaces, owner, projectionDirection);
+            if (edgeTest.reach)
+            {
+                footprintFacesPicked = fillFootprint(context, id + "footprintFill", footprintCurves);
+            }
+            else if (edgeTest.nearest < 3e-4 * meter)
+            {
+                // closer than the kernel can imprint cleanly without being ON the edge: a sliver of this width is left along it
+                reportFeatureWarning(context, id, "The footprint passes only " ~ roundToPrecision(edgeTest.nearest / millimeter, 3)
+                        ~ " mm from the edge of the picked faces and leaves a sliver of that width along it. Move it onto the edge or further inside.");
+            }
         }
         const footprintFaces = footprintFacesPicked;
         const hasFootprintFaces = !isQueryEmpty(context, footprintFaces);
@@ -358,11 +368,32 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 {
                     const probe = interiorPoint(copyFace);
                     const rayDirection = projectionDirection != undefined ? projectionDirection : probe.normal;
-                    if (size(evRaycast(context, { "entities" : footprintFaces, "ray" : line(probe.point, rayDirection) })) > 0
-                        || size(evRaycast(context, { "entities" : footprintFaces, "ray" : line(probe.point, -rayDirection) })) > 0)
+                    const ahead = evRaycast(context, { "entities" : footprintFaces, "ray" : line(probe.point, rayDirection) });
+                    const behind = evRaycast(context, { "entities" : footprintFaces, "ray" : line(probe.point, -rayDirection) });
+                    var seen = undefined;
+                    if (size(ahead) > 0 && (size(behind) == 0 || ahead[0].distance <= behind[0].distance))
                     {
-                        regionFaces = append(regionFaces, copyFace);
+                        seen = ahead[0];
                     }
+                    else if (size(behind) > 0)
+                    {
+                        seen = behind[0];
+                    }
+                    if (seen == undefined)
+                    {
+                        continue;
+                    }
+                    // A face behind another one (the far side of a solid, a fold) lies on the same line but is not under the footprint:
+                    // looking back from the footprint along the line, the first face met must be this one.
+                    if (seen.distance > 1e-6 * meter)
+                    {
+                        const back = evRaycast(context, { "entities" : copyFaces, "ray" : line(seen.intersection, normalize(probe.point - seen.intersection)) });
+                        if (size(back) > 0 && back[0].distance < seen.distance - 1e-4 * meter)
+                        {
+                            continue;
+                        }
+                    }
+                    regionFaces = append(regionFaces, copyFace);
                 }
                 if (size(regionFaces) == 0)
                 {
@@ -481,8 +512,35 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 };
             const centroid = evApproximateCentroid(context, { "entities" : region });
             const dIn = evDistance(context, { "side0" : centroid, "side1" : region });
-            const pIn = dIn.sides[1].point;
-            const regionNormal = evFaceTangentPlane(context, { "face" : regionList[dIn.sides[1].index], "parameter" : dIn.sides[1].parameter }).normal;
+            // the nearest point of the region to its centroid: inside for a compact region, but ON the outline when the centroid falls
+            // in a notch (a U, a ring); then the interior point of the largest region face is used instead
+            var insidePick = { "point" : dIn.sides[1].point,
+                    "normal" : evFaceTangentPlane(context, { "face" : regionList[dIn.sides[1].index], "parameter" : dIn.sides[1].parameter }).normal };
+            const outlineNow = qIntersection([qAdjacent(region, AdjacencyType.EDGE, EntityType.EDGE), imprintEdges]);
+            if (!isQueryEmpty(context, outlineNow)
+                && evDistance(context, { "side0" : insidePick.point, "side1" : outlineNow }).distance < 0.02 * sqrt(evArea(context, { "entities" : region })))
+            {
+                var biggestFace = regionList[0];
+                var biggestArea = -1 * meter ^ 2;
+                for (var candidateFace in regionList)
+                {
+                    const candidateArea = evArea(context, { "entities" : candidateFace });
+                    if (candidateArea > biggestArea)
+                    {
+                        biggestArea = candidateArea;
+                        biggestFace = candidateFace;
+                    }
+                }
+                insidePick = interiorPoint(biggestFace);
+            }
+            const pIn = insidePick.point;
+            const regionNormal = insidePick.normal;
+            // a projection direction (nearly) parallel to the faces stretches the footprint along them without bound
+            if (projectionDirection != undefined && abs(dot(projectionDirection, regionNormal)) < 0.05)
+            {
+                stage = ""; throw regenError("The projection direction is almost parallel to the faces at the region (within " ~ roundToPrecision(asin(abs(dot(projectionDirection, regionNormal))) / degree, 1)
+                        ~ " degrees of their plane): the footprint cannot be projected onto them. Pick a direction that crosses the faces.", ["projectionDirection"]);
+            }
             // Which side of the faces the new surface is on (side = +1: along the face normal). A POSITIVE offset goes toward the
             // Direction reference when there is one (an error if it lies in the plane of the faces: it then says nothing about the
             // side), otherwise along the face normal (outward on a solid: an emboss; a negative offset is a pocket); Flip reverses it.
@@ -1064,6 +1122,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 stage = "closing the plug";
                 // Where the new surface crosses the base patch inside the outline, the two sheets intersect each other and
                 // cannot be joined as they are (BOOLEAN_INVALID): cut each by a copy of the other, so they share the crossing curve.
+                var crossCutFailure = "";
                 var patchList = evaluateQuery(context, patch);
                 var replList = evaluateQuery(context, replInside);
                 var shellPieces = concatenateArrays([patchList, replList]);
@@ -1075,10 +1134,15 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     opExtractSurface(context, id + "crossRepl", { "faces" : qOwnedByBody(replInside, EntityType.FACE), "tangentPropagation" : false });
                     const patchFollow = tracked(patch);
                     const replFollow = tracked(replInside);
-                    try silent
+                    try
                     {
                         opSplitPart(context, id + "patchByRepl", { "targets" : patch, "tool" : qCreatedBy(id + "crossRepl", EntityType.BODY), "keepTools" : true });
                         opSplitPart(context, id + "replByPatch", { "targets" : replInside, "tool" : qCreatedBy(id + "crossPatch", EntityType.BODY), "keepTools" : true });
+                    }
+                    catch (crossError)
+                    {
+                        // the shell is still tried (a crossing that needs no cut can fail here harmlessly); if it does not close, this is why
+                        crossCutFailure = toString(crossError);
                     }
                     const patchPieceList = evaluateQuery(context, qBodyType(patchFollow, BodyType.SHEET));
                     patchPieceCount = size(patchPieceList);
@@ -1193,7 +1257,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     }
                     if (nakedCount(lensShell) != 0)
                     {
-                        stage = ""; throw regenError("The patch, the walls and the new surface do not close into a solid plug (the walls do not meet the surfaces cleanly). Try another draft angle or offset.", ["offset"]);
+                        stage = ""; throw regenError("The patch, the walls and the new surface do not close into a solid plug (the walls do not meet the surfaces cleanly)" ~ (crossCutFailure != "" ? "; cutting the base patch and the new surface at their crossing failed first: " ~ crossCutFailure : "") ~ ". Try another draft angle or offset.", ["offset"]);
                     }
                     const encloseId = id + (lens == 0 ? "enclose" : "enclose" ~ lens);
                     opEnclose(context, encloseId, { "entities" : lensShell });
@@ -1343,14 +1407,15 @@ function publishPatchOutputs(context is Context, id is Id, result is Query, newF
  * (along the projection direction, or the nearest) lies on the faces' own boundary, or there is no face under it. The boundary is
  * the free edges plus the edges shared with faces that are not picked.
  */
-function curvesReachFaceEdge(context is Context, curves is Query, baseFaces is Query, owner is Query, direction) returns boolean
+function curvesReachFaceEdge(context is Context, curves is Query, baseFaces is Query, owner is Query, direction) returns map
 {
+    var nearestToEdge = inf * meter;
     const picked = qAdjacent(baseFaces, AdjacencyType.EDGE, EntityType.EDGE);
     const sharedWithOthers = qIntersection([picked, qAdjacent(qSubtraction(qOwnedByBody(owner, EntityType.FACE), baseFaces), AdjacencyType.EDGE, EntityType.EDGE)]);
     const boundary = qUnion(evaluateQuery(context, qUnion([qEdgeTopologyFilter(picked, EdgeTopology.ONE_SIDED), sharedWithOthers])));
     if (isQueryEmpty(context, boundary))
     {
-        return false;
+        return { "reach" : false, "nearest" : nearestToEdge };
     }
     for (var curve in evaluateQuery(context, curves))
     {
@@ -1371,20 +1436,22 @@ function curvesReachFaceEdge(context is Context, curves is Query, baseFaces is Q
                 }
                 else
                 {
-                    return true;      // no face under the curve: it leaves the picked faces
+                    return { "reach" : true, "nearest" : 0 * meter };      // no face under the curve: it leaves the picked faces
                 }
             }
             else
             {
                 under = evDistance(context, { "side0" : sample.origin, "side1" : baseFaces }).sides[1].point;
             }
-            if (evDistance(context, { "side0" : under, "side1" : boundary }).distance < 5e-5 * meter)
+            const toEdge = evDistance(context, { "side0" : under, "side1" : boundary }).distance;
+            if (toEdge < 5e-5 * meter)
             {
-                return true;
+                return { "reach" : true, "nearest" : toEdge };
             }
+            nearestToEdge = min(nearestToEdge, toEdge);
         }
     }
-    return false;
+    return { "reach" : false, "nearest" : nearestToEdge };
 }
 
 /** A surface from closed footprint curves (the kernel fill, no continuity), to classify the region under them by rays. */

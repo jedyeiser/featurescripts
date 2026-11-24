@@ -558,6 +558,52 @@ for n, (tag, base_kind, ref_z, flip, plate_on_face, projected, title) in enumera
     if flip:
         params.append(b("flipOffset", True))
     patch("%s Patch+ %s" % (tag, title), params)
+# Patch+ with footprint CURVES whose long sides lie ON the edges of the picked face (2026-11-23, K2 report: "the footprint does not enclose a
+# region"): a 480 x 57 strip, the footprint a 450 x 57 rectangle. The curves are made into a surface and handled as faces (straight move).
+for n, (tag, kind, with_plate, title) in enumerate([
+        ("RE1", "sheet", False, "curves lying on both long edges of a 480 x 57 sheet strip, direction +z, offset 5"),
+        ("RE2", "sheet", True, "same with a replacement plate ON the strip (an offset of itself), offset 5"),
+        ("RE3", "solid", False, "same on the top face of a 480 x 57 x 20 block, boss 5")]):
+    x0 = 41000 + 600 * n
+    fp = sketch("%s footprint rectangle 450 x 57 at x %d z 100 (sketch)" % (tag, x0), plane_at("PP footprint plane z 100", "Top", 100),
+                polyline("r", [(x0 - 225, -28.5), (x0 + 225, -28.5), (x0 + 225, 28.5), (x0 - 225, 28.5)], closed=True))
+    if kind == "sheet":
+        bx = sheet("%s strip z 50, x %d..%d, 57 wide" % (tag, x0 - 240, x0 + 240), [(x0 - 240, 50), (x0 + 240, 50)], 57)
+        base_q = body(bx)
+    else:
+        bx = cube("%s block at x %d" % (tag, x0), x0, 0, 30, 50, half=240, hy=28.5)
+        base_q = face_at(bx, x0, 0, 50)
+    params = [q("baseFaces", base_q), q("footprint", edges(fp)), num("offset", "5 mm"),
+              en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]), q("projectionDirection", TOP)]
+    if with_plate:
+        params.append(q("replacement", body(sheet("%s plate z 50, x %d..%d, 57 wide" % (tag, x0 - 240, x0 + 240), [(x0 - 240, 50), (x0 + 240, 50)], 57))))
+    patch("%s Patch+ %s" % (tag, title), params)
+# Patch+ brittle bits (2026-11-23): PQ1 a footprint 0.1 mm inside the long edges of a strip (a warning, a 0.1 mm sliver left; the result must still build);
+# PQ2 the top AND the bottom face picked, the footprint above the top: only the top is under it (the bottom lies on the same line, behind the top);
+# PQ3 a U-shaped footprint whose centroid falls in the notch; PQ4 a projection direction in the plane of the faces -> ERROR.
+x0 = 43000
+fp = sketch("PQ1 footprint rectangle 450 x 56.8 at x %d z 100 (sketch)" % x0, plane_at("PP footprint plane z 100", "Top", 100),
+            polyline("r", [(x0 - 225, -28.4), (x0 + 225, -28.4), (x0 + 225, 28.4), (x0 - 225, 28.4)], closed=True))
+strip = sheet("PQ1 strip z 50, x %d..%d, 57 wide" % (x0 - 240, x0 + 240), [(x0 - 240, 50), (x0 + 240, 50)], 57)
+patch("PQ1 Patch+ footprint 0.1 mm inside the long edges of a 57 wide strip, offset 5 (builds, with a warning)", [q("baseFaces", body(strip)), q("footprint", edges(fp)), num("offset", "5 mm")])
+
+x0 = 43600
+cube2 = cube("PQ2 cube at x %d" % x0, x0, 0)
+patch("PQ2 Patch+ top and bottom faces picked, footprint faces above the top, boss 10: only the top", [
+    q("baseFaces", face_at(cube2, x0, 0, 50), face_at(cube2, x0, 0, -50)),
+    q("footprintFaces", body(sheet("PQ2 footprint sheet 40 x 40 at z 100", [(x0 - 20, 100), (x0 + 20, 100)], 40))), num("offset", "10 mm")])
+
+x0 = 44200
+u_shape = [(-30, -30), (30, -30), (30, 30), (10, 30), (10, -10), (-10, -10), (-10, 30), (-30, 30)]
+fp = sketch("PQ3 footprint U at x %d z 100 (sketch)" % x0, plane_at("PP footprint plane z 100", "Top", 100), polyline("r", [(x0 + px, py) for px, py in u_shape], closed=True))
+cube3 = cube("PQ3 cube at x %d" % x0, x0, 0)
+patch("PQ3 Patch+ U-shaped footprint (centroid in the notch), boss 10", [q("baseFaces", face_at(cube3, x0, 0, 50)), q("footprint", edges(fp)), num("offset", "10 mm")])
+
+x0 = 44800
+fp = sketch("PQ4 footprint circle r 20 at x %d z 100 (sketch)" % x0, plane_at("PP footprint plane z 100", "Top", 100), [circle("c", *mmv(x0, 0, 20))])
+cube4 = cube("PQ4 cube at x %d" % x0, x0, 0)
+patch("PQ4 Patch+ projection direction in the plane of the faces -> ERROR", [q("baseFaces", face_at(cube4, x0, 0, 50)), q("footprint", edges(fp)), num("offset", "10 mm"),
+      en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]), q("projectionDirection", FRONT)])
 # Patch+ offset direction (2026-11-23): positive = along the face normal (outward on a solid); Flip reverses it. These sheets have
 # their normal pointing DOWN, so without Flip a positive offset goes down.
 RF_CASES = [

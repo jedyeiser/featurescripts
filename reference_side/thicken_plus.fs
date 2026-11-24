@@ -114,7 +114,7 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
             annotation { "Name" : "Output name", "Description" : "Optional. Names the new bodies; leave empty for the default names." }
             definition.outputName is string;
 
-            annotation { "Name" : "Delete caps", "Default" : ThickenPlusDeleteCaps.NONE,
+            annotation { "Name" : "Delete caps", "UIHint" : [UIHint.SHOW_LABEL], "Default" : ThickenPlusDeleteCaps.NONE,
                         "Description" : "Delete the cap face(s) after the thicken. The result is an open sheet: with both caps gone, the periphery (side faces) of the input, usable for trimming." }
             definition.deleteCaps is ThickenPlusDeleteCaps;
         }
@@ -137,10 +137,10 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
                 isAngle(definition.draftAngleAway, THICKEN_DRAFT_BOUNDS);
             }
 
-            annotation { "Name" : "Neutral surface", "Description" : "The outline that stays where it is; the walls tilt about it." }
+            annotation { "Name" : "Neutral surface", "UIHint" : [UIHint.SHOW_LABEL], "Description" : "The outline that stays where it is; the walls tilt about it." }
             definition.draftNeutral is ThickenPlusDraftNeutral;
 
-            annotation { "Name" : "Edges to draft" }
+            annotation { "Name" : "Edges to draft", "UIHint" : [UIHint.SHOW_LABEL] }
             definition.draftEdgeMode is ThickenPlusDraftEdges;
 
             if (definition.draftEdgeMode != ThickenPlusDraftEdges.ALL)
