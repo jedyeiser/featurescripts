@@ -1009,7 +1009,18 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             var baseSurface = owner;
             if (isSolid)
             {
-                opExtractSurface(context, id + "baseSurface", { "faces" : baseFaces, "tangentPropagation" : false });
+                // Only the picked faces the walls can reach: picked faces far from the region (the other side of the part) make a sheet of
+                // disconnected pieces, and cutting the walls by that does nothing. One picked face is used as it is.
+                var reachable = [];
+                const pickedList = evaluateQuery(context, baseFaces);
+                for (var pickedFace in pickedList)
+                {
+                    if (size(pickedList) == 1 || evDistance(context, { "side0" : pickedFace, "side1" : region }).distance < 2 * wallReach)
+                    {
+                        reachable = append(reachable, pickedFace);
+                    }
+                }
+                opExtractSurface(context, id + "baseSurface", { "faces" : qUnion(reachable), "tangentPropagation" : false });
                 baseSurface = qCreatedBy(id + "baseSurface", EntityType.BODY);
             }
 
