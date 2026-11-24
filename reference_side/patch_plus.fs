@@ -178,27 +178,6 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         const volumeBefore = isSolid ? evVolume(context, { "entities" : owner }) : 0 * meter ^ 3;
         // only the picked type counts: the other inputs are hidden and may hold stale picks
         const footprintType = definition.footprintType;
-        const footprintFaces = footprintType != PatchPlusFootprint.FACES ? qNothing() : qUnion([qEntityFilter(definition.footprintFaces, EntityType.FACE),
-                    qOwnedByBody(qEntityFilter(definition.footprintFaces, EntityType.BODY), EntityType.FACE)]);
-        const hasFootprintFaces = !isQueryEmpty(context, footprintFaces);
-        // the faces input classifies every picked face: refuse an oversized pick before any kernel op
-        if (hasFootprintFaces && size(evaluateQuery(context, baseFaces)) > PATCH_FLOOD_LIMIT)
-        {
-            throw regenError("Too many faces picked for a footprint made of faces (more than " ~ PATCH_FLOOD_LIMIT ~ "): pick only the faces around the footprint.", ["baseFaces"]);
-        }
-        const footprintCurves = footprintType != PatchPlusFootprint.CURVES ? qNothing() : qUnion([qEntityFilter(definition.footprint, EntityType.EDGE),
-                    qOwnedByBody(qEntityFilter(definition.footprint, EntityType.BODY), EntityType.EDGE)]);
-        const footprintTool = footprintType != PatchPlusFootprint.TOOL ? qNothing() : qUnion([qEntityFilter(definition.footprintTool, EntityType.FACE),
-                    qOwnedByBody(qEntityFilter(definition.footprintTool, EntityType.BODY), EntityType.FACE)]);
-        const hasFootprintTool = !isQueryEmpty(context, footprintTool);
-        // Faces: their outline (the edges with exactly one picked face: every loop, holes and islands included) is projected.
-        const footEdges = hasFootprintFaces ? outlineOfFaces(context, footprintFaces) : footprintCurves;
-        if (isQueryEmpty(context, footEdges) && !hasFootprintTool)
-        {
-            throw regenError(footprintType == PatchPlusFootprint.CURVES ? "Pick the footprint curves."
-                    : (footprintType == PatchPlusFootprint.FACES ? "Pick the footprint faces (a closed shell has no outline)." : "Pick the footprint tool."),
-                    [footprintType == PatchPlusFootprint.CURVES ? "footprint" : (footprintType == PatchPlusFootprint.FACES ? "footprintFaces" : "footprintTool")]);
-        }
         var projectionDirection = undefined;
         if (projectionMode == PatchPlusProjection.DIRECTION)
         {
@@ -209,7 +188,35 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             // only the line matters, not its sign: the footprint projects both ways and the walls take the sign toward the new surface
             projectionDirection = normalize(extractDirection(context, definition.projectionDirection));
         }
-        const theta = definition.draft / radian;       // a number, radians
+        const footprintCurves = footprintType != PatchPlusFootprint.CURVES ? qNothing() : qUnion([qEntityFilter(definition.footprint, EntityType.EDGE),
+                    qOwnedByBody(qEntityFilter(definition.footprint, EntityType.BODY), EntityType.EDGE)]);
+        const footprintTool = footprintType != PatchPlusFootprint.TOOL ? qNothing() : qUnion([qEntityFilter(definition.footprintTool, EntityType.FACE),
+                    qOwnedByBody(qEntityFilter(definition.footprintTool, EntityType.BODY), EntityType.FACE)]);
+        const hasFootprintTool = !isQueryEmpty(context, footprintTool);
+        var footprintFacesPicked = footprintType != PatchPlusFootprint.FACES ? qNothing() : qUnion([qEntityFilter(definition.footprintFaces, EntityType.FACE),
+                    qOwnedByBody(qEntityFilter(definition.footprintFaces, EntityType.BODY), EntityType.FACE)]);
+        // Curves that reach the edge of the picked faces (or run off them) cannot be told apart from their imprint: along an existing
+        // face edge nothing is imprinted, so the outline has open ends and no side closes up. They are made into a surface (the
+        // kernel fill of the closed loop) and handled as a footprint of faces, which classifies the region by rays.
+        if (!isQueryEmpty(context, footprintCurves) && curvesReachFaceEdge(context, footprintCurves, baseFaces, owner, projectionDirection))
+        {
+            footprintFacesPicked = fillFootprint(context, id + "footprintFill", footprintCurves);
+        }
+        const footprintFaces = footprintFacesPicked;
+        const hasFootprintFaces = !isQueryEmpty(context, footprintFaces);
+        // the faces input classifies every picked face: refuse an oversized pick before any kernel op
+        if (hasFootprintFaces && size(evaluateQuery(context, baseFaces)) > PATCH_FLOOD_LIMIT)
+        {
+            throw regenError("Too many faces picked for a footprint made of faces (more than " ~ PATCH_FLOOD_LIMIT ~ "): pick only the faces around the footprint.", ["baseFaces"]);
+        }
+        // Faces: their outline (the edges with exactly one picked face: every loop, holes and islands included) is projected.
+        const footEdges = hasFootprintFaces ? outlineOfFaces(context, footprintFaces) : footprintCurves;
+        if (isQueryEmpty(context, footEdges) && !hasFootprintTool)
+        {
+            throw regenError(footprintType == PatchPlusFootprint.CURVES ? "Pick the footprint curves."
+                    : (footprintType == PatchPlusFootprint.FACES ? "Pick the footprint faces (a closed shell has no outline)." : "Pick the footprint tool."),
+                    [footprintType == PatchPlusFootprint.CURVES ? "footprint" : (footprintType == PatchPlusFootprint.FACES ? "footprintFaces" : "footprintTool")]);
+        }        const theta = definition.draft / radian;       // a number, radians
         const reach = 3 * abs(offset) + 5 * millimeter;
 
         const tracked = function(q is Query) returns Query
@@ -437,7 +444,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 const insideSide = floods[0].state == "closed" ? 0 : (floods[1].state == "closed" ? 1 : -1);
                 if (insideSide < 0)
                 {
-                    stage = ""; throw regenError("The footprint does not enclose a region inside the faces: its outline must close up and stay inside the surface (a footprint reaching the edge of the picked faces needs Footprint faces; or the surface is too large to follow). Check the projection direction.", ["footprint"]);
+                    stage = ""; throw regenError("The footprint does not enclose a region inside the faces: its outline must close up and stay inside the surface (or the surface is too large to follow). Check the projection direction.", ["footprint"]);
                 }
                 regionFaces = floods[insideSide].faces;
             }
@@ -578,9 +585,9 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     addDebugPoint(context, mark, DebugColor.CYAN);
                 }
                 stage = "";
-                if (hasReplacement)
+                if (hasReplacement && !coincident)
                 {
-                    throw regenError("A footprint that runs off the edge of the picked faces (marked) cannot be combined with a replacement surface yet: keep the footprint inside the faces, or remove the replacement.", ["footprintFaces"]);
+                    throw regenError("A footprint that reaches or runs off the edge of the picked faces (marked) cannot be combined with a replacement surface that is not on the faces yet: keep the footprint inside the faces, or use a replacement that lies on them (an offset of the faces themselves).", ["footprintFaces"]);
                 }
                 if (abs(theta) > 1e-9)
                 {
@@ -1329,4 +1336,68 @@ function publishPatchOutputs(context is Context, id is Id, result is Query, newF
                     "wallFaces" : extractableQuery(qIntersection([wallFaces, resultFaces]), "The walls that join the new surface to the base.", DebugColor.BLUE)
                 }
             }));
+}
+
+/**
+ * True when footprint curves touch or leave the picked faces: at five points along each curve, the point of the faces under it
+ * (along the projection direction, or the nearest) lies on the faces' own boundary, or there is no face under it. The boundary is
+ * the free edges plus the edges shared with faces that are not picked.
+ */
+function curvesReachFaceEdge(context is Context, curves is Query, baseFaces is Query, owner is Query, direction) returns boolean
+{
+    const picked = qAdjacent(baseFaces, AdjacencyType.EDGE, EntityType.EDGE);
+    const sharedWithOthers = qIntersection([picked, qAdjacent(qSubtraction(qOwnedByBody(owner, EntityType.FACE), baseFaces), AdjacencyType.EDGE, EntityType.EDGE)]);
+    const boundary = qUnion(evaluateQuery(context, qUnion([qEdgeTopologyFilter(picked, EdgeTopology.ONE_SIDED), sharedWithOthers])));
+    if (isQueryEmpty(context, boundary))
+    {
+        return false;
+    }
+    for (var curve in evaluateQuery(context, curves))
+    {
+        for (var sample in evEdgeTangentLines(context, { "edge" : curve, "parameters" : [0.1, 0.3, 0.5, 0.7, 0.9] }))
+        {
+            var under = undefined;
+            if (direction != undefined)
+            {
+                const ahead = evRaycast(context, { "entities" : baseFaces, "ray" : line(sample.origin, direction) });
+                const behind = evRaycast(context, { "entities" : baseFaces, "ray" : line(sample.origin, -direction) });
+                if (size(ahead) > 0 && (size(behind) == 0 || ahead[0].distance <= behind[0].distance))
+                {
+                    under = ahead[0].intersection;
+                }
+                else if (size(behind) > 0)
+                {
+                    under = behind[0].intersection;
+                }
+                else
+                {
+                    return true;      // no face under the curve: it leaves the picked faces
+                }
+            }
+            else
+            {
+                under = evDistance(context, { "side0" : sample.origin, "side1" : baseFaces }).sides[1].point;
+            }
+            if (evDistance(context, { "side0" : under, "side1" : boundary }).distance < 5e-5 * meter)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/** A surface from closed footprint curves (the kernel fill, no continuity), to classify the region under them by rays. */
+function fillFootprint(context is Context, id is Id, curves is Query) returns Query
+{
+    try
+    {
+        opFillSurface(context, id, { "edgesG0" : curves, "edgesG1" : qNothing(), "edgesG2" : qNothing(), "allEdges" : curves,
+                    "guideEntities" : qNothing(), "useSampling" : false, "adjacentFaces" : [] });
+    }
+    catch (error)
+    {
+        throw regenError("The footprint curves reach the edge of the picked faces, and a surface could not be made from them to find the region (are they one closed loop?). Pick the footprint as faces instead.", ["footprint"]);
+    }
+    return qCreatedBy(id, EntityType.FACE);
 }
