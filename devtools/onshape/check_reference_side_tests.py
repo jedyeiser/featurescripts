@@ -498,7 +498,7 @@ case("RP8 ", r'''
 
 # Patch+ offset direction: toward the side reference (RF1 above the sheet, RF2 below), Flip on a solid without a reference (RF3);
 # RF4 (reference in the plane of the sheet) must fail.
-for tag, zlo, zhi in [("RF1", 50, 60), ("RF2", 40, 50)]:
+for tag, zlo, zhi in [("RF1", 50, 60), ("RF2", 40, 50), ("RD1", 50, 60), ("RD2", 40, 50)]:
     case(tag + " ", r'''
         const sheet = created(@SHEET@);
         const faces = qOwnedByBody(sheet, EntityType.FACE);
@@ -516,6 +516,9 @@ case("RF3 ", PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "10").repla
 for tag, depth, sign in [("RC1", 10, 1), ("RC2", 10, -1), ("RC3", 10, -1), ("RC4", 10, -1), ("RC5", 10, 1), ("RC6", 5, -1)]:
     src = PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", str(depth)).replace("__AREA__", "PI * 400").replace("__SIGN__", str(sign))
     case(tag + " ", src, CUBE="%s cube" % tag)
+# Patch+ direction reference: RD3 / RD5 / RD6 are pockets (the reference is below the top face); RD4 (reference in the plane) must fail.
+for tag in ["RD3", "RD5", "RD6"]:
+    case(tag + " ", PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "10").replace("__AREA__", "PI * 400").replace("__SIGN__", "-1"), CUBE="%s cube" % tag)
 # Pick stability: how many faces each internal operation of a Patch+ POCKET creates. A face a user picks on the result is keyed to
 # the operation that created it: renaming an op id or reordering a union changes these counts and breaks such picks silently.
 PS_OPS = ["copy", "imprint", "offset", "tubeCopy", "baseSurface", "shell", "enclose", "apply"]
@@ -825,7 +828,7 @@ for tag, vol, x_range, keys in (
         return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (%d), x " ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0]) ~ ", z "
             ~ fmt(bb.minCorner[2]) ~ ".." ~ fmt(bb.maxCorner[2]) ~ "; " ~ keys];""" % (key_src, vol, xr, vol))
 
-EXPECTED_ERRORS = ["RC7 Patch+", "JT5 Join", "JT7 Join", "IM2 Patch+", "T4 Thicken+", "DR10 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
+EXPECTED_ERRORS = ["RD4 Patch+", "RC7 Patch+", "JT5 Join", "JT7 Join", "IM2 Patch+", "T4 Thicken+", "DR10 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
 
 
 def strings(result):

@@ -124,11 +124,16 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         definition.replacement is Query;
 
         annotation { "Name" : "Offset",
-                    "Description" : "How far the new surface is from the faces. Positive goes along the face normal (outward on a solid: an emboss), negative the other way (a pocket); the arrow shows positive. With a Replacement surface, + is further from the faces." }
+                    "Description" : "How far the new surface is from the faces. Positive goes toward the Direction reference, else along the face normal (outward on a solid: an emboss); negative the other way (a pocket). The arrow shows positive. With a Replacement surface, + is further from the faces." }
         isLength(definition.offset, ZERO_DEFAULT_LENGTH_BOUNDS);
 
+        annotation { "Name" : "Direction reference", "Filter" : EntityType.BODY || EntityType.FACE || EntityType.EDGE || EntityType.VERTEX || BodyType.MATE_CONNECTOR,
+                    "MaxNumberOfPicks" : 1,
+                    "Description" : "Optional. A positive offset goes toward this (a mate connector or vertex clearly to one side of the faces), which keeps the direction right when the surface orientation changes. Flip then goes away from it. Empty: along the face normal." }
+        definition.directionReference is Query;
+
         annotation { "Name" : "Flip offset direction", "UIHint" : UIHint.OPPOSITE_DIRECTION,
-                    "Description" : "Reverse the direction of a positive offset: emboss <-> pocket; with a Replacement surface, a positive offset moves it closer to the faces." }
+                    "Description" : "Reverse the direction of a positive offset: emboss <-> pocket (away from the Direction reference when there is one). With a Replacement surface, a positive offset moves it closer to the faces." }
         definition.flipOffset is boolean;
 
         annotation { "Name" : "Walls" }
@@ -461,11 +466,32 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             const dIn = evDistance(context, { "side0" : centroid, "side1" : region });
             const pIn = dIn.sides[1].point;
             const regionNormal = evFaceTangentPlane(context, { "face" : regionList[dIn.sides[1].index], "parameter" : dIn.sides[1].parameter }).normal;
-            // Which side of the faces the new surface is on (side = +1: along the face normal). A POSITIVE offset goes along the face
-            // normal (outward on a solid: an emboss; a negative offset is a pocket); Flip reverses that. With a replacement surface
-            // the side is found by rays below (a ray from the region along the normal or the projection direction); Flip then reverses
-            // the offset applied to the replacement (replacementOffset).
-            const positiveSide = definition.flipOffset ? -1 : 1;
+            // Which side of the faces the new surface is on (side = +1: along the face normal). A POSITIVE offset goes toward the
+            // Direction reference when there is one (an error if it lies in the plane of the faces: it then says nothing about the
+            // side), otherwise along the face normal (outward on a solid: an emboss; a negative offset is a pocket); Flip reverses it.
+            // With a replacement surface the side is found by rays below (a ray from the region along the normal or the projection
+            // direction); Flip then reverses the offset applied to the replacement (replacementOffset).
+            const hasReference = !isQueryEmpty(context, definition.directionReference);
+            var referenceSign = 1;          // +1 / -1: the reference is on the normal side / the other side; 0: in the plane of the faces
+            var referencePoint = undefined;
+            if (hasReference)
+            {
+                const referenceMate = qBodyType(definition.directionReference, BodyType.MATE_CONNECTOR);
+                referencePoint = !isQueryEmpty(context, referenceMate) ? evMateConnector(context, { "mateConnector" : referenceMate }).origin
+                    : evDistance(context, { "side0" : pIn, "side1" : definition.directionReference }).sides[1].point;
+                const along = dot(referencePoint - pIn, regionNormal);
+                referenceSign = abs(along) < 1e-5 * meter ? 0 : (along > 0 ? 1 : -1);
+            }
+            const referenceUnusable = hasReference && referenceSign == 0 && (!hasReplacement);
+            if (referenceUnusable)
+            {
+                addDebugPoint(context, referencePoint, DebugColor.RED);
+                stage = ""; throw regenError("The direction reference lies in the plane of the faces at the region (marked), so it does not say which side is positive: pick something clearly to one side of the faces.", ["directionReference"]);
+            }
+            // +1: the reference is on the normal side (or there is none); Flip then reverses the lot
+            const baseSign = (hasReference && referenceSign != 0) ? referenceSign : 1;
+            const positiveSide = baseSign * (definition.flipOffset ? -1 : 1);
+            var coincident = false;
             var side = (offset > 0 * meter ? 1 : -1) * positiveSide;
             var replacementHit = undefined;
             var hitDirection = regionNormal;
@@ -495,8 +521,14 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                     // face normal (Flip reverses it), negative the other way.
                     if (abs(offset) < 1e-9 * meter)
                     {
-                        stage = ""; throw regenError("The replacement surface lies on the faces and the offset is 0: nothing changes. Set an offset (positive: along the face normal, Flip reverses it).", ["offset"]);
+                        stage = ""; throw regenError("The replacement surface lies on the faces and the offset is 0: nothing changes. Set an offset (positive: toward the Direction reference or along the face normal, Flip reverses it).", ["offset"]);
                     }
+                    if (hasReference && referenceSign == 0)
+                    {
+                        addDebugPoint(context, referencePoint, DebugColor.RED);
+                        stage = ""; throw regenError("The direction reference lies in the plane of the faces at the region (marked), so it does not say which side is positive: pick something clearly to one side of the faces.", ["directionReference"]);
+                    }
+                    coincident = true;
                     hitDirection = dot(castDirection, regionNormal) >= 0 ? castDirection : -castDirection;
                     hitSide = 1;
                     replacementOffset = offset * positiveSide;
@@ -512,16 +544,18 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             // ---- the arrow: the direction of a POSITIVE offset, in every mode; clicking it flips the offset ----
             // Unflipped, it is the face normal (the projection direction on its side when the faces move along it), or from the
             // faces toward the replacement surface (positive = further from the faces).
-            var unflippedDirection = regionNormal;
+            var unflippedDirection = regionNormal * baseSign;
             if (hasReplacement)
             {
-                unflippedDirection = hitDirection;
+                unflippedDirection = coincident ? hitDirection * baseSign : hitDirection;
             }
             else if (definition.walls == PatchPlusWalls.PROJECTION)
             {
-                unflippedDirection = dot(projectionDirection, regionNormal) >= 0 ? projectionDirection : -projectionDirection;
+                unflippedDirection = dot(projectionDirection, unflippedDirection) >= 0 ? projectionDirection : -projectionDirection;
             }
-            addManipulators(context, id, { "offsetFlip" : flipManipulator({ "base" : pIn, "direction" : unflippedDirection, "flipped" : definition.flipOffset }) });            // walls along the projection direction: the faces are MOVED by the offset along that direction (exact, and
+            addManipulators(context, id, { "offsetFlip" : flipManipulator({ "base" : pIn, "direction" : unflippedDirection, "flipped" : definition.flipOffset }) });
+
+            // walls along the projection direction: the faces are MOVED by the offset along that direction (exact, and
             // free of the kernel offset that fails on patchworks of small freeform faces); otherwise they are offset along the normal
             const moveAlongDirection = definition.walls == PatchPlusWalls.PROJECTION;
             const uIn = moveAlongDirection ? (dot(projectionDirection, toward) >= 0 ? projectionDirection : -projectionDirection) : toward;
@@ -1214,13 +1248,14 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
         "footprintFaces" : qNothing(),
         "footprintTool" : qNothing(),
         "footprint" : qNothing(),
+        "directionReference" : qNothing(),
         "flipOffset" : false,
         "walls" : PatchPlusWalls.NORMAL,
         "draft" : 0 * degree,
         "projectionDirection" : qNothing()
     });
 
-/** The flip arrow of a positive offset (shown without a replacement surface). */
+/** The flip arrow of a positive offset. */
 export function patchPlusManipulatorChange(context is Context, definition is map, newManipulators is map) returns map
 {
     if (newManipulators["offsetFlip"] is map)

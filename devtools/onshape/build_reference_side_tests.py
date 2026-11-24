@@ -529,6 +529,35 @@ for n, (tag, z, off, extra, title) in enumerate(RC_CASES):
     bx = cube("%s cube at x %d" % (tag, x0), x0, 0)
     plate = sheet("%s plate z %g, x %d..%d" % (tag, z, x0 - 50, x0 + 50), [(x0 - 50, z), (x0 + 50, z)])
     patch("%s Patch+ %s" % (tag, title), [q("baseFaces", face_at(bx, x0, 0, 50)), q("footprint", edges(fp)), q("replacement", body(plate)), num("offset", off)] + extra)
+# Patch+ DIRECTION REFERENCE (2026-11-23): a positive offset goes toward it, Flip goes away. These sheets have their normal pointing DOWN.
+RD_CASES = [
+    # tag, base, reference z, flip, replacement-on-faces, projection walls, title
+    ("RD1", "sheet", 100, False, False, False, "reference above the sheet: + offset goes up (z 50..60)"),
+    ("RD2", "sheet", 100, True, False, False, "reference above the sheet with Flip: goes away, down (z 40..50)"),
+    ("RD3", "solid", 0, False, False, False, "reference inside the solid (below the top face): + offset goes toward it, a pocket 10"),
+    ("RD4", "sheet", 50, False, False, False, "reference IN the plane of the sheet -> ERROR"),
+    ("RD5", "solid", 0, False, True, False, "plate ON the top face, reference below: + offset goes toward it, a pocket 10"),
+    ("RD6", "solid", 0, False, False, True, "walls along +z, reference below: + offset goes toward it, a pocket 10"),
+]
+for n, (tag, base_kind, ref_z, flip, plate_on_face, projected, title) in enumerate(RD_CASES):
+    x0 = 37600 + 400 * n
+    fp = sketch("%s footprint circle r 20 at x %d z 100 (sketch)" % (tag, x0), plane_at("PP footprint plane z 100", "Top", 100), [circle("c", *mmv(x0, 0, 20))])
+    if base_kind == "solid":
+        bx = cube("%s cube at x %d" % (tag, x0), x0, 0)
+        base_q = face_at(bx, x0, 0, 50)
+    else:
+        bx = sheet("%s sheet z 50, x %d..%d" % (tag, x0 - 50, x0 + 50), [(x0 - 50, 50), (x0 + 50, 50)])
+        base_q = body(bx)
+    params = pp_params(base_q, edges(fp), [])
+    params.append(q("directionReference", ref_front("%s direction reference (%d, 0, %d)" % (tag, x0, ref_z), x0, ref_z)))
+    if plate_on_face:
+        params.append(q("replacement", body(sheet("%s plate z 50, x %d..%d" % (tag, x0 - 50, x0 + 50), [(x0 - 50, 50), (x0 + 50, 50)]))))
+    if projected:
+        params += [en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]), q("projectionDirection", TOP),
+                   en("walls", "PatchPlusWalls", "PROJECTION", NS["patch_plus"])]
+    if flip:
+        params.append(b("flipOffset", True))
+    patch("%s Patch+ %s" % (tag, title), params)
 # Patch+ offset direction (2026-11-23): positive = along the face normal (outward on a solid); Flip reverses it. These sheets have
 # their normal pointing DOWN, so without Flip a positive offset goes down.
 RF_CASES = [
