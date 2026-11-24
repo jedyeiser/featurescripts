@@ -1,0 +1,180 @@
+- generic [ref=f7e5]:
+  - navigation [ref=f7e6]:
+    - generic [ref=f7e7]:
+      - link [ref=f7e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f7e11]
+      - generic [ref=f7e13] [cursor=pointer]
+    - generic [ref=f7e16]:
+      - generic [ref=f7e18]:
+        - generic [ref=f7e19]: RD 24PIR 28 (K034_SZ04) MK221-5 177
+        - generic [ref=f7e20]: Main
+      - generic [ref=f7e22] [cursor=pointer]
+      - link "PIR (K034_SZ04) - Pain is Real" [ref=f7e26] [cursor=pointer]:
+        - /url: /documents?nodeId=a3af1a66a567373e422231a6&resourceType=folder
+    - generic [ref=f7e30]:
+      - generic [ref=f7e38] [cursor=pointer]
+      - button "Notifications" [ref=f7e43] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f7e51]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f7e54] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f7e59] [cursor=pointer]
+      - button "Share" [ref=f7e63] [cursor=pointer]
+      - generic "Help menu" [ref=f7e65] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f7e69] [cursor=pointer]
+  - generic [ref=f7e79]:
+    - generic [ref=f7e81]:
+      - generic [ref=f7e82]:
+        - generic [ref=f7e83]:
+          - generic [ref=f7e84] [cursor=pointer]
+          - generic [ref=f7e87] [cursor=pointer]
+          - generic [ref=f7e90] [cursor=pointer]
+          - generic [ref=f7e93] [cursor=pointer]
+          - generic [ref=f7e96] [cursor=pointer]
+          - generic [ref=f7e99] [cursor=pointer]
+          - generic [ref=f7e102] [cursor=pointer]
+          - generic [ref=f7e105] [cursor=pointer]
+        - generic [ref=f7e109] [cursor=pointer]
+      - generic [ref=f7e113] [cursor=pointer]
+    - generic [ref=f7e120]:
+      - generic [ref=f7e127]:
+        - generic [ref=f7e139]:
+          - generic [ref=f7e140]: Sketch
+          - generic [ref=f7e152]:
+            - generic [ref=f7e153] [cursor=pointer]
+            - generic [ref=f7e157] [cursor=pointer]
+            - generic [ref=f7e161] [cursor=pointer]
+            - generic [ref=f7e165] [cursor=pointer]
+            - generic [ref=f7e170]:
+              - generic [ref=f7e171] [cursor=pointer]
+              - generic [ref=f7e175] [cursor=pointer]
+          - generic [ref=f7e181]:
+            - generic [ref=f7e183]:
+              - generic [ref=f7e184] [cursor=pointer]
+              - generic [ref=f7e188] [cursor=pointer]
+            - generic [ref=f7e191] [cursor=pointer]
+            - generic [ref=f7e196]:
+              - generic [ref=f7e197] [cursor=pointer]
+              - generic [ref=f7e201] [cursor=pointer]
+            - generic [ref=f7e204] [cursor=pointer]
+            - generic [ref=f7e208] [cursor=pointer]
+            - generic [ref=f7e212] [cursor=pointer]
+            - generic [ref=f7e216] [cursor=pointer]
+          - generic [ref=f7e223]:
+            - generic [ref=f7e225]:
+              - generic [ref=f7e226] [cursor=pointer]
+              - generic [ref=f7e230] [cursor=pointer]
+            - generic [ref=f7e233] [cursor=pointer]
+          - generic [ref=f7e240]:
+            - generic [ref=f7e241] [cursor=pointer]
+            - generic [ref=f7e245] [cursor=pointer]
+            - generic [ref=f7e250]:
+              - generic [ref=f7e251] [cursor=pointer]
+              - generic [ref=f7e255] [cursor=pointer]
+            - generic [ref=f7e258] [cursor=pointer]
+          - generic [ref=f7e265]:
+            - generic [ref=f7e266] [cursor=pointer]
+            - generic [ref=f7e270] [cursor=pointer]
+            - generic [ref=f7e274] [cursor=pointer]
+            - generic [ref=f7e278] [cursor=pointer]
+          - generic [ref=f7e286]:
+            - generic [ref=f7e287] [cursor=pointer]
+            - generic [ref=f7e291] [cursor=pointer]
+          - generic [ref=f7e298]:
+            - generic [ref=f7e299] [cursor=pointer]: SA
+            - generic [ref=f7e302] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f7e306] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f7e307]:
+            - generic [ref=f7e308]: alt/⌥
+            - generic [ref=f7e309]: c
+      - generic [ref=f7e313]:
+        - generic [ref=f7e316]:
+          - generic [ref=f7e318]:
+            - generic [ref=f7e319]:
+              - generic [ref=f7e321]:
+                - button [ref=f7e323] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f7e328]
+              - generic [ref=f7e329]:
+                - button [ref=f7e330] [cursor=pointer]
+                - generic [ref=f7e333]: Features (14)
+                - button [ref=f7e334] [cursor=pointer]
+                - button [ref=f7e337] [cursor=pointer]
+                - button [ref=f7e340] [cursor=pointer]
+            - generic [ref=f7e344]:
+              - generic [ref=f7e345]:
+                - generic [ref=f7e347]:
+                  - generic [ref=f7e348] [cursor=pointer]
+                  - generic [ref=f7e351]: Default geometry
+                - generic [ref=f7e353]: Origin
+                - generic [ref=f7e363]: Top
+                - generic [ref=f7e373]: Front
+                - generic [ref=f7e383]: Right
+                - generic [ref=f7e394]:
+                  - generic [ref=f7e396] [cursor=pointer]
+                  - generic [ref=f7e399]: Parts_Derive
+                - generic [ref=f7e404]: Mirror 1
+                - generic [ref=f7e412]: Split 1
+                - generic [ref=f7e421]:
+                  - generic [ref=f7e423] [cursor=pointer]
+                  - generic [ref=f7e426]: Derive_Targ_EI
+                - generic [ref=f7e431]: "#Baseline"
+                - generic [ref=f7e439]: "#EI_Bodies"
+                - generic [ref=f7e447]: Intersection curve 1
+                - generic [ref=f7e455]: EI_Path
+                - generic [ref=f7e467]: EI and Cross Section 1
+                - generic [ref=f7e479]: Simple Body Rename 1
+              - list
+          - generic [ref=f7e499]:
+            - generic [ref=f7e501]:
+              - generic [ref=f7e503] [cursor=pointer]
+              - generic [ref=f7e506]: Parts (22)
+            - generic [ref=f7e510]: RD K034_SZ04 177 STK L
+            - generic [ref=f7e522]: RD K034_SZ04 177 STK R
+            - generic [ref=f7e534]: BM_3D
+            - generic [ref=f7e546]: Part 28
+            - generic [ref=f7e558]: Part 29
+            - generic [ref=f7e570]: Part 30
+            - generic [ref=f7e582]: Part 30
+            - generic [ref=f7e594]: Part 31
+            - generic [ref=f7e606]: Part 33
+            - generic [ref=f7e618]: Part 33
+            - generic [ref=f7e630]: RD K034_SZ04 177 BLG_3D
+            - generic [ref=f7e642]: RD K034_SZ04 177 UG_3D
+            - generic [ref=f7e654]: RD K034_SZ04 177 Spitze-Mat_3D
+            - generic [ref=f7e666]: RD K034_SZ04 177 Ende-Mat_3D
+            - generic [ref=f7e678]: RD K034_SZ04 177 OFL_3D
+            - generic [ref=f7e690]: RD K034_SZ04 177 OG_3D
+            - generic [ref=f7e702]: RD K034_SZ04 177 SW_L
+            - generic [ref=f7e714]: RD K034_SZ04 177 SW_R
+            - generic [ref=f7e726]: RD K034_SZ04 177_SP_Einlager_3D
+            - generic [ref=f7e738]: RD K034_SZ04 177_ED_Einlager_3D
+            - generic [ref=f7e750]: RD K034_SZ04 177 Spitzegummi_3D
+        - generic [ref=f7e763]:
+          - generic [ref=f7e765] [cursor=pointer]
+          - generic [ref=f7e769]:
+            - generic [ref=f7e771]:
+              - button [ref=f7e772] [cursor=pointer]
+              - button [ref=f7e776] [cursor=pointer]
+              - button [ref=f7e780] [cursor=pointer]
+            - generic [ref=f7e784] [cursor=pointer]
+          - generic [ref=f7e789]:
+            - generic [ref=f7e790] [cursor=pointer]
+            - generic [ref=f7e794] [cursor=pointer]
+            - generic [ref=f7e798] [cursor=pointer]
+            - generic [ref=f7e802] [cursor=pointer]
+            - generic [ref=f7e806] [cursor=pointer]
+            - generic [ref=f7e810] [cursor=pointer]
+            - generic [ref=f7e813] [cursor=pointer]
+      - generic [ref=f7e817]:
+        - img [ref=f7e820] [cursor=pointer]
+        - generic [ref=f7e823]:
+          - generic [ref=f7e824] [cursor=pointer]: Setup
+          - generic [ref=f7e830] [cursor=pointer]: Design Master
+          - generic [ref=f7e836] [cursor=pointer]: RD K034 177 VOLUME PRIMITIVE Drawing 1
+          - generic [ref=f7e842] [cursor=pointer]: Parts
+          - generic [ref=f7e848] [cursor=pointer]: Part Drawings
+          - generic [ref=f7e854]: 3D_Ski
+          - generic [ref=f7e865] [cursor=pointer]: Tooling
+          - generic [ref=f7e871] [cursor=pointer]: BeamSimulator
+          - generic [ref=f7e876] [cursor=pointer]: RD K034 177 Aufbau
+          - generic [ref=f7e882] [cursor=pointer]: RD K034 177 Aufbau

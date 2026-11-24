@@ -445,7 +445,9 @@ function intersectStations(context is Context, id is Id, body is Query, bodyIdx 
             var tool = qCreatedBy(id + ("plane" ~ s), EntityType.FACE);
             if (k > 0)
             {
-                const nudgeId = id + ("planeN" ~ s ~ "_" ~ k);
+                // bodyIdx in the id: this runs once per body, so a plane shared by two bodies would otherwise
+                // be created twice ("Duplicate id in context").
+                const nudgeId = id + ("planeN" ~ s ~ "_" ~ k ~ "_" ~ bodyIdx);
                 opPlane(context, nudgeId, { "plane" : plane(frame.origin + PLANE_NUDGES[k] * frame.zAxis, frame.zAxis) });
                 tool = qCreatedBy(nudgeId, EntityType.FACE);
             }
