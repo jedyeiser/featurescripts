@@ -45,6 +45,9 @@ export const identityLab = defineFeature(function(context is Context, id is Id, 
         annotation { "Name" : "Names", "Description" : "key=name pairs separated by ;  (keys: wire0, wire1, sheet0, sheet1, solid0 ...). The key is the kind and the rank by size, largest first." }
         definition.names is string;
 
+        annotation { "Name" : "Remove copied deform tags", "Default" : true, "Description" : "A copy carries the source's attributes, including its Deform tag: remove them from the copy so the tag group is not found twice." }
+        definition.purgeTags is boolean;
+
         annotation { "Name" : "Delete inputs", "Default" : false }
         definition.deleteInputs is boolean;
     }
@@ -134,6 +137,15 @@ export const identityLab = defineFeature(function(context is Context, id is Id, 
                     }
                 }
             }
+            if (definition.purgeTags && result != info.body)
+            {
+                const copied = qHasAttribute(qUnion([result, qOwnedByBody(result, EntityType.FACE), qOwnedByBody(result, EntityType.EDGE),
+                                    qOwnedByBody(result, EntityType.VERTEX)]), "deformRole");
+                if (!isQueryEmpty(context, copied))
+                {
+                    setAttribute(context, { "entities" : copied, "name" : "deformRole", "attribute" : undefined });
+                }
+            }
             if (nameFor[key] != undefined)
             {
                 setProperty(context, { "entities" : result, "propertyType" : PropertyType.NAME, "value" : definition.namePrefix ~ nameFor[key] });
@@ -148,7 +160,7 @@ export const identityLab = defineFeature(function(context is Context, id is Id, 
             opDeleteBodies(context, id + "deleteInputs", { "entities" : wanted });
         }
         reportFeatureInfo(context, id, "Keys: " ~ join(summary, ", ") ~ ".");
-    }, { "mode" : IdentityLabMode.COPY_PATTERN, "runLabel" : "", "namePrefix" : "", "names" : "", "deleteInputs" : false });
+    }, { "mode" : IdentityLabMode.COPY_PATTERN, "runLabel" : "", "namePrefix" : "", "names" : "", "purgeTags" : true, "deleteInputs" : false });
 
 /** "key=name;key=name" as a map. */
 function parseNames(text is string) returns map
