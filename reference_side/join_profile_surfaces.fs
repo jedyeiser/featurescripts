@@ -48,6 +48,22 @@ export enum JoinOutsideMode
     DIFFERENT
 }
 
+/** How the cut edges of the inside and the outside surface are joined at a split. */
+export enum JoinConnection
+{
+    annotation { "Name" : "Ruled (G0)" }
+    RULED,
+    annotation { "Name" : "Tangent (G1)" }
+    TANGENT,
+    annotation { "Name" : "Curvature (G2)" }
+    CURVATURE,
+    annotation { "Name" : "Fillets and a straight section" }
+    FILLETS
+}
+
+/** The tangent magnitude of a G1 / G2 connection, relative to the kernel's default. */
+const JOIN_MAGNITUDE_BOUNDS = { (unitless) : [0.05, 1, 10] } as RealBoundSpec;
+
 /** Which joint edge of a loft a fillet goes on. */
 export enum JoinFilletEdge
 {
@@ -107,9 +123,36 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
             isLength(definition.endOffset, ZERO_DEFAULT_LENGTH_BOUNDS);
         }
 
-        annotation { "Name" : "Start fillet", "Default" : false }
-        definition.startFillet is boolean;
-        if (definition.startFillet)
+        annotation { "Group Name" : "Start connection", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "Start inside trim", "Description" : "Moves the inside surface's cut away from the start split, toward the inside point (measured normal to a planar split, or offset from a split surface). 0: the cut is on the split. Not negative." }
+            isLength(definition.startInsideTrim, ZERO_DEFAULT_LENGTH_BOUNDS);
+
+            annotation { "Name" : "Start outside trim", "Description" : "Moves the outside surface's cut away from the start split, away from the inside point. 0: the cut is on the split. Not negative." }
+            isLength(definition.startOutsideTrim, ZERO_DEFAULT_LENGTH_BOUNDS);
+
+            annotation { "Name" : "Start connection", "UIHint" : [UIHint.SHOW_LABEL], "Default" : JoinConnection.RULED }
+            definition.startConnection is JoinConnection;
+
+            if (definition.startConnection == JoinConnection.TANGENT || definition.startConnection == JoinConnection.CURVATURE)
+            {
+                annotation { "Name" : "Start magnitude", "Description" : "How far the connection keeps to the surface tangent before turning; 1 is the kernel default." }
+                isReal(definition.startMagnitude, JOIN_MAGNITUDE_BOUNDS);
+            }
+            else if (definition.startConnection == JoinConnection.FILLETS)
+            {
+                annotation { "Name" : "Start inside radius", "Description" : "The arc that meets the inside surface. 0: none. Needs a gap (a trim)." }
+                isLength(definition.startInsideRadius, ZERO_DEFAULT_LENGTH_BOUNDS);
+                annotation { "Name" : "Start outside radius", "Description" : "The arc that meets the outside surface. 0: none." }
+                isLength(definition.startOutsideRadius, ZERO_DEFAULT_LENGTH_BOUNDS);
+            }
+        }
+        if (definition.startConnection == JoinConnection.RULED)
+        {
+            annotation { "Name" : "Start fillet", "Default" : false }
+            definition.startFillet is boolean;
+        }
+        if (definition.startConnection == JoinConnection.RULED && definition.startFillet)
         {
             annotation { "Name" : "Start fillet radius" }
             isLength(definition.startRadius, BLEND_BOUNDS);
@@ -120,9 +163,36 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
             definition.startKeepOpposite is boolean;
         }
 
-        annotation { "Name" : "End fillet", "Default" : false }
-        definition.endFillet is boolean;
-        if (definition.endFillet)
+        annotation { "Group Name" : "End connection", "Collapsed By Default" : true }
+        {
+            annotation { "Name" : "End inside trim", "Description" : "Moves the inside surface's cut away from the end split, toward the inside point (measured normal to a planar split, or offset from a split surface). 0: the cut is on the split. Not negative." }
+            isLength(definition.endInsideTrim, ZERO_DEFAULT_LENGTH_BOUNDS);
+
+            annotation { "Name" : "End outside trim", "Description" : "Moves the outside surface's cut away from the end split, away from the inside point. 0: the cut is on the split. Not negative." }
+            isLength(definition.endOutsideTrim, ZERO_DEFAULT_LENGTH_BOUNDS);
+
+            annotation { "Name" : "End connection", "UIHint" : [UIHint.SHOW_LABEL], "Default" : JoinConnection.RULED }
+            definition.endConnection is JoinConnection;
+
+            if (definition.endConnection == JoinConnection.TANGENT || definition.endConnection == JoinConnection.CURVATURE)
+            {
+                annotation { "Name" : "End magnitude", "Description" : "How far the connection keeps to the surface tangent before turning; 1 is the kernel default." }
+                isReal(definition.endMagnitude, JOIN_MAGNITUDE_BOUNDS);
+            }
+            else if (definition.endConnection == JoinConnection.FILLETS)
+            {
+                annotation { "Name" : "End inside radius", "Description" : "The arc that meets the inside surface. 0: none. Needs a gap (a trim)." }
+                isLength(definition.endInsideRadius, ZERO_DEFAULT_LENGTH_BOUNDS);
+                annotation { "Name" : "End outside radius", "Description" : "The arc that meets the outside surface. 0: none." }
+                isLength(definition.endOutsideRadius, ZERO_DEFAULT_LENGTH_BOUNDS);
+            }
+        }
+        if (definition.endConnection == JoinConnection.RULED)
+        {
+            annotation { "Name" : "End fillet", "Default" : false }
+            definition.endFillet is boolean;
+        }
+        if (definition.endConnection == JoinConnection.RULED && definition.endFillet)
         {
             annotation { "Name" : "End fillet radius" }
             isLength(definition.endRadius, BLEND_BOUNDS);
@@ -149,13 +219,32 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         }
         verifyNonemptyQuery(context, definition, "insidePoint", "Select the inside point.");
         verifyNonemptyQuery(context, definition, "insideProfile", "Select the inside profile surface.");
-        if (definition.startFillet && !hasStart)
+        const startRuled = definition.startConnection == JoinConnection.RULED;
+        const endRuled = definition.endConnection == JoinConnection.RULED;
+        if (definition.startFillet && startRuled && !hasStart)
         {
             throw regenError("The start fillet needs a start split.", ["startFillet"]);
         }
-        if (definition.endFillet && !hasEnd)
+        if (definition.endFillet && endRuled && !hasEnd)
         {
             throw regenError("The end fillet needs an end split.", ["endFillet"]);
+        }
+        for (var endInfo in [["start", hasStart], ["end", hasEnd]])
+        {
+            const trims = [definition[endInfo[0] ~ "InsideTrim"], definition[endInfo[0] ~ "OutsideTrim"]];
+            const connection = definition[endInfo[0] ~ "Connection"];
+            if (trims[0] < 0 * meter || trims[1] < 0 * meter)
+            {
+                throw regenError("The " ~ endInfo[0] ~ " trims cannot be negative.", [endInfo[0] ~ "InsideTrim", endInfo[0] ~ "OutsideTrim"]);
+            }
+            if (!endInfo[1] && (connection != JoinConnection.RULED || trims[0] > 0 * meter || trims[1] > 0 * meter))
+            {
+                throw regenError("The " ~ endInfo[0] ~ " trims and connection need a " ~ endInfo[0] ~ " split.", [endInfo[0] ~ "Connection"]);
+            }
+            if (connection == JoinConnection.FILLETS && definition[endInfo[0] ~ "InsideRadius"] <= 0 * meter && definition[endInfo[0] ~ "OutsideRadius"] <= 0 * meter)
+            {
+                throw regenError("Give the " ~ endInfo[0] ~ " connection an inside radius, an outside radius, or both.", [endInfo[0] ~ "InsideRadius"]);
+            }
         }
         const same = definition.outsideMode == JoinOutsideMode.SAME;
         var inputs = [definition.insideProfile];
@@ -177,15 +266,23 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
                 inputs = append(inputs, definition.endProfile);
             }
         }
+        // Each side cuts at its own tool: the split itself, or (a trim > 0) a copy of it moved normal to a plane / offset from a
+        // surface, the inside one toward the inside point and the outside one away from it. A trim of 0 uses the user's tool as it is.
+        const startInsideTool = hasStart ? trimmedTool(context, id + "startInsideTool", definition.startSplit, definition.startInsideTrim, definition.insidePoint, true) : qNothing();
+        const startOutsideTool = hasStart ? trimmedTool(context, id + "startOutsideTool", definition.startSplit, definition.startOutsideTrim, definition.insidePoint, false) : qNothing();
+        const endInsideTool = hasEnd ? trimmedTool(context, id + "endInsideTool", definition.endSplit, definition.endInsideTrim, definition.insidePoint, true) : qNothing();
+        const endOutsideTool = hasEnd ? trimmedTool(context, id + "endOutsideTool", definition.endSplit, definition.endOutsideTrim, definition.insidePoint, false) : qNothing();
         // With one split it is the only tool: Split+ names its cut "startCut" whichever end it is.
-        const firstTool = hasStart ? definition.startSplit : definition.endSplit;
-        const secondTool = (hasStart && hasEnd) ? definition.endSplit : qNothing();
+        const firstInsideTool = hasStart ? startInsideTool : endInsideTool;
+        const secondInsideTool = (hasStart && hasEnd) ? endInsideTool : qNothing();
+        const firstOutsideTool = hasStart ? startOutsideTool : endOutsideTool;
+        const secondOutsideTool = (hasStart && hasEnd) ? endOutsideTool : qNothing();
 
         // 1. Offsets (Offset+: positive toward the inside point, 0 a copy).
         const inside = offsetProfile(context, id + "insideOffset", definition.insideProfile, definition.insideOffset, definition.insidePoint);
 
         // 2. Splits (Split+ with the inside point; the split tools are the user's and are kept).
-        const insideSplit = splitProfileAtSeams(context, id + "insideSplit", inside, firstTool, secondTool, definition.insidePoint, SplitPlusKeep.INSIDE);
+        const insideSplit = splitProfileAtSeams(context, id + "insideSplit", inside, firstInsideTool, secondInsideTool, definition.insidePoint, SplitPlusKeep.INSIDE);
         var insideStart = qNothing();
         var insideEnd = qNothing();
         if (hasStart && hasEnd)
@@ -210,7 +307,7 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         if (same)
         {
             const outside = offsetProfile(context, id + "outsideOffset", definition.outsideProfile, definition.outsideOffset, definition.insidePoint);
-            const outsideSplit = splitProfileAtSeams(context, id + "outsideSplit", outside, firstTool, secondTool, definition.insidePoint, SplitPlusKeep.OUTSIDE);
+            const outsideSplit = splitProfileAtSeams(context, id + "outsideSplit", outside, firstOutsideTool, secondOutsideTool, definition.insidePoint, SplitPlusKeep.OUTSIDE);
             if (hasStart && hasEnd)
             {
                 outsideStart = outsideSplit.startCut;
@@ -235,14 +332,14 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
             if (hasStart)
             {
                 const startOut = offsetProfile(context, id + "startOffset", definition.startProfile, definition.startOffset, definition.insidePoint);
-                const startSplit = splitProfileAtSeams(context, id + "startSplit", startOut, definition.startSplit, qNothing(), definition.insidePoint, SplitPlusKeep.OUTSIDE);
+                const startSplit = splitProfileAtSeams(context, id + "startSplit", startOut, startOutsideTool, qNothing(), definition.insidePoint, SplitPlusKeep.OUTSIDE);
                 outsideStart = startSplit.startCut;
                 startOutsideFaces = frozenAndTracked(context, qOwnedByBody(startSplit.start, EntityType.FACE));
             }
             if (hasEnd)
             {
                 const endOut = offsetProfile(context, id + "endOffset", definition.endProfile, definition.endOffset, definition.insidePoint);
-                const endSplit = splitProfileAtSeams(context, id + "endSplit", endOut, definition.endSplit, qNothing(), definition.insidePoint, SplitPlusKeep.OUTSIDE);
+                const endSplit = splitProfileAtSeams(context, id + "endSplit", endOut, endOutsideTool, qNothing(), definition.insidePoint, SplitPlusKeep.OUTSIDE);
                 outsideEnd = endSplit.startCut;
                 endOutsideFaces = frozenAndTracked(context, qOwnedByBody(endSplit.start, EntityType.FACE));
             }
@@ -262,20 +359,40 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
             outsideEnd = withoutSlivers(context, outsideEnd);
         }
 
-        // 3. A loft between the paired cut edges at each split given.
+        // The fillets must fit in the gap (checked before anything is built), and the gap is published.
+        var startGap = 0 * meter;
+        var endGap = 0 * meter;
+        if (hasStart)
+        {
+            startGap = connectionGap(context, insideStart, outsideStart);
+            if (definition.startConnection == JoinConnection.FILLETS)
+            {
+                checkFilletsFit(context, insideStart, outsideStart, definition.startInsideRadius, definition.startOutsideRadius, "start");
+            }
+        }
+        if (hasEnd)
+        {
+            endGap = connectionGap(context, insideEnd, outsideEnd);
+            if (definition.endConnection == JoinConnection.FILLETS)
+            {
+                checkFilletsFit(context, insideEnd, outsideEnd, definition.endInsideRadius, definition.endOutsideRadius, "end");
+            }
+        }
+
+        // 3. A loft between the paired cut edges at each split given (ruled, or matching the tangent / curvature of the two surfaces).
         var startLoftFaces = qNothing();
         var endLoftFaces = qNothing();
         var joints = { "startInside" : qNothing(), "startOutside" : qNothing(), "endInside" : qNothing(), "endOutside" : qNothing() };
         if (hasStart)
         {
-            opLoft(context, id + "startLoft", { "profileSubqueries" : [insideStart, outsideStart], "bodyType" : ToolBodyType.SURFACE });
+            opLoft(context, id + "startLoft", connectionLoft(context, insideStart, outsideStart, definition.startConnection, definition.startMagnitude));
             startLoftFaces = frozenAndTracked(context, qCreatedBy(id + "startLoft", EntityType.FACE));
             joints.startInside = frozenAndTracked(context, insideStart);
             joints.startOutside = frozenAndTracked(context, outsideStart);
         }
         if (hasEnd)
         {
-            opLoft(context, id + "endLoft", { "profileSubqueries" : [insideEnd, outsideEnd], "bodyType" : ToolBodyType.SURFACE });
+            opLoft(context, id + "endLoft", connectionLoft(context, insideEnd, outsideEnd, definition.endConnection, definition.endMagnitude));
             endLoftFaces = frozenAndTracked(context, qCreatedBy(id + "endLoft", EntityType.FACE));
             joints.endInside = frozenAndTracked(context, insideEnd);
             joints.endOutside = frozenAndTracked(context, outsideEnd);
@@ -317,15 +434,32 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
                     ~ (mergeFailed ? " (the merge failed: " ~ mergeError ~ ")" : "")
                     ~ ". A loft edge does not meet its cut edge -- check that the profiles reach the splits cleanly.", ["startSplit"]);
         }
-        if (definition.startFillet)
+        if (definition.startFillet && startRuled)
         {
             filletJoint(context, id + "startFillet", jointEdge("startInside"), jointEdge("startOutside"), definition.startFilletEdge,
                 definition.startRadius, definition.startKeepOpposite, "start");
         }
-        if (definition.endFillet)
+        if (definition.endFillet && endRuled)
         {
             filletJoint(context, id + "endFillet", jointEdge("endInside"), jointEdge("endOutside"), definition.endFilletEdge,
                 definition.endRadius, definition.endKeepOpposite, "end");
+        }
+        // Fillets and a straight section: an arc at each end of the strip (tangent to the surface and to the strip)
+        for (var endInfo in [["start", hasStart], ["end", hasEnd]])
+        {
+            if (endInfo[1] && definition[endInfo[0] ~ "Connection"] == JoinConnection.FILLETS)
+            {
+                const radiusInside = definition[endInfo[0] ~ "InsideRadius"];
+                const radiusOutside = definition[endInfo[0] ~ "OutsideRadius"];
+                if (radiusInside > 0 * meter)
+                {
+                    opFillet(context, id + (endInfo[0] ~ "FilletInside"), { "entities" : jointEdge(endInfo[0] ~ "Inside"), "radius" : radiusInside });
+                }
+                if (radiusOutside > 0 * meter)
+                {
+                    opFillet(context, id + (endInfo[0] ~ "FilletOutside"), { "entities" : jointEdge(endInfo[0] ~ "Outside"), "radius" : radiusOutside });
+                }
+            }
         }
 
         if (!definition.keepInputs)
@@ -342,6 +476,9 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
             setProperty(context, { "entities" : result, "propertyType" : PropertyType.NAME, "value" : definition.outputName });
         }
 
+        // every fillet face made at each end: the old single fillet (startFillet / endFillet) and the two arcs of the new connection
+        const startFilletFaces = qUnion([qCreatedBy(id + "startFillet", EntityType.FACE), qCreatedBy(id + "startFilletInside", EntityType.FACE), qCreatedBy(id + "startFilletOutside", EntityType.FACE)]);
+        const endFilletFaces = qUnion([qCreatedBy(id + "endFillet", EntityType.FACE), qCreatedBy(id + "endFilletInside", EntityType.FACE), qCreatedBy(id + "endFilletOutside", EntityType.FACE)]);
         const faceKey = function(q is Query, description is string) returns map
             {
                 return extractableQuery(qIntersection([qEntityFilter(q, EntityType.FACE), qOwnedByBody(result, EntityType.FACE)]), description, DebugColor.CYAN);
@@ -350,6 +487,10 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
                     "output" : result,
                     "outputDescription" : "The joined surface",
                     "inputs" : qUnion(concatenateArrays([inputs, [definition.startSplit, definition.endSplit]])),
+                    "variables" : {
+                        "startGap" : extractableVariable(startGap, "The shortest distance between the start cuts (the width of the start connection before fillets)."),
+                        "endGap" : extractableVariable(endGap, "The shortest distance between the end cuts.")
+                    },
                     "queries" : {
                         "insideSurface" : faceKey(insideFaces, "Faces from the inside profile (between the splits)."),
                         "startOutside" : faceKey(startOutsideFaces, "Faces from the outside profile beyond the start split."),
@@ -360,6 +501,14 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
                         "startOutsideEdge" : extractableQuery(jointEdge("startOutside"), "The start loft's joint with the outside surface.", DebugColor.MAGENTA),
                         "endInsideEdge" : extractableQuery(jointEdge("endInside"), "The end loft's joint with the inside surface.", DebugColor.MAGENTA),
                         "endOutsideEdge" : extractableQuery(jointEdge("endOutside"), "The end loft's joint with the outside surface.", DebugColor.MAGENTA),
+                        "startConnectionFaces" : faceKey(qUnion([startLoftFaces, startFilletFaces]), "Every face that bridges the inside to the outside surface at the start (the strip and its fillet arcs)."),
+                        "endConnectionFaces" : faceKey(qUnion([endLoftFaces, endFilletFaces]), "Every face that bridges the inside to the outside surface at the end (the strip and its fillet arcs)."),
+                        "startFilletFaces" : faceKey(startFilletFaces, "The fillet faces at the start split (the fillet, or the arcs of a fillets-and-straight connection)."),
+                        "endFilletFaces" : faceKey(endFilletFaces, "The fillet faces at the end split."),
+                        "startFilletInside" : faceKey(qCreatedBy(id + "startFilletInside", EntityType.FACE), "The arc that meets the inside surface at the start (fillets and straight section)."),
+                        "startFilletOutside" : faceKey(qCreatedBy(id + "startFilletOutside", EntityType.FACE), "The arc that meets the outside surface at the start (fillets and straight section)."),
+                        "endFilletInside" : faceKey(qCreatedBy(id + "endFilletInside", EntityType.FACE), "The arc that meets the inside surface at the end."),
+                        "endFilletOutside" : faceKey(qCreatedBy(id + "endFilletOutside", EntityType.FACE), "The arc that meets the outside surface at the end."),
                         "boundaryEdges" : extractableQuery(qEdgeTopologyFilter(qOwnedByBody(result, EntityType.EDGE), EdgeTopology.ONE_SIDED),
                             "The open edges of the result.", DebugColor.CYAN)
                     }
@@ -376,6 +525,10 @@ export const joinProfileSurfaces = defineFeature(function(context is Context, id
         "outputName" : "",
         "startFillet" : false,
         "endFillet" : false,
+        "startInsideTrim" : 0 * meter, "startOutsideTrim" : 0 * meter, "startConnection" : JoinConnection.RULED, "startMagnitude" : 1,
+        "startInsideRadius" : 0 * meter, "startOutsideRadius" : 0 * meter,
+        "endInsideTrim" : 0 * meter, "endOutsideTrim" : 0 * meter, "endConnection" : JoinConnection.RULED, "endMagnitude" : 1,
+        "endInsideRadius" : 0 * meter, "endOutsideRadius" : 0 * meter,
         "keepInputs" : true
     });
 
@@ -445,6 +598,119 @@ function filletJoint(context is Context, id is Id, insideEdge is Query, outsideE
     opFillet(context, id, fillet);
 }
 
+/**
+ * A split tool moved for a trim: the user's tool when the distance is 0; otherwise a copy moved by `distance` normal to a plane
+ * (a mate connector's XY plane, a planar face) or offset from a surface, toward the inside point (towardInside) or away from it.
+ */
+function trimmedTool(context is Context, id is Id, tool is Query, distance is ValueWithUnits, insidePoint is Query, towardInside is boolean) returns Query
+{
+    if (abs(distance) < 1e-9 * meter)
+    {
+        return tool;
+    }
+    const point = insidePointOf(context, insidePoint);
+    const cutPlane = toolPlane(context, tool);
+    if (cutPlane != undefined)
+    {
+        // +1: the inside point is on the plane's normal side
+        const toward = dot(point - cutPlane.origin, cutPlane.normal) >= 0 * meter ? 1 : -1;
+        const shifted = plane(cutPlane.origin + cutPlane.normal * ((towardInside ? toward : -toward) * distance), cutPlane.normal, cutPlane.x);
+        opPlane(context, id, { "plane" : shifted });
+        return qCreatedBy(id, EntityType.BODY);
+    }
+    const faces = qUnion([qEntityFilter(tool, EntityType.FACE), qOwnedByBody(qEntityFilter(tool, EntityType.BODY), EntityType.FACE)]);
+    const faceList = evaluateQuery(context, faces);
+    if (size(faceList) == 0)
+    {
+        throw regenError("A trim needs a split that is a surface, a face, a plane or a mate connector.", ["startSplit", "endSplit"]);
+    }
+    const near = evDistance(context, { "side0" : point, "side1" : faces });
+    const normal = evFaceTangentPlane(context, { "face" : faceList[near.sides[1].index], "parameter" : near.sides[1].parameter }).normal;
+    const toward = dot(point - near.sides[1].point, normal) >= 0 * meter ? 1 : -1;
+    opExtractSurface(context, id, { "faces" : faces, "offset" : (towardInside ? toward : -toward) * distance, "tangentPropagation" : false });
+    return qCreatedBy(id, EntityType.BODY);
+}
+
+/** The shortest distance between the two cut edges of a connection. */
+function connectionGap(context is Context, insideCut is Query, outsideCut is Query) returns ValueWithUnits
+{
+    return evDistance(context, { "side0" : insideCut, "side1" : outsideCut }).distance;
+}
+
+/** The profiles and end conditions of the loft that joins two cuts: ruled, or matching the tangent / curvature of the surfaces. */
+function connectionLoft(context is Context, insideCut is Query, outsideCut is Query, connection is JoinConnection, magnitude is number) returns map
+{
+    var loftDefinition = { "profileSubqueries" : [insideCut, outsideCut], "bodyType" : ToolBodyType.SURFACE };
+    if (connection == JoinConnection.TANGENT || connection == JoinConnection.CURVATURE)
+    {
+        const condition = connection == JoinConnection.TANGENT ? LoftEndDerivativeType.MATCH_TANGENT : LoftEndDerivativeType.MATCH_CURVATURE;
+        loftDefinition.derivativeInfo = [
+                createProfileConditions(context, condition, insideCut, 0, magnitude, qNothing(), qNothing()),
+                createProfileConditions(context, condition, outsideCut, 1, magnitude, qNothing(), qNothing())
+            ];
+    }
+    return loftDefinition;
+}
+
+/**
+ * The direction pointing into the face that carries a cut edge, at a point of that edge (tangent to the face, normal to the edge).
+ */
+function intoFace(context is Context, cut is Query, point is Vector) returns Vector
+{
+    const face = qAdjacent(cut, AdjacencyType.EDGE, EntityType.FACE);
+    const nearest = evDistance(context, { "side0" : point, "side1" : cut });
+    const edgeLine = evEdgeTangentLine(context, { "edge" : evaluateQuery(context, cut)[nearest.sides[1].index], "parameter" : nearest.sides[1].parameter });
+    const onFace = evDistance(context, { "side0" : point, "side1" : face });
+    const normal = evFaceTangentPlane(context, { "face" : face, "parameter" : onFace.sides[1].parameter }).normal;
+    const across = normalize(cross(normal, edgeLine.direction));
+    // the sign that stays on the face
+    const a = evDistance(context, { "side0" : point + across * 0.2 * millimeter, "side1" : face }).distance;
+    const b = evDistance(context, { "side0" : point - across * 0.2 * millimeter, "side1" : face }).distance;
+    return a <= b ? across : -across;
+}
+
+/**
+ * Fillets and a straight section: the arc at each end of the strip has tangent length R tan(turn / 2), where the turn is the
+ * angle between the surface and the strip. The two must fit in the strip. At five points along the cut the turns are measured; if
+ * they do not fit, the error gives the largest radii (both scaled alike) that do.
+ */
+function checkFilletsFit(context is Context, insideCut is Query, outsideCut is Query, radiusInside is ValueWithUnits, radiusOutside is ValueWithUnits, where is string)
+{
+    var scale = inf;
+    var narrowest = inf * meter;
+    var samples = [];
+    for (var cutEdge in evaluateQuery(context, insideCut))
+    {
+        samples = concatenateArrays([samples, evEdgeTangentLines(context, { "edge" : cutEdge, "parameters" : [0, 0.25, 0.5, 0.75, 1] })]);
+    }
+    for (var line in samples)
+    {
+        const across = evDistance(context, { "side0" : line.origin, "side1" : outsideCut });
+        const chord = across.sides[1].point - line.origin;
+        const gap = norm(chord);
+        narrowest = min(narrowest, gap);
+        if (gap < 1e-6 * meter)
+        {
+            throw regenError("The " ~ where ~ " connection has no gap for fillets and a straight section: give the inside trim or the outside trim.", [where ~ "InsideTrim"]);
+        }
+        const heading = chord / gap;
+        // the inside surface arrives at the strip heading away from itself; the outside surface leaves it heading into itself
+        const turnInside = acos(clamp(dot(-intoFace(context, insideCut, line.origin), heading), -1, 1));
+        const turnOutside = acos(clamp(dot(heading, intoFace(context, outsideCut, across.sides[1].point)), -1, 1));
+        const need = (radiusInside > 0 * meter ? radiusInside * tan(turnInside / 2) : 0 * meter)
+            + (radiusOutside > 0 * meter ? radiusOutside * tan(turnOutside / 2) : 0 * meter);
+        if (need > 1e-9 * meter)
+        {
+            scale = min(scale, gap / need);
+        }
+    }
+    if (scale < 1)
+    {
+        throw regenError("The " ~ where ~ " fillets do not fit in the strip (it is " ~ roundToPrecision(narrowest / millimeter, 2)
+                ~ " mm wide at its narrowest). Largest radii that fit: inside " ~ roundToPrecision(radiusInside * scale / millimeter, 2)
+                ~ " mm, outside " ~ roundToPrecision(radiusOutside * scale / millimeter, 2) ~ " mm. Or widen the gap with a trim.", [where ~ "InsideRadius"]);
+    }
+}
 /** The entities of a query now, followed through later edits. */
 function frozenAndTracked(context is Context, q is Query) returns Query
 {

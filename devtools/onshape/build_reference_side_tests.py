@@ -487,12 +487,14 @@ RP_CASES = [
     ("RP4", "sheet", 65, 65, "0 mm", []),
     ("RP5", "solid", 70, 70, "0 mm", [num("draft", "10 deg"), en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]),
                                        q("projectionDirection", TOP), en("walls", "PatchPlusWalls", "PROJECTION", NS["patch_plus"])]),
-    # RP2 with Flip: the plate (z 70) moves 5 mm CLOSER to the faces (z 65): a boss of 15, not 25
-    ("RP9", "solid", 70, 70, "5 mm", [b("flipOffset", True)]),
     ("RP6", "solid", 70 - 50 * TILT, 70 + 50 * TILT, "0 mm", []),
     # the plate crosses the face along a diameter of the circle: half the wall above the face, half below
     ("RP7", "sheet", 50 - 50 * TILT, 50 + 50 * TILT, "0 mm", []),
     ("RP8", "solid", 50 - 50 * TILT, 50 + 50 * TILT, "0 mm", []),
+    # NEW CASES GO LAST: a case inserted earlier shifts the fixture positions of the ones after it, and features reposted in place then point
+    # at fixtures created later in the tree
+    # RP2 with Flip: the plate (z 70) moves 5 mm CLOSER to the faces (z 65): a boss of 15, not 25
+    ("RP9", "solid", 70, 70, "5 mm", [b("flipOffset", True)]),
 ]
 for n, (tag, base_kind, z0, z1, off, extra) in enumerate(RP_CASES):
     x0 = 25000 + 400 * n
