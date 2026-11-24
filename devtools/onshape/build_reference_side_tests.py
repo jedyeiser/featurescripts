@@ -509,6 +509,26 @@ for n, (tag, base_kind, z0, z1, off, extra) in enumerate(RP_CASES):
     patch("%s Patch+ replacement plate (z %.0f..%.0f), offset %s" % (tag, z0, z1, off), [
         q("baseFaces", base_q), q("footprint", edges(fp)), q("replacement", body(plate)), num("offset", off)] + extra)
 
+# Patch+ with a replacement that LIES ON the faces (2026-11-23, K2 report): an offset of the faces themselves. The offset alone decides
+# emboss / pocket (as without a replacement), Flip reverses it; a replacement that merely sits above and is pulled below the faces crosses them.
+RC_CASES = [
+    # tag, plate z, offset, extra, title
+    ("RC1", 50, "10 mm", [], "plate ON the top face, offset +10: boss 10"),
+    ("RC2", 50, "-10 mm", [], "plate ON the top face, offset -10: pocket 10"),
+    ("RC3", 50, "10 mm", [b("flipOffset", True)], "plate ON the top face, offset +10 with Flip: pocket 10"),
+    ("RC4", 50, "-10 mm", [en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]), q("projectionDirection", TOP),
+                           en("walls", "PatchPlusWalls", "PROJECTION", NS["patch_plus"])], "plate ON the face, walls along +z, offset -10: pocket 10"),
+    ("RC5", 50, "10 mm", [en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]), q("projectionDirection", TOP),
+                          en("walls", "PatchPlusWalls", "PROJECTION", NS["patch_plus"])], "plate ON the face, walls along +z, offset +10: boss 10"),
+    ("RC6", 60, "-15 mm", [], "plate 10 above the face pulled 15 closer: ends 5 below it, pocket 5"),
+    ("RC7", 50, "0 mm", [], "plate ON the face, offset 0 -> ERROR (nothing changes)"),
+]
+for n, (tag, z, off, extra, title) in enumerate(RC_CASES):
+    x0 = 35000 + 400 * n
+    fp = sketch("%s footprint circle r 20 at x %d z 100 (sketch)" % (tag, x0), plane_at("PP footprint plane z 100", "Top", 100), [circle("c", *mmv(x0, 0, 20))])
+    bx = cube("%s cube at x %d" % (tag, x0), x0, 0)
+    plate = sheet("%s plate z %g, x %d..%d" % (tag, z, x0 - 50, x0 + 50), [(x0 - 50, z), (x0 + 50, z)])
+    patch("%s Patch+ %s" % (tag, title), [q("baseFaces", face_at(bx, x0, 0, 50)), q("footprint", edges(fp)), q("replacement", body(plate)), num("offset", off)] + extra)
 # Patch+ offset direction (2026-11-23): positive = along the face normal (outward on a solid); Flip reverses it. These sheets have
 # their normal pointing DOWN, so without Flip a positive offset goes down.
 RF_CASES = [
@@ -811,7 +831,7 @@ def join(name, params):
 
 
 def join_params(start, end, point, inside, inside_off, outside=None, outside_off="0 mm", start_prof=None, start_off="0 mm",
-                end_prof=None, end_off="0 mm", start_fillet=None):
+                end_prof=None, end_off="0 mm", start_fillet=None, extra=None):
     p = [q("startSplit", start) if start is not None else q("startSplit"), q("endSplit", end) if end is not None else q("endSplit"), q("insidePoint", point), q("insideProfile", body(inside)), num("insideOffset", inside_off)]
     if outside is not None:
         p += [en("outsideMode", "JoinOutsideMode", "SAME", NS["join_profile_surfaces"]), q("outsideProfile", body(outside)), num("outsideOffset", outside_off)]
@@ -823,7 +843,7 @@ def join_params(start, end, point, inside, inside_off, outside=None, outside_off
               en("startFilletEdge", "JoinFilletEdge", start_fillet[1], NS["join_profile_surfaces"]), b("startKeepOpposite", start_fillet[2])]
     else:
         p += [b("startFillet", False)]
-    return p + [b("endFillet", False), b("keepInputs", True)]
+    return p + [b("endFillet", False), b("keepInputs", True)] + (extra or [])
 
 
 for tag, x0, inside_off, want in (("J1", 21000, "0 mm", "5 faces, area 24000"), ("J2", 21400, "5 mm", "inside at z -5, area 25000"),
@@ -876,8 +896,37 @@ join("K1 Join profile surfaces, start split on a 3-edge / 1-edge seam -> 5 faces
 
 join("J9 Join profile surfaces, no split -> ERROR", join_params(None, None, ref_front("J9 inside point (24200, 0, -10)", 24200, -10),
      sheet("J9 inside profile z 0", [(24100, 0), (24300, 0)]), "0 mm", outside=sheet("J9 outside profile z 20", [(24100, 20), (24300, 20)])))
-print("studio", E)
+# Join profile surfaces: TRIMS and CONNECTIONS (2026-11-23). Flat profiles (inside z 0, outside z 20, width 100), splits x = x0 +- 50, point (x0, 0, -10).
+# A trim moves the inside cut toward the point and the outside cut away from it, so the strip spans a gap.
+JT = NS["join_profile_surfaces"]
+def jt(tag, i, title, extra, start_only=False):
+    x0 = 24400 + 400 * i
+    ins = sheet("%s inside profile z 0, x %d..%d" % (tag, x0 - 100, x0 + 100), [(x0 - 100, 0), (x0 + 100, 0)])
+    out = sheet("%s outside profile z 20" % tag, [(x0 - 100, 20), (x0 + 100, 20)])
+    st = plane_at("%s start split x = %d" % (tag, x0 - 50), "Right", x0 - 50)
+    en_ = None if start_only else plane_at("%s end split x = %d" % (tag, x0 + 50), "Right", x0 + 50)
+    pt = ref_front("%s inside point (%d, 0, -10)" % (tag, x0), x0, -10)
+    join("%s Join profile surfaces, %s" % (tag, title), join_params(st, en_, pt, ins, "0 mm", outside=out, extra=extra))
 
+def trims(side, inside, outside):
+    return [num(side + "InsideTrim", inside), num(side + "OutsideTrim", outside)]
+
+def conn(side, kind, extra=()):
+    return [en(side + "Connection", "JoinConnection", kind, JT)] + list(extra)
+
+both = lambda kind, ti, to, extra=(): trims("start", ti, to) + trims("end", ti, to) + conn("start", kind, extra) + conn("end", kind, extra)
+jt("JT1", 0, "trims 10 / 10, ruled (G0): strip 28.28 long, folded joints", both("RULED", "10 mm", "10 mm"))
+jt("JT2", 1, "trims 10 / 10, tangent (G1): smooth joints", both("TANGENT", "10 mm", "10 mm"))
+jt("JT3", 2, "trims 10 / 10, curvature (G2): smooth joints, no curvature jump", both("CURVATURE", "10 mm", "10 mm"))
+jt("JT4", 3, "trims 20 / 20, fillets r 20 / 20 and a straight section: smooth joints, 9 faces",
+   both("FILLETS", "20 mm", "20 mm") + [num("startInsideRadius", "20 mm"), num("startOutsideRadius", "20 mm"), num("endInsideRadius", "20 mm"), num("endOutsideRadius", "20 mm")])
+jt("JT5", 4, "trims 20 / 20, fillets r 100 / 100 do not fit -> ERROR (names the largest radii)",
+   both("FILLETS", "20 mm", "20 mm") + [num("startInsideRadius", "100 mm"), num("startOutsideRadius", "100 mm"), num("endInsideRadius", "100 mm"), num("endOutsideRadius", "100 mm")])
+jt("JT6", 5, "inside trim 10 only, ruled: strip 22.36 long", trims("start", "10 mm", "0 mm") + trims("end", "10 mm", "0 mm"))
+jt("JT7", 6, "negative trim -5 -> ERROR", trims("start", "-5 mm", "0 mm") + trims("end", "0 mm", "0 mm"))
+jt("JT8", 7, "start split only, inside trim 10, tangent (G1): 3 faces, smooth", trims("start", "10 mm", "0 mm") + conn("start", "TANGENT"), start_only=True)
+# Existing behaviour unchanged: no trims, default connection, the old start fillet checkbox (J4) stays as it is.
+print("studio", E)
 # ============================================================================
 # Referenced part (2026-09-28)
 # ============================================================================

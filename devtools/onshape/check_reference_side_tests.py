@@ -512,6 +512,10 @@ for tag, zlo, zhi in [("RF1", 50, 60), ("RF2", 40, 50)]:
          SHEET="%s sheet" % tag)
 case("RF3 ", PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", "10").replace("__AREA__", "PI * 400").replace("__SIGN__", "-1"), CUBE="RF3 cube")
 
+# Patch+ with a replacement ON the faces: the offset decides (RC1 boss, RC2 pocket, RC3 Flip pocket, RC4 / RC5 along a direction, RC6 crossing); RC7 must fail.
+for tag, depth, sign in [("RC1", 10, 1), ("RC2", 10, -1), ("RC3", 10, -1), ("RC4", 10, -1), ("RC5", 10, 1), ("RC6", 5, -1)]:
+    src = PP_SOLID_SRC.replace("__K__", "0").replace("__DEPTH__", str(depth)).replace("__AREA__", "PI * 400").replace("__SIGN__", str(sign))
+    case(tag + " ", src, CUBE="%s cube" % tag)
 # Pick stability: how many faces each internal operation of a Patch+ POCKET creates. A face a user picks on the result is keyed to
 # the operation that created it: renaming an op id or reordering a union changes these counts and breaks such picks silently.
 PS_OPS = ["copy", "imprint", "offset", "tubeCopy", "baseSurface", "shell", "enclose", "apply"]
@@ -739,6 +743,61 @@ for tag, area, faces, absent in (("J1", 24000, 5, []), ("J2", 25000, 5, []), ("J
         return [faces == %d && areaOk && keysOk, "faces " ~ faces ~ " (%d), area " ~ roundToPrecision(area / sq, 2) ~ " (%s); " ~ keys];'''.replace("ABSENT", json.dumps(absent)) % (
         "true" if area is None else "abs(area - %d * sq) < 0.01 * sq" % area, faces, faces, "any" if area is None else area))
 
+
+# Join profile surfaces: trims and connections (2026-11-23). maxAngle: the largest turn of the normal across any joint of the result;
+# "smooth" means every joint is tangent (G1 or better), "folded" that a ruled strip leaves a visible corner. jump: the largest curvature
+# difference across a joint (G2 needs it ~0).
+for tag, faces, area, gap, angle_mode, jump_max, extra_src in (
+        ("JT1", 5, 21656.85, 28.28, "folded", None, ""),
+        ("JT2", 5, None, 28.28, "smooth", None, ""),
+        ("JT3", 5, None, 28.28, "smooth", 1.0, ""),
+        ("JT4", 9, None, 44.72, "smooth", None,
+         'const fi = count(out.query.startFilletInside.value); const fo = count(out.query.startFilletOutside.value); const cf = count(out.query.startConnectionFaces.value);\n'
+         '        extra = fi >= 1 && fo >= 1 && cf == 3; note = ", arcs " ~ fi ~ "/" ~ fo ~ " (>=1), startConnectionFaces " ~ cf ~ " (3)";'),
+        ("JT6", 5, 22472.14, 22.36, "folded", None, ""),
+        ("JT8", 3, None, 22.36, "smooth", None, "")):
+    gap_ok = "true" if gap is None else "near(out.variable.startGap.value, mm(%g), mm(0.05))" % gap
+    case(tag + " ", r'''
+        const out = embedded(SELF);
+        const bodies = evaluateQuery(context, out.query.output.value);
+        if (size(bodies) != 1) { return [false, size(bodies) ~ " bodies (1)"]; }
+        const faceQuery = qOwnedByBody(bodies[0], EntityType.FACE);
+        const faces = count(faceQuery);
+        const area = evArea(context, { "entities" : faceQuery });
+        var maxAngle = 0 * degree;
+        var maxJump = 0 / meter;
+        for (var edge in evaluateQuery(context, qEdgeTopologyFilter(qOwnedByBody(bodies[0], EntityType.EDGE), EdgeTopology.TWO_SIDED)))
+        {
+            const pair = evaluateQuery(context, qAdjacent(edge, AdjacencyType.EDGE, EntityType.FACE));
+            if (size(pair) != 2) { continue; }
+            const mid = evEdgeTangentLine(context, { "edge" : edge, "parameter" : 0.5 }).origin;
+            var normals = [];
+            var curvatures = [];
+            for (var f in pair)
+            {
+                const prm = evDistance(context, { "side0" : mid, "side1" : f }).sides[1].parameter;
+                normals = append(normals, evFaceTangentPlane(context, { "face" : f, "parameter" : prm }).normal);
+                const k = evFaceCurvature(context, { "face" : f, "parameter" : prm });
+                curvatures = append(curvatures, max(abs(k.minCurvature), abs(k.maxCurvature)));
+            }
+            maxAngle = max(maxAngle, acos(min(abs(dot(normals[0], normals[1])), 1)));
+            maxJump = max(maxJump, abs(curvatures[0] - curvatures[1]));
+        }
+        var extra = true;
+        var note = "";
+        %s
+        const sq = millimeter * millimeter;
+        const areaOk = %s;
+        const angleOk = %s;
+        const jumpOk = %s;
+        return [faces == %d && areaOk && angleOk && jumpOk && extra && %s,
+            "faces " ~ faces ~ " (%d), area " ~ roundToPrecision(area / sq, 2) ~ " (%s), max joint angle " ~ roundToPrecision(maxAngle / degree, 3) ~ " deg (%s), max curvature jump "
+            ~ roundToPrecision(maxJump * meter, 3) ~ " /m (%s), startGap " ~ fmt(out.variable.startGap.value) ~ " (%g mm)" ~ note];''' % (
+        extra_src, "true" if area is None else "abs(area - %g * sq) < 0.5 * sq" % area,
+        "maxAngle < 0.2 * degree" if angle_mode == "smooth" else "maxAngle > 10 * degree",
+        "true" if jump_max is None else "maxJump * meter < %g" % jump_max,
+        faces, gap_ok, faces, "any" if area is None else "%g" % area, "< 0.2" if angle_mode == "smooth" else "> 10",
+        "any" if jump_max is None else "< %g" % jump_max, gap))
 # Referenced part (2026-09-28): volume, x range (or None), face counts per key.
 for tag, vol, x_range, keys in (
         ("P1", 100000, None, {"profileFaces": 1, "oppositeFaces": 1, "sideFaces": 0}),
@@ -766,7 +825,7 @@ for tag, vol, x_range, keys in (
         return [ok, "volume " ~ roundToPrecision(v / millimeter ^ 3, 2) ~ " (%d), x " ~ fmt(bb.minCorner[0]) ~ ".." ~ fmt(bb.maxCorner[0]) ~ ", z "
             ~ fmt(bb.minCorner[2]) ~ ".." ~ fmt(bb.maxCorner[2]) ~ "; " ~ keys];""" % (key_src, vol, xr, vol))
 
-EXPECTED_ERRORS = ["IM2 Patch+", "T4 Thicken+", "DR10 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
+EXPECTED_ERRORS = ["RC7 Patch+", "JT5 Join", "JT7 Join", "IM2 Patch+", "T4 Thicken+", "DR10 Thicken+", "R4 Orient to reference", "E4 Enclose+", "P8 Referenced part", "J9 Join profile surfaces"]
 
 
 def strings(result):

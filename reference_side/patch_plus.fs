@@ -470,6 +470,8 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             var replacementHit = undefined;
             var hitDirection = regionNormal;
             var replacementSign = 1;
+            // How far the replacement moves along hitDirection (+ = further from the faces; Flip reverses it).
+            var replacementOffset = definition.flipOffset ? -offset : offset;
             if (hasReplacement)
             {
                 stage = "locating the replacement surface";
@@ -483,9 +485,25 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 const front = size(hitsFront) > 0 && (size(hitsBack) == 0 || hitsFront[0].distance <= hitsBack[0].distance);
                 replacementHit = front ? hitsFront[0] : hitsBack[0];
                 hitDirection = front ? castDirection : -castDirection;
-                side = dot(hitDirection, regionNormal) >= 0 ? 1 : -1;
-                // a positive offset moves the replacement FURTHER from the faces: along its own normal when that points away from them
+                var hitSide = dot(hitDirection, regionNormal) >= 0 ? 1 : -1;
                 const hitNormal = evFaceTangentPlane(context, { "face" : replacementHit.entity, "parameter" : replacementHit.parameter }).normal;
+                // on the faces AND parallel to them there (a tilted plate that merely crosses the faces is not this case)
+                if (replacementHit.distance < 1e-5 * meter && abs(dot(hitNormal, regionNormal)) > 0.9999)
+                {
+                    // The replacement lies ON the faces (an offset of the faces themselves): which side it is on cannot be read from a
+                    // ray (the distance is 0 either way), so the offset decides, exactly as without a replacement: positive along the
+                    // face normal (Flip reverses it), negative the other way.
+                    if (abs(offset) < 1e-9 * meter)
+                    {
+                        stage = ""; throw regenError("The replacement surface lies on the faces and the offset is 0: nothing changes. Set an offset (positive: along the face normal, Flip reverses it).", ["offset"]);
+                    }
+                    hitDirection = dot(castDirection, regionNormal) >= 0 ? castDirection : -castDirection;
+                    hitSide = 1;
+                    replacementOffset = offset * positiveSide;
+                }
+                // The new surface may cross the faces (a replacement pulled closer by more than its distance): its side is where it ends.
+                side = (replacementHit.distance + replacementOffset >= 0 * meter ? 1 : -1) * hitSide;
+                // a positive offset moves the replacement FURTHER from the faces: along its own normal when that points away from them
                 replacementSign = dot(hitNormal, hitDirection) >= 0 ? 1 : -1;
             }
             // the direction toward the new surface at the region
@@ -835,7 +853,6 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
             if (hasReplacement)
             {
                 // + moves the replacement further from the faces; Flip reverses that (the one meaning of Flip in every mode)
-                const replacementOffset = definition.flipOffset ? -offset : offset;
                 const shifted = abs(offset) > 1e-9 * meter;
                 var extractDefinition = { "faces" : replacementFaces, "tangentPropagation" : false };
                 if (shifted && !moveAlongDirection)
@@ -846,7 +863,7 @@ export const patchPlus = defineFeature(function(context is Context, id is Id, de
                 opExtractSurface(context, id + "offset", extractDefinition);
                 if (shifted && moveAlongDirection)
                 {
-                    opTransform(context, id + "offsetMove", { "bodies" : qCreatedBy(id + "offset", EntityType.BODY), "transform" : transform(uIn * replacementOffset) });
+                    opTransform(context, id + "offsetMove", { "bodies" : qCreatedBy(id + "offset", EntityType.BODY), "transform" : transform(hitDirection * replacementOffset) });
                 }
                 replacementPoint = replacementHit.intersection + hitDirection * replacementOffset;
             }
