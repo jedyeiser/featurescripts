@@ -121,10 +121,17 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
 
         booleanStepScopePredicate(definition);
 
-        annotation { "Group Name" : "Draft and side faces", "Collapsed By Default" : true }
+        annotation { "Name" : "Side face offset",
+                    "Description" : "Move the side faces (all of them, drafted or not) outward (+) or inward (-) by this much, measured at the neutral surface: the same thicken, but the part comes out a little larger or smaller than the face. 0 = off." }
+        isLength(definition.sideOffset, ZERO_DEFAULT_LENGTH_BOUNDS);
+
+        annotation { "Name" : "Draft", "Default" : false, "Description" : "Tilt the side walls by an angle." }
+        definition.draftOn is boolean;
+
+        if (definition.draftOn)
         {
             annotation { "Name" : "Draft angle",
-                        "Description" : "Positive: the walls widen going toward the reference (the part releases toward it). Measured from the surface normal at the boundary. 0 = no draft." }
+                        "Description" : "Positive: the walls widen going toward the reference (the part releases toward it). Measured from the surface normal at the boundary." }
             isAngle(definition.draftAngle, THICKEN_DRAFT_BOUNDS);
 
             annotation { "Name" : "Same angle away from reference", "Default" : true,
@@ -149,12 +156,7 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
                             "Description" : "Edges on the outline of the thickened faces: one-sided with respect to them (an edge shared by two selected faces has no wall)." }
                 definition.draftEdges is Query;
             }
-
-            annotation { "Name" : "Side face offset",
-                        "Description" : "Move the side faces (all of them, drafted or not) outward (+) or inward (-) by this much, measured at the neutral surface: the same thicken, but the part comes out a little larger or smaller than the face. 0 = off." }
-            isLength(definition.sideOffset, ZERO_DEFAULT_LENGTH_BOUNDS);
         }
-
         annotation { "Group Name" : "Advanced", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Check curvature", "Default" : true,
@@ -176,14 +178,17 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
         }
 
         // Draft: tan of the angle on the toward side and on the away side (the away side's own angle only when not shared).
-        const kToward = tan(definition.draftAngle);
-        const kAway = definition.shareDraftAngle ? kToward : tan(definition.draftAngleAway);
+        // the draft settings count only when Draft is on (they are hidden otherwise and may hold stale values)
+        const draftOn = definition.draftOn;
+        const kToward = draftOn ? tan(definition.draftAngle) : 0;
+        const kAway = !draftOn ? 0 : (definition.shareDraftAngle ? kToward : tan(definition.draftAngleAway));
+        const edgeMode = draftOn ? definition.draftEdgeMode : ThickenPlusDraftEdges.ALL;
         // A side face offset takes the same built walls (a constant added to the draft's shift), also without an angle.
         const offsetting = abs(definition.sideOffset) > 1e-9 * meter;
         const angled = abs(kToward) > 1e-9 || abs(kAway) > 1e-9;
         const drafting = angled || offsetting;
         // the edge selection only picks which walls tilt: with no angle it has nothing to pick
-        if (angled && definition.draftEdgeMode != ThickenPlusDraftEdges.ALL && isQueryEmpty(context, definition.draftEdges))
+        if (angled && edgeMode != ThickenPlusDraftEdges.ALL && isQueryEmpty(context, definition.draftEdges))
         {
             throw regenError("Select the edges to draft (or the edges to leave undrafted).", ["draftEdges"]);
         }
@@ -214,11 +219,11 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
             // the boundary of the face set: edges with exactly one of its faces (topologically one-sided for this feature)
             const oneSided = drafting ? oneSidedEdges(context, groupFaces) : qNothing();
             var drafted = oneSided;
-            if (definition.draftEdgeMode == ThickenPlusDraftEdges.SELECTED)
+            if (edgeMode == ThickenPlusDraftEdges.SELECTED)
             {
                 drafted = qIntersection([oneSided, definition.draftEdges]);
             }
-            else if (definition.draftEdgeMode == ThickenPlusDraftEdges.ALL_EXCEPT)
+            else if (edgeMode == ThickenPlusDraftEdges.ALL_EXCEPT)
             {
                 drafted = qSubtraction(oneSided, definition.draftEdges);
             }
@@ -241,7 +246,7 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
         }
 
         // Every selected edge must be on the outline of some group's faces.
-        if (angled && definition.draftEdgeMode != ThickenPlusDraftEdges.ALL)
+        if (angled && edgeMode != ThickenPlusDraftEdges.ALL)
         {
             var outlines = [];
             for (var group in groups)
@@ -270,7 +275,7 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
         const draftSettings = {
                 "kToward" : kToward,
                 "kAway" : kAway,
-                "neutral" : definition.draftNeutral,
+                "neutral" : draftOn ? definition.draftNeutral : ThickenPlusDraftNeutral.SEED,
                 "offset" : definition.sideOffset,
                 "keepTools" : definition.keepTools,
                 "debug" : definition.debugPrint
@@ -401,6 +406,7 @@ export const thickenPlus = defineFeature(function(context is Context, id is Id, 
         "keepTools" : false,
         "outputName" : "",
         "deleteCaps" : ThickenPlusDeleteCaps.NONE,
+        "draftOn" : false,
         "draftAngle" : 0 * degree,
         "shareDraftAngle" : true,
         "draftAngleAway" : 0 * degree,

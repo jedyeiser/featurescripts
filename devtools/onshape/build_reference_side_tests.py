@@ -346,12 +346,12 @@ for n, depth in enumerate([15, 5]):
 # integrated in check_reference_side_tests.py (DR_CASES there must match this list).
 DR_SQUARE_CASES = [
     # tag, title, extra parameters
-    ("DR1", "draft +10 deg, input face neutral, same angle away", [num("draftAngle", "10 deg")]),
-    ("DR2", "draft -10 deg, toward cap neutral", [num("draftAngle", "-10 deg"), en("draftNeutral", "ThickenPlusDraftNeutral", "TOP", NS["thicken_plus"])]),
-    ("DR3", "draft +10 deg, away cap neutral", [num("draftAngle", "10 deg"), en("draftNeutral", "ThickenPlusDraftNeutral", "BOTTOM", NS["thicken_plus"])]),
-    ("DR4", "draft +10 deg toward, -5 deg away (kinked at the input face)", [num("draftAngle", "10 deg"), b("shareDraftAngle", False), num("draftAngleAway", "-5 deg")]),
+    ("DR1", "draft +10 deg, input face neutral, same angle away", [b("draftOn", True), num("draftAngle", "10 deg")]),
+    ("DR2", "draft -10 deg, toward cap neutral", [b("draftOn", True), num("draftAngle", "-10 deg"), en("draftNeutral", "ThickenPlusDraftNeutral", "TOP", NS["thicken_plus"])]),
+    ("DR3", "draft +10 deg, away cap neutral", [b("draftOn", True), num("draftAngle", "10 deg"), en("draftNeutral", "ThickenPlusDraftNeutral", "BOTTOM", NS["thicken_plus"])]),
+    ("DR4", "draft +10 deg toward, -5 deg away (kinked at the input face)", [b("draftOn", True), num("draftAngle", "10 deg"), b("shareDraftAngle", False), num("draftAngleAway", "-5 deg")]),
     ("DR7", "side face offset +2 mm, no angle", [num("sideOffset", "2 mm")]),
-    ("DR8", "side face offset -2 mm with draft +5 deg", [num("sideOffset", "-2 mm"), num("draftAngle", "5 deg")]),
+    ("DR8", "side face offset -2 mm with draft +5 deg", [num("sideOffset", "-2 mm"), b("draftOn", True), num("draftAngle", "5 deg")]),
 ]
 for n, (tag, title, extra) in enumerate(DR_SQUARE_CASES):
     x0 = 21000 + 400 * n
@@ -373,7 +373,7 @@ for n, (tag, title, mode, pick) in enumerate([
     thicken("%s Thicken+ %s" % (tag, title), [
         en("operationType", "NewBodyOperationType", "NEW", NS["thicken_plus"]), q("entities", body(sq)),
         q("sideReference", ref_front("%s reference point (%d, 0, 100)" % (tag, x0), x0, 100)),
-        num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), num("draftAngle", "10 deg"),
+        num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), b("draftOn", True), num("draftAngle", "10 deg"),
         en("draftEdgeMode", "ThickenPlusDraftEdges", mode, NS["thicken_plus"]),
         q("draftEdges", "qUnion([%s])" % picks)])
 
@@ -386,7 +386,7 @@ cyl = feature("DR9 cylinder r 40, z -50..50", "extrude", [
 thicken("DR9 Thicken+ top face of a cylinder r 40, draft +10 deg (closed edge)", [
     en("operationType", "NewBodyOperationType", "NEW", NS["thicken_plus"]), q("entities", face_at(cyl, x0, 0, 50)),
     q("sideReference", ref_front("DR9 reference point (%d, 0, 100)" % x0, x0, 100)),
-    num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), num("draftAngle", "10 deg")])
+    num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), b("draftOn", True), num("draftAngle", "10 deg")])
 
 # DR10: an L-shaped face: a concave corner, which the draft reports instead of building (EXPECTED ERROR)
 x0 = 21000 + 400 * 9
@@ -397,7 +397,7 @@ lp = feature("DR10 L plate, z -10..10", "extrude", [
 thicken("DR10 Thicken+ top face of an L plate, draft +10 deg -> ERROR concave corner", [
     en("operationType", "NewBodyOperationType", "NEW", NS["thicken_plus"]), q("entities", face_at(lp, x0 - 25, -25, 10)),
     q("sideReference", ref_front("DR10 reference point (%d, 0, 100)" % x0, x0, 100)),
-    num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), num("draftAngle", "10 deg")])
+    num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), b("draftOn", True), num("draftAngle", "10 deg")])
 
 # DR11: draft with Delete caps BOTH on the square: only the four drafted walls remain
 x0 = 21000 + 400 * 10
@@ -405,7 +405,7 @@ sq = sheet("DR11 sheet z 50, x %d..%d" % (x0 - 50, x0 + 50), [(x0 - 50, 50), (x0
 thicken("DR11 Thicken+ draft +10 deg with Delete caps BOTH -> 1 sheet of 4 walls", [
     en("operationType", "NewBodyOperationType", "NEW", NS["thicken_plus"]), q("entities", body(sq)),
     q("sideReference", ref_front("DR11 reference point (%d, 0, 100)" % x0, x0, 100)),
-    num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), num("draftAngle", "10 deg"),
+    num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), b("draftOn", True), num("draftAngle", "10 deg"),
     en("deleteCaps", "ThickenPlusDeleteCaps", "BOTH", NS["thicken_plus"])])
 
 # DR12: one sheet of two faces folded at x0 (a face SET, outline of six edges, the fold edge between the faces has no wall)
@@ -414,7 +414,7 @@ fold = sheet("DR12 sheet z 50 folded at x %d" % x0, [(x0 - 50, 50), (x0, 50), (x
 thicken("DR12 Thicken+ folded two-face sheet, draft +10 deg -> 1 solid, 2 toward faces, 2 away faces", [
     en("operationType", "NewBodyOperationType", "NEW", NS["thicken_plus"]), q("entities", body(fold)),
     q("sideReference", ref_front("DR12 reference point (%d, 0, 100)" % x0, x0, 100)),
-    num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), num("draftAngle", "10 deg")])
+    num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), b("draftOn", True), num("draftAngle", "10 deg")])
 
 # DR13: draft with Add: 60 x 60 sheet on a cube's top, 5 mm up with +10 deg, merged into the cube
 x0 = 21000 + 400 * 12
@@ -423,7 +423,7 @@ dsheet = sheet("DR13 sheet on the cube top, z 50, x %d..%d" % (x0 - 30, x0 + 30)
 thicken("DR13 Thicken+ 5 mm up from the cube top, draft +10 deg, Add into the cube -> 1 part", [
     en("operationType", "NewBodyOperationType", "ADD", NS["thicken_plus"]), q("entities", body(dsheet)),
     q("sideReference", ref_front("DR13 reference point (%d, 0, 100)" % x0, x0, 100)),
-    num("thicknessToward", "5 mm"), num("thicknessAway", "0 mm"), num("draftAngle", "10 deg"),
+    num("thicknessToward", "5 mm"), num("thicknessAway", "0 mm"), b("draftOn", True), num("draftAngle", "10 deg"),
     b("defaultScope", False), q("booleanScope", body(dcube))])
 
 # ============================================================================
