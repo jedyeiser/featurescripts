@@ -1,5 +1,7 @@
 FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
+// LoftEndDerivativeType and createProfileConditions (G1 / G2 connections) are not part of common.fs
+import(path : "onshape/std/loft.fs", version : "3083.0");
 
 // IMPORT: reference_side_utils.fs
 import(path : "9aebe5ead538258b285aec19", version : "51d2aab9634029141009803d");
