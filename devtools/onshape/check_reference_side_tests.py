@@ -375,7 +375,7 @@ k10, k5, kn10, kn5 = (math.tan(math.radians(d)) for d in (10, 5, -10, -5))
 for tag, kT, kA, hN, off, xd, yd in [
         ("DR1", k10, k10, 0, 0, True, True), ("DR2", kn10, kn10, 5, 0, True, True), ("DR3", k10, k10, -3, 0, True, True),
         ("DR4", k10, kn5, 0, 0, True, True), ("DR5", k10, k10, 0, 0, True, False), ("DR6", k10, k10, 0, 0, True, False),
-        ("DR7", 0, 0, 0, 2, True, True), ("DR8", k5, k5, 0, -2, True, True)]:
+        ("DR7", 0, 0, 0, 2, True, True), ("DR8", k5, k5, 0, -2, True, True), ("DR14", 0, 0, 0, 2, True, True)]:
     sheet_src = SHEET_CHECK if tag == "DR1" else ""
     src = DR_SQUARE_SRC
     for key, value in {"__KT__": repr(kT), "__KA__": repr(kA), "__HN__": repr(hN), "__OFF__": repr(off), "__XD__": "true" if xd else "false",

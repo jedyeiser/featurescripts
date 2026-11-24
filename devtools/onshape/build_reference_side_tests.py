@@ -426,6 +426,13 @@ thicken("DR13 Thicken+ 5 mm up from the cube top, draft +10 deg, Add into the cu
     num("thicknessToward", "5 mm"), num("thicknessAway", "0 mm"), b("draftOn", True), num("draftAngle", "10 deg"),
     b("defaultScope", False), q("booleanScope", body(dcube))])
 
+# DR14 (2026-11-23): Draft OFF with a stale angle of +10 deg: the draft must not count. Same as DR7 (side face offset +2 mm, no angle).
+x0 = 46000
+sq14 = sheet("DR14 sheet z 50, x %d..%d" % (x0 - 50, x0 + 50), [(x0 - 50, 50), (x0 + 50, 50)])
+thicken("DR14 Thicken+ side face offset +2 mm, Draft off with a stale 10 deg angle -> the same as DR7", [
+    en("operationType", "NewBodyOperationType", "NEW", NS["thicken_plus"]), q("entities", body(sq14)),
+    q("sideReference", ref_front("DR14 reference point (%d, 0, 100)" % x0, x0, 100)),
+    num("thicknessToward", "5 mm"), num("thicknessAway", "3 mm"), num("sideOffset", "2 mm"), b("draftOn", False), num("draftAngle", "10 deg")])
 # ============================================================================
 # Patch+ (2026-11-23): push / pull the part of a surface inside a footprint; closed-form volumes in the check script.
 # Base: a 100 mm box (top face z 50) or a 100 x 100 sheet at z 50; footprints are sketches on the plane z 100.
