@@ -563,7 +563,7 @@ for n, (tag, base_kind, ref_z, flip, plate_on_face, projected, title) in enumera
 for n, (tag, kind, with_plate, title) in enumerate([
         ("RE1", "sheet", False, "curves lying on both long edges of a 480 x 57 sheet strip, direction +z, offset 5"),
         ("RE2", "sheet", True, "same with a replacement plate ON the strip (an offset of itself), offset 5"),
-        ("RE3", "solid", False, "same on the top face of a 480 x 57 x 20 block, boss 5")]):
+        ("RE3", "solid", False, "same on the top face of a 480 x 57 x 100 block, boss 5")]):
     x0 = 41000 + 600 * n
     fp = sketch("%s footprint rectangle 450 x 57 at x %d z 100 (sketch)" % (tag, x0), plane_at("PP footprint plane z 100", "Top", 100),
                 polyline("r", [(x0 - 225, -28.5), (x0 + 225, -28.5), (x0 + 225, 28.5), (x0 - 225, 28.5)], closed=True))
@@ -571,7 +571,7 @@ for n, (tag, kind, with_plate, title) in enumerate([
         bx = sheet("%s strip z 50, x %d..%d, 57 wide" % (tag, x0 - 240, x0 + 240), [(x0 - 240, 50), (x0 + 240, 50)], 57)
         base_q = body(bx)
     else:
-        bx = cube("%s block at x %d" % (tag, x0), x0, 0, 30, 50, half=240, hy=28.5)
+        bx = cube("%s block at x %d" % (tag, x0), x0, 0, half=240, hy=28.5)     # z -50..50: no base plane feature to clash with the name
         base_q = face_at(bx, x0, 0, 50)
     params = [q("baseFaces", base_q), q("footprint", edges(fp)), num("offset", "5 mm"),
               en("projection", "PatchPlusProjection", "DIRECTION", NS["patch_plus"]), q("projectionDirection", TOP)]

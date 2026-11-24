@@ -537,7 +537,7 @@ for tag, new_area, wall_area, volume in [("PP1", 1256.64, 1256.64, 12566.37), ("
             "outputs: newSurfaceFaces " ~ count(nf) ~ " area " ~ roundToPrecision(na / sq, 2) ~ " (%g), wallFaces " ~ count(wf) ~ " area " ~ roundToPrecision(wa / sq, 2) ~ " (%s), regionArea "
             ~ roundToPrecision(ra / sq, 2) ~ ", volumeChange " ~ roundToPrecision(vc / millimeter ^ 3, 2) ~ " (%g)"];''' % (new_area, wall_ok, volume, new_area, "any" if wall_area is None else "%g" % wall_area, volume))
 # Patch+ curves lying ON the face edges (K2 report): RE1 / RE2 a 57 wide sheet strip (area 480 x 57 + two end walls 57 x 5, moved up or down 5),
-# RE3 a block (volume 480 x 57 x 20 + 450 x 57 x 5).
+# RE3 a block (volume 480 x 57 x 100 + 450 x 57 x 5).
 for tag in ["RE1", "RE2"]:
     case(tag + " ", r'''
         const sheet = created(@SHEET@);
@@ -554,7 +554,7 @@ case("RE3 ", r'''
         const bodies = evaluateQuery(context, created(@BLOCK@));
         if (size(bodies) != 1) { return [false, size(bodies) ~ " bodies (1)"]; }
         const v = evVolume(context, { "entities" : bodies[0] });
-        const want = 480 * 57 * 20 + 450 * 57 * 5;
+        const want = 480 * 57 * 100 + 450 * 57 * 5;
         return [abs(v - want * millimeter ^ 3) < 60 * millimeter ^ 3,
             "volume " ~ roundToPrecision(v / millimeter ^ 3, 1) ~ " (" ~ want ~ ")"];''', BLOCK="RE3 block")
 # Patch+ brittle bits: PQ1 strip with a 0.1 mm sliver (area 480 x 57 + the walls round the 450 x 56.8 loop, 5 high), PQ2 only the top (boss 10 x 1600),
