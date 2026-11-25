@@ -422,11 +422,11 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
         }
         if (definition.showSuggested && size(suggested) > 0)
         {
-            csvShowMarkers(context, id + "suggested", points, suggested, DebugColor.BLUE);
+            csvShowBreakTicks(context, points, suggested, DebugColor.BLUE);
         }
         if (size(breaks) > 0)
         {
-            csvShowMarkers(context, id + "breaks", points, breaks, DebugColor.MAGENTA);
+            csvShowBreakTicks(context, points, breaks, DebugColor.MAGENTA);
         }
         if (size(bridgeMiddles) > 0 && size(allEdges) > 1)
         {
@@ -967,16 +967,38 @@ function csvBuildBridge(context is Context, id is Id, pieceA is Query, pieceB is
 // Display
 // ============================================================================
 
-/** Points of one colour at the given data indices, in one temporary scope (a debug point is a sketch solve each). */
-function csvShowMarkers(context is Context, id is Id, points is array, indices is array, color is DebugColor)
+/** A break tick is this fraction of the length of the data, centred on the break and across the curve. */
+const CSV_TICK_FRACTION = 0.03;
+
+/** At most this many ticks of one colour are drawn (each is a sketch solve). */
+const CSV_MAX_TICKS = 60;
+
+/**
+ * A short line across the curve at each of the given data indices (interior points), in one colour: magenta for the breaks
+ * in use, blue for suggested ones. A line is far easier to see than a point and is sized to the data, not the screen.
+ */
+function csvShowBreakTicks(context is Context, points is array, indices is array, color is DebugColor)
 {
-    startFeature(context, id, {});
-    for (var i = 0; i < size(indices); i += 1)
+    const n = size(points);
+    var total = 0 * meter;
+    for (var i = 0; i < n - 1; i += 1)
     {
-        opPoint(context, id + ("marker" ~ i), { "point" : points[indices[i]] });
+        total += norm(points[i + 1] - points[i]);
     }
-    addDebugEntities(context, qCreatedBy(id, EntityType.VERTEX), color);
-    abortFeature(context, id);
+    const half = CSV_TICK_FRACTION * total / 2;
+    const normal = csvPlaneNormal(points);
+    for (var k = 0; k < min(size(indices), CSV_MAX_TICKS); k += 1)
+    {
+        const i = indices[k];
+        const tangent = normalize(points[i + 1] - points[i - 1]);
+        var across = cross(normal, tangent);
+        if (norm(across) < 1e-6)
+        {
+            across = vector(0, 0, 1);
+        }
+        across = normalize(across);
+        addDebugLine(context, points[i] - across * half, points[i] + across * half, color);
+    }
 }
 
 // ============================================================================
