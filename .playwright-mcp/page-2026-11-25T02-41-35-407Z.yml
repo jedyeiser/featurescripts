@@ -1,0 +1,145 @@
+- generic [ref=f12e5]:
+  - navigation [ref=f12e6]:
+    - generic [ref=f12e7]:
+      - link [ref=f12e10] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f12e11]
+      - generic [ref=f12e13] [cursor=pointer]
+    - generic [ref=f12e16]:
+      - generic [ref=f12e18]:
+        - generic [ref=f12e19]: csv curve +
+        - generic [ref=f12e20]: Main
+      - generic [ref=f12e22] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f12e26] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f12e30]:
+      - generic [ref=f12e38] [cursor=pointer]
+      - generic [ref=f12e44] [cursor=pointer]
+      - button "Notifications" [ref=f12e49] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f12e57]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f12e60] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f12e65] [cursor=pointer]
+      - button "Share" [ref=f12e69] [cursor=pointer]
+      - generic "Help menu" [ref=f12e71] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f12e75] [cursor=pointer]
+  - generic [ref=f12e85]:
+    - generic [ref=f12e87]:
+      - generic [ref=f12e88]:
+        - generic [ref=f12e89]:
+          - generic [ref=f12e90] [cursor=pointer]
+          - generic [ref=f12e93] [cursor=pointer]
+          - generic [ref=f12e96] [cursor=pointer]
+          - generic [ref=f12e99] [cursor=pointer]
+          - generic [ref=f12e102] [cursor=pointer]
+          - generic [ref=f12e105] [cursor=pointer]
+          - generic [ref=f12e108] [cursor=pointer]
+          - generic [ref=f12e111] [cursor=pointer]
+        - generic [ref=f12e115] [cursor=pointer]
+      - generic [ref=f12e119] [cursor=pointer]
+    - generic [ref=f12e126]:
+      - generic [ref=f12e133]:
+        - generic [ref=f12e145]:
+          - generic [ref=f12e146]: Sketch
+          - generic [ref=f12e158]:
+            - generic [ref=f12e159] [cursor=pointer]
+            - generic [ref=f12e163] [cursor=pointer]
+            - generic [ref=f12e167] [cursor=pointer]
+            - generic [ref=f12e171] [cursor=pointer]
+            - generic [ref=f12e176]:
+              - generic [ref=f12e177] [cursor=pointer]
+              - generic [ref=f12e181] [cursor=pointer]
+          - generic [ref=f12e187]:
+            - generic [ref=f12e189]:
+              - generic [ref=f12e190] [cursor=pointer]
+              - generic [ref=f12e194] [cursor=pointer]
+            - generic [ref=f12e197] [cursor=pointer]
+            - generic [ref=f12e202]:
+              - generic [ref=f12e203] [cursor=pointer]
+              - generic [ref=f12e207] [cursor=pointer]
+            - generic [ref=f12e210] [cursor=pointer]
+            - generic [ref=f12e214] [cursor=pointer]
+            - generic [ref=f12e218] [cursor=pointer]
+            - generic [ref=f12e222] [cursor=pointer]
+          - generic [ref=f12e229]:
+            - generic [ref=f12e231]:
+              - generic [ref=f12e232] [cursor=pointer]
+              - generic [ref=f12e236] [cursor=pointer]
+            - generic [ref=f12e239] [cursor=pointer]
+          - generic [ref=f12e246]:
+            - generic [ref=f12e247] [cursor=pointer]
+            - generic [ref=f12e251] [cursor=pointer]
+            - generic [ref=f12e256]:
+              - generic [ref=f12e257] [cursor=pointer]
+              - generic [ref=f12e261] [cursor=pointer]
+            - generic [ref=f12e264] [cursor=pointer]
+          - generic [ref=f12e271]:
+            - generic [ref=f12e272] [cursor=pointer]
+            - generic [ref=f12e276] [cursor=pointer]
+            - generic [ref=f12e280] [cursor=pointer]
+            - generic [ref=f12e284] [cursor=pointer]
+          - generic [ref=f12e292]:
+            - generic [ref=f12e293] [cursor=pointer]
+            - generic [ref=f12e297] [cursor=pointer]
+          - generic [ref=f12e304]:
+            - generic [ref=f12e305] [cursor=pointer]: SA
+            - generic [ref=f12e308] [cursor=pointer]
+          - generic [ref=f12e315] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f12e322] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f12e323]:
+            - generic [ref=f12e324]: alt/⌥
+            - generic [ref=f12e325]: c
+      - generic [ref=f12e329]:
+        - generic [ref=f12e332]:
+          - generic [ref=f12e334]:
+            - generic [ref=f12e335]:
+              - generic [ref=f12e337]:
+                - button [ref=f12e339] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f12e344]
+              - generic [ref=f12e345]:
+                - generic [ref=f12e346]: Features (5)
+                - button [ref=f12e347] [cursor=pointer]
+                - button [ref=f12e350] [cursor=pointer]
+                - button [ref=f12e353] [cursor=pointer]
+            - generic [ref=f12e357]:
+              - generic [ref=f12e358]:
+                - generic [ref=f12e360]:
+                  - generic [ref=f12e361] [cursor=pointer]
+                  - generic [ref=f12e364]: Default geometry
+                - generic [ref=f12e366]: Origin
+                - generic [ref=f12e376]: Top
+                - generic [ref=f12e386]: Front
+                - generic [ref=f12e396]: Right
+                - generic [ref=f12e406]: csv curve + (1470.116 mm)
+              - list
+          - generic [ref=f12e421]:
+            - generic [ref=f12e423]:
+              - generic [ref=f12e425] [cursor=pointer]
+              - generic [ref=f12e428]: Parts (0)
+            - generic [ref=f12e432]:
+              - generic [ref=f12e434] [cursor=pointer]
+              - generic [ref=f12e437]: Curves (1)
+        - generic [ref=f12e442]:
+          - generic [ref=f12e444] [cursor=pointer]
+          - generic [ref=f12e448]:
+            - generic [ref=f12e450]:
+              - button [ref=f12e451] [cursor=pointer]
+              - button [ref=f12e455] [cursor=pointer]
+              - button [ref=f12e459] [cursor=pointer]
+            - generic [ref=f12e463] [cursor=pointer]
+          - generic [ref=f12e468]:
+            - generic [ref=f12e469] [cursor=pointer]
+            - generic [ref=f12e473] [cursor=pointer]
+            - generic [ref=f12e477] [cursor=pointer]
+            - generic [ref=f12e481] [cursor=pointer]
+            - generic [ref=f12e485] [cursor=pointer]
+            - generic [ref=f12e489] [cursor=pointer]
+            - generic [ref=f12e492] [cursor=pointer]
+      - generic [ref=f12e496]:
+        - img [ref=f12e499] [cursor=pointer]
+        - generic [ref=f12e502]:
+          - generic [ref=f12e503]: Part Studio 1
+          - generic [ref=f12e514] [cursor=pointer]: MK221-5_PROFILE.csv
+          - generic [ref=f12e520] [cursor=pointer]: Assembly 1
+          - generic [ref=f12e526] [cursor=pointer]: csvCurvePlus
+          - generic [ref=f12e532] [cursor=pointer]: csv_curve_plus_icon.svg

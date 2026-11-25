@@ -69,6 +69,7 @@ const CSV_MERGE_POINTS_BOUNDS = { (unitless) : [0, 0, 1000] } as IntegerBoundSpe
 const CSV_COLUMN_BOUNDS = { (unitless) : [0, 0, 1e5] } as IntegerBoundSpec;
 const CSV_POINT_NUMBER_BOUNDS = { (unitless) : [1, 1, 1e6] } as IntegerBoundSpec;
 const CSV_COUNT_BOUNDS = { (unitless) : [0, 0, 1e7] } as IntegerBoundSpec;
+const CSV_METRIC_BOUNDS = { (unitless) : [0, 0, 1e12] } as RealBoundSpec;
 const CSV_THRESHOLD_BOUNDS = { (unitless) : [1, 5, 100] } as RealBoundSpec;
 const CSV_CHECKSUM_BOUNDS = { (unitless) : [-1e15, 0, 1e15] } as RealBoundSpec;
 const CSV_TOLERANCE_BOUNDS = { (millimeter) : [0.001, 0.02, 10] } as LengthBoundSpec;
@@ -134,8 +135,8 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
             annotation { "Name" : "Suggest breaks", "Description" : "Add the automatically detected breaks (blue points) to the list above." }
             isButton(definition.suggestBreaks);
 
-            annotation { "Name" : "Detection sensitivity",
-                        "Description" : "How far a point's change of direction must stand out from the rest of the curve to count as a break. It is a robust z-score: the number of typical variations (1.48 x the median absolute deviation) above the median. Lower finds more breaks, higher only the sharpest. On the test ski profile the real breaks score 8 or more and everything else under 2.5, so any value from 3 to 6 gives the same result. Default 5." }
+            annotation { "Name" : "Detection threshold",
+                        "Description" : "A point is suggested as a break when its change of direction stands out from the rest of the curve by more than this many standard deviations. Lower suggests more breaks; higher only the sharpest. Default 5." }
             isReal(definition.breakThreshold, CSV_THRESHOLD_BOUNDS);
 
             annotation { "Name" : "Apply detected breaks automatically", "Default" : false,
@@ -209,6 +210,56 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
             annotation { "Name" : "Print details", "Default" : false,
                         "Description" : "Write the detected breaks and metrics to the Notices console." }
             definition.debugPrint is boolean;
+        }
+
+        if (definition.showMetrics)
+        {
+            annotation { "Group Name" : "Quality", "Collapsed By Default" : false }
+            {
+                annotation { "Name" : "Control points: one spline", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Control points of a single spline through all the points (what Routing curve makes)." }
+                isInteger(definition.metricCpBefore, CSV_COUNT_BOUNDS);
+
+                annotation { "Name" : "Control points: this curve", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Control points of all the pieces and bridges of this curve." }
+                isInteger(definition.metricCpAfter, CSV_COUNT_BOUNDS);
+
+                annotation { "Name" : "Bending energy: one spline", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Integral of curvature squared along the curve, in 1/m. Lower is smoother." }
+                isReal(definition.metricEnergyBefore, CSV_METRIC_BOUNDS);
+
+                annotation { "Name" : "Bending energy: this curve", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Same measure for this curve. Sharp (G0) corners are not included." }
+                isReal(definition.metricEnergyAfter, CSV_METRIC_BOUNDS);
+
+                annotation { "Name" : "Curvature variation: one spline", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Total change of curvature along the curve, in 1/m: how busy the curvature comb is. Lower is calmer." }
+                isReal(definition.metricVariationBefore, CSV_METRIC_BOUNDS);
+
+                annotation { "Name" : "Curvature variation: this curve", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Same measure for this curve." }
+                isReal(definition.metricVariationAfter, CSV_METRIC_BOUNDS);
+
+                annotation { "Name" : "Peak curvature: one spline", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Largest curvature, in 1/m (the tightest bend)." }
+                isReal(definition.metricPeakBefore, CSV_METRIC_BOUNDS);
+
+                annotation { "Name" : "Peak curvature: this curve", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Same measure for this curve." }
+                isReal(definition.metricPeakAfter, CSV_METRIC_BOUNDS);
+
+                annotation { "Name" : "Inflections: one spline", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "How many times the curve changes its direction of turning." }
+                isInteger(definition.metricInflBefore, CSV_COUNT_BOUNDS);
+
+                annotation { "Name" : "Inflections: this curve", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Same count for this curve." }
+                isInteger(definition.metricInflAfter, CSV_COUNT_BOUNDS);
+
+                annotation { "Name" : "Inflections: the data", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Direction changes of the CSV points joined by straight lines. A curve with more inflections than the data is ringing." }
+                isInteger(definition.metricInflData, CSV_COUNT_BOUNDS);
+            }
         }
 
         // Process mode cache (written by the editing logic, never shown)
@@ -464,7 +515,24 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
         notes = append(notes, summary ~ ".");
         if (metrics != undefined)
         {
-            notes = append(notes, csvMetricsText(metrics, bridging ? 0 : size(breaks)));
+            // the Quality group of the dialog
+            const shown = {
+                    "metricCpBefore" : metrics.before.controlPoints,
+                    "metricCpAfter" : metrics.after.controlPoints,
+                    "metricEnergyBefore" : roundToPrecision(metrics.before.energy, 4),
+                    "metricEnergyAfter" : roundToPrecision(metrics.after.energy, 4),
+                    "metricVariationBefore" : roundToPrecision(metrics.before.variation, 4),
+                    "metricVariationAfter" : roundToPrecision(metrics.after.variation, 4),
+                    "metricPeakBefore" : roundToPrecision(metrics.before.peak, 4),
+                    "metricPeakAfter" : roundToPrecision(metrics.after.peak, 4),
+                    "metricInflBefore" : metrics.before.inflections,
+                    "metricInflAfter" : metrics.after.inflections,
+                    "metricInflData" : metrics.dataInflections
+                };
+            for (var name, value in shown)
+            {
+                setFeatureComputedParameter(context, id, { "name" : name, "value" : value });
+            }
         }
         if (definition.showSuggested && size(suggested) > 0)
         {
@@ -499,6 +567,17 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
             "tolerance" : 0.02 * millimeter,
             "showPolyline" : true,
             "showMetrics" : true,
+            "metricCpBefore" : 0,
+            "metricCpAfter" : 0,
+            "metricEnergyBefore" : 0,
+            "metricEnergyAfter" : 0,
+            "metricVariationBefore" : 0,
+            "metricVariationAfter" : 0,
+            "metricPeakBefore" : 0,
+            "metricPeakAfter" : 0,
+            "metricInflBefore" : 0,
+            "metricInflAfter" : 0,
+            "metricInflData" : 0,
             "debugPrint" : false,
             "snapshot" : [],
             "snapshotCount" : 0,

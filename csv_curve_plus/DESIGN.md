@@ -85,6 +85,17 @@ Live-verified in Part Studio 1 on MK221-5_PROFILE.csv (feature "csv curve +" is 
   3 pieces + 2 G2 bridges ("1 short piece bridged across", within 0.21 mm of the replaced data).
 - Approximation at 0.02 mm: 3 pieces approximated, 18 control points, worst deviation 0.0124 mm (interpolateIndices [0,n-1] fine).
 - Manipulator draws the clickable data points; data polyline is green.
+2026-11-24 later: icon A INSTALLED (tab csv_curve_plus_icon.svg 9de909b3 in the document, wired in csvCurvePlus.fs);
+regular labelled enums (no HORIZONTAL_ENUM), a Description on every control, "Detection threshold" renamed "Detection sensitivity"
+(robust z-score, plain-language tooltip), tolerance-only approximation (no max control points: approximateSpline does not meet the
+tolerance when capped); breaks drawn as MAGENTA tick lines across the curve (suggested = BLUE ticks; single debug points were too
+small and hidden under the manipulator dots), bridges CYAN (found again after the join with qClosestTo on the bridge midpoint);
+quality metrics (Display > Show quality metrics, default on): this curve vs ONE spline through all the points (built in a scratch
+scope): control points, bending energy (integral of kappa^2), curvature variation (total change of signed curvature), peak curvature,
+inflections (sign changes of the binormal against the data's Newell plane normal; the data polyline's own count is shown). On the
+test CSV with G2 + merge + approximation 0.02 mm: control points 37 -> 30, energy 0.038 -> 0.016 1/m (2.33x), variation 6.553 ->
+3.108 (2.11x), peak 0.744 -> 0.353 1/m, inflections 11 -> 7 (the data itself has 7, so the 4 extra are ringing). Corners (G0) are
+excluded from energy/variation. Metrics are measured on the loose pieces BEFORE the join, in travel order.
 NOT yet verified: Auto mode, the "CSV changed since Process" notice, other units, clicking a point in the graphics area,
 a 2-point/3-point piece under approximation, closed CSVs, big CSVs (cache size), test pair (build_/check_ scripts).
 Icon: icons/final/csv_curve_plus_icon.svg (candidate A, drafts in icons/drafts/csv_curve_plus/); NOT installed yet.
