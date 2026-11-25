@@ -76,6 +76,19 @@ primary control; show the equivalent radius in a notice). Fillet wire remains av
 - Pitfalls: braces on every if/for; Defaults migrate into saved features; one declaration per param id; inline Filters;
   precondition visibility uses only ==, &&, ||, !; no println without a debug option; dedupe rows before opFitSpline.
 
+## Built 2026-11-24 (csvCurvePlus.fs, ONE tab, pushed to the csv curve + document, compiles clean)
+Live-verified in Part Studio 1 on MK221-5_PROFILE.csv (feature "csv curve +" is left in the tree as the test case):
+- Picking the table in Process mode fills the cache (first time only); curve length 1470.117 mm shows in the name.
+- Suggested breaks = points 10, 11, 23 (1-based), "3.93x smoother" estimate; Suggest breaks fills the list; 4 pieces.
+- G1 and G2 bridges: 4 pieces + 3 bridges -> ONE wire (opExtractWires joins them; Curves (1)). Bridges stay within 0.185 mm.
+- Width by Distance | Data points (same result at 1 interval); Bridge across short pieces: 50 mm / 2 intervals both give
+  3 pieces + 2 G2 bridges ("1 short piece bridged across", within 0.21 mm of the replaced data).
+- Approximation at 0.02 mm: 3 pieces approximated, 18 control points, worst deviation 0.0124 mm (interpolateIndices [0,n-1] fine).
+- Manipulator draws the clickable data points; data polyline is green.
+NOT yet verified: Auto mode, the "CSV changed since Process" notice, other units, clicking a point in the graphics area,
+a 2-point/3-point piece under approximation, closed CSVs, big CSVs (cache size), test pair (build_/check_ scripts).
+Icon: icons/final/csv_curve_plus_icon.svg (candidate A, drafts in icons/drafts/csv_curve_plus/); NOT installed yet.
+
 ## Open / UNVERIFIED (check live in the first spike, within the API budget)
 1. opExtractWires with two touching splines from approximateSpline/opFitSpline: single wire? Gap tolerance?
 2. native approximateSpline tolerance semantics vs the Python model used for the numbers above.

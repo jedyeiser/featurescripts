@@ -2,6 +2,8 @@ FeatureScript 3083;
 import(path : "onshape/std/common.fs", version : "3083.0");
 // Onshape's bridging-curve maths (computeBridgingControlPoints): G1 / G2 bridges between the pieces
 import(path : "onshape/std/bridgingCurve.fs", version : "3083.0");
+// IMPORT: csv_curve_plus_icon.svg (feature icon)
+IconNamespace::import(path : "9de909b39fd8e8bc5b3240df", version : "3932588472736c9f9a1243b3");
 
 /**
  * csv curve +: a CSV of points (x, y, z) becomes ONE wire made of several curves.
@@ -84,7 +86,7 @@ const CSV_MAX_DEPARTURE_SAMPLES = 40;
 /** The data polyline is drawn with at most this many debug lines (each is a sketch solve). */
 const CSV_MAX_POLYLINE_LINES = 100;
 
-annotation { "Feature Type Name" : "csv curve +",
+annotation { "Icon" : IconNamespace::BLOB_DATA, "Feature Type Name" : "csv curve +",
         "Feature Type Description" : "A curve from a CSV of points, split at break points, optionally approximated and bridged (G1 / G2), as one wire.",
         "Feature Name Template" : "csv curve + (#curveLength)",
         "Manipulator Change Function" : "csvCurveManipulatorChange",
