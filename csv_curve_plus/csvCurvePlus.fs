@@ -69,7 +69,6 @@ const CSV_MERGE_POINTS_BOUNDS = { (unitless) : [0, 0, 1000] } as IntegerBoundSpe
 const CSV_COLUMN_BOUNDS = { (unitless) : [0, 0, 1e5] } as IntegerBoundSpec;
 const CSV_POINT_NUMBER_BOUNDS = { (unitless) : [1, 1, 1e6] } as IntegerBoundSpec;
 const CSV_COUNT_BOUNDS = { (unitless) : [0, 0, 1e7] } as IntegerBoundSpec;
-const CSV_METRIC_BOUNDS = { (unitless) : [0, 0, 1e12] } as RealBoundSpec;
 const CSV_THRESHOLD_BOUNDS = { (unitless) : [1, 5, 100] } as RealBoundSpec;
 const CSV_CHECKSUM_BOUNDS = { (unitless) : [-1e15, 0, 1e15] } as RealBoundSpec;
 const CSV_TOLERANCE_BOUNDS = { (millimeter) : [0.001, 0.02, 10] } as LengthBoundSpec;
@@ -231,29 +230,29 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
                             "Description" : "Control points of all the pieces and bridges of this curve." }
                 isInteger(definition.metricCpAfter, CSV_COUNT_BOUNDS);
 
-                annotation { "Name" : "Bending energy: one spline", "UIHint" : UIHint.READ_ONLY,
-                            "Description" : "Integral of curvature squared along the curve, in 1/m. Lower is smoother." }
-                isReal(definition.metricEnergyBefore, CSV_METRIC_BOUNDS);
+                annotation { "Name" : "Energy: one spline", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Bending energy: the integral of curvature squared along a single spline through all the points, in 1/km. Lower is smoother." }
+                isInteger(definition.metricEnergyBefore, CSV_COUNT_BOUNDS);
 
-                annotation { "Name" : "Bending energy: this curve", "UIHint" : UIHint.READ_ONLY,
-                            "Description" : "Same measure for this curve. Sharp (G0) corners are not included." }
-                isReal(definition.metricEnergyAfter, CSV_METRIC_BOUNDS);
+                annotation { "Name" : "Energy: this curve", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Bending energy of this curve, in 1/km. Sharp (G0) corners are not included." }
+                isInteger(definition.metricEnergyAfter, CSV_COUNT_BOUNDS);
 
-                annotation { "Name" : "Curvature variation: one spline", "UIHint" : UIHint.READ_ONLY,
-                            "Description" : "Total change of curvature along the curve, in 1/m: how busy the curvature comb is. Lower is calmer." }
-                isReal(definition.metricVariationBefore, CSV_METRIC_BOUNDS);
+                annotation { "Name" : "Variation: one spline", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Curvature variation: the total change of curvature along a single spline through all the points, in 1/km. It measures how busy the curvature comb is; lower is calmer." }
+                isInteger(definition.metricVariationBefore, CSV_COUNT_BOUNDS);
 
-                annotation { "Name" : "Curvature variation: this curve", "UIHint" : UIHint.READ_ONLY,
-                            "Description" : "Same measure for this curve." }
-                isReal(definition.metricVariationAfter, CSV_METRIC_BOUNDS);
+                annotation { "Name" : "Variation: this curve", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Curvature variation of this curve, in 1/km." }
+                isInteger(definition.metricVariationAfter, CSV_COUNT_BOUNDS);
 
-                annotation { "Name" : "Peak curvature: one spline", "UIHint" : UIHint.READ_ONLY,
-                            "Description" : "Largest curvature, in 1/m (the tightest bend)." }
-                isReal(definition.metricPeakBefore, CSV_METRIC_BOUNDS);
+                annotation { "Name" : "Min radius: one spline", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Radius of the tightest bend of a single spline through all the points, in mm. 0 = no bend. Bigger is smoother." }
+                isInteger(definition.metricPeakBefore, CSV_COUNT_BOUNDS);
 
-                annotation { "Name" : "Peak curvature: this curve", "UIHint" : UIHint.READ_ONLY,
-                            "Description" : "Same measure for this curve." }
-                isReal(definition.metricPeakAfter, CSV_METRIC_BOUNDS);
+                annotation { "Name" : "Min radius: this curve", "UIHint" : UIHint.READ_ONLY,
+                            "Description" : "Radius of the tightest bend of this curve, in mm." }
+                isInteger(definition.metricPeakAfter, CSV_COUNT_BOUNDS);
 
                 annotation { "Name" : "Inflections: one spline", "UIHint" : UIHint.READ_ONLY,
                             "Description" : "How many times the curve changes its direction of turning." }
@@ -530,12 +529,12 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
             const shown = {
                     "metricCpBefore" : metrics.before.controlPoints,
                     "metricCpAfter" : metrics.after.controlPoints,
-                    "metricEnergyBefore" : roundToPrecision(metrics.before.energy, 4),
-                    "metricEnergyAfter" : roundToPrecision(metrics.after.energy, 4),
-                    "metricVariationBefore" : roundToPrecision(metrics.before.variation, 4),
-                    "metricVariationAfter" : roundToPrecision(metrics.after.variation, 4),
-                    "metricPeakBefore" : roundToPrecision(metrics.before.peak, 4),
-                    "metricPeakAfter" : roundToPrecision(metrics.after.peak, 4),
+                    "metricEnergyBefore" : round(metrics.before.energy * 1000),
+                    "metricEnergyAfter" : round(metrics.after.energy * 1000),
+                    "metricVariationBefore" : round(metrics.before.variation * 1000),
+                    "metricVariationAfter" : round(metrics.after.variation * 1000),
+                    "metricPeakBefore" : metrics.before.peak > 1e-9 ? round(1000 / metrics.before.peak) : 0,
+                    "metricPeakAfter" : metrics.after.peak > 1e-9 ? round(1000 / metrics.after.peak) : 0,
                     "metricInflBefore" : metrics.before.inflections,
                     "metricInflAfter" : metrics.after.inflections,
                     "metricInflData" : metrics.dataInflections
