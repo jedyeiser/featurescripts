@@ -54,6 +54,16 @@ export enum CsvBridgeType
     G2
 }
 
+export enum CsvWidthBy
+{
+    annotation { "Name" : "Distance" }
+    DISTANCE,
+    annotation { "Name" : "Data points" }
+    POINTS
+}
+
+const CSV_WIDTH_POINTS_BOUNDS = { (unitless) : [1, 1, 1000] } as IntegerBoundSpec;
+const CSV_MERGE_POINTS_BOUNDS = { (unitless) : [0, 0, 1000] } as IntegerBoundSpec;
 const CSV_COLUMN_BOUNDS = { (unitless) : [0, 0, 1e5] } as IntegerBoundSpec;
 const CSV_POINT_NUMBER_BOUNDS = { (unitless) : [1, 1, 1e6] } as IntegerBoundSpec;
 const CSV_COUNT_BOUNDS = { (unitless) : [0, 0, 1e7] } as IntegerBoundSpec;
@@ -67,6 +77,9 @@ const CSV_EPS = 1e-9 * meter;
 
 /** A bridge may use at most this fraction of a piece at each of its two ends, so neighbouring bridges never overlap. */
 const CSV_MAX_BRIDGE_FRACTION = 0.4;
+
+/** At most this many replaced data points per bridge are measured against it. */
+const CSV_MAX_DEPARTURE_SAMPLES = 40;
 
 /** The data polyline is drawn with at most this many debug lines (each is a sketch solve). */
 const CSV_MAX_POLYLINE_LINES = 100;
@@ -132,9 +145,29 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
 
             if (definition.bridgeType == CsvBridgeType.G1 || definition.bridgeType == CsvBridgeType.G2)
             {
-                annotation { "Name" : "Bridge width",
-                            "Description" : "Length cut away on each side of a break and replaced by the bridge. 0 = one data interval each side. Limited to 40% of the neighbouring piece." }
-                isLength(definition.bridgeWidth, CSV_BRIDGE_WIDTH_BOUNDS);
+                annotation { "Name" : "Width by", "Default" : CsvWidthBy.DISTANCE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+                definition.widthBy is CsvWidthBy;
+
+                if (definition.widthBy == CsvWidthBy.DISTANCE)
+                {
+                    annotation { "Name" : "Bridge width",
+                                "Description" : "Length cut away on each side of a break and replaced by the bridge. 0 = one data interval each side. Limited to 40% of the neighbouring piece." }
+                    isLength(definition.bridgeWidth, CSV_BRIDGE_WIDTH_BOUNDS);
+
+                    annotation { "Name" : "Bridge across pieces shorter than",
+                                "Description" : "A piece between two breaks that is shorter than this is removed and its two neighbours are bridged directly (one bridge for three sections). 0 = off." }
+                    isLength(definition.mergeLength, CSV_BRIDGE_WIDTH_BOUNDS);
+                }
+                else
+                {
+                    annotation { "Name" : "Bridge width (data points)",
+                                "Description" : "Number of data intervals cut away on each side of a break and replaced by the bridge. Limited to 40% of the neighbouring piece." }
+                    isInteger(definition.bridgeWidthPoints, CSV_WIDTH_POINTS_BOUNDS);
+
+                    annotation { "Name" : "Bridge across pieces spanning fewer than (data intervals)",
+                                "Description" : "A piece between two breaks that spans fewer data intervals than this is removed and its two neighbours are bridged directly. 0 = off." }
+                    isInteger(definition.mergePoints, CSV_MERGE_POINTS_BOUNDS);
+                }
             }
         }
 
@@ -254,7 +287,14 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
 
         // ---- the curves: one piece between breaks, a bridge across each break ----
         const bridging = definition.bridgeType != CsvBridgeType.NONE;
-        const pieces = csvPlanPieces(points, breaks, bridging, bridging ? definition.bridgeWidth : 0 * meter);
+        const plan = csvPlanPieces(points, breaks, bridging, {
+                    "byPoints" : definition.widthBy == CsvWidthBy.POINTS,
+                    "width" : definition.bridgeWidth,
+                    "points" : definition.bridgeWidthPoints,
+                    "mergeLength" : definition.mergeLength,
+                    "mergePoints" : definition.mergePoints
+                });
+        const pieces = plan.pieces;
         var loose = [];
         var allEdges = [];
         var approximated = 0;
@@ -286,6 +326,7 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
             loose = append(loose, qCreatedBy(pieceId, EntityType.BODY));
             allEdges = append(allEdges, qCreatedBy(pieceId, EntityType.EDGE));
         }
+        var worstBridge = 0 * meter;
         if (bridging)
         {
             for (var j = 0; j < size(pieces) - 1; j += 1)
@@ -295,6 +336,14 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
                     qCreatedBy(id + ("piece" ~ (j + 1)), EntityType.EDGE), definition.bridgeType);
                 loose = append(loose, qCreatedBy(bridgeId, EntityType.BODY));
                 allEdges = append(allEdges, qCreatedBy(bridgeId, EntityType.EDGE));
+
+                // how far the bridge is from the data it replaced (at most CSV_MAX_DEPARTURE_SAMPLES of them per bridge)
+                const replaced = plan.removed[j];
+                const step = max(1, ceil(size(replaced) / CSV_MAX_DEPARTURE_SAMPLES));
+                for (var r = 0; r < size(replaced); r += step)
+                {
+                    worstBridge = max(worstBridge, evDistance(context, { "side0" : qCreatedBy(bridgeId, EntityType.EDGE), "side1" : replaced[r] }).distance);
+                }
             }
         }
 
@@ -343,6 +392,11 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
         if (bridging)
         {
             summary = summary ~ ", " ~ (size(pieces) - 1) ~ " " ~ (definition.bridgeType == CsvBridgeType.G1 ? "G1" : "G2") ~ " bridge(s)";
+            if (plan.mergedPieces > 0)
+            {
+                summary = summary ~ " (" ~ plan.mergedPieces ~ " short piece(s) bridged across)";
+            }
+            summary = summary ~ "; bridges stay within " ~ roundToPrecision(worstBridge / millimeter, 3) ~ " mm of the data they replace";
         }
         if (definition.approximate)
         {
@@ -374,7 +428,11 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
             "autoBreaks" : false,
             "showSuggested" : true,
             "bridgeType" : CsvBridgeType.NONE,
+            "widthBy" : CsvWidthBy.DISTANCE,
             "bridgeWidth" : 0 * millimeter,
+            "mergeLength" : 0 * millimeter,
+            "bridgeWidthPoints" : 1,
+            "mergePoints" : 0,
             "approximate" : false,
             "tolerance" : 0.02 * millimeter,
             "showPolyline" : true,
@@ -649,13 +707,51 @@ function csvPointAtLength(points is array, lengths is array, at is ValueWithUnit
 }
 
 /**
- * The points of every piece. Pieces run between break points (each break is the end of one piece and the start of
- * the next, the same point value). With bridging, a piece stops short of a break by the bridge width (cut on the data
- * polyline, so it may fall between data points) and the data inside the cut is replaced by the bridge. The width is the
- * given width, or one data interval on each side when it is 0, and never more than CSV_MAX_BRIDGE_FRACTION of the piece.
- * @returns {array} : an array of point arrays
+ * Is the piece between data indices a and b short enough to be removed and bridged across? Only used with bridging.
+ * @param spec {map} : byPoints, mergeLength (length), mergePoints (data intervals); 0 = off.
  */
-function csvPlanPieces(points is array, breaks is array, bridging is boolean, width is ValueWithUnits) returns array
+function csvPieceIsShort(lengths is array, a is number, b is number, spec is map) returns boolean
+{
+    if (spec.byPoints)
+    {
+        return spec.mergePoints > 0 && (b - a) < spec.mergePoints;
+    }
+    return spec.mergeLength > 0 * meter && lengths[b] - lengths[a] < spec.mergeLength;
+}
+
+/**
+ * How much of a piece a bridge cuts away at one of its ends: `breakIndex` is the break at that end, `otherIndex` the data
+ * index at the piece's other end. By distance: the width, or one data interval when it is 0. By points: that many data
+ * intervals (not past the other end of the piece), so the cut lands on a data point.
+ */
+function csvCutWidth(lengths is array, breakIndex is number, otherIndex is number, atStart is boolean, spec is map) returns ValueWithUnits
+{
+    if (spec.byPoints)
+    {
+        if (atStart)
+        {
+            return lengths[min(breakIndex + spec.points, otherIndex)] - lengths[breakIndex];
+        }
+        return lengths[breakIndex] - lengths[max(breakIndex - spec.points, otherIndex)];
+    }
+    if (spec.width > 0 * meter)
+    {
+        return spec.width;
+    }
+    return atStart ? lengths[breakIndex + 1] - lengths[breakIndex] : lengths[breakIndex] - lengths[breakIndex - 1];
+}
+
+/**
+ * The points of every piece. Pieces run between gaps; a gap is one break (the end of one piece and the start of the next,
+ * the same point value) or, with bridging and a merge setting, a run of breaks whose in-between pieces are short: those
+ * pieces are removed and the pieces on either side are bridged directly (one bridge for three or more sections).
+ * With bridging, a piece stops short of a gap by the bridge width (cut on the data polyline, so it may fall between data
+ * points) and the data inside the cut is replaced by the bridge. The width is limited to CSV_MAX_BRIDGE_FRACTION of the
+ * piece, so neighbouring bridges never overlap.
+ * @returns {map} : { pieces (array of point arrays), removed (per bridge: the data points it replaces),
+ *                    mergedPieces (number of short pieces bridged across) }
+ */
+function csvPlanPieces(points is array, breaks is array, bridging is boolean, spec is map) returns map
 {
     const n = size(points);
     var lengths = [0 * meter];
@@ -663,28 +759,39 @@ function csvPlanPieces(points is array, breaks is array, bridging is boolean, wi
     {
         lengths = append(lengths, lengths[k - 1] + norm(points[k] - points[k - 1]));
     }
-    var anchors = [0];
+
+    // gaps: runs of breaks (lo = first break of the run, hi = last)
+    var gaps = [];
     for (var b in breaks)
     {
-        anchors = append(anchors, b);
+        if (bridging && size(gaps) > 0 && csvPieceIsShort(lengths, gaps[size(gaps) - 1].hi, b, spec))
+        {
+            gaps[size(gaps) - 1].hi = b;
+        }
+        else
+        {
+            gaps = append(gaps, { "lo" : b, "hi" : b });
+        }
     }
-    anchors = append(anchors, n - 1);
 
+    const g = size(gaps);
     var pieces = [];
-    for (var j = 0; j < size(anchors) - 1; j += 1)
+    var cutStarts = [];
+    var cutEnds = [];
+    for (var j = 0; j <= g; j += 1)
     {
-        const a = anchors[j];
-        const b = anchors[j + 1];
+        const a = j == 0 ? 0 : gaps[j - 1].hi;
+        const b = j == g ? n - 1 : gaps[j].lo;
         const pieceLength = lengths[b] - lengths[a];
         var startCut = 0 * meter;
         var endCut = 0 * meter;
         if (bridging && j > 0)
         {
-            startCut = min(width > 0 * meter ? width : lengths[a + 1] - lengths[a], CSV_MAX_BRIDGE_FRACTION * pieceLength);
+            startCut = min(csvCutWidth(lengths, a, b, true, spec), CSV_MAX_BRIDGE_FRACTION * pieceLength);
         }
-        if (bridging && j < size(anchors) - 2)
+        if (bridging && j < g)
         {
-            endCut = min(width > 0 * meter ? width : lengths[b] - lengths[b - 1], CSV_MAX_BRIDGE_FRACTION * pieceLength);
+            endCut = min(csvCutWidth(lengths, b, a, false, spec), CSV_MAX_BRIDGE_FRACTION * pieceLength);
         }
         const cutStart = lengths[a] + startCut;
         const cutEnd = lengths[b] - endCut;
@@ -698,8 +805,25 @@ function csvPlanPieces(points is array, breaks is array, bridging is boolean, wi
         }
         piece = append(piece, csvPointAtLength(points, lengths, cutEnd));
         pieces = append(pieces, piece);
+        cutStarts = append(cutStarts, cutStart);
+        cutEnds = append(cutEnds, cutEnd);
     }
-    return pieces;
+
+    // the data each bridge replaces: everything between the end of one piece and the start of the next
+    var removed = [];
+    for (var j = 0; j < g; j += 1)
+    {
+        var replaced = [];
+        for (var k = 0; k < n; k += 1)
+        {
+            if (lengths[k] > cutEnds[j] + CSV_EPS && lengths[k] < cutStarts[j + 1] - CSV_EPS)
+            {
+                replaced = append(replaced, points[k]);
+            }
+        }
+        removed = append(removed, replaced);
+    }
+    return { "pieces" : pieces, "removed" : removed, "mergedPieces" : size(breaks) - g };
 }
 
 /**

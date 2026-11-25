@@ -1,0 +1,138 @@
+- generic [ref=f9e3]:
+  - navigation [ref=f9e4]:
+    - generic [ref=f9e5]:
+      - link [ref=f9e8] [cursor=pointer]:
+        - /url: /documents
+        - img "The Onshape logo." [ref=f9e9]
+      - generic [ref=f9e11] [cursor=pointer]
+    - generic [ref=f9e14]:
+      - generic [ref=f9e16]:
+        - generic [ref=f9e17]: csv curve +
+        - generic [ref=f9e18]: Main
+      - generic [ref=f9e78] [cursor=pointer]
+      - link "EOC Featurescripts" [ref=f9e82] [cursor=pointer]:
+        - /url: /documents?nodeId=93d193c516c10f417bdb482f&resourceType=folder
+    - generic [ref=f9e19]:
+      - generic [ref=f9e92] [cursor=pointer]
+      - generic [ref=f9e98] [cursor=pointer]
+      - button "Notifications" [ref=f9e21] [cursor=pointer]:
+        - generic "9+ unread notifications" [ref=f9e29]: 9+
+      - link "Navigates you to Onshape app store in a new window." [ref=f9e32] [cursor=pointer]
+      - link "Navigates you to Onshape Learning Center in a new window." [ref=f9e37] [cursor=pointer]
+      - button "Share" [ref=f9e104] [cursor=pointer]
+      - generic "Help menu" [ref=f9e41] [cursor=pointer]
+      - button "Jed Yeiser" [ref=f9e45] [cursor=pointer]
+  - generic [ref=f9e55]:
+    - generic [ref=f9e57]:
+      - generic [ref=f9e58]:
+        - generic [ref=f9e105]:
+          - generic [ref=f9e106] [cursor=pointer]
+          - generic [ref=f9e109] [cursor=pointer]
+          - generic [ref=f9e112] [cursor=pointer]
+          - generic [ref=f9e115] [cursor=pointer]
+          - generic [ref=f9e118] [cursor=pointer]
+          - generic [ref=f9e121] [cursor=pointer]
+          - generic [ref=f9e124] [cursor=pointer]
+          - generic [ref=f9e127] [cursor=pointer]
+        - generic [ref=f9e130] [cursor=pointer]
+      - generic [ref=f9e134] [cursor=pointer]
+    - generic [ref=f9e64]:
+      - generic [ref=f9e143]:
+        - generic [ref=f9e155]:
+          - generic [ref=f9e156]: Sketch
+          - generic [ref=f9e168]:
+            - generic [ref=f9e169] [cursor=pointer]
+            - generic [ref=f9e173] [cursor=pointer]
+            - generic [ref=f9e177] [cursor=pointer]
+            - generic [ref=f9e181] [cursor=pointer]
+            - generic [ref=f9e186]:
+              - generic [ref=f9e187] [cursor=pointer]
+              - generic [ref=f9e191] [cursor=pointer]
+          - generic [ref=f9e197]:
+            - generic [ref=f9e199]:
+              - generic [ref=f9e200] [cursor=pointer]
+              - generic [ref=f9e204] [cursor=pointer]
+            - generic [ref=f9e207] [cursor=pointer]
+            - generic [ref=f9e212]:
+              - generic [ref=f9e213] [cursor=pointer]
+              - generic [ref=f9e217] [cursor=pointer]
+            - generic [ref=f9e220] [cursor=pointer]
+            - generic [ref=f9e224] [cursor=pointer]
+            - generic [ref=f9e228] [cursor=pointer]
+            - generic [ref=f9e232] [cursor=pointer]
+          - generic [ref=f9e239]:
+            - generic [ref=f9e241]:
+              - generic [ref=f9e242] [cursor=pointer]
+              - generic [ref=f9e246] [cursor=pointer]
+            - generic [ref=f9e249] [cursor=pointer]
+          - generic [ref=f9e256]:
+            - generic [ref=f9e257] [cursor=pointer]
+            - generic [ref=f9e261] [cursor=pointer]
+            - generic [ref=f9e266]:
+              - generic [ref=f9e267] [cursor=pointer]
+              - generic [ref=f9e271] [cursor=pointer]
+            - generic [ref=f9e274] [cursor=pointer]
+          - generic [ref=f9e281]:
+            - generic [ref=f9e282] [cursor=pointer]
+            - generic [ref=f9e286] [cursor=pointer]
+            - generic [ref=f9e290] [cursor=pointer]
+            - generic [ref=f9e294] [cursor=pointer]
+          - generic [ref=f9e302]:
+            - generic [ref=f9e303] [cursor=pointer]
+            - generic [ref=f9e307] [cursor=pointer]
+          - generic [ref=f9e314]:
+            - generic [ref=f9e315] [cursor=pointer]: SA
+            - generic [ref=f9e318] [cursor=pointer]
+          - generic [ref=f9e325] [cursor=pointer]
+        - button "Search tools… alt/⌥ c" [ref=f9e332] [cursor=pointer]:
+          - text: Search tools…
+          - generic [ref=f9e333]:
+            - generic [ref=f9e334]: alt/⌥
+            - generic [ref=f9e335]: c
+      - generic [ref=f9e72]:
+        - generic [ref=f9e339]:
+          - generic [ref=f9e341]:
+            - generic [ref=f9e342]:
+              - generic [ref=f9e344]:
+                - button [ref=f9e346] [cursor=pointer]
+                - textbox "Filter by name or type" [ref=f9e351]
+              - generic [ref=f9e352]:
+                - generic [ref=f9e353]: Features (4)
+                - button [ref=f9e354] [cursor=pointer]
+                - button [ref=f9e357] [cursor=pointer]
+                - button [ref=f9e360] [cursor=pointer]
+            - generic [ref=f9e364]:
+              - generic [ref=f9e365]:
+                - generic [ref=f9e367]:
+                  - generic [ref=f9e368] [cursor=pointer]
+                  - generic [ref=f9e371]: Default geometry
+                - generic [ref=f9e373]: Origin
+                - generic [ref=f9e383]: Top
+                - generic [ref=f9e393]: Front
+                - generic [ref=f9e403]: Right
+              - list
+          - generic [ref=f9e423]:
+            - generic [ref=f9e425] [cursor=pointer]
+            - generic [ref=f9e428]: Parts (0)
+        - generic [ref=f9e73]:
+          - generic [ref=f9e433] [cursor=pointer]
+          - generic [ref=f9e74]:
+            - generic [ref=f9e438]:
+              - button [ref=f9e439] [cursor=pointer]
+              - button [ref=f9e443] [cursor=pointer]
+              - button [ref=f9e447] [cursor=pointer]
+            - generic [ref=f9e451] [cursor=pointer]
+          - generic [ref=f9e456]:
+            - generic [ref=f9e457] [cursor=pointer]
+            - generic [ref=f9e461] [cursor=pointer]
+            - generic [ref=f9e465] [cursor=pointer]
+            - generic [ref=f9e469] [cursor=pointer]
+            - generic [ref=f9e473] [cursor=pointer]
+            - generic [ref=f9e476] [cursor=pointer]
+      - generic [ref=f9e480]:
+        - img [ref=f9e483] [cursor=pointer]
+        - generic [ref=f9e486]:
+          - generic [ref=f9e487]: Part Studio 1
+          - generic [ref=f9e498] [cursor=pointer]: MK221-5_PROFILE.csv
+          - generic [ref=f9e504] [cursor=pointer]: Assembly 1
+          - generic [ref=f9e510] [cursor=pointer]: csvCurvePlus
