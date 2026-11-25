@@ -197,6 +197,13 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
             }
         }
 
+        annotation { "Group Name" : "Output", "Collapsed By Default" : false }
+        {
+            annotation { "Name" : "Wire name",
+                        "Description" : "Name of the output wire in the Parts list. Empty keeps the default name." }
+            definition.wireName is string;
+        }
+
         annotation { "Group Name" : "Display", "Collapsed By Default" : true }
         {
             annotation { "Name" : "Show quality metrics", "Default" : true,
@@ -454,6 +461,10 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
         if (size(evaluateQuery(context, wire)) == 1)
         {
             setFeatureComputedParameter(context, id, { "name" : "curveLength", "value" : evLength(context, { "entities" : wire }) });
+            if (definition.wireName != "")
+            {
+                setProperty(context, { "entities" : wire, "propertyType" : PropertyType.NAME, "value" : definition.wireName });
+            }
         }
 
         // ---- what the user sees: markers, polyline, manipulator, one message ----
@@ -567,6 +578,7 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
             "tolerance" : 0.02 * millimeter,
             "showPolyline" : true,
             "showMetrics" : true,
+            "wireName" : "",
             "metricCpBefore" : 0,
             "metricCpAfter" : 0,
             "metricEnergyBefore" : 0,
