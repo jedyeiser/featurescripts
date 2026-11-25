@@ -414,6 +414,17 @@
       "last_push": "2026-11-24T08:07:24.321154+00:00",
       "document_id": "ad26c2fa8bc9abaf250c5e8a",
       "workspace_id": "d713b8e6302cdb9bc9ad6308"
+    },
+    {
+      "name": "csv_curve_plus",
+      "description": "csv curve +: routing-curve CSV import split at break points, approximated, bridged",
+      "working_directory": "./csv_curve_plus",
+      "onshape_url": "https://k2-sports.onshape.com/documents/cf2f66d47dfeb06b17bb1b38/w/62f98635c58c3cb456044aea",
+      "references": [],
+      "last_pull": null,
+      "last_push": null,
+      "document_id": "cf2f66d47dfeb06b17bb1b38",
+      "workspace_id": "62f98635c58c3cb456044aea"
     }
   ],
   "sync_metadata": {}
