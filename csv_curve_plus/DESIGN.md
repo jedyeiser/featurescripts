@@ -96,6 +96,12 @@ inflections (sign changes of the binormal against the data's Newell plane normal
 test CSV with G2 + merge + approximation 0.02 mm: control points 37 -> 30, energy 0.038 -> 0.016 1/m (2.33x), variation 6.553 ->
 3.108 (2.11x), peak 0.744 -> 0.353 1/m, inflections 11 -> 7 (the data itself has 7, so the 4 extra are ringing). Corners (G0) are
 excluded from energy/variation. Metrics are measured on the loose pieces BEFORE the join, in travel order.
+2026-11-25: quality metrics moved OUT of the info message into a read-only "Quality" group (UIHint.READ_ONLY parameters filled
+with setFeatureComputedParameter, verified live; shown only with "Show quality metrics"): control points, energy (1/km), variation
+(1/km), min radius (mm), inflections, for one spline vs this curve (+ the data's inflections). They are INTEGERS because the dialog
+fields are narrow and truncate decimals. "Detection threshold" tooltip rewritten (higher = fewer breaks; no test-file numbers); the
+label was "Detection sensitivity" for a while, which was backwards. New Output group: "Wire name" (setProperty PropertyType.NAME on
+the joined wire; verified: shows in the Curves list). The info message now only summarises (points, pieces, bridges, deviation, approximation, suggestions).
 NOT yet verified: Auto mode, the "CSV changed since Process" notice, other units, clicking a point in the graphics area,
 a 2-point/3-point piece under approximation, closed CSVs, big CSVs (cache size), test pair (build_/check_ scripts).
 Icon: icons/final/csv_curve_plus_icon.svg (candidate A, drafts in icons/drafts/csv_curve_plus/); NOT installed yet.
