@@ -96,21 +96,25 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
     {
         annotation { "Group Name" : "Input", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "Table", "UIHint" : UIHint.UNCONFIGURABLE }
+            annotation { "Name" : "Table", "UIHint" : UIHint.UNCONFIGURABLE,
+                        "Description" : "A CSV file in this document with three numeric columns: x, y, z (one point per row). A header row is skipped." }
             definition.inputData is TableData;
 
-            annotation { "Name" : "First data column (0, 1, 2 ...)", "UIHint" : UIHint.UNCONFIGURABLE }
+            annotation { "Name" : "First data column (0, 1, 2 ...)", "UIHint" : UIHint.UNCONFIGURABLE,
+                        "Description" : "Which column holds x. 0 = the first column; y and z are the next two columns." }
             isInteger(definition.startColumn, CSV_COLUMN_BOUNDS);
 
-            annotation { "Name" : "Unit", "Default" : CsvUnit.MILLIMETER, "UIHint" : [UIHint.UNCONFIGURABLE, UIHint.SHOW_LABEL] }
+            annotation { "Name" : "Unit", "Default" : CsvUnit.MILLIMETER, "UIHint" : [UIHint.UNCONFIGURABLE, UIHint.SHOW_LABEL],
+                        "Description" : "The unit of the numbers in the CSV." }
             definition.csvUnit is CsvUnit;
 
-            annotation { "Name" : "Mode", "Default" : CsvBuildMode.PROCESS, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+            annotation { "Name" : "Mode", "Default" : CsvBuildMode.PROCESS, "UIHint" : UIHint.SHOW_LABEL,
+                        "Description" : "Process button: the CSV is read when you press Process and kept in the feature, so editing the CSV never changes the curve until you press Process again. Auto: the CSV is read on every regeneration." }
             definition.buildMode is CsvBuildMode;
 
             if (definition.buildMode == CsvBuildMode.PROCESS)
             {
-                annotation { "Name" : "Process" }
+                annotation { "Name" : "Process", "Description" : "Read the CSV now and rebuild the curve from it." }
                 isButton(definition.processInputs);
             }
         }
@@ -123,31 +127,36 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
             definition.breaks is array;
             for (var brk in definition.breaks)
             {
-                annotation { "Name" : "Point #" }
+                annotation { "Name" : "Point #", "Description" : "The CSV row (1 = first row) where the curve is split. The first and last point cannot be breaks." }
                 isInteger(brk.pointNumber, CSV_POINT_NUMBER_BOUNDS);
             }
 
-            annotation { "Name" : "Suggest breaks", "Description" : "Add the detected breaks to the list." }
+            annotation { "Name" : "Suggest breaks", "Description" : "Add the automatically detected breaks (blue points) to the list above." }
             isButton(definition.suggestBreaks);
 
-            annotation { "Name" : "Detection threshold", "Description" : "Robust z-score of the change of direction. Lower finds more breaks (default 5)." }
+            annotation { "Name" : "Detection sensitivity",
+                        "Description" : "How far a point's change of direction must stand out from the rest of the curve to count as a break. It is a robust z-score: the number of typical variations (1.48 x the median absolute deviation) above the median. Lower finds more breaks, higher only the sharpest. On the test ski profile the real breaks score 8 or more and everything else under 2.5, so any value from 3 to 6 gives the same result. Default 5." }
             isReal(definition.breakThreshold, CSV_THRESHOLD_BOUNDS);
 
-            annotation { "Name" : "Apply detected breaks automatically", "Default" : false }
+            annotation { "Name" : "Apply detected breaks automatically", "Default" : false,
+                        "Description" : "Use the detected breaks without adding them to the list. Off: they are only suggested (blue points)." }
             definition.autoBreaks is boolean;
 
-            annotation { "Name" : "Show suggested breaks", "Default" : true }
+            annotation { "Name" : "Show suggested breaks", "Default" : true,
+                        "Description" : "Mark detected breaks that are not applied with blue points, and report how much smoother applying them would make the data." }
             definition.showSuggested is boolean;
         }
 
         annotation { "Group Name" : "Bridge curves", "Collapsed By Default" : false }
         {
-            annotation { "Name" : "Continuity at breaks", "Default" : CsvBridgeType.NONE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+            annotation { "Name" : "Continuity at breaks", "Default" : CsvBridgeType.NONE, "UIHint" : UIHint.SHOW_LABEL,
+                        "Description" : "None: a break is a sharp corner (G0). G1: a bridging curve replaces the corner and matches the tangent of both sides (4 control points). G2: the bridge also matches curvature (6 control points). Bridges are cyan." }
             definition.bridgeType is CsvBridgeType;
 
             if (definition.bridgeType == CsvBridgeType.G1 || definition.bridgeType == CsvBridgeType.G2)
             {
-                annotation { "Name" : "Width by", "Default" : CsvWidthBy.DISTANCE, "UIHint" : [UIHint.HORIZONTAL_ENUM, UIHint.SHOW_LABEL] }
+                annotation { "Name" : "Width by", "Default" : CsvWidthBy.DISTANCE, "UIHint" : UIHint.SHOW_LABEL,
+                            "Description" : "Specify the bridge width as a distance, or as a number of data intervals (the bridge then starts and ends on data points)." }
                 definition.widthBy is CsvWidthBy;
 
                 if (definition.widthBy == CsvWidthBy.DISTANCE)
@@ -175,22 +184,30 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
 
         annotation { "Group Name" : "Approximation", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Approximate each piece", "Default" : false }
+            annotation { "Name" : "Approximate each piece", "Default" : false,
+                        "Description" : "Replace each piece's interpolating spline by one with fewer control points that stays within the tolerance. The ends of every piece are kept exactly, so the pieces still meet. The number of control points follows from the tolerance alone." }
             definition.approximate is boolean;
 
             if (definition.approximate)
             {
-                annotation { "Name" : "Tolerance" }
+                annotation { "Name" : "Tolerance",
+                            "Description" : "The largest distance the approximated curve may be from the CSV points. It is checked at every point; a piece that cannot meet it is kept exact and reported." }
                 isLength(definition.tolerance, CSV_TOLERANCE_BOUNDS);
             }
         }
 
         annotation { "Group Name" : "Display", "Collapsed By Default" : true }
         {
-            annotation { "Name" : "Show data polyline", "Default" : true }
+            annotation { "Name" : "Show quality metrics", "Default" : true,
+                        "Description" : "Compare this curve with a single spline through all the points (what Routing curve makes): control points, bending energy, curvature variation, peak curvature and inflections." }
+            definition.showMetrics is boolean;
+
+            annotation { "Name" : "Show data polyline", "Default" : true,
+                        "Description" : "Draw the CSV points joined by straight lines (green)." }
             definition.showPolyline is boolean;
 
-            annotation { "Name" : "Print details", "Default" : false }
+            annotation { "Name" : "Print details", "Default" : false,
+                        "Description" : "Write the detected breaks and metrics to the Notices console." }
             definition.debugPrint is boolean;
         }
 
@@ -299,6 +316,9 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
         const pieces = plan.pieces;
         var loose = [];
         var allEdges = [];
+        var pieceEdges = [];
+        var bridgeEdges = [];
+        var bridgeMiddles = [];
         var approximated = 0;
         var fallbacks = 0;
         var controlPoints = 0;
@@ -327,6 +347,7 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
             }
             loose = append(loose, qCreatedBy(pieceId, EntityType.BODY));
             allEdges = append(allEdges, qCreatedBy(pieceId, EntityType.EDGE));
+            pieceEdges = append(pieceEdges, qCreatedBy(pieceId, EntityType.EDGE));
         }
         var worstBridge = 0 * meter;
         if (bridging)
@@ -338,6 +359,8 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
                     qCreatedBy(id + ("piece" ~ (j + 1)), EntityType.EDGE), definition.bridgeType);
                 loose = append(loose, qCreatedBy(bridgeId, EntityType.BODY));
                 allEdges = append(allEdges, qCreatedBy(bridgeId, EntityType.EDGE));
+                bridgeEdges = append(bridgeEdges, qCreatedBy(bridgeId, EntityType.EDGE));
+                bridgeMiddles = append(bridgeMiddles, evEdgeTangentLine(context, { "edge" : qCreatedBy(bridgeId, EntityType.EDGE), "parameter" : 0.5 }).origin);
 
                 // how far the bridge is from the data it replaced (at most CSV_MAX_DEPARTURE_SAMPLES of them per bridge)
                 const replaced = plan.removed[j];
@@ -347,6 +370,22 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
                     worstBridge = max(worstBridge, evDistance(context, { "side0" : qCreatedBy(bridgeId, EntityType.EDGE), "side1" : replaced[r] }).distance);
                 }
             }
+        }
+
+        // ---- quality: this curve against one spline through all the points (measured before the pieces are joined, in order) ----
+        var metrics = undefined;
+        if (definition.showMetrics)
+        {
+            var ordered = [];
+            for (var j = 0; j < size(pieceEdges); j += 1)
+            {
+                ordered = append(ordered, pieceEdges[j]);
+                if (bridging && j < size(bridgeEdges))
+                {
+                    ordered = append(ordered, bridgeEdges[j]);
+                }
+            }
+            metrics = csvQualityMetrics(context, id + "baseline", points, ordered, bridging);
         }
 
         // ---- one wire ----
@@ -383,7 +422,20 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
         }
         if (definition.showSuggested && size(suggested) > 0)
         {
-            csvShowMarkers(context, id + "suggested", points, suggested);
+            csvShowMarkers(context, id + "suggested", points, suggested, DebugColor.BLUE);
+        }
+        if (size(breaks) > 0)
+        {
+            csvShowMarkers(context, id + "breaks", points, breaks, DebugColor.MAGENTA);
+        }
+        if (size(bridgeMiddles) > 0 && size(allEdges) > 1)
+        {
+            var bridgesInWire = [];
+            for (var middle in bridgeMiddles)
+            {
+                bridgesInWire = append(bridgesInWire, qClosestTo(qOwnedByBody(wire, EntityType.EDGE), middle));
+            }
+            addDebugEntities(context, qUnion(bridgesInWire), DebugColor.CYAN);
         }
         if (definition.showPolyline)
         {
@@ -410,6 +462,10 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
             }
         }
         notes = append(notes, summary ~ ".");
+        if (metrics != undefined)
+        {
+            notes = append(notes, csvMetricsText(metrics, bridging ? 0 : size(breaks)));
+        }
         if (definition.showSuggested && size(suggested) > 0)
         {
             const gain = csvRoughnessRatio(points, concatenateArrays([breaks, suggested]));
@@ -422,6 +478,10 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
         {
             println("[csv curve +] points " ~ n ~ ", breaks at point(s) " ~ csvNumberList(breaks, 1) ~ ", detected at point(s) "
                 ~ csvNumberList(detected.indices, 1));
+            if (metrics != undefined)
+            {
+                println("[csv curve +] " ~ csvMetricsText(metrics, bridging ? 0 : size(breaks)));
+            }
         }
     }, {
             "startColumn" : 0,
@@ -438,6 +498,7 @@ export const csvCurve = defineFeature(function(context is Context, id is Id, def
             "approximate" : false,
             "tolerance" : 0.02 * millimeter,
             "showPolyline" : true,
+            "showMetrics" : true,
             "debugPrint" : false,
             "snapshot" : [],
             "snapshotCount" : 0,
@@ -906,16 +967,169 @@ function csvBuildBridge(context is Context, id is Id, pieceA is Query, pieceB is
 // Display
 // ============================================================================
 
-/** Blue points at the given data indices, in one temporary scope (a debug point is a sketch solve each). */
-function csvShowMarkers(context is Context, id is Id, points is array, indices is array)
+/** Points of one colour at the given data indices, in one temporary scope (a debug point is a sketch solve each). */
+function csvShowMarkers(context is Context, id is Id, points is array, indices is array, color is DebugColor)
 {
     startFeature(context, id, {});
     for (var i = 0; i < size(indices); i += 1)
     {
         opPoint(context, id + ("marker" ~ i), { "point" : points[indices[i]] });
     }
-    addDebugEntities(context, qCreatedBy(id, EntityType.VERTEX), DebugColor.BLUE);
+    addDebugEntities(context, qCreatedBy(id, EntityType.VERTEX), color);
     abortFeature(context, id);
+}
+
+// ============================================================================
+// Quality metrics: this curve against one spline through all the points
+// ============================================================================
+
+/** About this many curvature samples over the whole curve (shared between its edges by length). */
+const CSV_METRIC_SAMPLES = 300;
+
+/** Curvature below this (1/m, a radius over 1 km) counts as straight: it has no sign, so it is not an inflection. */
+const CSV_MIN_CURVATURE = 1e-3;
+
+/** The normal of the plane the points lie in (Newell's sum), or Z for a straight line. Curvature signs are taken against it. */
+function csvPlaneNormal(points is array) returns Vector
+{
+    var sum = vector(0, 0, 0) * meter ^ 2;
+    for (var i = 1; i < size(points) - 1; i += 1)
+    {
+        sum += cross(points[i] - points[0], points[i + 1] - points[0]);
+    }
+    if (norm(sum) < 1e-12 * meter ^ 2)
+    {
+        return vector(0, 0, 1);
+    }
+    return normalize(sum);
+}
+
+/** How often the data polyline itself changes its direction of turning (its own inflections). */
+function csvDataInflections(points is array, normal is Vector) returns number
+{
+    var last = 0;
+    var count = 0;
+    for (var i = 1; i < size(points) - 1; i += 1)
+    {
+        const turn = dot(cross(points[i] - points[i - 1], points[i + 1] - points[i]), normal) / meter ^ 2;
+        if (abs(turn) < 1e-12)
+        {
+            continue;
+        }
+        const side = turn > 0 ? 1 : -1;
+        if (last != 0 && side != last)
+        {
+            count += 1;
+        }
+        last = side;
+    }
+    return count;
+}
+
+/**
+ * Curvature measures of a chain of edges, in order (all of them 1/m or counts):
+ * controlPoints; energy = integral of curvature squared along the length (bending energy: smaller = smoother);
+ * variation = total change of signed curvature along each edge (how busy the curvature comb is);
+ * peak = largest curvature; inflections = changes of the turning direction. Corners between edges are not part of the
+ * energy or variation, and an inflection is not counted across a corner (`continuous` false).
+ */
+function csvMeasureCurve(context is Context, edges is array, normal is Vector, continuous is boolean) returns map
+{
+    var lengths = [];
+    var total = 0 * meter;
+    for (var edge in edges)
+    {
+        const length = evLength(context, { "entities" : edge });
+        lengths = append(lengths, length);
+        total += length;
+    }
+    var energy = 0;
+    var variation = 0;
+    var peak = 0;
+    var inflections = 0;
+    var controlPoints = 0;
+    var last = 0;
+    for (var i = 0; i < size(edges); i += 1)
+    {
+        controlPoints += size(evApproximateBSplineCurve(context, { "edge" : edges[i] }).controlPoints);
+        const count = max(12, ceil(CSV_METRIC_SAMPLES * lengths[i] / total));
+        var parameters = [];
+        for (var k = 0; k < count; k += 1)
+        {
+            parameters = append(parameters, k / (count - 1));
+        }
+        const frames = evEdgeCurvatures(context, { "edge" : edges[i], "parameters" : parameters, "arcLengthParameterization" : false });
+        if (!continuous)
+        {
+            last = 0;
+        }
+        var previousPoint = undefined;
+        var previousK = 0;
+        for (var frame in frames)
+        {
+            const kappa = frame.curvature * meter;
+            const side = kappa < CSV_MIN_CURVATURE ? 0 : (dot(curvatureFrameBinormal(frame), normal) >= 0 ? 1 : -1);
+            const signedK = side * kappa;
+            if (side != 0)
+            {
+                if (last != 0 && side != last)
+                {
+                    inflections += 1;
+                }
+                last = side;
+            }
+            peak = max(peak, kappa);
+            if (previousPoint != undefined)
+            {
+                energy += 0.5 * (signedK ^ 2 + previousK ^ 2) * (norm(frame.frame.origin - previousPoint) / meter);
+                variation += abs(signedK - previousK);
+            }
+            previousPoint = frame.frame.origin;
+            previousK = signedK;
+        }
+    }
+    return { "controlPoints" : controlPoints, "energy" : energy, "variation" : variation, "peak" : peak, "inflections" : inflections };
+}
+
+/**
+ * The measures for the finished curve (`edges`, in order) and for a single spline through all the points (built in a
+ * temporary scope and removed), plus the inflections of the data itself.
+ */
+function csvQualityMetrics(context is Context, scopeId is Id, points is array, edges is array, continuous is boolean) returns map
+{
+    const normal = csvPlaneNormal(points);
+    const after = csvMeasureCurve(context, edges, normal, continuous);
+    startFeature(context, scopeId, {});
+    opFitSpline(context, scopeId + "fit", { "points" : points });
+    const before = csvMeasureCurve(context, [qCreatedBy(scopeId + "fit", EntityType.EDGE)], normal, true);
+    abortFeature(context, scopeId);
+    return { "before" : before, "after" : after, "dataInflections" : csvDataInflections(points, normal) };
+}
+
+function csvLowerBy(before is number, after is number) returns string
+{
+    if (after < 1e-12 || before < 1e-12)
+    {
+        return "";
+    }
+    return " (" ~ roundToPrecision(before / after, 2) ~ "x " ~ (before >= after ? "lower" : "higher") ~ ")";
+}
+
+/** The comparison as one sentence for the feature's info message. */
+function csvMetricsText(metrics is map, corners is number) returns string
+{
+    const b = metrics.before;
+    const a = metrics.after;
+    var text = "Quality, one spline through all points -> this curve: control points " ~ b.controlPoints ~ " -> " ~ a.controlPoints
+        ~ "; bending energy " ~ roundToPrecision(b.energy, 3) ~ " -> " ~ roundToPrecision(a.energy, 3) ~ " 1/m" ~ csvLowerBy(b.energy, a.energy)
+        ~ "; curvature variation " ~ roundToPrecision(b.variation, 3) ~ " -> " ~ roundToPrecision(a.variation, 3) ~ " 1/m" ~ csvLowerBy(b.variation, a.variation)
+        ~ "; peak curvature " ~ roundToPrecision(b.peak, 3) ~ " -> " ~ roundToPrecision(a.peak, 3) ~ " 1/m"
+        ~ "; inflections " ~ b.inflections ~ " -> " ~ a.inflections ~ " (the data itself has " ~ metrics.dataInflections ~ ")";
+    if (corners > 0)
+    {
+        text = text ~ "; " ~ corners ~ " sharp (G0) corner(s) kept, not part of the energy";
+    }
+    return text ~ ".";
 }
 
 /** The data as a polyline (debug lines, strided so there are at most CSV_MAX_POLYLINE_LINES). */
